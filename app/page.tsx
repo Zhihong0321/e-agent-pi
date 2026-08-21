@@ -2,59 +2,123 @@
 
 import { useState } from "react";
 
-type Tab = "chats" | "updates" | "calls" | "communities";
+type Screen = "home" | "quotation" | "new" | "mine" | "ai";
 
-const chats = [
-  { name: "Arianna Lewis", message: "Sure, see you at 7!", time: "11:42 AM", unread: 2, color: "#8b5cf6", initials: "AL", online: true },
-  { name: "Design Squad", message: "Mika: The latest mockups are in ✨", time: "10:18 AM", unread: 5, color: "#f59e0b", initials: "DS", online: false },
-  { name: "Jordan Kim", message: "Voice message", time: "9:47 AM", unread: 0, color: "#0ea5e9", initials: "JK", online: true, voice: true },
-  { name: "Weekend Plans", message: "Sam: I found the perfect spot!", time: "Yesterday", unread: 0, color: "#ec4899", initials: "WP", online: false },
-  { name: "Nora Patel", message: "Photo", time: "Yesterday", unread: 0, color: "#14b8a6", initials: "NP", online: false, photo: true },
-  { name: "Family", message: "Dad: Love you all ❤️", time: "Monday", unread: 0, color: "#f97316", initials: "FA", online: false },
+const quotationMenu = [
+  { id: "new" as const, icon: "+", title: "New Quotation", description: "Create a quotation with an AI agent", accent: "mint" },
+  { id: "mine" as const, icon: "▤", title: "Your Quotations", description: "View drafts, approvals and sent quotations", accent: "blue" },
+  { id: "ai" as const, icon: "✦", title: "Chat to AI", description: "Ask about pricing, customers or quotation rules", accent: "purple" },
 ];
 
-const tabInfo: Record<Tab, { label: string; icon: string; title: string }> = {
-  chats: { label: "Chats", icon: "▣", title: "Chats" },
-  updates: { label: "Updates", icon: "◉", title: "Updates" },
-  communities: { label: "Communities", icon: "♧", title: "Communities" },
-  calls: { label: "Calls", icon: "☎", title: "Calls" },
-};
+const quotations = [
+  { id: "QT-1048", customer: "Acme Industries", amount: "RM 24,800", status: "Awaiting approval", tone: "amber" },
+  { id: "QT-1047", customer: "Northstar Retail", amount: "RM 8,450", status: "Draft", tone: "gray" },
+  { id: "QT-1046", customer: "Orbit Systems", amount: "RM 17,200", status: "Sent", tone: "green" },
+];
 
 export default function Home() {
-  const [tab, setTab] = useState<Tab>("chats");
-  const [query, setQuery] = useState("");
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [screen, setScreen] = useState<Screen>("home");
   const [dark, setDark] = useState(false);
-  const visibleChats = chats.filter((chat) => `${chat.name} ${chat.message}`.toLowerCase().includes(query.toLowerCase()));
+  const [message, setMessage] = useState("");
+  const [request, setRequest] = useState("");
+
+  const goBack = () => {
+    if (screen === "quotation") setScreen("home");
+    else if (screen !== "home") setScreen("quotation");
+  };
+
+  const startRequest = (text: string) => {
+    setRequest(text);
+    setMessage("");
+  };
+
+  const title = screen === "home" ? "AI Workforce" : screen === "quotation" ? "Quotation" : screen === "new" ? "New Quotation" : screen === "mine" ? "Your Quotations" : "Quotation AI";
 
   return (
     <main className={dark ? "stage dark" : "stage"}>
-      <section className="phone" aria-label="WhatsApp inspired mobile chat template">
-        <div className="status-bar"><span>9:41</span><span className="status-icons">▮▮▮ ᯤ ◉</span></div>
+      <section className="phone" aria-label="AI automation mobile application">
+        <div className="status-bar"><span>9:41</span><span>▮▮▮ ᯤ ◉</span></div>
         <header className="topbar">
-          <h1>{tabInfo[tab].title}</h1>
-          <div className="header-actions"><button className="icon-button theme-button" aria-label={dark ? "Switch to light mode" : "Switch to dark mode"} onClick={() => setDark(!dark)}>{dark ? "☀" : "☾"}</button><button className="icon-button" aria-label="Camera">⌾</button><button className="icon-button" aria-label="More options" onClick={() => setMenuOpen(!menuOpen)}>⋮</button></div>
-          {menuOpen && <div className="menu"><button>New group</button><button>Linked devices</button><button>Settings</button></div>}
+          <div className="title-group">
+            {screen !== "home" && <button className="back" onClick={goBack} aria-label="Go back">‹</button>}
+            <div>{screen === "home" && <small>Good morning, Alex</small>}<h1>{title}</h1></div>
+          </div>
+          <button className="icon-button" onClick={() => setDark(!dark)} aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}>{dark ? "☀" : "☾"}</button>
         </header>
-        <div className="content">
-          {tab === "chats" && <>
-            <label className="search"><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search" aria-label="Search chats" /></label>
-            <div className="filter-row"><button className="filter selected">All</button><button className="filter">Unread</button><button className="filter">Favorites</button><button className="filter">Groups</button></div>
-            <div className="archive"><span className="archive-icon">⌑</span><span>Archived</span><span className="archive-count">3</span></div>
-            <div className="chat-list">{visibleChats.map((chat) => <button className="chat" key={chat.name}>
-              <span className="avatar" style={{ background: chat.color }}>{chat.initials}{chat.online && <i />}</span>
-              <span className="chat-body"><span className="chat-name">{chat.name}</span><span className="chat-message">{chat.voice ? "▸  0:12" : chat.photo ? "▧  Photo" : chat.message}</span></span>
-              <span className="chat-meta"><span className={chat.unread ? "active-time" : ""}>{chat.time}</span>{chat.unread > 0 && <b>{chat.unread}</b>}</span>
-            </button>)}</div>
-          </>}
-          {tab === "updates" && <div className="empty-state"><div className="large-avatar gradient">ME</div><h2>Status</h2><p>Share photos, videos and messages that disappear after 24 hours.</p><button className="primary">Add status</button><h3>Recent updates</h3><div className="update-row"><span className="avatar" style={{background:"#8b5cf6"}}>AL</span><span><strong>Arianna Lewis</strong><small>Today, 10:15 AM</small></span></div></div>}
-          {tab === "communities" && <div className="empty-state"><div className="community-mark">♧</div><h2>Stay connected with communities</h2><p>Organize related groups and get updates in one place.</p><button className="primary">Start a community</button></div>}
-          {tab === "calls" && <div className="empty-state calls"><div className="large-avatar call-avatar">☎</div><h2>Calls</h2><p>Start a call with your friends and family.</p><button className="primary">New call</button><h3>Recent</h3><div className="update-row"><span className="avatar" style={{background:"#0ea5e9"}}>JK</span><span><strong>Jordan Kim</strong><small>↗ Outgoing · Yesterday</small></span><em>☎</em></div></div>}
+
+        <div className={screen === "new" || screen === "ai" ? "content chat-content" : "content"}>
+          {screen === "home" && <HomeScreen onOpen={() => setScreen("quotation")} />}
+          {screen === "quotation" && <QuotationMenu onOpen={setScreen} />}
+          {screen === "mine" && <QuotationList />}
+          {screen === "new" && <AgentChat request={request} onStart={startRequest} />}
+          {screen === "ai" && <GeneralChat request={request} />}
         </div>
-        <button className="fab" aria-label={tab === "calls" ? "Start a new call" : "Start a new chat"}>{tab === "calls" ? "☎" : "✎"}</button>
-        <nav className="bottom-nav" aria-label="Main navigation">{(Object.keys(tabInfo) as Tab[]).map((item) => <button key={item} onClick={() => setTab(item)} className={tab === item ? "nav-item active" : "nav-item"}><span>{tabInfo[item].icon}</span><small>{tabInfo[item].label}</small></button>)}</nav>
+
+        {(screen === "new" || screen === "ai") && <div className="composer-wrap">
+          <button className="attach" aria-label="Attach file">＋</button>
+          <input value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && message.trim()) startRequest(message.trim()); }} placeholder={screen === "new" ? "Describe the quotation…" : "Ask Quotation AI…"} />
+          <button className="send" onClick={() => message.trim() && startRequest(message.trim())} aria-label="Send message">➤</button>
+        </div>}
+
+        {screen !== "new" && screen !== "ai" && <nav className="bottom-nav">
+          <button className="active"><span>⌂</span><small>Agents</small></button><button><span>◷</span><small>Tasks</small></button><button><span>✓</span><small>Approvals</small></button><button><span>▣</span><small>Library</small></button>
+        </nav>}
         <div className="home-indicator" />
       </section>
     </main>
   );
+}
+
+function HomeScreen({ onOpen }: { onOpen: () => void }) {
+  return <>
+    <label className="search"><span>⌕</span><input placeholder="Search agents and work" /></label>
+    <div className="section-label"><span>Your agents</span><small>1 active</small></div>
+    <button className="agent-row" onClick={onOpen}>
+      <span className="agent-avatar quote-avatar">Q<i /></span>
+      <span className="row-copy"><strong>Quotation</strong><small>QT-1048 is ready for approval</small></span>
+      <span className="row-meta"><time>11:42 AM</time><b>2</b></span>
+    </button>
+    <div className="insight-card"><span className="spark">✦</span><div><strong>Your AI workforce is active</strong><p>Quotation Agent completed 4 tasks this week and saved approximately 1.8 hours.</p></div></div>
+    <div className="section-label"><span>Recent activity</span></div>
+    <div className="activity"><span className="activity-icon">✓</span><div><strong>Quotation sent</strong><small>QT-1046 · Orbit Systems</small></div><time>Yesterday</time></div>
+  </>;
+}
+
+function QuotationMenu({ onOpen }: { onOpen: (screen: Screen) => void }) {
+  return <>
+    <div className="agent-hero"><span className="agent-avatar quote-avatar large">Q<i /></span><div><h2>Quotation Agent</h2><p>Your AI specialist for creating, reviewing and managing quotations.</p></div></div>
+    <div className="section-label"><span>What would you like to do?</span></div>
+    <div className="submenu">{quotationMenu.map((item) => <button key={item.id} onClick={() => onOpen(item.id)}>
+      <span className={`menu-icon ${item.accent}`}>{item.icon}</span><span className="row-copy"><strong>{item.title}</strong><small>{item.description}</small></span><span className="chevron">›</span>
+    </button>)}</div>
+    <div className="agent-status"><span className="pulse" /><div><strong>Agent is online</strong><small>Connected to CRM, product catalogue and pricing rules</small></div></div>
+  </>;
+}
+
+function QuotationList() {
+  return <>
+    <div className="summary-grid"><div><strong>12</strong><small>This month</small></div><div><strong>RM 86k</strong><small>Total value</small></div><div><strong>3</strong><small>Need action</small></div></div>
+    <label className="search compact"><span>⌕</span><input placeholder="Search quotations" /></label>
+    <div className="filter-row"><button className="selected">All</button><button>Drafts</button><button>Approval</button><button>Sent</button></div>
+    <div className="quotation-list">{quotations.map((quote) => <button key={quote.id}>
+      <span className="doc-icon">▤</span><span className="row-copy"><strong>{quote.customer}</strong><small>{quote.id} · {quote.amount}</small></span><span className={`status ${quote.tone}`}>{quote.status}</span>
+    </button>)}</div>
+  </>;
+}
+
+function AgentChat({ request, onStart }: { request: string; onStart: (text: string) => void }) {
+  return <div className="conversation">
+    <div className="agent-strip"><span className="agent-avatar quote-avatar">Q<i /></span><div><strong>New Quotation Agent</strong><small><span /> Online · Quotation specialist</small></div></div>
+    <div className="day-pill">Today</div>
+    <div className="bubble agent-bubble"><span className="mini-agent">✦</span><div><p>Hi Alex! I’ll help you create a complete quotation.</p><p>Tell me the customer and what they need. I’ll check your CRM, product pricing and company rules.</p><time>9:41 AM</time></div></div>
+    {!request && <div className="quick-actions"><small>TRY SAYING</small><button onClick={() => onStart("Create a quotation for Acme Industries")}>Create a quote for Acme Industries</button><button onClick={() => onStart("Quote 20 units of Pro Plan")}>Quote 20 units of Pro Plan</button><button onClick={() => onStart("Use my latest customer enquiry")}>Use my latest customer enquiry</button></div>}
+    {request && <>
+      <div className="bubble user-bubble"><p>{request}</p><time>9:42 AM ✓✓</time></div>
+      <div className="bubble agent-bubble"><span className="mini-agent">✦</span><div><p>I found <strong>Acme Industries</strong> in your CRM. I’ve prefilled their billing details and payment terms.</p><p>Please confirm the quotation details:</p><div className="inline-form"><label>Customer<strong>Acme Industries</strong></label><label>Product<strong>Pro Plan</strong></label><div><label>Quantity<strong>20</strong></label><label>Discount<strong>5%</strong></label></div><button>Continue to preview</button></div><time>9:42 AM</time></div></div>
+    </>}
+  </div>;
+}
+
+function GeneralChat({ request }: { request: string }) {
+  return <div className="conversation"><div className="agent-strip"><span className="agent-avatar ai-avatar">AI<i /></span><div><strong>Quotation AI</strong><small><span /> Online · Ask anything</small></div></div><div className="day-pill">Today</div><div className="bubble agent-bubble"><span className="mini-agent">✦</span><div><p>Ask me about customers, prices, discounts, quotation status or company policies.</p><time>9:41 AM</time></div></div>{request && <><div className="bubble user-bubble"><p>{request}</p><time>9:42 AM ✓✓</time></div><div className="bubble agent-bubble"><span className="mini-agent">✦</span><div><p>I’m checking your quotation records and company knowledge now.</p><time>9:42 AM</time></div></div></>}</div>;
 }
