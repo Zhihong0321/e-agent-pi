@@ -24,15 +24,16 @@ export default function Home() {
   const [tab, setTab] = useState<Tab>("chats");
   const [query, setQuery] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [dark, setDark] = useState(false);
   const visibleChats = chats.filter((chat) => `${chat.name} ${chat.message}`.toLowerCase().includes(query.toLowerCase()));
 
   return (
-    <main className="stage">
+    <main className={dark ? "stage dark" : "stage"}>
       <section className="phone" aria-label="WhatsApp inspired mobile chat template">
         <div className="status-bar"><span>9:41</span><span className="status-icons">▮▮▮ ᯤ ◉</span></div>
         <header className="topbar">
           <h1>{tabInfo[tab].title}</h1>
-          <div className="header-actions"><button className="icon-button" aria-label="Camera">⌾</button><button className="icon-button" aria-label="More options" onClick={() => setMenuOpen(!menuOpen)}>⋮</button></div>
+          <div className="header-actions"><button className="icon-button theme-button" aria-label={dark ? "Switch to light mode" : "Switch to dark mode"} onClick={() => setDark(!dark)}>{dark ? "☀" : "☾"}</button><button className="icon-button" aria-label="Camera">⌾</button><button className="icon-button" aria-label="More options" onClick={() => setMenuOpen(!menuOpen)}>⋮</button></div>
           {menuOpen && <div className="menu"><button>New group</button><button>Linked devices</button><button>Settings</button></div>}
         </header>
         <div className="content">
