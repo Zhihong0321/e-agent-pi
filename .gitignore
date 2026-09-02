@@ -30,6 +30,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -38,3 +39,9 @@ yarn-error.log*
 /.wrangler/
 /outputs/
 /work/
+/agent-storage/*
+!/agent-storage/.gitkeep
+/my-vault/*.key
+/my-vault/*.secret
+.pi/agent/auth.json
+/data/

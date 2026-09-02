@@ -1,9 +1,37 @@
-"use client";
+import { useEffect, useState } from "react";
 
-import { useState } from "react";
-
-type AgentId = "quotation" | "prospecting" | "customer" | "followup" | "insights";
+type AgentId = "website";
 type View = "agents" | "menu" | "chat" | "tasks" | "approvals" | "library";
+
+type ModelOption = {
+  id: string;
+  label: string;
+  shortLabel: string;
+  provider: string;
+  model: string;
+  available: boolean;
+};
+
+type GitStatus = {
+  connected: boolean;
+  configured: boolean;
+  repo: string | null;
+  branch: string;
+  sha: string | null;
+  dirty: boolean;
+  htmlUrl: string | null;
+  repoUrl: string | null;
+  lastError: string | null;
+};
+
+type ChatMessage = {
+  id?: number;
+  role: "user" | "assistant";
+  content: string;
+  modelId?: string | null;
+};
+
+type WorkspaceFile = { path: string; size: number };
 
 type Agent = {
   id: AgentId;
@@ -13,189 +41,744 @@ type Agent = {
   description: string;
   color: string;
   time: string;
-  unread?: number;
   tools: string;
   actions: { title: string; description: string; icon: string }[];
 };
 
 const agents: Agent[] = [
   {
-    id: "quotation", name: "Quotation Agent", short: "Q", color: "emerald", time: "11:42 AM", unread: 2,
-    headline: "QT-1048 is ready for approval",
-    description: "Creates, reviews and manages quotations",
-    tools: "CRM · Product catalogue · Pricing rules",
+    id: "website",
+    name: "Website Dev Agent",
+    short: "W",
+    color: "emerald",
+    time: "Now",
+    headline: "Ready to build in the workspace",
+    description: "Designs static websites in the GitHub-backed workspace",
+    tools: "HTML · CSS · JS · Workspace",
     actions: [
-      { icon: "+", title: "New Quotation", description: "Create a customer-ready quote with AI" },
-      { icon: "▤", title: "Your Quotations", description: "Drafts, approvals and sent quotations" },
-      { icon: "✦", title: "Chat to AI", description: "Ask about pricing, products or policies" },
-    ],
-  },
-  {
-    id: "prospecting", name: "Prospecting Agent", short: "P", color: "blue", time: "10:18 AM", unread: 1,
-    headline: "12 matching leads found for you",
-    description: "Discovers and qualifies potential customers",
-    tools: "Lead database · CRM · Company research",
-    actions: [
-      { icon: "⌕", title: "Find New Leads", description: "Describe your ideal customer to AI" },
-      { icon: "♙", title: "My Leads", description: "Review qualified prospects and signals" },
-      { icon: "✦", title: "Chat to AI", description: "Research a market, company or person" },
-    ],
-  },
-  {
-    id: "customer", name: "Customer 360 Agent", short: "C", color: "violet", time: "9:35 AM",
-    headline: "Acme account summary updated",
-    description: "Unifies customer context and recommends actions",
-    tools: "CRM · Email · Meetings · Support history",
-    actions: [
-      { icon: "◎", title: "Customer Overview", description: "Get an AI summary of any account" },
-      { icon: "◷", title: "Account Activity", description: "See messages, meetings and open work" },
-      { icon: "✦", title: "Ask Customer AI", description: "Ask anything across customer history" },
-    ],
-  },
-  {
-    id: "followup", name: "Follow-up Agent", short: "F", color: "orange", time: "Yesterday", unread: 3,
-    headline: "3 follow-ups need your approval",
-    description: "Drafts and schedules personalized follow-ups",
-    tools: "CRM · Email · Calendar · Engagement signals",
-    actions: [
-      { icon: "✓", title: "Follow-up Queue", description: "Review AI-prepared outreach" },
-      { icon: "↗", title: "Create Sequence", description: "Build a personalized follow-up plan" },
-      { icon: "✦", title: "Chat to AI", description: "Ask who to contact and what to say" },
-    ],
-  },
-  {
-    id: "insights", name: "Sales Insights Agent", short: "S", color: "rose", time: "Monday",
-    headline: "Your morning sales brief is ready",
-    description: "Explains performance, pipeline and risks",
-    tools: "CRM · Revenue data · Activity analytics",
-    actions: [
-      { icon: "☀", title: "Daily Briefing", description: "Priorities, risks and opportunities today" },
-      { icon: "▥", title: "Pipeline Report", description: "Conversational pipeline analysis" },
-      { icon: "✦", title: "Ask Sales Data", description: "Get answers without building reports" },
+      { icon: "✦", title: "Chat to Agent", description: "Describe the website you want built" },
+      { icon: "⌁", title: "Open GitHub repo", description: "Open the connected repository" },
+      { icon: "▤", title: "Workspace status", description: "Ask what files exist in the workspace" },
     ],
   },
 ];
 
+async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+  });
+  const data = (await res.json()) as T & { error?: string };
+  if (!res.ok) throw new Error(data.error ?? "Request failed");
+  return data;
+}
+
 export default function Home() {
   const [view, setView] = useState<View>("agents");
-  const [selectedId, setSelectedId] = useState<AgentId>("quotation");
   const [actionIndex, setActionIndex] = useState(0);
   const [dark, setDark] = useState(false);
   const [message, setMessage] = useState("");
-  const [sentMessage, setSentMessage] = useState("");
-  const selected = agents.find((agent) => agent.id === selectedId) ?? agents[0];
+  const [history, setHistory] = useState<ChatMessage[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [models, setModels] = useState<ModelOption[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState("");
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [git, setGit] = useState<GitStatus | null>(null);
+  const [files, setFiles] = useState<WorkspaceFile[]>([]);
+  const selected = agents[0];
   const isChat = view === "chat";
+  const activeModel = models.find((model) => model.id === selectedModelId);
 
-  const openAgent = (id: AgentId) => { setSelectedId(id); setView("menu"); setSentMessage(""); };
-  const openAction = (index: number) => { setActionIndex(index); setView("chat"); setSentMessage(""); };
-  const send = (text = message) => { if (!text.trim()) return; setSentMessage(text.trim()); setMessage(""); };
-  const goBack = () => { if (view === "chat") setView("menu"); else setView("agents"); };
-  const goRoot = (next: View) => { setView(next); setSentMessage(""); };
-  const title = view === "agents" ? "Sales OS" : view === "menu" ? selected.name.replace(" Agent", "") : view === "chat" ? selected.actions[actionIndex].title : view[0].toUpperCase() + view.slice(1);
+  useEffect(() => {
+    void (async () => {
+      try {
+        const health = await api<{ git?: GitStatus }>("/api/health");
+        if (health.git && !("error" in health.git)) setGit(health.git);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Health check failed");
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (view !== "chat" && view !== "menu") return;
+    void (async () => {
+      try {
+        const data = await api<{ models?: ModelOption[]; activeModelId?: string }>("/api/models");
+        setModels(data.models ?? []);
+        if (data.activeModelId) setSelectedModelId(data.activeModelId);
+        else if (data.models?.length) {
+          const first = data.models.find((model) => model.available) ?? data.models[0];
+          setSelectedModelId(first.id);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not load models");
+      }
+    })();
+  }, [view]);
+
+  useEffect(() => {
+    if (view !== "chat") return;
+    void (async () => {
+      try {
+        const data = await api<{ messages: ChatMessage[] }>("/api/messages");
+        setHistory(data.messages ?? []);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not load messages");
+      }
+    })();
+  }, [view]);
+
+  useEffect(() => {
+    if (view !== "library") return;
+    void (async () => {
+      try {
+        const data = await api<{ files: WorkspaceFile[] }>("/api/files");
+        setFiles(data.files ?? []);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not load files");
+      }
+    })();
+  }, [view]);
+
+  useEffect(() => {
+    if (view !== "approvals") return;
+    void (async () => {
+      try {
+        setGit(await api<GitStatus>("/api/git"));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not load git status");
+      }
+    })();
+  }, [view]);
+
+  const switchModel = async (modelId: string) => {
+    if (!modelId || modelId === selectedModelId) {
+      setModelMenuOpen(false);
+      return;
+    }
+    setError("");
+    try {
+      const data = await api<{ activeModelId?: string }>("/api/model", {
+        method: "POST",
+        body: JSON.stringify({ modelId }),
+      });
+      setSelectedModelId(data.activeModelId ?? modelId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Model switch failed");
+    } finally {
+      setModelMenuOpen(false);
+    }
+  };
+
+  const openAgent = () => {
+    setView("menu");
+    setError("");
+  };
+  const openAction = (index: number) => {
+    if (index === 1) {
+      const url = git?.htmlUrl ?? git?.repoUrl;
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
+      return;
+    }
+    setActionIndex(index);
+    setView("chat");
+    setError("");
+  };
+
+  const send = async (text = message) => {
+    const trimmed = text.trim();
+    if (!trimmed || loading) return;
+    setMessage("");
+    setError("");
+    setLoading(true);
+    setHistory((prev) => [...prev, { role: "user", content: trimmed }]);
+    try {
+      const data = await api<{ reply?: string; git?: GitStatus }>("/api/chat", {
+        method: "POST",
+        body: JSON.stringify({ message: trimmed, modelId: selectedModelId || undefined }),
+      });
+      setHistory((prev) => [...prev, { role: "assistant", content: data.reply ?? "" }]);
+      if (data.git) setGit(data.git);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Agent request failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const goBack = () => {
+    if (view === "chat") setView("menu");
+    else setView("agents");
+  };
+  const goRoot = (next: View) => {
+    setView(next);
+    setError("");
+  };
+  const title =
+    view === "agents"
+      ? "Website Studio"
+      : view === "menu"
+        ? selected.name.replace(" Agent", "")
+        : view === "chat"
+          ? selected.actions[actionIndex].title
+          : view[0].toUpperCase() + view.slice(1);
 
   return (
     <main className={dark ? "stage dark" : "stage"}>
-      <section className="phone sales-os" aria-label="AI-assisted conversational Sales OS prototype">
-        <div className="status-bar"><span>9:41</span><span>▮▮▮ ᯤ ◉</span></div>
+      <section className="phone sales-os" aria-label="Website dev agent chat">
         <header className="topbar">
           <div className="title-group">
-            {view !== "agents" && view !== "tasks" && view !== "approvals" && view !== "library" && <button className="back" onClick={goBack} aria-label="Go back">‹</button>}
-            <div>{view === "agents" && <small>AI-assisted workspace</small>}<h1>{title}</h1></div>
+            {view !== "agents" && view !== "tasks" && view !== "approvals" && view !== "library" && (
+              <button className="back" onClick={goBack} aria-label="Go back">
+                ‹
+              </button>
+            )}
+            <div>
+              {view === "agents" && <small>Pi-powered workspace</small>}
+              <h1>{title}</h1>
+            </div>
           </div>
-          <div className="header-buttons"><button className="demo-badge">DEMO</button><button className="icon-button" onClick={() => setDark(!dark)} aria-label="Toggle theme">{dark ? "☀" : "☾"}</button></div>
+          <div className="header-buttons">
+            <button className="demo-badge">{git?.connected ? "GIT" : "LIVE"}</button>
+            <button className="icon-button" onClick={() => setDark(!dark)} aria-label="Toggle theme">
+              {dark ? "☀" : "☾"}
+            </button>
+          </div>
         </header>
 
         <div className={isChat ? "content chat-content" : "content"}>
-          {view === "agents" && <AgentInbox onOpen={openAgent} />}
-          {view === "menu" && <AgentMenu agent={selected} onOpen={openAction} />}
-          {view === "chat" && <AgentConversation agent={selected} actionIndex={actionIndex} sentMessage={sentMessage} onPrompt={send} />}
-          {view === "tasks" && <TasksScreen />}
-          {view === "approvals" && <ApprovalsScreen />}
-          {view === "library" && <LibraryScreen />}
+          {view === "agents" && <AgentInbox onOpen={openAgent} git={git} />}
+          {view === "menu" && (
+            <AgentMenu
+              agent={selected}
+              onOpen={openAction}
+              models={models}
+              selectedModelId={selectedModelId}
+              modelMenuOpen={modelMenuOpen}
+              onToggleModelMenu={() => setModelMenuOpen((open) => !open)}
+              onSelectModel={(modelId) => void switchModel(modelId)}
+              git={git}
+            />
+          )}
+          {view === "chat" && (
+            <AgentConversation
+              agent={selected}
+              actionIndex={actionIndex}
+              history={history}
+              loading={loading}
+              error={error}
+              onPrompt={send}
+              models={models}
+              activeModel={activeModel}
+              modelMenuOpen={modelMenuOpen}
+              onToggleModelMenu={() => setModelMenuOpen((open) => !open)}
+              onSelectModel={(modelId) => void switchModel(modelId)}
+            />
+          )}
+          {view === "tasks" && <TasksScreen git={git} />}
+          {view === "approvals" && <GitScreen git={git} />}
+          {view === "library" && <LibraryScreen files={files} />}
         </div>
 
-        {isChat && <div className="composer-wrap"><button className="attach" aria-label="Attach file">＋</button><input value={message} onChange={(event) => setMessage(event.target.value)} onKeyDown={(event) => event.key === "Enter" && send()} placeholder="Message your AI agent…" /><button className="send" onClick={() => send()} aria-label="Send">➤</button></div>}
-        {!isChat && <nav className="bottom-nav">
-          <button className={view === "agents" || view === "menu" ? "active" : ""} onClick={() => goRoot("agents")}><span>⌂</span><small>Agents</small></button>
-          <button className={view === "tasks" ? "active" : ""} onClick={() => goRoot("tasks")}><span>◷</span><small>Tasks</small></button>
-          <button className={view === "approvals" ? "active" : ""} onClick={() => goRoot("approvals")}><span>✓</span><small>Approvals</small><i>3</i></button>
-          <button className={view === "library" ? "active" : ""} onClick={() => goRoot("library")}><span>▣</span><small>Library</small></button>
-        </nav>}
-        <div className="home-indicator" />
+        {isChat && (
+          <div className="composer-wrap">
+            <button className="attach" aria-label="Attach file">
+              ＋
+            </button>
+            <input
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              onKeyDown={(event) => event.key === "Enter" && void send()}
+              placeholder={loading ? "Agent is working…" : "Message Website Dev Agent…"}
+              disabled={loading}
+            />
+            <button className="send" onClick={() => void send()} aria-label="Send" disabled={loading}>
+              ➤
+            </button>
+          </div>
+        )}
+        {!isChat && (
+          <nav className="bottom-nav">
+            <button className={view === "agents" || view === "menu" ? "active" : ""} onClick={() => goRoot("agents")}>
+              <span>⌂</span>
+              <small>Agents</small>
+            </button>
+            <button className={view === "tasks" ? "active" : ""} onClick={() => goRoot("tasks")}>
+              <span>◷</span>
+              <small>Tasks</small>
+            </button>
+            <button className={view === "approvals" ? "active" : ""} onClick={() => goRoot("approvals")}>
+              <span>✓</</span>
+              <small>Git</small>
+            </button>
+            <button className={view === "library" ? "active" : ""} onClick={() => goRoot("library")}>
+              <span>▣</span>
+              <small>Files</small>
+            </button>
+          </nav>
+        )}
       </section>
     </main>
   );
 }
 
-function AgentInbox({ onOpen }: { onOpen: (id: AgentId) => void }) {
-  return <>
-    <div className="briefing-banner"><span>✦</span><div><strong>Good morning, Alex</strong><p>3 items need your attention. Your agents completed 11 tasks overnight.</p></div><button>View brief</button></div>
-    <label className="search"><span>⌕</span><input placeholder="Search agents, customers and work" /></label>
-    <div className="section-label"><span>Your AI sales team</span><small>5 agents online</small></div>
-    <div className="agent-inbox">{agents.map((agent) => <button className="agent-row" key={agent.id} onClick={() => onOpen(agent.id)}>
-      <span className={`agent-avatar ${agent.color}`}>{agent.short}<i /></span>
-      <span className="row-copy"><strong>{agent.name}</strong><small>{agent.headline}</small></span>
-      <span className="row-meta"><time>{agent.time}</time>{agent.unread && <b>{agent.unread}</b>}</span>
-    </button>)}</div>
-    <div className="automation-summary"><div><span>18</span><small>AI tasks this week</small></div><div><span>6.4h</span><small>Estimated time saved</small></div><div><span>92%</span><small>Accepted outputs</small></div></div>
-  </>;
+function AgentInbox({ onOpen, git }: { onOpen: () => void; git: GitStatus | null }) {
+  return (
+    <>
+      <div className="briefing-banner">
+        <span>✦</span>
+        <div>
+          <strong>Website workspace is ready</strong>
+          <p>
+            {git?.configured
+              ? `${git.repo} · ${git.branch}${git.sha ? ` · ${git.sha.slice(0, 7)}` : ""}`
+              : "GitHub not connected yet — agent still works in the volume workspace."}
+          </p>
+        </div>
+      </div>
+      <label className="search">
+        <span>⌕</span>
+        <input placeholder="Search agents" />
+      </label>
+      <div className="section-label">
+        <span>Your agent</span>
+        <small>1 online</small>
+      </div>
+      <div className="agent-inbox">
+        {agents.map((agent) => (
+          <button className="agent-row" key={agent.id} onClick={onOpen}>
+            <span className={`agent-avatar ${agent.color}`}>
+              {agent.short}
+              <i />
+            </span>
+            <span className="row-copy">
+              <strong>{agent.name}</strong>
+              <small>{agent.headline}</small>
+            </span>
+            <span className="row-meta">
+              <time>{agent.time}</time>
+            </span>
+          </button>
+        ))}
+      </div>
+      <div className="automation-summary">
+        <div>
+          <span>1</span>
+          <small>Workspace</small>
+        </div>
+        <div>
+          <span>{git?.connected ? "On" : "Off"}</span>
+          <small>GitHub</small>
+        </div>
+        <div>
+          <span>Live</span>
+          <small>Railway</small>
+        </div>
+      </div>
+    </>
+  );
 }
 
-function AgentMenu({ agent, onOpen }: { agent: Agent; onOpen: (index: number) => void }) {
-  return <>
-    <div className={`agent-hero hero-${agent.color}`}><span className={`agent-avatar ${agent.color} large`}>{agent.short}<i /></span><div><h2>{agent.name}</h2><p>{agent.description}</p></div></div>
-    <div className="section-label"><span>What would you like to do?</span></div>
-    <div className="submenu">{agent.actions.map((action, index) => <button key={action.title} onClick={() => onOpen(index)}><span className={`menu-icon accent-${index}`}>{action.icon}</span><span className="row-copy"><strong>{action.title}</strong><small>{action.description}</small></span><span className="chevron">›</span></button>)}</div>
-    <div className="agent-status"><span className="pulse" /><div><strong>Agent is ready</strong><small>Connected to {agent.tools}</small></div><span className="scope-pill">Copilot</span></div>
-    <div className="trust-note"><strong>Human approval is on</strong><p>This agent can prepare work but asks before sending or changing customer records.</p></div>
-  </>;
+function AgentMenu({
+  agent,
+  onOpen,
+  models,
+  selectedModelId,
+  modelMenuOpen,
+  onToggleModelMenu,
+  onSelectModel,
+  git,
+}: {
+  agent: Agent;
+  onOpen: (index: number) => void;
+  models: ModelOption[];
+  selectedModelId: string;
+  modelMenuOpen: boolean;
+  onToggleModelMenu: () => void;
+  onSelectModel: (modelId: string) => void;
+  git: GitStatus | null;
+}) {
+  const active = models.find((model) => model.id === selectedModelId);
+  return (
+    <>
+      <div className={`agent-hero hero-${agent.color}`}>
+        <span className={`agent-avatar ${agent.color} large`}>
+          {agent.short}
+          <i />
+        </span>
+        <div>
+          <h2>{agent.name}</h2>
+          <p>{agent.description}</p>
+        </div>
+      </div>
+      <ModelPicker
+        models={models}
+        selectedModelId={selectedModelId}
+        open={modelMenuOpen}
+        onToggle={onToggleModelMenu}
+        onSelect={onSelectModel}
+      />
+      <div className="section-label">
+        <span>What would you like to do?</span>
+      </div>
+      <div className="submenu">
+        {agent.actions.map((action, index) => (
+          <button
+            key={action.title}
+            onClick={() => onOpen(index)}
+            disabled={index === 1 && !git?.repoUrl}
+          >
+            <span className={`menu-icon accent-${index}`}>{action.icon}</span>
+            <span className="row-copy">
+              <strong>{action.title}</strong>
+              <small>{action.description}</small>
+            </span>
+            <span className="chevron">›</span>
+          </button>
+        ))}
+      </div>
+      <div className="agent-status">
+        <span className="pulse" />
+        <div>
+          <strong>Agent is ready</strong>
+          <small>
+            {active?.label ?? "Pick a model"} · {git?.repo ?? "no GitHub repo"}
+          </small>
+        </div>
+        <span className="scope-pill">Pi</span>
+      </div>
+      <div className="trust-note">
+        <strong>Website dev only</strong>
+        <p>This agent only edits workspace files. The host syncs GitHub. Nothing is published from this service.</p>
+      </div>
+    </>
+  );
 }
 
-function AgentConversation({ agent, actionIndex, sentMessage, onPrompt }: { agent: Agent; actionIndex: number; sentMessage: string; onPrompt: (text: string) => void }) {
+function AgentConversation({
+  agent,
+  actionIndex,
+  history,
+  loading,
+  error,
+  onPrompt,
+  models,
+  activeModel,
+  modelMenuOpen,
+  onToggleModelMenu,
+  onSelectModel,
+}: {
+  agent: Agent;
+  actionIndex: number;
+  history: ChatMessage[];
+  loading: boolean;
+  error: string;
+  onPrompt: (text: string) => void;
+  models: ModelOption[];
+  activeModel?: ModelOption;
+  modelMenuOpen: boolean;
+  onToggleModelMenu: () => void;
+  onSelectModel: (modelId: string) => void;
+}) {
   const action = agent.actions[actionIndex];
-  return <div className="conversation">
-    <div className="agent-strip"><span className={`agent-avatar ${agent.color}`}>{agent.short}<i /></span><div><strong>{agent.name}</strong><small><span /> Online · {action.title}</small></div><button>⋮</button></div>
-    <div className="day-pill">Today</div>
-    <div className="bubble agent-bubble"><span className="mini-agent">✦</span><div><p>{introFor(agent.id, actionIndex)}</p><time>9:41 AM</time></div></div>
-    {!sentMessage && <div className="quick-actions"><small>QUICK START</small>{promptsFor(agent.id, actionIndex).map((prompt) => <button key={prompt} onClick={() => onPrompt(prompt)}>{prompt}</button>)}</div>}
-    {sentMessage && <><div className="bubble user-bubble"><p>{sentMessage}</p><time>9:42 AM ✓✓</time></div><ConversationResult agentId={agent.id} actionIndex={actionIndex} /></>}
-  </div>;
+  return (
+    <div className="conversation">
+      <div className="agent-strip">
+        <span className={`agent-avatar ${agent.color}`}>
+          {agent.short}
+          <i />
+        </span>
+        <div>
+          <strong>{agent.name}</strong>
+          <small>
+            <span /> Online · {action.title}
+          </small>
+        </div>
+        <button
+          type="button"
+          className="model-chip"
+          onClick={onToggleModelMenu}
+          aria-expanded={modelMenuOpen}
+          aria-label="Switch model"
+        >
+          {activeModel?.shortLabel ?? "Model"} ▾
+        </button>
+      </div>
+      {modelMenuOpen && (
+        <ModelPicker
+          compact
+          models={models}
+          selectedModelId={activeModel?.id ?? ""}
+          open={modelMenuOpen}
+          onToggle={onToggleModelMenu}
+          onSelect={onSelectModel}
+        />
+      )}
+      <div className="day-pill">Today</div>
+      <div className="bubble agent-bubble">
+        <span className="mini-agent">✦</span>
+        <div>
+          <p>{introFor(actionIndex)}</p>
+          <time>Now</time>
+        </div>
+      </div>
+      {history.length === 0 && (
+        <div className="quick-actions">
+          <small>QUICK START</small>
+          {promptsFor(actionIndex).map((prompt) => (
+            <button key={prompt} onClick={() => void onPrompt(prompt)}>
+              {prompt}
+            </button>
+          ))}
+        </div>
+      )}
+      {history.map((item, index) =>
+        item.role === "user" ? (
+          <div className="bubble user-bubble" key={`u-${index}`}>
+            <p>{item.content}</p>
+            <time>Now ✓✓</time>
+          </div>
+        ) : (
+          <div className="bubble agent-bubble" key={`a-${index}`}>
+            <span className="mini-agent">✦</span>
+            <div>
+              <p style={{ whiteSpace: "pre-wrap" }}>{item.content}</p>
+              <time>Now</time>
+            </div>
+          </div>
+        ),
+      )}
+      {loading && (
+        <div className="bubble agent-bubble">
+          <span className="mini-agent">✦</span>
+          <div>
+            <p>Working in workspace…</p>
+            <time>Now</time>
+          </div>
+        </div>
+      )}
+      {error && (
+        <div className="bubble agent-bubble">
+          <span className="mini-agent">✦</span>
+          <div>
+            <p>{error}</p>
+            <time>Now</time>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
-function ConversationResult({ agentId, actionIndex }: { agentId: AgentId; actionIndex: number }) {
-  if (agentId === "quotation") return <div className="bubble agent-bubble"><span className="mini-agent">✦</span><div><p>I found <strong>Acme Industries</strong> in CRM and matched its agreed pricing. Please confirm the details I prepared.</p><div className="rich-card form-card"><div className="card-title"><span>▤</span><div><strong>New quotation</strong><small>Draft · QT-1049</small></div></div><label>Customer<strong>Acme Industries</strong></label><label>Product<strong>Pro Plan — Annual</strong></label><div className="two-col"><label>Quantity<strong>20 seats</strong></label><label>Discount<strong>5%</strong></label></div><div className="total"><span>Estimated total</span><strong>RM 24,800</strong></div><button>Preview quotation</button></div><time>9:42 AM</time></div></div>;
-  if (agentId === "prospecting") return <div className="bubble agent-bubble"><span className="mini-agent">✦</span><div><p>I searched for Malaysian retail companies matching your best customers. Here’s the strongest lead.</p><div className="rich-card lead-card"><div className="card-title"><span className="company-logo">NR</span><div><strong>Nova Retail Sdn Bhd</strong><small>Kuala Lumpur · Retail technology</small></div><b>87</b></div><div className="signal">● High intent signal: expanding to 14 outlets</div><p>Likely need: inventory and customer analytics. Estimated deal value: <strong>RM 42k</strong>.</p><div className="card-actions"><button>Save to CRM</button><button>Draft outreach</button></div></div><time>9:42 AM</time></div></div>;
-  if (agentId === "customer") return <div className="bubble agent-bubble"><span className="mini-agent">✦</span><div><p>Here is the latest account brief based on CRM, email, meetings and support history.</p><div className="rich-card customer-card"><div className="card-title"><span className="company-logo">AC</span><div><strong>Acme Industries</strong><small>Strategic account · RM 186k ARR</small></div><span className="health">Healthy</span></div><div className="customer-grid"><div><small>Last contact</small><strong>2 days ago</strong></div><div><small>Open opportunity</small><strong>RM 24.8k</strong></div></div><h4>AI recommendation</h4><p>Confirm delivery timeline before Friday. The buyer opened your proposal three times today.</p><button>Prepare follow-up</button></div><time>9:42 AM</time></div></div>;
-  if (agentId === "followup") return <div className="bubble agent-bubble"><span className="mini-agent">✦</span><div><p>I prepared a personalized follow-up using the opportunity and recent meeting context.</p><div className="rich-card followup-card"><div className="approval-head"><span>Approval required</span><small>Email · Acme Industries</small></div><p><strong>Subject:</strong> Delivery timeline for your Pro Plan rollout</p><blockquote>Hi Jane, following our discussion, I’ve confirmed that we can support your preferred rollout window…</blockquote><div className="card-actions"><button className="secondary">Edit</button><button>Approve & schedule</button></div></div><time>9:42 AM</time></div></div>;
-  return <div className="bubble agent-bubble"><span className="mini-agent">✦</span><div><p>I analyzed your current pipeline and today’s activities. Here is the key picture.</p><div className="rich-card insight-report"><div className="card-title"><span>▥</span><div><strong>Pipeline today</strong><small>Updated 2 minutes ago</small></div></div><div className="pipeline-total"><strong>RM 1.24M</strong><small>Weighted pipeline · +8.2%</small></div><div className="bars"><i style={{height:"36%"}}/><i style={{height:"54%"}}/><i style={{height:"42%"}}/><i style={{height:"75%"}}/><i style={{height:"65%"}}/><i style={{height:"88%"}}/><i style={{height:"72%"}}/></div><div className="risk"><strong>⚠ 2 deals need attention</strong><small>RM 96k may slip without action this week.</small></div><button>Show at-risk deals</button></div><time>9:42 AM</time></div></div>;
+function TasksScreen({ git }: { git: GitStatus | null }) {
+  return (
+    <>
+      <div className="summary-grid">
+        <div>
+          <strong>1</strong>
+          <small>Agent</small>
+        </div>
+        <div>
+          <strong>1</strong>
+          <small>Workspace</small>
+        </div>
+        <div>
+          <strong>{git?.connected ? "Git" : "Off"}</strong>
+          <small>Remote</small>
+        </div>
+      </div>
+      <div className="section-label">
+        <span>Workspace</span>
+        <small>volume /data/workspace</small>
+      </div>
+      <div className="work-list">
+        <Work icon="W" color="emerald" title="Website Dev Agent" detail="Pi · HTML/CSS/JS only" progress={100} />
+      </div>
+    </>
+  );
 }
 
-function TasksScreen() { return <><div className="summary-grid"><div><strong>6</strong><small>In progress</small></div><div><strong>11</strong><small>Completed today</small></div><div><strong>2</strong><small>Blocked</small></div></div><div className="section-label"><span>Agent activity</span><small>Live</small></div><div className="work-list"><Work icon="Q" color="emerald" title="Generating QT-1049" detail="Quotation Agent · 74% complete" progress={74}/><Work icon="P" color="blue" title="Enriching 12 leads" detail="Prospecting Agent · Running" progress={46}/><Work icon="S" color="rose" title="Analyzing Q3 pipeline" detail="Insights Agent · Waiting for CRM" progress={28}/><Work icon="F" color="orange" title="Follow-up sequence" detail="Paused · Needs your input" progress={58}/></div></>; }
-function Work({icon,color,title,detail,progress}:{icon:string;color:string;title:string;detail:string;progress:number}) { return <div className="work-item"><span className={`agent-avatar tiny ${color}`}>{icon}</span><div><strong>{title}</strong><small>{detail}</small><i><b style={{width:`${progress}%`}}/></i></div><span>›</span></div>; }
-
-function ApprovalsScreen() { return <><div className="approval-intro"><span>✓</span><div><strong>3 decisions waiting</strong><p>Your agents will continue automatically after approval.</p></div></div><div className="approval-list"><div className="approval-item"><div><span className="agent-avatar tiny emerald">Q</span><small>Quotation Agent</small><time>8 min</time></div><h3>Approve quotation QT-1048?</h3><p>Acme Industries · RM 24,800 · 5% discount</p><div><button className="secondary">Review</button><button>Approve</button></div></div><div className="approval-item"><div><span className="agent-avatar tiny orange">F</span><small>Follow-up Agent</small><time>21 min</time></div><h3>Schedule 2 customer emails?</h3><p>Personalized from recent meeting notes</p><div><button className="secondary">Review</button><button>Approve</button></div></div></div></>; }
-
-function LibraryScreen() { return <><label className="search"><span>⌕</span><input placeholder="Search generated sales work" /></label><div className="section-label"><span>Recent artifacts</span><small>View all</small></div><div className="library-grid"><Artifact icon="▤" title="QT-1048" detail="Quotation · Acme" tone="mint"/><Artifact icon="▥" title="Q3 Pipeline" detail="Report · Today" tone="blue"/><Artifact icon="✉" title="Acme follow-up" detail="Email · Draft" tone="amber"/><Artifact icon="♙" title="Retail leads" detail="Lead list · 12 records" tone="purple"/></div></>; }
-function Artifact({icon,title,detail,tone}:{icon:string;title:string;detail:string;tone:string}) { return <button className="artifact"><span className={tone}>{icon}</span><strong>{title}</strong><small>{detail}</small></button>; }
-
-function introFor(id: AgentId, action: number) {
-  const copy: Record<AgentId, string[]> = {
-    quotation: ["Tell me who the quotation is for and what they need. I’ll check customer terms, pricing and product rules, then prepare a draft for approval.", "I can find any quotation and explain its status, value or next action.", "Ask me anything about products, discounts, customer terms or quotation policy."],
-    prospecting: ["Describe your ideal customer. I’ll research, qualify and rank matching leads for you.", "I can filter your lead list and explain why each prospect is worth contacting.", "Ask me to research a company, market, buyer or sales signal."],
-    customer: ["Name a customer and I’ll build a complete account brief across your sales systems.", "I can summarize every recent interaction, open task and opportunity for an account.", "Ask anything about a customer. I’ll search their full business history."],
-    followup: ["I’ve prioritized the customers who need attention and prepared contextual follow-ups for approval.", "Tell me the goal and audience. I’ll prepare a personalized contact sequence.", "Ask who you should follow up with, when, and what to say."],
-    insights: ["I’ve analyzed your pipeline and activity. Ask for today’s priorities or open your morning brief.", "Ask about pipeline value, movement, risk, forecast or salesperson performance.", "Ask a sales question in plain language—no report builder needed."],
-  };
-  return copy[id][action];
+function Work({
+  icon,
+  color,
+  title,
+  detail,
+  progress,
+}: {
+  icon: string;
+  color: string;
+  title: string;
+  detail: string;
+  progress: number;
+}) {
+  return (
+    <div className="work-item">
+      <span className={`agent-avatar tiny ${color}`}>{icon}</span>
+      <div>
+        <strong>{title}</strong>
+        <small>{detail}</small>
+        <i>
+          <b style={{ width: `${progress}%` }} />
+        </i>
+      </div>
+      <span>›</span>
+    </div>
+  );
 }
 
-function promptsFor(id: AgentId, action: number) {
-  const primary: Record<AgentId, string[]> = {
-    quotation: ["Create a quotation for Acme Industries", "Quote 20 seats of Pro Plan", "Use my latest customer enquiry"],
-    prospecting: ["Find retail companies expanding in Malaysia", "Show leads similar to Acme", "Find 10 decision-makers for Pro Plan"],
-    customer: ["Brief me on Acme Industries", "What changed since my last Acme meeting?", "Show accounts with renewal risk"],
-    followup: ["Show follow-ups that need approval", "Prepare a follow-up for Acme", "Who should I contact today?"],
-    insights: ["Give me my morning sales brief", "Why did pipeline change this week?", "Which deals are most likely to slip?"],
-  };
-  return action === 0 ? primary[id] : primary[id].slice().reverse();
+function GitScreen({ git }: { git: GitStatus | null }) {
+  return (
+    <>
+      <div className="approval-intro">
+        <span>⌁</span>
+        <div>
+          <strong>{git?.repo ?? "No GitHub repo"}</strong>
+          <p>
+            {git?.branch ?? "main"}
+            {git?.sha ? ` · ${git.sha.slice(0, 7)}` : ""}
+            {git?.dirty ? " · dirty" : ""}
+          </p>
+        </div>
+      </div>
+      <div className="approval-list">
+        <div className="approval-item">
+          <div>
+            <span className="agent-avatar tiny emerald">W</span>
+            <small>Website Dev Agent</small>
+          </div>
+          <h3>{git?.connected ? "Repository connected" : "GitHub disconnected"}</h3>
+          <p>{git?.lastError ?? "The host clones, commits, and pushes. The agent only edits files."}</p>
+          <div>
+            <button
+              disabled={!git?.repoUrl}
+              onClick={() => git?.repoUrl && window.open(git.repoUrl, "_blank", "noopener,noreferrer")}
+            >
+              Open repo
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function LibraryScreen({ files }: { files: WorkspaceFile[] }) {
+  const list = files.length ? files : [{ path: "index.html", size: 0 }];
+  return (
+    <>
+      <label className="search">
+        <span>⌕</span>
+        <input placeholder="Workspace files" />
+      </label>
+      <div className="section-label">
+        <span>Workspace files</span>
+        <small>/data/workspace</small>
+      </div>
+      <div className="library-grid">
+        {list.map((file) => (
+          <Artifact key={file.path} icon="▤" title={file.path} detail={`${file.size} bytes`} tone="mint" />
+        ))}
+      </div>
+    </>
+  );
+}
+
+function Artifact({ icon, title, detail, tone }: { icon: string; title: string; detail: string; tone: string }) {
+  return (
+    <button className="artifact">
+      <span className={tone}>{icon}</span>
+      <strong>{title}</strong>
+      <small>{detail}</small>
+    </button>
+  );
+}
+
+function ModelPicker({
+  models,
+  selectedModelId,
+  open,
+  onToggle,
+  onSelect,
+  compact = false,
+}: {
+  models: ModelOption[];
+  selectedModelId: string;
+  open: boolean;
+  onToggle: () => void;
+  compact?: boolean;
+  onSelect: (modelId: string) => void;
+}) {
+  if (!compact) {
+    return (
+      <div className="model-panel">
+        <div className="section-label">
+          <span>Model</span>
+          <small>{open ? "Tap to close" : "Tap to switch"}</small>
+        </div>
+        <div className="model-row">
+          {models.map((model) => (
+            <button
+              key={model.id}
+              type="button"
+              className={["model-pill", selectedModelId === model.id ? "selected" : "", model.available ? "" : "disabled"]
+                .filter(Boolean)
+                .join(" ")}
+              disabled={!model.available}
+              onClick={() => onSelect(model.id)}
+            >
+              <strong>{model.shortLabel}</strong>
+              <small>{model.available ? model.label : "Key missing"}</small>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (!open) return null;
+
+  return (
+    <div className="model-sheet">
+      {models.map((model) => (
+        <button
+          key={model.id}
+          type="button"
+          className={["model-sheet-item", selectedModelId === model.id ? "selected" : "", model.available ? "" : "disabled"]
+            .filter(Boolean)
+            .join(" ")}
+          disabled={!model.available}
+          onClick={() => onSelect(model.id)}
+        >
+          <span>
+            <strong>{model.label}</strong>
+            <small>{model.available ? model.provider : "Add API key first"}</small>
+          </span>
+          {selectedModelId === model.id && <b>✓</b>}
+        </button>
+      ))}
+      <button type="button" className="model-sheet-close" onClick={onToggle}>
+        Done
+      </button>
+    </div>
+  );
+}
+
+function introFor(action: number) {
+  const copy = [
+    "Tell me what website you want. I only edit files in the workspace. GitHub sync is handled by the host.",
+    "Ask me to create or update pages in the workspace. I do not publish or deploy.",
+    "Ask what files are in the workspace, or tell me what to build next.",
+  ];
+  return copy[action] ?? copy[0];
+}
+
+function promptsFor(action: number) {
+  const primary = [
+    "Create a simple landing page with a hero and contact section",
+    "List the files in the workspace",
+    "Add a dark theme stylesheet to the site",
+  ];
+  return action === 0 ? primary : primary.slice().reverse();
 }

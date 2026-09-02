@@ -1,0 +1,20 @@
+[
+  {
+    "id": "gpt-5.6-luna",
+    "label": "GPT-5.6 Luna",
+    "shortLabel": "Luna",
+    "provider": "cavoti",
+    "model": "gpt-5.6-luna",
+    "vaultCredential": "GPT-5.6-LUNA_CAVOTI",
+    "envPrefix": "CAVOTI"
+  },
+  {
+    "id": "kimi-k3",
+    "label": "Kimi K3 Token Plan",
+    "shortLabel": "Kimi K3",
+    "provider": "kimi-k3",
+    "model": "kimi-k3",
+    "vaultCredential": "KIMI_K3_TOKEN_PLAN",
+    "envPrefix": "KIMI"
+  }
+]

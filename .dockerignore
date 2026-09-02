@@ -1,0 +1,17 @@
+node_modules
+dist
+.git
+.gitignore
+legacy_archive
+agent-storage
+data
+.env
+.env.*
+my-vault/*.key
+my-vault/*.secret
+.pi/agent/auth.json
+.wrangler
+.next
+.vinext
+*.md
+!README.md
