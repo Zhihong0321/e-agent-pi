@@ -1,6 +1,6 @@
 # Website Studio (Pi agent)
 
-Cloud app for Railway. Pi **Website Dev Agent** only edits a volume workspace (static HTML/CSS/JS). This service does **not** publish to ee-html or serve a public generated site. GitHub is the intended workspace remote.
+Cloud app for Railway. Users chat with named **Agents**. Each agent is a Role (prompt) plus the Skills and MCP servers attached to it. Pi **Website Dev Agent** only edits a volume workspace (static HTML/CSS/JS). This service does **not** publish to ee-html or serve a public generated site. GitHub is the intended workspace remote.
 
 ## Status snapshot
 
@@ -46,31 +46,75 @@ Settings password is stored in Postgres (seeded `eternalgy2026`). API keys and G
 4. Dockerfile start: `node server/index.mjs`
 5. Process listens first, then boots Postgres / volume / git
 
-Volume layout:
+Volume layout is listed under **Agents = Role + Skills + MCP**.
+
+## Product rules
+
+- Users chat with a chosen **Agent**. An agent is **Role** (prompt) + **Skills** + **MCP** — not a shared bag of tools.
+- Skills and MCP servers are installed once on the host library. Attaching them to an agent is a separate step. Unassigned capabilities are invisible to Pi.
+- Each studio chat belongs to one agent and is its own Pi session. New chat does not reuse another chat's memory.
+- After file edits, the **host** commits/pushes when GitHub is configured; the agent must not deploy or call a host API
+- ee-html (`https://ee-html.up.railway.app/`) is a separate HTML host engine; this app never publishes there
+
+## Agents = Role + Skills + MCP
+
+Pi auto-discovers skills from `~/.pi/agent/skills`, `.pi/skills`, and `.agents/skills`. If the host dumped every installed skill there, every agent would see every skill. This app does not do that.
+
+| Layer | What it is | Where it lives |
+|------|-------------|----------------|
+| **Library** | Installed skills and MCP server definitions. Shared catalog, not granted to anyone by default. | Volume `/storage/library/skills/<slug>/` + Postgres `skills`, `mcp_servers` |
+| **Agent** | Named profile: role prompt, assigned skill IDs, assigned MCP IDs | Postgres `agents`, `agent_skills`, `agent_mcp` |
+| **Chat** | One conversation with one agent | Postgres `sessions.agent_id` + a Pi session file |
+
+### How Pi is launched per agent
+
+The host keeps **one** Pi RPC process (Railway is a single replica). Switching agents restarts Pi with that agent's bundle:
+
+- `--append-system-prompt` → materialized `/storage/runtime/<agent-id>/ROLE.md`
+- `--no-skills` plus `--skill <library path>` for **only** the skills attached to that agent
+- `--no-extensions`; if the agent has MCP, also `--extension npm:pi-mcp-adapter` and a runtime `mcp.json` that lists **only** that agent's servers
+- `PI_CODING_AGENT_DIR=/storage/runtime/<agent-id>` so Pi does not read the shared `/storage/pi` skill/MCP dirs
+
+Install **does not** attach. A skill written to the library stays unused until Settings assigns it.
+
+### Who can install
+
+1. **Settings** (password): paste a `SKILL.md`, or a URL to one; add MCP command/URL/env; create/edit agents and tick skills/MCP.
+2. **Studio Ops Agent**: has the `install-host-skill` skill. It may write `/storage/library/skills/<slug>/SKILL.md`. The host rescans that folder. The ops agent still cannot attach the skill to Website Dev Agent — attach stays in Settings.
+
+Website Dev Agent is seeded with **no** extra skills and **no** MCP.
+
+### Settings vs studio
+
+- Studio lists agents and chats with the selected one.
+- `/settings` (password) is where you install skills/MCP and attach them per agent.
+
+## Volume layout
 
 | Path | Purpose |
 |------|---------|
 | `/storage/workspace` | Pi cwd (site files) |
 | `/storage/storage` | Pi session dir |
-| `/storage/pi` | Pi agent dir |
-
-## Product rules
-
-- Agent works **only** in the workspace cwd (`agent/ROLE.md`)
-- After file edits, the **host** commits/pushes when GitHub is configured; the agent must not deploy or call a host API
-- ee-html (`https://ee-html.up.railway.app/`) is a separate HTML host engine; this app never publishes there
+| `/storage/pi` | Shared Pi models.json |
+| `/storage/library/skills` | Host skill library (install target) |
+| `/storage/runtime/<agent-id>` | Per-agent Pi dir (role, mcp.json, settings) |
 
 ## Code map
 
 | Path | Purpose |
 |------|---------|
-| `app/page.tsx` | Studio UI |
-| `app/settings.tsx` | Password-gated settings |
+| `app/page.tsx` | Studio UI (pick an agent, chat) |
+| `app/settings.tsx` | Password-gated keys, agents, skills, MCP |
 | `src/main.tsx` | `/settings` vs studio |
-| `agent/ROLE.md` | Agent prompt |
+| `agent/ROLE.md` | Seed prompt for Website Dev Agent |
+| `agent/roles/ops.md` | Seed prompt for Studio Ops Agent |
+| `agent/skills/` | Bundled skills copied into the host library on boot |
 | `agent/model-catalog.json` | Luna + Kimi catalog |
-| `server/index.mjs` | HTTP: `dist/` + `/api/*` |
-| `server/db.mjs` | `settings`, `messages`, `git_syncs`, `debug_events` |
+| `server/catalog.mjs` | `agents`, `skills`, `mcp_servers`, attachments |
+| `server/runtime.mjs` | Per-agent Pi dir + `--no-skills --skill` args |
+| `server/db.mjs` | `settings`, `sessions`, `messages`, `git_syncs`, `debug_events` |
+| `server/index.mjs` | HTTP: `dist/` + `/api/*` (agents, skills, MCP, chat, git, health) |
+| `server/pi-stream.mjs` | Pi RPC events → live chat transcript |
 | `server/secrets.mjs` | Keys from Postgres |
 | `server/auth.mjs` | Settings session cookie |
 | `server/github.mjs` | Clone / commit / push workspace |
@@ -79,5 +123,5 @@ Volume layout:
 ## Open
 
 1. Add GitHub token + `owner/repo` on `/settings` so the workspace syncs.
-2. Push/deploy **`railway`**, not `main`.
+2. Push/deploy **`railway`**, not `main`. Session management is in this branch and needs that deploy before production isolates chats.
 3. Railway CLI on the Windows machine was blocked by Defender; debug via `/api/health` and `/api/debug`.

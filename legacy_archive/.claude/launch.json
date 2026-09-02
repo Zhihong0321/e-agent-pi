@@ -1,0 +1,25 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "uiv2-dev",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vinext", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "eter-agent",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "E:/000/Eter-Agent-v2/web",
+        "run",
+        "dev",
+        "--",
+        "-p",
+        "3100"
+      ],
+      "port": 3100
+    }
+  ]
+}

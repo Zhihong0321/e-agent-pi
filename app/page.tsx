@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-type AgentId = "website";
-type View = "agents" | "menu" | "chat" | "tasks" | "approvals" | "library";
+type View = "agents" | "menu" | "chats" | "chat" | "tasks" | "approvals" | "library";
+
+const SESSION_KEY = "e-agent-active-session";
+const AGENT_KEY = "e-agent-active-agent";
 
 type ModelOption = {
   id: string;
@@ -24,44 +26,78 @@ type GitStatus = {
   lastError: string | null;
 };
 
+type TurnBlock =
+  | { type: "thinking"; text: string }
+  | { type: "text"; text: string }
+  | { type: "tool"; id: string; name: string; detail: string; result?: string; isError?: boolean; running?: boolean }
+  | { type: "note"; text: string };
+
 type ChatMessage = {
   id?: number;
   role: "user" | "assistant";
   content: string;
   modelId?: string | null;
+  sessionId?: string | null;
+  blocks?: TurnBlock[];
+  streaming?: boolean;
+};
+
+type ChatSession = {
+  id: string;
+  title: string;
+  modelId?: string | null;
+  agentId?: string | null;
+  preview?: string | null;
+  messageCount?: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type StreamEvent = {
+  type: string;
+  delta?: string;
+  text?: string;
+  id?: string;
+  name?: string;
+  detail?: string;
+  result?: string;
+  isError?: boolean;
+  phase?: string;
+  error?: string;
+  status?: string;
+  reply?: string;
+  blocks?: TurnBlock[];
+  git?: GitStatus;
+  session?: ChatSession;
+  sessionId?: string;
 };
 
 type WorkspaceFile = { path: string; size: number };
 
 type Agent = {
-  id: AgentId;
+  id: string;
+  slug: string;
   name: string;
   short: string;
   headline: string;
   description: string;
   color: string;
-  time: string;
-  tools: string;
-  actions: { title: string; description: string; icon: string }[];
+  skills: { id: string; name: string; description: string }[];
+  mcp: { id: string; name: string; description: string }[];
 };
 
-const agents: Agent[] = [
-  {
-    id: "website",
-    name: "Website Dev Agent",
-    short: "W",
-    color: "emerald",
-    time: "Now",
-    headline: "Ready to build in the workspace",
-    description: "Designs static websites in the GitHub-backed workspace",
-    tools: "HTML · CSS · JS · Workspace",
-    actions: [
-      { icon: "✦", title: "Chat to Agent", description: "Describe the website you want built" },
-      { icon: "⌁", title: "Open GitHub repo", description: "Open the connected repository" },
-      { icon: "▤", title: "Workspace status", description: "Ask what files exist in the workspace" },
-    ],
-  },
-];
+function agentActions(agent: Agent) {
+  return [
+    { icon: "✦", title: "Chat to Agent", description: `Talk to ${agent.name}` },
+    { icon: "⌁", title: "Open GitHub repo", description: "Open the connected repository" },
+    { icon: "▤", title: "Workspace status", description: "Ask what files exist in the workspace" },
+  ];
+}
+
+function toolsLabel(agent: Agent) {
+  const parts = [...(agent.skills ?? []).map((row) => row.name), ...(agent.mcp ?? []).map((row) => row.name)];
+  return parts.length ? parts.join(" · ") : "Role only";
+}
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -73,12 +109,110 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return data;
 }
 
+function parseTranscript(content: string): { text?: string; blocks?: TurnBlock[] } | null {
+  if (!content || content[0] !== "{") return null;
+  try {
+    const data = JSON.parse(content) as { v?: number; text?: string; blocks?: TurnBlock[] };
+    if (data?.v === 1 && Array.isArray(data.blocks)) return data;
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function hydrateMessages(messages: ChatMessage[]): ChatMessage[] {
+  return messages.map((msg) => {
+    if (msg.role !== "assistant") return msg;
+    const parsed = parseTranscript(msg.content);
+    if (!parsed) return msg;
+    return { ...msg, content: parsed.text ?? "", blocks: parsed.blocks };
+  });
+}
+
+function applyStreamEvent(blocks: TurnBlock[], event: StreamEvent): TurnBlock[] {
+  if (event.type === "thinking" && event.delta) {
+    const last = blocks[blocks.length - 1];
+    if (last?.type === "thinking") {
+      return [...blocks.slice(0, -1), { ...last, text: last.text + event.delta }];
+    }
+    return [...blocks, { type: "thinking", text: event.delta }];
+  }
+  if (event.type === "text" && event.delta) {
+    const last = blocks[blocks.length - 1];
+    if (last?.type === "text") {
+      return [...blocks.slice(0, -1), { ...last, text: last.text + event.delta }];
+    }
+    return [...blocks, { type: "text", text: event.delta }];
+  }
+  if (event.type === "note" && event.text) {
+    return [...blocks, { type: "note", text: event.text }];
+  }
+  if (event.type === "tool") {
+    const id = event.id || `tool-${blocks.length}`;
+    const index = blocks.findIndex((block) => block.type === "tool" && block.id === id);
+    const next: TurnBlock = {
+      type: "tool",
+      id,
+      name: event.name || "tool",
+      detail: event.detail || "",
+      result: event.result,
+      isError: event.isError,
+      running: event.phase !== "end",
+    };
+    if (index === -1) return [...blocks, next];
+    const copy = [...blocks];
+    const prev = copy[index];
+    if (prev.type === "tool") {
+      copy[index] = {
+        ...prev,
+        ...next,
+        name: next.name || prev.name,
+        detail: next.detail || prev.detail,
+        result: next.result ?? prev.result,
+      };
+    }
+    return copy;
+  }
+  return blocks;
+}
+
+async function readSse(res: Response, onEvent: (event: StreamEvent) => void) {
+  const ctype = res.headers.get("content-type") || "";
+  if (!ctype.includes("text/event-stream")) {
+    const data = (await res.json()) as { error?: string };
+    throw new Error(data.error ?? "Request failed");
+  }
+  if (!res.body) throw new Error("No stream from agent.");
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+    let sep = buf.indexOf("\n\n");
+    while (sep !== -1) {
+      const raw = buf.slice(0, sep);
+      buf = buf.slice(sep + 2);
+      for (const line of raw.split("\n")) {
+        if (!line.startsWith("data:")) continue;
+        const payload = line.slice(5).trim();
+        if (!payload) continue;
+        onEvent(JSON.parse(payload) as StreamEvent);
+      }
+      sep = buf.indexOf("\n\n");
+    }
+  }
+}
+
 export default function Home() {
   const [view, setView] = useState<View>("agents");
   const [actionIndex, setActionIndex] = useState(0);
   const [dark, setDark] = useState(false);
   const [message, setMessage] = useState("");
   const [history, setHistory] = useState<ChatMessage[]>([]);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [sessionId, setSessionId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [models, setModels] = useState<ModelOption[]>([]);
@@ -86,9 +220,29 @@ export default function Home() {
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [git, setGit] = useState<GitStatus | null>(null);
   const [files, setFiles] = useState<WorkspaceFile[]>([]);
-  const selected = agents[0];
+  const [liveStatus, setLiveStatus] = useState("");
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState("");
+  const historyLoad = useRef(0);
+  const selected = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0];
   const isChat = view === "chat";
   const activeModel = models.find((model) => model.id === selectedModelId);
+  const activeSession = sessions.find((session) => session.id === sessionId);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const data = await api<{ agents: Agent[] }>("/api/agents");
+        const list = data.agents ?? [];
+        setAgents(list);
+        const stored = window.localStorage.getItem(AGENT_KEY);
+        const next = list.find((agent) => agent.id === stored)?.id ?? list[0]?.id ?? "";
+        setSelectedAgentId(next);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not load agents");
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -119,16 +273,18 @@ export default function Home() {
   }, [view]);
 
   useEffect(() => {
-    if (view !== "chat") return;
+    if (view !== "chat" && view !== "chats" && view !== "menu" && view !== "agents") return;
     void (async () => {
       try {
-        const data = await api<{ messages: ChatMessage[] }>("/api/messages");
-        setHistory(data.messages ?? []);
+        const query =
+          view === "agents" || !selectedAgentId ? "" : `?agentId=${encodeURIComponent(selectedAgentId)}`;
+        const data = await api<{ sessions: ChatSession[] }>(`/api/sessions${query}`);
+        setSessions(data.sessions ?? []);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not load messages");
+        setError(err instanceof Error ? err.message : "Could not load chats");
       }
     })();
-  }, [view]);
+  }, [view, selectedAgentId]);
 
   useEffect(() => {
     if (view !== "library") return;
@@ -172,9 +328,40 @@ export default function Home() {
     }
   };
 
-  const openAgent = () => {
+  const openAgent = (id: string) => {
+    setSelectedAgentId(id);
+    window.localStorage.setItem(AGENT_KEY, id);
     setView("menu");
     setError("");
+  };
+  const openChats = (index = 0) => {
+    setActionIndex(index);
+    setView("chats");
+    setError("");
+  };
+  const openSession = (id: string) => {
+    setActionIndex(0);
+    setSessionId(id);
+    setHistory([]);
+    setView("chat");
+    setError("");
+    window.localStorage.setItem(SESSION_KEY, id);
+    const session = sessions.find((row) => row.id === id);
+    if (session?.agentId) {
+      setSelectedAgentId(session.agentId);
+      window.localStorage.setItem(AGENT_KEY, session.agentId);
+    }
+    const loadId = ++historyLoad.current;
+    void (async () => {
+      try {
+        const data = await api<{ messages: ChatMessage[] }>(`/api/messages?sessionId=${encodeURIComponent(id)}`);
+        if (loadId !== historyLoad.current) return;
+        setHistory(hydrateMessages(data.messages ?? []));
+      } catch (err) {
+        if (loadId !== historyLoad.current) return;
+        setError(err instanceof Error ? err.message : "Could not load messages");
+      }
+    })();
   };
   const openAction = (index: number) => {
     if (index === 1) {
@@ -182,34 +369,133 @@ export default function Home() {
       if (url) window.open(url, "_blank", "noopener,noreferrer");
       return;
     }
-    setActionIndex(index);
-    setView("chat");
+    openChats(index);
+  };
+
+  const startNewChat = async () => {
     setError("");
+    try {
+      const data = await api<{ session: ChatSession }>("/api/sessions", {
+        method: "POST",
+        body: JSON.stringify({ modelId: selectedModelId || undefined, agentId: selected?.id }),
+      });
+      const created = data.session;
+      setSessions((prev) => [created, ...prev.filter((session) => session.id !== created.id)]);
+      setHistory([]);
+      setSessionId(created.id);
+      window.localStorage.setItem(SESSION_KEY, created.id);
+      historyLoad.current += 1;
+      setView("chat");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start a new chat");
+    }
+  };
+
+  const removeSession = async (id: string) => {
+    if (!window.confirm("Delete this chat? The agent will forget this conversation.")) return;
+    setError("");
+    try {
+      await api(`/api/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const next = sessions.filter((session) => session.id !== id);
+      setSessions(next);
+      if (sessionId === id) {
+        setSessionId("");
+        setHistory([]);
+        window.localStorage.removeItem(SESSION_KEY);
+        setView("chats");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete chat");
+    }
   };
 
   const send = async (text = message) => {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
+    historyLoad.current += 1;
+    let activeId = sessionId;
+    if (!activeId) {
+      try {
+        const data = await api<{ session: ChatSession }>("/api/sessions", {
+          method: "POST",
+          body: JSON.stringify({ modelId: selectedModelId || undefined, agentId: selected?.id }),
+        });
+        activeId = data.session.id;
+        setSessionId(activeId);
+        setSessions((prev) => [data.session, ...prev.filter((session) => session.id !== activeId)]);
+        window.localStorage.setItem(SESSION_KEY, activeId);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not start a new chat");
+        return;
+      }
+    }
     setMessage("");
     setError("");
     setLoading(true);
-    setHistory((prev) => [...prev, { role: "user", content: trimmed }]);
-    try {
-      const data = await api<{ reply?: string; git?: GitStatus }>("/api/chat", {
-        method: "POST",
-        body: JSON.stringify({ message: trimmed, modelId: selectedModelId || undefined }),
+    setLiveStatus("Working…");
+    setHistory((prev) => [
+      ...prev,
+      { role: "user", content: trimmed, sessionId: activeId },
+      { role: "assistant", content: "", blocks: [], streaming: true, sessionId: activeId },
+    ]);
+    const patchAssistant = (updater: (msg: ChatMessage) => ChatMessage) => {
+      setHistory((prev) => {
+        const next = [...prev];
+        const index = next.findLastIndex((msg) => msg.role === "assistant" && msg.streaming);
+        if (index === -1) return prev;
+        next[index] = updater(next[index]);
+        return next;
       });
-      setHistory((prev) => [...prev, { role: "assistant", content: data.reply ?? "" }]);
-      if (data.git) setGit(data.git);
+    };
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+        body: JSON.stringify({
+          message: trimmed,
+          modelId: selectedModelId || undefined,
+          sessionId: activeId,
+          agentId: selected?.id,
+        }),
+      });
+      await readSse(res, (event) => {
+        if (event.status) setLiveStatus(event.status);
+        if (event.type === "thinking" || event.type === "text" || event.type === "tool" || event.type === "note") {
+          patchAssistant((msg) => ({
+            ...msg,
+            blocks: applyStreamEvent(msg.blocks ?? [], event),
+            content: event.type === "text" ? msg.content + (event.delta ?? "") : msg.content,
+          }));
+        }
+        if (event.type === "done") {
+          patchAssistant((msg) => ({
+            ...msg,
+            content: event.reply ?? msg.content,
+            blocks: event.blocks ?? msg.blocks,
+            streaming: false,
+          }));
+          if (event.session) {
+            setSessions((prev) => {
+              const rest = prev.filter((session) => session.id !== event.session!.id);
+              return [{ ...event.session!, preview: event.reply || trimmed }, ...rest];
+            });
+          }
+        }
+        if (event.type === "git" && event.git) setGit(event.git);
+        if (event.type === "error" && event.error) setError(event.error);
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Agent request failed");
     } finally {
       setLoading(false);
+      setLiveStatus("");
+      setHistory((prev) => prev.map((msg) => (msg.streaming ? { ...msg, streaming: false } : msg)));
     }
   };
 
   const goBack = () => {
-    if (view === "chat") setView("menu");
+    if (view === "chat") setView("chats");
+    else if (view === "chats") setView("menu");
     else setView("agents");
   };
   const goRoot = (next: View) => {
@@ -218,12 +504,14 @@ export default function Home() {
   };
   const title =
     view === "agents"
-      ? "Website Studio"
+      ? "Studio"
       : view === "menu"
-        ? selected.name.replace(" Agent", "")
-        : view === "chat"
-          ? selected.actions[actionIndex].title
-          : view[0].toUpperCase() + view.slice(1);
+        ? selected?.name.replace(" Agent", "") || "Agent"
+        : view === "chats"
+          ? "Chats"
+          : view === "chat"
+            ? activeSession?.title || "New chat"
+            : view[0].toUpperCase() + view.slice(1);
 
   return (
     <main className={dark ? "stage dark" : "stage"}>
@@ -237,11 +525,17 @@ export default function Home() {
             )}
             <div>
               {view === "agents" && <small>Pi-powered workspace</small>}
-              <h1>{title}</h1>
+              {view === "chats" && <small>Each chat is a separate session</small>}
+              <h1 className={view === "chat" ? "chat-title" : undefined}>{title}</h1>
             </div>
           </div>
           <div className="header-buttons">
-            <a className="demo-badge" href="/settings">SET</a>
+            {(view === "chats" || view === "chat") && (
+              <button className="icon-button" onClick={() => void startNewChat()} aria-label="New chat">
+                ＋
+              </button>
+            )}
+            <a className="demo-badge" href="/settings#agents">Settings</a>
             <button className="demo-badge">{git?.connected ? "GIT" : "LIVE"}</button>
             <button className="icon-button" onClick={() => setDark(!dark)} aria-label="Toggle theme">
               {dark ? "☀" : "☾"}
@@ -250,8 +544,17 @@ export default function Home() {
         </header>
 
         <div className={isChat ? "content chat-content" : "content"}>
-          {view === "agents" && <AgentInbox onOpen={openAgent} git={git} />}
-          {view === "menu" && (
+          {view === "agents" && (
+            <AgentInbox
+              agents={agents}
+              onOpen={openAgent}
+              git={git}
+              sessions={sessions}
+              onOpenSession={openSession}
+              onNewChat={() => void startNewChat()}
+            />
+          )}
+          {view === "menu" && selected && (
             <AgentMenu
               agent={selected}
               onOpen={openAction}
@@ -263,12 +566,23 @@ export default function Home() {
               git={git}
             />
           )}
-          {view === "chat" && (
+          {view === "chats" && (
+            <ChatList
+              sessions={sessions}
+              activeId={sessionId}
+              error={error}
+              onOpen={openSession}
+              onNewChat={() => void startNewChat()}
+              onDelete={(id) => void removeSession(id)}
+            />
+          )}
+          {view === "chat" && selected && (
             <AgentConversation
               agent={selected}
               actionIndex={actionIndex}
               history={history}
               loading={loading}
+              liveStatus={liveStatus}
               error={error}
               onPrompt={send}
               models={models}
@@ -278,7 +592,7 @@ export default function Home() {
               onSelectModel={(modelId) => void switchModel(modelId)}
             />
           )}
-          {view === "tasks" && <TasksScreen git={git} />}
+          {view === "tasks" && <TasksScreen git={git} agents={agents} />}
           {view === "approvals" && <GitScreen git={git} />}
           {view === "library" && <LibraryScreen files={files} />}
         </div>
@@ -292,7 +606,7 @@ export default function Home() {
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               onKeyDown={(event) => event.key === "Enter" && void send()}
-              placeholder={loading ? "Agent is working…" : "Message Website Dev Agent…"}
+              placeholder={loading ? "Agent is working…" : `Message ${selected?.name ?? "agent"}…`}
               disabled={loading}
             />
             <button className="send" onClick={() => void send()} aria-label="Send" disabled={loading}>
@@ -325,17 +639,32 @@ export default function Home() {
   );
 }
 
-function AgentInbox({ onOpen, git }: { onOpen: () => void; git: GitStatus | null }) {
+function AgentInbox({
+  agents,
+  onOpen,
+  git,
+  sessions,
+  onOpenSession,
+  onNewChat,
+}: {
+  agents: Agent[];
+  onOpen: (id: string) => void;
+  git: GitStatus | null;
+  sessions: ChatSession[];
+  onOpenSession: (id: string) => void;
+  onNewChat: () => void;
+}) {
+  const recent = sessions.slice(0, 5);
   return (
     <>
       <div className="briefing-banner">
         <span>✦</span>
         <div>
-          <strong>Website workspace is ready</strong>
+          <strong>{agents.length} agents · role + skills + MCP</strong>
           <p>
             {git?.configured
               ? `${git.repo} · ${git.branch}${git.sha ? ` · ${git.sha.slice(0, 7)}` : ""}`
-              : "GitHub not connected yet — agent still works in the volume workspace."}
+              : "GitHub not connected yet — agents still work in the volume workspace."}
           </p>
         </div>
       </div>
@@ -344,26 +673,50 @@ function AgentInbox({ onOpen, git }: { onOpen: () => void; git: GitStatus | null
         <input placeholder="Search agents" />
       </label>
       <div className="section-label">
-        <span>Your agent</span>
-        <small>1 online</small>
+        <span>Your agents</span>
+        <small>{agents.length} online</small>
       </div>
       <div className="agent-inbox">
         {agents.map((agent) => (
-          <button className="agent-row" key={agent.id} onClick={onOpen}>
+          <button className="agent-row" key={agent.id} onClick={() => onOpen(agent.id)}>
             <span className={`agent-avatar ${agent.color}`}>
               {agent.short}
               <i />
             </span>
             <span className="row-copy">
               <strong>{agent.name}</strong>
-              <small>{agent.headline}</small>
+              <small>{agent.headline || toolsLabel(agent)}</small>
             </span>
             <span className="row-meta">
-              <time>{agent.time}</time>
+              <time>{(agent.skills?.length ?? 0) + (agent.mcp?.length ?? 0)}</time>
             </span>
           </button>
         ))}
       </div>
+      <div className="section-label">
+        <span>Recent chats</span>
+        <small>{sessions.length ? `${sessions.length}` : "none"}</small>
+      </div>
+      {recent.length === 0 ? (
+        <button className="new-chat-btn" onClick={onNewChat}>
+          ＋ New chat
+        </button>
+      ) : (
+        <div className="agent-inbox">
+          {recent.map((session) => (
+            <button className="agent-row" key={session.id} onClick={() => onOpenSession(session.id)}>
+              <span className="agent-avatar emerald">C</span>
+              <span className="row-copy">
+                <strong>{session.title}</strong>
+                <small>{previewText(session.preview) || "Empty chat"}</small>
+              </span>
+              <span className="row-meta">
+                <time>{formatSessionTime(session.updatedAt)}</time>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="automation-summary">
         <div>
           <span>1</span>
@@ -378,6 +731,66 @@ function AgentInbox({ onOpen, git }: { onOpen: () => void; git: GitStatus | null
           <small>Railway</small>
         </div>
       </div>
+    </>
+  );
+}
+
+function ChatList({
+  sessions,
+  activeId,
+  error,
+  onOpen,
+  onNewChat,
+  onDelete,
+}: {
+  sessions: ChatSession[];
+  activeId: string;
+  error: string;
+  onOpen: (id: string) => void;
+  onNewChat: () => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <>
+      <button className="new-chat-btn" onClick={onNewChat}>
+        ＋ New chat
+      </button>
+      {error && <p className="session-error">{error}</p>}
+      <div className="section-label">
+        <span>Conversations</span>
+        <small>{sessions.length ? `${sessions.length}` : "none yet"}</small>
+      </div>
+      {sessions.length === 0 ? (
+        <p className="empty-chats">Each new chat is a separate agent session. Start one to keep this work isolated.</p>
+      ) : (
+        <div className="agent-inbox">
+          {sessions.map((session) => (
+            <div className={session.id === activeId ? "session-row active" : "session-row"} key={session.id}>
+              <button className="agent-row" onClick={() => onOpen(session.id)}>
+                <span className="agent-avatar emerald">C</span>
+                <span className="row-copy">
+                  <strong>{session.title}</strong>
+                  <small>{previewText(session.preview) || "Empty chat"}</small>
+                </span>
+                <span className="row-meta">
+                  <time>{formatSessionTime(session.updatedAt)}</time>
+                  {session.messageCount ? <b>{session.messageCount}</b> : null}
+                </span>
+              </button>
+              <button
+                className="delete-session"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDelete(session.id);
+                }}
+                aria-label={`Delete ${session.title}`}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </>
   );
 }
@@ -422,10 +835,14 @@ function AgentMenu({
         onSelect={onSelectModel}
       />
       <div className="section-label">
+        <span>Attached</span>
+        <small>{toolsLabel(agent)}</small>
+      </div>
+      <div className="section-label">
         <span>What would you like to do?</span>
       </div>
       <div className="submenu">
-        {agent.actions.map((action, index) => (
+        {agentActions(agent).map((action, index) => (
           <button
             key={action.title}
             onClick={() => onOpen(index)}
@@ -451,8 +868,13 @@ function AgentMenu({
         <span className="scope-pill">Pi</span>
       </div>
       <div className="trust-note">
-        <strong>Website dev only</strong>
-        <p>This agent only edits workspace files. The host syncs GitHub. Nothing is published from this service.</p>
+        <strong>Role + assigned tools only</strong>
+        <p>
+          This chat uses this agent's prompt, {agent.skills?.length ?? 0} skill
+          {(agent.skills?.length ?? 0) === 1 ? "" : "s"}, and {agent.mcp?.length ?? 0} MCP
+          {(agent.mcp?.length ?? 0) === 1 ? " server" : " servers"}.{" "}
+          <a href="/settings#agents">Manage in Settings</a>.
+        </p>
       </div>
     </>
   );
@@ -463,6 +885,7 @@ function AgentConversation({
   actionIndex,
   history,
   loading,
+  liveStatus,
   error,
   onPrompt,
   models,
@@ -475,6 +898,7 @@ function AgentConversation({
   actionIndex: number;
   history: ChatMessage[];
   loading: boolean;
+  liveStatus: string;
   error: string;
   onPrompt: (text: string) => void;
   models: ModelOption[];
@@ -483,7 +907,11 @@ function AgentConversation({
   onToggleModelMenu: () => void;
   onSelectModel: (modelId: string) => void;
 }) {
-  const action = agent.actions[actionIndex];
+  const bottomRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: "end" });
+  }, [history, loading, liveStatus]);
+
   return (
     <div className="conversation">
       <div className="agent-strip">
@@ -494,7 +922,7 @@ function AgentConversation({
         <div>
           <strong>{agent.name}</strong>
           <small>
-            <span /> Online · {action.title}
+            <span /> {liveStatus || "Online · this chat only"}
           </small>
         </div>
         <button
@@ -545,20 +973,11 @@ function AgentConversation({
           <div className="bubble agent-bubble" key={`a-${index}`}>
             <span className="mini-agent">✦</span>
             <div>
-              <p style={{ whiteSpace: "pre-wrap" }}>{item.content}</p>
-              <time>Now</time>
+              <TurnBlocks blocks={item.blocks} fallback={item.content} streaming={item.streaming} />
+              <time>{item.streaming ? liveStatus || "Now" : "Now"}</time>
             </div>
           </div>
         ),
-      )}
-      {loading && (
-        <div className="bubble agent-bubble">
-          <span className="mini-agent">✦</span>
-          <div>
-            <p>Working in workspace…</p>
-            <time>Now</time>
-          </div>
-        </div>
       )}
       {error && (
         <div className="bubble agent-bubble">
@@ -569,17 +988,75 @@ function AgentConversation({
           </div>
         </div>
       )}
+      <div ref={bottomRef} />
     </div>
   );
 }
 
-function TasksScreen({ git }: { git: GitStatus | null }) {
+function TurnBlocks({
+  blocks,
+  fallback,
+  streaming,
+}: {
+  blocks?: TurnBlock[];
+  fallback: string;
+  streaming?: boolean;
+}) {
+  if (!blocks?.length) {
+    if (!fallback && streaming) return <p className="stream-cursor">Working…</p>;
+    return fallback ? <p style={{ whiteSpace: "pre-wrap" }}>{fallback}</p> : null;
+  }
+  return (
+    <div className="turn-blocks">
+      {blocks.map((block, index) => {
+        const live = Boolean(streaming && index === blocks.length - 1);
+        if (block.type === "thinking") {
+          return (
+            <details key={`t-${index}`} className="think-block" open>
+              <summary>Thinking</summary>
+              <p className={live ? "stream-cursor" : undefined}>{block.text}</p>
+            </details>
+          );
+        }
+        if (block.type === "note") {
+          return (
+            <p className="note-block" key={`n-${index}`}>
+              {block.text}
+            </p>
+          );
+        }
+        if (block.type === "tool") {
+          return (
+            <div
+              className={["tool-block", block.running ? "running" : "", block.isError ? "error" : ""].join(" ")}
+              key={block.id || `tool-${index}`}
+            >
+              <div className="tool-head">
+                <b>{block.name}</b>
+                {block.detail ? <span>{block.detail}</span> : null}
+                {block.running ? <i>running</i> : null}
+              </div>
+              {block.result ? <pre>{block.result}</pre> : null}
+            </div>
+          );
+        }
+        return (
+          <p className={live ? "stream-cursor" : undefined} style={{ whiteSpace: "pre-wrap" }} key={`x-${index}`}>
+            {block.text}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
+function TasksScreen({ git, agents }: { git: GitStatus | null; agents: Agent[] }) {
   return (
     <>
       <div className="summary-grid">
         <div>
-          <strong>1</strong>
-          <small>Agent</small>
+          <strong>{agents.length || 1}</strong>
+          <small>Agents</small>
         </div>
         <div>
           <strong>1</strong>
@@ -591,11 +1068,20 @@ function TasksScreen({ git }: { git: GitStatus | null }) {
         </div>
       </div>
       <div className="section-label">
-        <span>Workspace</span>
-        <small>volume /storage/workspace</small>
+        <span>Agents</span>
+        <small>role + skills + MCP</small>
       </div>
       <div className="work-list">
-        <Work icon="W" color="emerald" title="Website Dev Agent" detail="Pi · HTML/CSS/JS only" progress={100} />
+        {agents.map((agent) => (
+          <Work
+            key={agent.id}
+            icon={agent.short}
+            color={agent.color}
+            title={agent.name}
+            detail={toolsLabel(agent)}
+            progress={100}
+          />
+        ))}
       </div>
     </>
   );
@@ -647,7 +1133,7 @@ function GitScreen({ git }: { git: GitStatus | null }) {
         <div className="approval-item">
           <div>
             <span className="agent-avatar tiny emerald">W</span>
-            <small>Website Dev Agent</small>
+            <small>Workspace git</small>
           </div>
           <h3>{git?.connected ? "Repository connected" : "GitHub disconnected"}</h3>
           <p>{git?.lastError ?? "The host clones, commits, and pushes. The agent only edits files."}</p>
@@ -782,4 +1268,22 @@ function promptsFor(action: number) {
     "Add a dark theme stylesheet to the site",
   ];
   return action === 0 ? primary : primary.slice().reverse();
+}
+
+function previewText(text?: string | null) {
+  if (!text) return "";
+  const compact = text.replace(/\s+/g, " ").trim();
+  return compact.length > 72 ? `${compact.slice(0, 71)}…` : compact;
+}
+
+function formatSessionTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date();
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+  if (sameDay) return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
 }
