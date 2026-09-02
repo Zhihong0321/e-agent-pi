@@ -84,7 +84,11 @@ Install **does not** attach. A skill written to the library stays unused until i
 
 After attach, the next chat with that agent restarts Pi with the new bundle.
 
-Website Dev Agent is seeded with **no** extra skills and **no** MCP.
+Website Dev Agent is seeded with the **Impeccable** design skill ([docs](https://impeccable.style/docs/)) and **no** MCP. Settings Agent does not get Impeccable.
+
+On boot the host runs `npx impeccable install --providers=pi --scope=project` in a staging directory, copies `.pi/skills/impeccable` into `/storage/library/skills/impeccable`, and attaches it to Website Dev Agent. It does **not** install into the GitHub workspace — that would commit the pack into the site repo, and Pi would not load it anyway (`--no-skills` plus `--skill <library path>`).
+
+`/impeccable init` writes `PRODUCT.md` (and later `DESIGN.md`) in the workspace; those files *are* site artifacts and should sync. Refresh the pack with Settings Agent: `node $CLOUD_PI_CATALOG skills install-impeccable --force`.
 
 ### Settings vs studio
 
@@ -114,6 +118,7 @@ Website Dev Agent is seeded with **no** extra skills and **no** MCP.
 | `server/catalog-cli.mjs` | Chat-side catalog CLI (`CLOUD_PI_CATALOG`) |
 | `agent/model-catalog.json` | Luna + Kimi catalog |
 | `server/catalog.mjs` | `agents`, `skills`, `mcp_servers`, attachments |
+| `server/impeccable.mjs` | Official Impeccable Pi skill → library + Website Dev Agent |
 | `server/runtime.mjs` | Per-agent Pi dir + `--no-skills --skill` args |
 | `server/db.mjs` | `settings`, `sessions`, `messages`, `git_syncs`, `debug_events` |
 | `server/index.mjs` | HTTP: `dist/` + `/api/*` (agents, skills, MCP, chat, git, health) |

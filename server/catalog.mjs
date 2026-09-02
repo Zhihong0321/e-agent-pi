@@ -487,6 +487,30 @@ export async function installSkill(input) {
   });
 }
 
+/**
+ * Register a skill folder already on disk under SKILLS_DIR.
+ * @param {{ slug: string; source?: string; sourceUrl?: string | null }} input
+ */
+export async function registerSkillDir(input) {
+  const slug = slugify(input.slug);
+  const dir = path.join(SKILLS_DIR, slug);
+  let markdown = "";
+  try {
+    markdown = await readFile(path.join(dir, "SKILL.md"), "utf8");
+  } catch {
+    throw new Error(`Skill folder has no SKILL.md: ${dir}`);
+  }
+  const parsed = parseSkillMarkdown(markdown);
+  return upsertSkillRow({
+    slug,
+    name: slug,
+    description: String(parsed.description || slug).slice(0, 1024),
+    source: input.source || "library",
+    sourceUrl: input.sourceUrl ?? null,
+    dirPath: dir,
+  });
+}
+
 async function upsertSkillRow(row) {
   const existing = await getPool().query(`SELECT id FROM skills WHERE slug = $1`, [row.slug]);
   const id = existing.rows[0]?.id || randomUUID();

@@ -54,6 +54,15 @@ node "$CLOUD_PI_CATALOG" agents detach website --skill the-skill-slug
 
 Repeat `--skill` / `--mcp` to change several at once.
 
+## Refresh Impeccable (Website Dev Agent)
+
+Official design skill pack. Installs into the host library and attaches to Website Dev Agent only. Do not copy it into the workspace.
+
+```bash
+node "$CLOUD_PI_CATALOG" skills install-impeccable
+node "$CLOUD_PI_CATALOG" skills install-impeccable --force
+```
+
 ## Install MCP
 
 ```bash

@@ -44,4 +44,6 @@ yarn-error.log*
 /my-vault/*.key
 /my-vault/*.secret
 .pi/agent/auth.json
+.pi/skills/
+.impeccable/
 /data/

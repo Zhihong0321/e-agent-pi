@@ -64,6 +64,7 @@ import {
   updateMcpServer,
   WEBSITE_AGENT_ID,
 } from "./catalog.mjs";
+import { ensureImpeccableForWebsite } from "./impeccable.mjs";
 import { buildPiArgs, materializeAgentRuntime } from "./runtime.mjs";
 
 const HOST = "0.0.0.0";
@@ -577,6 +578,21 @@ async function bootServices() {
     }
   } catch (error) {
     logEvent("error", `agent catalog failed: ${sanitizeError(error)}`);
+  }
+
+  boot.step = "impeccable";
+  try {
+    if (dbReady()) {
+      const result = await ensureImpeccableForWebsite();
+      logEvent(
+        "info",
+        result.skipped
+          ? "impeccable skill already in library; attached to website"
+          : "impeccable skill installed for website agent",
+      );
+    }
+  } catch (error) {
+    logEvent("error", `impeccable install failed: ${sanitizeError(error)}`);
   }
 
   boot.step = "catalog";
