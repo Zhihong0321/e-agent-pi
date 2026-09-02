@@ -75,19 +75,21 @@ The host keeps **one** Pi RPC process (Railway is a single replica). Switching a
 - `--no-extensions`; if the agent has MCP, also `--extension npm:pi-mcp-adapter` and a runtime `mcp.json` that lists **only** that agent's servers
 - `PI_CODING_AGENT_DIR=/storage/runtime/<agent-id>` so Pi does not read the shared `/storage/pi` skill/MCP dirs
 
-Install **does not** attach. A skill written to the library stays unused until Settings assigns it.
+Install **does not** attach. A skill written to the library stays unused until it is attached to an agent.
 
 ### Who can install
 
-1. **Settings** (password): paste a `SKILL.md`, or a URL to one; add MCP command/URL/env; create/edit agents and tick skills/MCP.
-2. **Studio Ops Agent**: has the `install-host-skill` skill. It may write `/storage/library/skills/<slug>/SKILL.md`. The host rescans that folder. The ops agent still cannot attach the skill to Website Dev Agent — attach stays in Settings.
+1. **Settings page** (password): `/settings#skills`, `/settings#mcp`, then `/settings#agents` to attach.
+2. **Settings Agent** (chat): has `manage-host-settings`. It runs `node $CLOUD_PI_CATALOG` on the host — install skills/MCP **and** attach them to a chosen agent. Website Dev Agent does not get this skill.
+
+After attach, the next chat with that agent restarts Pi with the new bundle.
 
 Website Dev Agent is seeded with **no** extra skills and **no** MCP.
 
 ### Settings vs studio
 
-- Studio lists agents and chats with the selected one.
-- `/settings` (password) is where you install skills/MCP and attach them per agent.
+- Studio lists agents and chats with the selected one. **Settings Agent** can install and attach from chat.
+- `/settings` (password) is the same catalog in a form UI (keys stay here).
 
 ## Volume layout
 
@@ -107,8 +109,9 @@ Website Dev Agent is seeded with **no** extra skills and **no** MCP.
 | `app/settings.tsx` | Password-gated keys, agents, skills, MCP |
 | `src/main.tsx` | `/settings` vs studio |
 | `agent/ROLE.md` | Seed prompt for Website Dev Agent |
-| `agent/roles/ops.md` | Seed prompt for Studio Ops Agent |
+| `agent/roles/settings.md` | Seed prompt for Settings Agent |
 | `agent/skills/` | Bundled skills copied into the host library on boot |
+| `server/catalog-cli.mjs` | Chat-side catalog CLI (`CLOUD_PI_CATALOG`) |
 | `agent/model-catalog.json` | Luna + Kimi catalog |
 | `server/catalog.mjs` | `agents`, `skills`, `mcp_servers`, attachments |
 | `server/runtime.mjs` | Per-agent Pi dir + `--no-skills --skill` args |

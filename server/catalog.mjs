@@ -6,8 +6,8 @@ import {
   BUNDLED_SKILLS,
   DEFAULT_AGENT_ID,
   OPS_AGENT_ID,
-  OPS_ROLE_FILE,
   ROLE_FILE,
+  SETTINGS_ROLE_FILE,
   SKILLS_DIR,
 } from "./paths.mjs";
 
@@ -310,11 +310,37 @@ async function setAgentAttachments(agentId, skillIds, mcpIds) {
   }
 }
 
+export async function attachAgentResources(agentRef, { skills = [], mcp = [], detach = false } = {}) {
+  const agent = await getAgent(agentRef);
+  if (!agent) throw new Error(`Agent not found: ${agentRef}`);
+  let skillIds = [...(agent.skillIds ?? [])];
+  let mcpIds = [...(agent.mcpIds ?? [])];
+  for (const ref of skills) {
+    const skill = await getSkill(ref);
+    if (!skill) throw new Error(`Unknown skill: ${ref}`);
+    if (!detach && skill.slug === "manage-host-settings" && (agent.id === WEBSITE_AGENT_ID || agent.slug === "website")) {
+      throw new Error("manage-host-settings stays on Settings Agent only.");
+    }
+    if (detach) skillIds = skillIds.filter((id) => id !== skill.id);
+    else if (!skillIds.includes(skill.id)) skillIds.push(skill.id);
+  }
+  for (const ref of mcp) {
+    const server = await getMcpServer(ref);
+    if (!server) throw new Error(`Unknown MCP server: ${ref}`);
+    if (detach) mcpIds = mcpIds.filter((id) => id !== server.id);
+    else if (!mcpIds.includes(server.id)) mcpIds.push(server.id);
+  }
+  return updateAgent(agent.id, { skillIds, mcpIds });
+}
+
 export async function deleteAgent(id) {
   const agent = await getAgent(id);
   if (!agent) return false;
   if (agent.id === WEBSITE_AGENT_ID || agent.slug === "website") {
     throw new Error("The Website Dev Agent cannot be deleted.");
+  }
+  if (agent.id === OPS_AGENT_ID || agent.slug === "settings" || agent.slug === "ops") {
+    throw new Error("The Settings Agent cannot be deleted.");
   }
   await getPool().query(`UPDATE sessions SET agent_id = $1 WHERE agent_id = $2`, [WEBSITE_AGENT_ID, agent.id]);
   await getPool().query(`DELETE FROM agents WHERE id = $1`, [agent.id]);
@@ -530,11 +556,7 @@ export async function copyBundledSkills() {
     if (!entry.isDirectory()) continue;
     const from = path.join(BUNDLED_SKILLS, entry.name);
     const to = path.join(SKILLS_DIR, entry.name);
-    try {
-      await readFile(path.join(to, "SKILL.md"), "utf8");
-    } catch {
-      await cp(from, to, { recursive: true });
-    }
+    await cp(from, to, { recursive: true });
   }
 }
 
@@ -551,6 +573,23 @@ async function seedAgent(row) {
   );
 }
 
+async function seedSystemAgent(row) {
+  await getPool().query(
+    `INSERT INTO agents (id, slug, name, short, headline, description, color, role_prompt)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (id) DO UPDATE SET
+       slug = EXCLUDED.slug,
+       name = EXCLUDED.name,
+       short = EXCLUDED.short,
+       headline = EXCLUDED.headline,
+       description = EXCLUDED.description,
+       color = EXCLUDED.color,
+       role_prompt = EXCLUDED.role_prompt,
+       updated_at = NOW()`,
+    [row.id, row.slug, row.name, row.short, row.headline, row.description, row.color, row.rolePrompt],
+  );
+}
+
 export async function seedAgentCatalog() {
   await ensureCatalogSchema();
   await mkdir(SKILLS_DIR, { recursive: true });
@@ -558,7 +597,7 @@ export async function seedAgentCatalog() {
   await rescanSkillLibrary();
 
   const websiteRole = await readFile(ROLE_FILE, "utf8").catch(() => "You are Website Dev Agent.");
-  const opsRole = await readFile(OPS_ROLE_FILE, "utf8").catch(() => "You are Studio Ops Agent.");
+  const settingsRole = await readFile(SETTINGS_ROLE_FILE, "utf8").catch(() => "You are Settings Agent.");
   await seedAgent({
     id: WEBSITE_AGENT_ID,
     slug: "website",
@@ -569,29 +608,24 @@ export async function seedAgentCatalog() {
     color: "emerald",
     rolePrompt: websiteRole,
   });
-  await seedAgent({
+  await seedSystemAgent({
     id: OPS_AGENT_ID,
-    slug: "ops",
-    name: "Studio Ops Agent",
-    short: "O",
-    headline: "Installs skills into the host library",
-    description: "Writes skills to /storage/library. Does not attach them to other agents.",
+    slug: "settings",
+    name: "Settings Agent",
+    short: "S",
+    headline: "Installs and attaches skills and MCP in chat",
+    description: "Host catalog: install skills/MCP, then attach them per agent.",
     color: "violet",
-    rolePrompt: opsRole,
+    rolePrompt: settingsRole,
   });
 
-  const installSkillRow = await getPool().query(`SELECT id FROM skills WHERE slug = 'install-host-skill'`);
-  const installId = installSkillRow.rows[0]?.id;
-  if (installId) {
-    const opsCount = await getPool().query(`SELECT COUNT(*)::int AS n FROM agent_skills WHERE agent_id = $1`, [
+  const manageRow = await getPool().query(`SELECT id FROM skills WHERE slug = 'manage-host-settings'`);
+  const manageId = manageRow.rows[0]?.id;
+  if (manageId) {
+    await getPool().query(`INSERT INTO agent_skills (agent_id, skill_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [
       OPS_AGENT_ID,
+      manageId,
     ]);
-    if (!opsCount.rows[0]?.n) {
-      await getPool().query(`INSERT INTO agent_skills (agent_id, skill_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [
-        OPS_AGENT_ID,
-        installId,
-      ]);
-    }
   }
 
   await getPool().query(`UPDATE sessions SET agent_id = $1 WHERE agent_id IS NULL`, [WEBSITE_AGENT_ID]);

@@ -15,10 +15,11 @@ export const LIBRARY_DIR = path.join(DATA_DIR, "library");
 export const SKILLS_DIR = path.join(LIBRARY_DIR, "skills");
 export const RUNTIME_DIR = path.join(DATA_DIR, "runtime");
 export const ROLE_FILE = path.join(ROOT, "agent", "ROLE.md");
-export const OPS_ROLE_FILE = path.join(ROOT, "agent", "roles", "ops.md");
+export const SETTINGS_ROLE_FILE = path.join(ROOT, "agent", "roles", "settings.md");
 export const BUNDLED_SKILLS = path.join(ROOT, "agent", "skills");
 export const DEFAULT_AGENT_ID = "website";
 export const OPS_AGENT_ID = "ops";
+export const SETTINGS_AGENT_ID = OPS_AGENT_ID;
 export const DIST_DIR = path.join(ROOT, "dist");
 export const SEED_INDEX = path.join(ROOT, "agent-workspace", "index.html");
 export const BUNDLED_MODELS = path.join(ROOT, ".pi", "agent", "models.json");
@@ -32,3 +33,4 @@ export const PI_CLI_PATH = path.join(
   "cli.js",
 );
 export const PI_PACKAGE_DIR = path.join(ROOT, "node_modules", "@earendil-works", "pi-coding-agent");
+export const CATALOG_CLI = path.join(ROOT, "server", "catalog-cli.mjs");

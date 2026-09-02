@@ -457,8 +457,8 @@ export default function SettingsPage() {
           {tab === "agents" && (
             <section className="settings-card">
               <p>
-                An agent is Role + Skills + MCP. Installing a skill does not give it to every agent. Tick only what this
-                agent should see.
+                An agent is Role + Skills + MCP. Tick only what this agent should see, or ask Settings Agent in
+                studio chat to install and attach for you.
               </p>
               <div className="catalog-list">
                 {agents.map((agent) => (

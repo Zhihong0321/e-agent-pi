@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -26,6 +27,7 @@ import { hasSession, sessionCookie, sessionToken, checkPassword } from "./auth.m
 import { loadSecrets, publicSettings, saveSecrets, secret, secretFlags } from "./secrets.mjs";
 import {
   BUNDLED_MODELS,
+  CATALOG_CLI,
   DATA_DIR,
   DEFAULT_AGENT_ID,
   DIST_DIR,
@@ -33,6 +35,7 @@ import {
   PI_AGENT_DIR,
   PI_CLI_PATH,
   PI_PACKAGE_DIR,
+  ROOT,
   RUNTIME_DIR,
   SKILLS_DIR,
   STORAGE,
@@ -84,6 +87,8 @@ let resumeSessionFile = null;
 let activeStudioSessionId = null;
 /** @type {string} */
 let activeAgentId = DEFAULT_AGENT_ID;
+/** @type {string} */
+let activeBundleKey = "";
 /** @type {boolean} */
 let forceNewPiSession = false;
 /** @type {Promise<void>} */
@@ -214,6 +219,13 @@ async function ensureCatalog() {
   return modelCatalog;
 }
 
+function agentBundleKey(agent) {
+  const role = createHash("sha1").update(agent.rolePrompt || "").digest("hex").slice(0, 12);
+  const skills = (agent.skillIds || []).slice().sort().join(",");
+  const mcp = (agent.mcpIds || []).slice().sort().join(",");
+  return `${agent.id}:${skills}:${mcp}:${role}`;
+}
+
 async function resolveAgentProfile(agentId) {
   const id = agentId || activeAgentId || WEBSITE_AGENT_ID;
   const agent = dbReady() ? await getAgent(id) : null;
@@ -225,7 +237,8 @@ async function resolveAgentProfile(agentId) {
 
 async function getClient(profile) {
   const agent = profile || (await resolveAgentProfile(activeAgentId));
-  if (client && activeAgentId === agent.id) return client;
+  const bundleKey = agentBundleKey(agent);
+  if (client && activeAgentId === agent.id && activeBundleKey === bundleKey) return client;
   if (client) {
     await client.stop().catch(() => {});
     client = undefined;
@@ -267,6 +280,8 @@ async function getClient(profile) {
           ...process.env,
           PI_CODING_AGENT_DIR: runtimeDir,
           PI_PACKAGE_DIR,
+          CLOUD_PI_ROOT: ROOT,
+          CLOUD_PI_CATALOG: CATALOG_CLI,
           ...resolved.env,
         },
         args,
@@ -274,6 +289,7 @@ async function getClient(profile) {
       await pi.start();
       client = pi;
       activeAgentId = agent.id;
+      activeBundleKey = bundleKey;
       logEvent("info", sessionFile ? `Pi client started session=${sessionFile}` : "Pi client started");
       return pi;
     })();
@@ -485,6 +501,7 @@ async function serveStatic(res, urlPath) {
 async function resetPi() {
   modelCatalog = null;
   activeStudioSessionId = null;
+  activeBundleKey = "";
   forceNewPiSession = true;
   if (client) {
     await client.stop().catch(() => {});
