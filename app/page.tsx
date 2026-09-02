@@ -591,7 +591,7 @@ function TasksScreen({ git }: { git: GitStatus | null }) {
       </div>
       <div className="section-label">
         <span>Workspace</span>
-        <small>volume /data/workspace</small>
+        <small>volume /storage/workspace</small>
       </div>
       <div className="work-list">
         <Work icon="W" color="emerald" title="Website Dev Agent" detail="Pi · HTML/CSS/JS only" progress={100} />
@@ -674,7 +674,7 @@ function LibraryScreen({ files }: { files: WorkspaceFile[] }) {
       </label>
       <div className="section-label">
         <span>Workspace files</span>
-        <small>/data/workspace</small>
+        <small>/storage/workspace</small>
       </div>
       <div className="library-grid">
         {list.map((file) => (

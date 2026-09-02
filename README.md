@@ -6,7 +6,7 @@ Cloud app for Railway. The agent only edits a volume workspace. GitHub is the re
 
 1. New project from GitHub: [Zhihong0321/e-agent-pi](https://github.com/Zhihong0321/e-agent-pi)
 2. Add **PostgreSQL** (`DATABASE_URL` is injected)
-3. Add a **Volume** mounted at `/data` (one replica only)
+3. Add a **Volume** mounted at `/storage` (one replica only)
 4. Set variables:
    - `GITHUB_TOKEN`, `GITHUB_REPO`, optional `GITHUB_BRANCH`
    - `CAVOTI_API_KEY` and/or `KIMI_API_KEY`
@@ -28,5 +28,5 @@ Nothing in those payloads is a secret. API keys are reported as present/absent o
 | `app/` | Studio UI |
 | `agent/ROLE.md` | Agent prompt |
 | `server/` | HTTP API + Pi + git sync |
-| `/data/workspace` | Agent files (volume) |
-| `/data/storage` | Pi sessions (volume) |
+| `/storage/workspace` | Agent files (volume) |
+| `/storage/storage` | Pi sessions (volume) |
