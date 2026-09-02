@@ -14,12 +14,11 @@ Cloud app for Railway. The agent only edits a volume workspace. GitHub is the re
 
 ## Debug (no log pasting)
 
-After deploy, these stay public so they can be fetched directly:
+After deploy:
 
-- `GET /api/health` — boot step, postgres, git, env flags (booleans only), last events
-- `GET /api/debug` — same plus persisted events
-
-Nothing in those payloads is a secret. API keys are reported as present/absent only.
+- `GET /api/health`
+- `GET /api/debug`
+- **Settings:** `/settings` (password stored in Postgres, default `eternalgy2026`) — API keys and GitHub token live here, not in Railway variables.
 
 ## Layout
 

@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { dbReady, insertGitSync, latestGitSync, setSetting } from "./db.mjs";
+import { secret } from "./secrets.mjs";
 import { SEED_INDEX, WORKSPACE } from "./paths.mjs";
 
 const DEFAULT_BRANCH = "main";
@@ -27,9 +28,9 @@ async function saveSetting(key, value) {
  * @returns {{ token: string; repo: string; branch: string } | null}
  */
 export function githubConfig() {
-  const token = process.env.GITHUB_TOKEN?.trim();
-  const repo = process.env.GITHUB_REPO?.trim();
-  const branch = process.env.GITHUB_BRANCH?.trim() || DEFAULT_BRANCH;
+  const token = secret("github_token");
+  const repo = secret("github_repo");
+  const branch = secret("github_branch") || DEFAULT_BRANCH;
   if (!token || !repo) return null;
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) {
     throw new Error("GITHUB_REPO must be owner/name");

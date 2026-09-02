@@ -241,6 +241,7 @@ export default function Home() {
             </div>
           </div>
           <div className="header-buttons">
+            <a className="demo-badge" href="/settings">SET</a>
             <button className="demo-badge">{git?.connected ? "GIT" : "LIVE"}</button>
             <button className="icon-button" onClick={() => setDark(!dark)} aria-label="Toggle theme">
               {dark ? "☀" : "☾"}

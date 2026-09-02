@@ -74,14 +74,6 @@ export function envFlags() {
     "RAILWAY_PUBLIC_DOMAIN",
     "RAILWAY_ENVIRONMENT_NAME",
     "RAILWAY_SERVICE_NAME",
-    "GITHUB_TOKEN",
-    "GITHUB_REPO",
-    "GITHUB_BRANCH",
-    "CAVOTI_API_KEY",
-    "CAVOTI_BASE_URL",
-    "KIMI_API_KEY",
-    "KIMI_BASE_URL",
-    "APP_TOKEN",
   ];
   /** @type {Record<string, boolean>} */
   const present = {};

@@ -1,3 +1,4 @@
+import { secret } from "./secrets.mjs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,9 +34,9 @@ export async function resolveModelCredentials() {
   const models = [];
 
   for (const entry of catalog) {
-    const apiKey = process.env[`${entry.envPrefix}_API_KEY`]?.trim();
+    const apiKey = secret(`${entry.envPrefix.toLowerCase()}_api_key`);
     const baseUrl =
-      process.env[`${entry.envPrefix}_BASE_URL`]?.trim() ||
+      secret(`${entry.envPrefix.toLowerCase()}_base_url`) ||
       DEFAULT_BASE_URL[entry.envPrefix] ||
       "";
 

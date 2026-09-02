@@ -8,6 +8,8 @@ import { envFlags, loadRecentFromDb, logEvent, railwayMeta, recentEvents } from 
 import { listWorkspaceFiles } from "./files.mjs";
 import { getGitStatus, initWorkspace, syncWorkspace } from "./github.mjs";
 import { findModel, resolveModelCredentials } from "./models.mjs";
+import { hasSession, sessionCookie, sessionToken, checkPassword } from "./auth.mjs";
+import { loadSecrets, publicSettings, saveSecrets, secret, secretFlags } from "./secrets.mjs";
 import {
   BUNDLED_MODELS,
   DATA_DIR,
@@ -49,11 +51,12 @@ const MIME = {
   ".txt": "text/plain; charset=utf-8",
 };
 
-function json(res, status, body) {
+function json(res, status, body, extraHeaders = {}) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
     "Access-Control-Allow-Origin": "*",
+    ...extraHeaders,
   });
   res.end(JSON.stringify(body));
 }
@@ -87,15 +90,11 @@ function readBody(req) {
 }
 
 function wantsAuth(pathname) {
-  if (!process.env.APP_TOKEN?.trim()) return false;
-  return pathname.startsWith("/api/") && pathname !== "/api/health" && pathname !== "/api/debug";
+  return pathname === "/api/settings";
 }
 
 function authorized(req) {
-  const token = process.env.APP_TOKEN?.trim();
-  if (!token) return true;
-  const header = req.headers.authorization ?? "";
-  return header === `Bearer ${token}`;
+  return hasSession(req);
 }
 
 async function snapshot() {
@@ -127,6 +126,7 @@ async function snapshot() {
     modelsConfigured: modelCatalog?.filter((entry) => entry.available).length ?? 0,
     piClient: Boolean(client),
     env: envFlags(),
+    secrets: secretFlags(),
     railway: railwayMeta(),
     node: process.version,
     events: recentEvents(),
@@ -152,7 +152,7 @@ async function getClient() {
       activeModelId = activeModelId ?? resolved.defaultModelId;
       const active = findModel(modelCatalog, activeModelId ?? "");
       if (!active?.available) {
-        throw new Error("No model configured. Set CAVOTI_API_KEY and/or KIMI_API_KEY.");
+        throw new Error("No model configured. Add API keys on the Settings page.");
       }
 
       logEvent("info", `starting Pi ${active.provider}/${active.model}`);
@@ -254,11 +254,22 @@ async function serveStatic(res, urlPath) {
   }
 }
 
+async function resetPi() {
+  modelCatalog = null;
+  if (client) {
+    await client.stop().catch(() => {});
+    client = undefined;
+    booting = undefined;
+  }
+}
+
 async function writePiModels() {
   await mkdir(PI_AGENT_DIR, { recursive: true });
   const raw = JSON.parse(await readFile(BUNDLED_MODELS, "utf8"));
-  if (process.env.CAVOTI_BASE_URL?.trim()) raw.providers.cavoti.baseUrl = process.env.CAVOTI_BASE_URL.trim();
-  if (process.env.KIMI_BASE_URL?.trim()) raw.providers["kimi-k3"].baseUrl = process.env.KIMI_BASE_URL.trim();
+  const cavoti = secret("cavoti_base_url");
+  const kimi = secret("kimi_base_url");
+  if (cavoti) raw.providers.cavoti.baseUrl = cavoti;
+  if (kimi) raw.providers["kimi-k3"].baseUrl = kimi;
   await writeFile(path.join(PI_AGENT_DIR, "models.json"), JSON.stringify(raw, null, 2));
 }
 
@@ -282,6 +293,7 @@ async function bootServices() {
   boot.step = "postgres";
   try {
     await connectDb();
+    await loadSecrets();
     logEvent("info", "postgres connected");
   } catch (error) {
     boot.error = sanitizeError(error);
@@ -336,6 +348,43 @@ const server = createServer(async (req, res) => {
   }
 
   try {
+    if (req.method === "GET" && pathname === "/api/auth/me") {
+      json(res, 200, { ok: hasSession(req) });
+      return;
+    }
+
+    if (req.method === "POST" && pathname === "/api/auth/login") {
+      const { password } = JSON.parse((await readBody(req)) || "{}");
+      if (!checkPassword(password)) {
+        json(res, 401, { error: "Wrong password" });
+        return;
+      }
+      json(res, 200, { ok: true }, { "Set-Cookie": sessionCookie(sessionToken()) });
+      return;
+    }
+
+    if (req.method === "POST" && pathname === "/api/auth/logout") {
+      json(res, 200, { ok: true }, { "Set-Cookie": sessionCookie("", true) });
+      return;
+    }
+
+    if (req.method === "GET" && pathname === "/api/settings") {
+      json(res, 200, publicSettings());
+      return;
+    }
+
+    if (req.method === "PUT" && pathname === "/api/settings") {
+      const body = JSON.parse((await readBody(req)) || "{}");
+      await saveSecrets(body);
+      await writePiModels().catch((error) => logEvent("error", sanitizeError(error)));
+      await resetPi();
+      await initWorkspace().catch((error) => logEvent("error", `workspace reinit: ${sanitizeError(error)}`));
+      await ensureCatalog();
+      logEvent("info", "settings saved to postgres");
+      json(res, 200, publicSettings());
+      return;
+    }
+
     if (req.method === "GET" && pathname === "/api/health") {
       json(res, 200, await snapshot());
       return;
