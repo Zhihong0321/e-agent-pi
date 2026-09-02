@@ -310,7 +310,7 @@ export default function Home() {
               <small>Tasks</small>
             </button>
             <button className={view === "approvals" ? "active" : ""} onClick={() => goRoot("approvals")}>
-              <span>✓</</span>
+              <span>{"\u2713"}</span>
               <small>Git</small>
             </button>
             <button className={view === "library" ? "active" : ""} onClick={() => goRoot("library")}>
@@ -755,7 +755,7 @@ function ModelPicker({
             <strong>{model.label}</strong>
             <small>{model.available ? model.provider : "Add API key first"}</small>
           </span>
-          {selectedModelId === model.id && <b>✓</b>}
+          {selectedModelId === model.id && <b>{"\u2713"}</b>}
         </button>
       ))}
       <button type="button" className="model-sheet-close" onClick={onToggle}>
