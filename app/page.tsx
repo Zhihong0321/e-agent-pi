@@ -298,6 +298,105 @@ function hostHost(url: string | null | undefined) {
   }
 }
 
+const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|svg|avif|bmp)(?:\?|#|$)/i;
+const CHAT_TOKEN_RE =
+  /!\[([^\]]*)\]\(([^)\s]+)\)|\[([^\]]+)\]\(([^)\s]+)\)|(https?:\/\/[^\s<>"'`)\]]+)|`((?:[\w./@-]+)\.(?:png|jpe?g|gif|webp|svg|avif|bmp))`|(^|[\s|([{'"])((?:[\w./@-]+)\.(?:png|jpe?g|gif|webp|svg|avif|bmp))/gi;
+
+type ChatPart =
+  | { type: "text"; value: string }
+  | { type: "image"; href: string; alt: string }
+  | { type: "link"; href: string; label: string };
+
+function stripHrefJunk(href: string) {
+  return href.replace(/[.,;:!?)]+$/, "");
+}
+
+function isRemoteSrc(src: string) {
+  return /^(https?:\/\/|data:)/i.test(src);
+}
+
+function isImageHref(href: string) {
+  if (/^data:image\//i.test(href)) return true;
+  return IMAGE_EXT_RE.test((href.split("?")[0] || href).split("#")[0]);
+}
+
+function normalizeWorkspacePath(src: string) {
+  let s = src.trim().replace(/\\/g, "/");
+  s = s.replace(/^<|>$/g, "");
+  s = s.replace(/^file:\/\//i, "");
+  s = s.replace(/^\/storage\/workspaces\/[^/]+\//, "");
+  s = s.replace(/^\/storage\/workspace\//, "");
+  s = s.replace(/^\.\//, "");
+  if (!s || s.includes("://")) return "";
+  return s;
+}
+
+function workspaceMediaUrl(agentId: string, src: string) {
+  if (isRemoteSrc(src)) return src;
+  const rel = normalizeWorkspacePath(src);
+  if (!rel) return src;
+  const query = new URLSearchParams({ path: rel });
+  if (agentId) query.set("agent", agentId);
+  return `/api/files/raw?${query.toString()}`;
+}
+
+function tokenizeChat(text: string): ChatPart[] {
+  const parts: ChatPart[] = [];
+  let last = 0;
+  CHAT_TOKEN_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = CHAT_TOKEN_RE.exec(text))) {
+    if (match.index > last) parts.push({ type: "text", value: text.slice(last, match.index) });
+    if (match[1] != null && match[2]) {
+      parts.push({ type: "image", alt: match[1], href: stripHrefJunk(match[2]) });
+    } else if (match[3] != null && match[4]) {
+      parts.push({ type: "link", label: match[3], href: stripHrefJunk(match[4]) });
+    } else if (match[5]) {
+      const href = stripHrefJunk(match[5]);
+      parts.push({ type: "link", label: href, href });
+    } else if (match[6]) {
+      parts.push({ type: "link", label: match[6], href: match[6] });
+    } else if (match[8]) {
+      if (match[7]) parts.push({ type: "text", value: match[7] });
+      parts.push({ type: "link", label: match[8], href: match[8] });
+    }
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) parts.push({ type: "text", value: text.slice(last) });
+  return parts.length ? parts : [{ type: "text", value: text }];
+}
+
+function collectImageHrefs(...chunks: string[]): string[] {
+  const seen = new Set<string>();
+  const found: string[] = [];
+  const add = (raw: string) => {
+    const href = stripHrefJunk(raw.trim());
+    if (!href || !isImageHref(href)) return;
+    const key = href.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    found.push(href);
+  };
+  const blob = chunks.filter(Boolean).join("\n");
+  for (const part of tokenizeChat(blob)) {
+    if (part.type === "image" || part.type === "link") add(part.href);
+  }
+  const jsonPath = /"(?:path|out|file|filename|url|src)"\s*:\s*"([^"]+)"/gi;
+  let match: RegExpExecArray | null;
+  while ((match = jsonPath.exec(blob))) add(match[1]);
+  return found;
+}
+
+function userVisibleContent(text: string, files: PendingFile[]) {
+  const bits: string[] = [];
+  if (text) bits.push(text);
+  for (const file of files) {
+    const image = file.mime.startsWith("image/") || IMAGE_EXT_RE.test(file.name);
+    bits.push(image ? `![${file.name}](${file.data})` : `[${file.name}](${file.data})`);
+  }
+  return bits.join("\n\n");
+}
+
 async function readSse(res: Response, onEvent: (event: StreamEvent) => void) {
   const ctype = res.headers.get("content-type") || "";
   if (!ctype.includes("text/event-stream")) {
@@ -346,6 +445,7 @@ export default function Home() {
   const [publishing, setPublishing] = useState(false);
   const [files, setFiles] = useState<WorkspaceFile[]>([]);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const [media, setMedia] = useState<{ src: string; alt?: string } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const [liveStatus, setLiveStatus] = useState("");
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -438,6 +538,15 @@ export default function Home() {
       }
     })();
   }, [view, selectedAgentId]);
+
+  useEffect(() => {
+    if (!media) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMedia(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [media]);
 
   useEffect(() => {
     if (tab !== "files" && view !== "files") return;
@@ -556,7 +665,8 @@ export default function Home() {
 
   const send = async (text = message) => {
     const trimmed = text.trim();
-    if (!trimmed || loading) return;
+    const files = pendingFiles;
+    if ((!trimmed && !files.length) || loading) return;
     historyLoad.current += 1;
     let activeId = sessionId;
     const agent = selected;
@@ -579,13 +689,14 @@ export default function Home() {
     const ac = new AbortController();
     abortRef.current = ac;
     setMessage("");
+    setPendingFiles([]);
     setError("");
     setPublishOk(false);
     setLoading(true);
     setLiveStatus("Working…");
     setHistory((prev) => [
       ...prev,
-      { role: "user", content: trimmed, sessionId: activeId },
+      { role: "user", content: userVisibleContent(trimmed, files), sessionId: activeId },
       { role: "assistant", content: "", blocks: [], streaming: true, sessionId: activeId },
     ]);
     const patchAssistant = (updater: (msg: ChatMessage) => ChatMessage) => {
@@ -606,6 +717,7 @@ export default function Home() {
           modelId: selectedModelId || undefined,
           sessionId: activeId,
           agentId: agent?.id,
+          attachments: files,
         }),
         signal: ac.signal,
       });
@@ -713,17 +825,19 @@ export default function Home() {
               <h1>{tabTitle}</h1>
             </div>
             <div className="inbox-actions">
-              <button
-                className="icon-btn"
-                type="button"
-                aria-label={tab === "chats" ? "Search chats" : "Open settings"}
-                onClick={() => {
-                  if (tab === "chats") setSearchOpen((open) => !open);
-                  else window.location.assign("/settings");
-                }}
-              >
-                <IconSearch />
-              </button>
+              <a className="icon-btn" href="/settings" aria-label="Open settings">
+                <IconSettings />
+              </a>
+              {tab === "chats" && (
+                <button
+                  className="icon-btn"
+                  type="button"
+                  aria-label="Search chats"
+                  onClick={() => setSearchOpen((open) => !open)}
+                >
+                  <IconSearch />
+                </button>
+              )}
               <button className="icon-btn primary" type="button" aria-label="New chat" onClick={() => void startNewChat()}>
                 <IconPlus />
               </button>
@@ -747,12 +861,14 @@ export default function Home() {
               />
             )}
             {tab === "agents" && (
-              <AgentsTab agents={agents} host={host} onOpen={(id) => void startNewChat(id)} />
+              <AgentsTab agents={agents} onOpen={(id) => void startNewChat(id)} />
             )}
             {tab === "live" && (
               <LiveTab host={host} publishing={publishing} onPublish={() => void publishHost()} />
             )}
-            {tab === "files" && <FilesTab files={files} />}
+            {tab === "files" && (
+              <FilesTab files={files} agentId={selected.id} onOpen={(src, alt) => setMedia({ src, alt })} />
+            )}
           </div>
           <nav className="bottom-nav">
             {(
@@ -833,6 +949,7 @@ export default function Home() {
                 siriSignal={siriSignal}
                 publishOk={publishOk}
                 onPrompt={(text) => void send(text)}
+                onOpenMedia={(src, alt) => setMedia({ src, alt })}
               />
               <div className="composer">
                 {pendingFiles.length > 0 && (
@@ -997,6 +1114,7 @@ export default function Home() {
             </div>
           </div>
         )}
+        {media && <MediaLightbox src={media.src} alt={media.alt} onClose={() => setMedia(null)} />}
       </section>
     </main>
   );
@@ -1140,33 +1258,13 @@ function ChatsTab({
 
 function AgentsTab({
   agents,
-  host,
   onOpen,
 }: {
   agents: Agent[];
-  host: HostStatus | null;
   onOpen: (id: string) => void;
 }) {
-  const url = agentLiveUrl(agents[0], host);
-  const hostLabel = hostHost(url);
   return (
     <>
-      <div className="live-banner">
-        <span>
-          <IconLive />
-        </span>
-        <div>
-          <strong>{url ? "Live site is up" : host?.configured ? "Ready to publish" : "Live host not configured"}</strong>
-          <small>{hostLabel || "Add the HTML host API key in Settings"}</small>
-        </div>
-        {url ? (
-          <a href={url} target="_blank" rel="noreferrer">
-            Open
-          </a>
-        ) : (
-          <a href="/settings">Setup</a>
-        )}
-      </div>
       <div className="section-row">
         <span>Your agents</span>
         <small>{agents.length} online</small>
@@ -1232,7 +1330,15 @@ function LiveTab({
   );
 }
 
-function FilesTab({ files }: { files: WorkspaceFile[] }) {
+function FilesTab({
+  files,
+  agentId,
+  onOpen,
+}: {
+  files: WorkspaceFile[];
+  agentId: string;
+  onOpen: (src: string, alt?: string) => void;
+}) {
   if (!files.length) {
     return (
       <div className="empty-pane tall">
@@ -1250,17 +1356,31 @@ function FilesTab({ files }: { files: WorkspaceFile[] }) {
         <span>Workspace files</span>
         <small>/storage/workspace</small>
       </div>
-      {files.map((file) => (
-        <div className="file-row" key={file.path}>
-          <span>
-            <IconFiles />
-          </span>
-          <div>
-            <strong>{file.path}</strong>
-            <small>{file.size} bytes</small>
-          </div>
-        </div>
-      ))}
+      {files.map((file) => {
+        const src = workspaceMediaUrl(agentId, file.path);
+        const image = isImageHref(file.path);
+        return image ? (
+          <button className="file-row" key={file.path} type="button" onClick={() => onOpen(src, file.path)}>
+            <span>
+              <IconFiles />
+            </span>
+            <div>
+              <strong>{file.path}</strong>
+              <small>{file.size} bytes · tap to view</small>
+            </div>
+          </button>
+        ) : (
+          <a className="file-row" key={file.path} href={src} target="_blank" rel="noreferrer">
+            <span>
+              <IconFiles />
+            </span>
+            <div>
+              <strong>{file.path}</strong>
+              <small>{file.size} bytes</small>
+            </div>
+          </a>
+        );
+      })}
     </>
   );
 }
@@ -1274,6 +1394,7 @@ function AgentConversation({
   siriSignal,
   publishOk,
   onPrompt,
+  onOpenMedia,
 }: {
   agent: Agent;
   history: ChatMessage[];
@@ -1283,6 +1404,7 @@ function AgentConversation({
   siriSignal: SiriSignal;
   publishOk: boolean;
   onPrompt: (text: string) => void;
+  onOpenMedia: (src: string, alt?: string) => void;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -1318,7 +1440,7 @@ function AgentConversation({
       {history.map((item, index) =>
         item.role === "user" ? (
           <div className="bubble-user" key={`u-${index}`}>
-            <p>{item.content}</p>
+            <ChatCopy text={item.content} agentId={agent.id} onOpen={onOpenMedia} />
             <div className="meta-row">
               <span>Now</span>
               <IconTicks color="#53bdeb" />
@@ -1328,8 +1450,10 @@ function AgentConversation({
           <AssistantTurn
             key={`a-${index}`}
             item={item}
+            agentId={agent.id}
             showCard={showCard && index === history.length - 1}
             liveUrl={liveUrl}
+            onOpenMedia={onOpenMedia}
           />
         ),
       )}
@@ -1348,12 +1472,16 @@ function AgentConversation({
 
 function AssistantTurn({
   item,
+  agentId,
   showCard,
   liveUrl,
+  onOpenMedia,
 }: {
   item: ChatMessage;
+  agentId: string;
   showCard: boolean;
   liveUrl: string | null;
+  onOpenMedia: (src: string, alt?: string) => void;
 }) {
   const blocks = item.blocks ?? [];
   const textBlocks = blocks.filter((block) => block.type === "text" || block.type === "note");
@@ -1361,6 +1489,16 @@ function AssistantTurn({
   const text = textBlocks.map((block) => block.text).join("\n") || item.content;
   const showTyping = Boolean(item.streaming && !workBlocks.length && !text);
   const hostLabel = hostHost(liveUrl);
+  const toolText = workBlocks
+    .filter((block): block is Extract<TurnBlock, { type: "tool" }> => block.type === "tool")
+    .map((block) => `${block.detail}\n${block.result || ""}`)
+    .join("\n");
+  const inlineHrefs = new Set(
+    tokenizeChat(text)
+      .filter((part): part is Extract<ChatPart, { type: "image" }> => part.type === "image")
+      .map((part) => part.href),
+  );
+  const gallery = collectImageHrefs(text, toolText).filter((href) => !inlineHrefs.has(href));
 
   return (
     <div className="bubble-agent">
@@ -1371,13 +1509,36 @@ function AssistantTurn({
           <i />
         </div>
       )}
-      {workBlocks.length > 0 && <TurnBlocks blocks={workBlocks} streaming={item.streaming} />}
-      {text ? (
-        <p>
-          {text}
-          {item.streaming && <span className="cursor" />}
-        </p>
-      ) : null}
+      {workBlocks.length > 0 && (
+        <TurnBlocks blocks={workBlocks} streaming={item.streaming} agentId={agentId} onOpen={onOpenMedia} />
+      )}
+      {text ? <ChatCopy text={text} agentId={agentId} streaming={item.streaming} onOpen={onOpenMedia} /> : null}
+      {gallery.length > 0 && !item.streaming && (
+        <div className={gallery.length === 1 ? "chat-gallery one" : "chat-gallery"}>
+          {gallery.map((href) => {
+            const src = workspaceMediaUrl(agentId, href);
+            const label = normalizeWorkspacePath(href) || href;
+            return (
+              <a
+                key={href}
+                className="chat-thumb"
+                href={src}
+                onClick={(event) => {
+                  event.preventDefault();
+                  onOpenMedia(src, label);
+                }}
+              >
+              <img
+                src={src}
+                alt={label}
+                onError={(event) => event.currentTarget.closest("a")?.classList.add("is-missing")}
+              />
+                <small>{label}</small>
+              </a>
+            );
+          })}
+        </div>
+      )}
       {showCard && liveUrl && (
         <a className="site-card" href={liveUrl} target="_blank" rel="noreferrer">
           <span>
@@ -1399,7 +1560,97 @@ function AssistantTurn({
   );
 }
 
-function TurnBlocks({ blocks, streaming }: { blocks: TurnBlock[]; streaming?: boolean }) {
+function ChatCopy({
+  text,
+  agentId,
+  streaming,
+  onOpen,
+}: {
+  text: string;
+  agentId: string;
+  streaming?: boolean;
+  onOpen: (src: string, alt?: string) => void;
+}) {
+  return (
+    <p className="chat-copy">
+      {tokenizeChat(text).map((part, index) => {
+        if (part.type === "text") return <span key={index}>{part.value}</span>;
+        const src = workspaceMediaUrl(agentId, part.href);
+        if (part.type === "image") {
+          return (
+            <a
+              key={index}
+              className="chat-figure"
+              href={src}
+              onClick={(event) => {
+                event.preventDefault();
+                onOpen(src, part.alt || part.href);
+              }}
+            >
+              <img
+                src={src}
+                alt={part.alt || ""}
+                onError={(event) => event.currentTarget.closest("a")?.classList.add("is-missing")}
+              />
+            </a>
+          );
+        }
+        if (isImageHref(part.href)) {
+          return (
+            <a
+              key={index}
+              className="chat-file-link"
+              href={src}
+              onClick={(event) => {
+                event.preventDefault();
+                onOpen(src, part.label);
+              }}
+            >
+              {part.label}
+            </a>
+          );
+        }
+        return (
+          <a key={index} href={isRemoteSrc(part.href) ? part.href : src} target="_blank" rel="noreferrer">
+            {part.label}
+          </a>
+        );
+      })}
+      {streaming && <span className="cursor" />}
+    </p>
+  );
+}
+
+function MediaLightbox({ src, alt, onClose }: { src: string; alt?: string; onClose: () => void }) {
+  return (
+    <div className="media-lightbox" role="dialog" aria-modal="true" aria-label={alt || "Image"} onClick={onClose}>
+      <button className="media-close" type="button" onClick={onClose} aria-label="Close">
+        Close
+      </button>
+      <img
+        src={src}
+        alt={alt || ""}
+        onClick={(event) => event.stopPropagation()}
+      />
+      {alt ? <p>{alt}</p> : null}
+      <a href={src} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
+        Open original
+      </a>
+    </div>
+  );
+}
+
+function TurnBlocks({
+  blocks,
+  streaming,
+  agentId,
+  onOpen,
+}: {
+  blocks: TurnBlock[];
+  streaming?: boolean;
+  agentId: string;
+  onOpen: (src: string, alt?: string) => void;
+}) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   return (
     <div className="turn-stack">
@@ -1451,7 +1702,11 @@ function TurnBlocks({ blocks, streaming }: { blocks: TurnBlock[]; streaming?: bo
               </span>
               <span className="turn-meta">{running ? "" : block.isError ? "error" : ""}</span>
             </div>
-            {block.result ? <p className="turn-text">{block.result}</p> : null}
+            {block.result ? (
+              <div className="turn-text">
+                <ChatCopy text={block.result} agentId={agentId} onOpen={onOpen} />
+              </div>
+            ) : null}
           </div>
         );
       })}
@@ -1541,6 +1796,14 @@ function IconSearch(props: IconProps) {
     <svg {...svgProps(props, 18)} strokeWidth={2.2}>
       <circle cx="11" cy="11" r="7" />
       <path d="M20 20l-3.5-3.5" />
+    </svg>
+  );
+}
+function IconSettings(props: IconProps) {
+  return (
+    <svg {...svgProps(props, 18)} strokeWidth={2}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
   );
 }
