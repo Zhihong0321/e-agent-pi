@@ -15,6 +15,9 @@ const GOOGLE_AUTH_SCOPES = [
   "openid",
 ].join(" ");
 
+/** @type {{ process: import("node:child_process").ChildProcess; url: string | null; startedAt: number; output: string[] } | null} */
+let activeAuthSession = null;
+
 /**
  * Resolve the paths for persistent and user gemini credentials
  */
@@ -1266,16 +1269,30 @@ function renderTestAgyPage() {
     }
 
     async function startOAuth() {
+      const btn = event?.target || document.querySelector('#tab-p2 button');
+      const origText = btn ? btn.textContent : '';
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Generating Google Sign-In Link...';
+      }
+      document.getElementById('p2-out').textContent = 'Requesting Google OAuth authorization link...';
       try {
         const res = await fetch('/api/test-agy/auth/start', { method: 'POST' });
         const data = await res.json();
         if (data.authUrl) {
           document.getElementById('oauth-flow').style.display = 'block';
           document.getElementById('oauth-link').href = data.authUrl;
-          document.getElementById('p2-out').textContent = 'Generated OAuth URL:\\n' + data.authUrl + '\\n\\nInstructions:\\n' + data.instructions;
+          document.getElementById('p2-out').textContent = '✅ OAuth URL generated!\n\nClick the link below or open this URL in your browser:\n' + data.authUrl + '\n\nInstructions:\n' + (data.instructions || 'Sign in, copy code, and submit.');
+        } else {
+          document.getElementById('p2-out').textContent = 'Warning: ' + (data.error || 'No auth URL returned');
         }
       } catch (err) {
         document.getElementById('p2-out').textContent = 'Error starting OAuth: ' + err.message;
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = origText || '1. Generate Google OAuth Sign-In Link';
+        }
       }
     }
 
