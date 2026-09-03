@@ -126,6 +126,7 @@ let activeBundleKey = "";
 let forceNewPiSession = false;
 /** @type {Promise<void>} */
 let piLock = Promise.resolve();
+let turnsInFlight = 0;
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -476,8 +477,8 @@ async function ensurePiOnSession(session) {
   }
   if (!session.agentId) session.agentId = profile.id;
 
-  if (client && activeAgentId !== profile.id) {
-    await resetPi();
+  if (!client || activeAgentId !== profile.id) {
+    if (client) await resetPi();
     resumeSessionFile = session.piSessionFile ?? null;
   }
 
@@ -512,10 +513,11 @@ async function ensurePiOnSession(session) {
     } catch (error) {
       logEvent("warn", `Pi switch_session failed: ${sanitizeError(error)}`);
     }
+    logEvent("warn", `Pi session file missing, starting a new one for ${session.id}`);
   }
 
   const agentClient = client ?? pi;
-  const needNew = Boolean(session.piSessionId || session.piSessionFile || activeStudioSessionId || forceNewPiSession);
+  const needNew = Boolean(activeStudioSessionId || forceNewPiSession);
   if (needNew) {
     const created = await agentClient.newSession();
     if (created?.cancelled) throw new Error("Could not start a new agent session.");
@@ -702,46 +704,51 @@ function waitUntilAgentSettled(pi, inactivityMs = 300_000) {
 }
 
 async function chat(message, modelId, session, onEvent, images) {
-  if (modelId) await switchModel(modelId);
-  const pi = await ensurePiOnSession(session);
-  const turn = createTurn();
-  let assistantError = "";
-  const unsubscribe = pi.onEvent((event) => {
-    try {
-      const mapped = applyPiEvent(turn, event);
-      if (mapped) onEvent?.(mapped, turn);
-      if (event.type === "message_end" && event.message?.role === "assistant" && event.message?.errorMessage) {
-        assistantError = event.message.errorMessage;
-      }
-    } catch (error) {
-      logEvent("warn", `Pi event map failed: ${sanitizeError(error)}`);
-    }
-  });
-
-  const settled = waitUntilAgentSettled(pi);
+  turnsInFlight += 1;
   try {
-    onEvent?.({ type: "status", text: "Working…" }, turn);
-    await pi.prompt(message, images?.length ? images : undefined);
-    await settled;
-    const text = (await pi.getLastAssistantText())?.trim() || turn.text.trim();
-    if (text) {
-      turn.text = text;
-      if (!turn.blocks.some((block) => block.type === "text")) {
-        turn.blocks.push({ type: "text", text });
+    if (modelId) await switchModel(modelId);
+    const pi = await ensurePiOnSession(session);
+    const turn = createTurn();
+    let assistantError = "";
+    const unsubscribe = pi.onEvent((event) => {
+      try {
+        const mapped = applyPiEvent(turn, event);
+        if (mapped) onEvent?.(mapped, turn);
+        if (event.type === "message_end" && event.message?.role === "assistant" && event.message?.errorMessage) {
+          assistantError = event.message.errorMessage;
+        }
+      } catch (error) {
+        logEvent("warn", `Pi event map failed: ${sanitizeError(error)}`);
       }
+    });
+
+    const settled = waitUntilAgentSettled(pi);
+    try {
+      onEvent?.({ type: "status", text: "Working…" }, turn);
+      await pi.prompt(message, images?.length ? images : undefined);
+      await settled;
+      const text = (await pi.getLastAssistantText())?.trim() || turn.text.trim();
+      if (text) {
+        turn.text = text;
+        if (!turn.blocks.some((block) => block.type === "text")) {
+          turn.blocks.push({ type: "text", text });
+        }
+      }
+      if (!text && assistantError) throw new Error(assistantError);
+      if (!text && !turn.blocks.length) throw new Error("No response from agent.");
+      return turn;
+    } catch (error) {
+      settled.cancel();
+      const msg = error instanceof Error ? error.message : "";
+      if (msg.includes("silent before finishing")) {
+        await pi.abort().catch(() => {});
+      }
+      throw error;
+    } finally {
+      unsubscribe();
     }
-    if (!text && assistantError) throw new Error(assistantError);
-    if (!text && !turn.blocks.length) throw new Error("No response from agent.");
-    return turn;
-  } catch (error) {
-    settled.cancel();
-    const msg = error instanceof Error ? error.message : "";
-    if (msg.includes("silent before finishing")) {
-      await pi.abort().catch(() => {});
-    }
-    throw error;
   } finally {
-    unsubscribe();
+    turnsInFlight = Math.max(0, turnsInFlight - 1);
   }
 }
 
@@ -1213,7 +1220,16 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && pathname === "/api/health") {
-      json(res, 200, await snapshot());
+      // Railway hits this on a 30s timer. snapshot() walks git + the workspace and
+      // will fail the check (SIGTERM mid-turn) if a fetch hangs. Keep this cheap.
+      json(res, 200, {
+        ok: true,
+        boot,
+        db: { connected: dbReady() },
+        host: hostPublic(),
+        activeModelId,
+        piClient: Boolean(client),
+      });
       return;
     }
 
@@ -1712,7 +1728,7 @@ server.listen(PORT, HOST, () => {
 });
 
 async function shutdown() {
-  logEvent("info", "shutdown");
+  logEvent("info", turnsInFlight ? `shutdown during ${turnsInFlight} in-flight turn(s)` : "shutdown");
   stopSampler();
   if (client) await client.stop().catch(() => {});
   await closeBrowsers().catch(() => {});

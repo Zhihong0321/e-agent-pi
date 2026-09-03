@@ -1,4 +1,14 @@
 import { useEffect, useRef, useState, type SVGProps } from "react";
+import {
+  ChatCopy,
+  IMAGE_EXT_RE,
+  collectImageHrefs,
+  isImageHref,
+  normalizeWorkspacePath,
+  tokenizeChat,
+  workspaceMediaUrl,
+  type ChatPart,
+} from "./chat-markdown";
 
 type Tab = "chats" | "agents" | "live" | "files";
 type View = Tab | "chat";
@@ -150,6 +160,13 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return data;
 }
 
+const CONTINUE_PROMPT =
+  "The previous turn was cut off by a host restart. Continue the same task immediately from where you left off. Do not wait. Do not ask the user to confirm.";
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 function parseTranscript(content: string): { text?: string; blocks?: TurnBlock[]; streaming?: boolean } | null {
   if (!content || content[0] !== "{") return null;
   try {
@@ -298,95 +315,6 @@ function hostHost(url: string | null | undefined) {
   }
 }
 
-const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|svg|avif|bmp)(?:\?|#|$)/i;
-const CHAT_TOKEN_RE =
-  /!\[([^\]]*)\]\(([^)\s]+)\)|\[([^\]]+)\]\(([^)\s]+)\)|(https?:\/\/[^\s<>"'`)\]]+)|`((?:[\w./@-]+)\.(?:png|jpe?g|gif|webp|svg|avif|bmp))`|(^|[\s|([{'"])((?:[\w./@-]+)\.(?:png|jpe?g|gif|webp|svg|avif|bmp))/gi;
-
-type ChatPart =
-  | { type: "text"; value: string }
-  | { type: "image"; href: string; alt: string }
-  | { type: "link"; href: string; label: string };
-
-function stripHrefJunk(href: string) {
-  return href.replace(/[.,;:!?)]+$/, "");
-}
-
-function isRemoteSrc(src: string) {
-  return /^(https?:\/\/|data:)/i.test(src);
-}
-
-function isImageHref(href: string) {
-  if (/^data:image\//i.test(href)) return true;
-  return IMAGE_EXT_RE.test((href.split("?")[0] || href).split("#")[0]);
-}
-
-function normalizeWorkspacePath(src: string) {
-  let s = src.trim().replace(/\\/g, "/");
-  s = s.replace(/^<|>$/g, "");
-  s = s.replace(/^file:\/\//i, "");
-  s = s.replace(/^\/storage\/workspaces\/[^/]+\//, "");
-  s = s.replace(/^\/storage\/workspace\//, "");
-  s = s.replace(/^\.\//, "");
-  if (!s || s.includes("://")) return "";
-  return s;
-}
-
-function workspaceMediaUrl(agentId: string, src: string) {
-  if (isRemoteSrc(src)) return src;
-  const rel = normalizeWorkspacePath(src);
-  if (!rel) return src;
-  const query = new URLSearchParams({ path: rel });
-  if (agentId) query.set("agent", agentId);
-  return `/api/files/raw?${query.toString()}`;
-}
-
-function tokenizeChat(text: string): ChatPart[] {
-  const parts: ChatPart[] = [];
-  let last = 0;
-  CHAT_TOKEN_RE.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = CHAT_TOKEN_RE.exec(text))) {
-    if (match.index > last) parts.push({ type: "text", value: text.slice(last, match.index) });
-    if (match[1] != null && match[2]) {
-      parts.push({ type: "image", alt: match[1], href: stripHrefJunk(match[2]) });
-    } else if (match[3] != null && match[4]) {
-      parts.push({ type: "link", label: match[3], href: stripHrefJunk(match[4]) });
-    } else if (match[5]) {
-      const href = stripHrefJunk(match[5]);
-      parts.push({ type: "link", label: href, href });
-    } else if (match[6]) {
-      parts.push({ type: "link", label: match[6], href: match[6] });
-    } else if (match[8]) {
-      if (match[7]) parts.push({ type: "text", value: match[7] });
-      parts.push({ type: "link", label: match[8], href: match[8] });
-    }
-    last = match.index + match[0].length;
-  }
-  if (last < text.length) parts.push({ type: "text", value: text.slice(last) });
-  return parts.length ? parts : [{ type: "text", value: text }];
-}
-
-function collectImageHrefs(...chunks: string[]): string[] {
-  const seen = new Set<string>();
-  const found: string[] = [];
-  const add = (raw: string) => {
-    const href = stripHrefJunk(raw.trim());
-    if (!href || !isImageHref(href)) return;
-    const key = href.toLowerCase();
-    if (seen.has(key)) return;
-    seen.add(key);
-    found.push(href);
-  };
-  const blob = chunks.filter(Boolean).join("\n");
-  for (const part of tokenizeChat(blob)) {
-    if (part.type === "image" || part.type === "link") add(part.href);
-  }
-  const jsonPath = /"(?:path|out|file|filename|url|src)"\s*:\s*"([^"]+)"/gi;
-  let match: RegExpExecArray | null;
-  while ((match = jsonPath.exec(blob))) add(match[1]);
-  return found;
-}
-
 function userVisibleContent(text: string, files: PendingFile[]) {
   const bits: string[] = [];
   if (text) bits.push(text);
@@ -455,6 +383,7 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const historyLoad = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
+  const resumeAttempt = useRef(0);
   const selected = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0] ?? FALLBACK_AGENT;
 
   const inChat = view === "chat";
@@ -663,12 +592,17 @@ export default function Home() {
     }
   };
 
-  const send = async (text = message) => {
+  const send = async (text = message, opts?: { resume?: boolean; sessionId?: string }) => {
+    const resume = Boolean(opts?.resume);
     const trimmed = text.trim();
-    const files = pendingFiles;
-    if ((!trimmed && !files.length) || loading) return;
-    historyLoad.current += 1;
-    let activeId = sessionId;
+    const files = resume ? [] : pendingFiles;
+    if (!resume && ((!trimmed && !files.length) || loading)) return;
+    if (resume && abortRef.current?.signal.aborted) return;
+    if (!resume) {
+      resumeAttempt.current = 0;
+      historyLoad.current += 1;
+    }
+    let activeId = opts?.sessionId || sessionId;
     const agent = selected;
     if (!activeId) {
       try {
@@ -685,20 +619,23 @@ export default function Home() {
         return;
       }
     }
-    abortRef.current?.abort();
-    const ac = new AbortController();
-    abortRef.current = ac;
-    setMessage("");
-    setPendingFiles([]);
-    setError("");
-    setPublishOk(false);
-    setLoading(true);
-    setLiveStatus("Working…");
-    setHistory((prev) => [
-      ...prev,
-      { role: "user", content: userVisibleContent(trimmed, files), sessionId: activeId },
-      { role: "assistant", content: "", blocks: [], streaming: true, sessionId: activeId },
-    ]);
+    const ac =
+      resume && abortRef.current && !abortRef.current.signal.aborted ? abortRef.current : new AbortController();
+    if (!resume) {
+      abortRef.current?.abort();
+      abortRef.current = ac;
+      setMessage("");
+      setPendingFiles([]);
+      setError("");
+      setPublishOk(false);
+      setLoading(true);
+      setLiveStatus("Working…");
+      setHistory((prev) => [
+        ...prev,
+        { role: "user", content: userVisibleContent(trimmed, files), sessionId: activeId },
+        { role: "assistant", content: "", blocks: [], streaming: true, sessionId: activeId },
+      ]);
+    }
     const patchAssistant = (updater: (msg: ChatMessage) => ChatMessage) => {
       setHistory((prev) => {
         const next = [...prev];
@@ -708,6 +645,22 @@ export default function Home() {
         return next;
       });
     };
+    const finishStopped = () => {
+      patchAssistant((msg) => ({
+        ...msg,
+        streaming: false,
+        content: msg.content || "Stopped.",
+        blocks: (msg.blocks ?? []).map((block) => (block.type === "tool" ? { ...block, running: false } : block)),
+      }));
+    };
+    const finishIdle = () => {
+      if (abortRef.current === ac) abortRef.current = null;
+      setLoading(false);
+      setLiveStatus("");
+      setHistory((prev) => prev.map((msg) => (msg.streaming ? { ...msg, streaming: false } : msg)));
+    };
+    let gotDone = false;
+    let retry = false;
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -721,54 +674,77 @@ export default function Home() {
         }),
         signal: ac.signal,
       });
-      await readSse(res, (event) => {
-        if (event.status) setLiveStatus(event.status);
-        if (event.type === "thinking" || event.type === "text" || event.type === "tool" || event.type === "note") {
-          patchAssistant((msg) => ({
-            ...msg,
-            blocks: applyStreamEvent(msg.blocks ?? [], event),
-            content: event.type === "text" ? msg.content + (event.delta ?? "") : msg.content,
-          }));
-        }
-        if (event.type === "done") {
-          patchAssistant((msg) => ({
-            ...msg,
-            content: event.reply ?? msg.content,
-            blocks: event.blocks ?? msg.blocks,
-            streaming: false,
-          }));
-          if (event.session) {
-            setSessions((prev) => {
-              const rest = prev.filter((session) => session.id !== event.session!.id);
-              return [{ ...event.session!, preview: event.reply || trimmed }, ...rest];
-            });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        if (res.status >= 500 || res.status === 408 || res.status === 429) retry = true;
+        else throw new Error(data.error ?? "Request failed");
+      } else {
+        await readSse(res, (event) => {
+          if (event.status) setLiveStatus(event.status);
+          if (event.type === "thinking" || event.type === "text" || event.type === "tool" || event.type === "note") {
+            patchAssistant((msg) => ({
+              ...msg,
+              blocks: applyStreamEvent(msg.blocks ?? [], event),
+              content: event.type === "text" ? msg.content + (event.delta ?? "") : msg.content,
+            }));
           }
-        }
-        if (event.type === "host" && event.host) {
-          setHost(event.host);
-          const failed = Boolean(event.host.lastError);
-          const pushed = event.host.pushed ?? event.host.git?.pushed;
-          setPublishOk(!failed && (pushed === true || (event.host.git == null && !failed)));
-        }
-        if (event.type === "error" && event.error) setError(event.error);
-      });
+          if (event.type === "done") {
+            gotDone = true;
+            patchAssistant((msg) => ({
+              ...msg,
+              content: resume && event.reply ? `${msg.content}\n\n${event.reply}`.trim() : (event.reply ?? msg.content),
+              blocks: resume && event.blocks ? [...(msg.blocks ?? []), ...event.blocks] : (event.blocks ?? msg.blocks),
+              streaming: false,
+            }));
+            if (event.session) {
+              setSessions((prev) => {
+                const rest = prev.filter((session) => session.id !== event.session!.id);
+                return [{ ...event.session!, preview: event.reply || trimmed }, ...rest];
+              });
+            }
+          }
+          if (event.type === "host" && event.host) {
+            setHost(event.host);
+            const failed = Boolean(event.host.lastError);
+            const pushed = event.host.pushed ?? event.host.git?.pushed;
+            setPublishOk(!failed && (pushed === true || (event.host.git == null && !failed)));
+          }
+          if (event.type === "error" && event.error) setError(event.error);
+        });
+        if (!gotDone && !ac.signal.aborted) retry = true;
+      }
     } catch (err) {
       if ((err as { name?: string }).name === "AbortError") {
-        patchAssistant((msg) => ({
-          ...msg,
-          streaming: false,
-          content: msg.content || "Stopped.",
-          blocks: (msg.blocks ?? []).map((block) => (block.type === "tool" ? { ...block, running: false } : block)),
-        }));
-      } else {
-        setError(err instanceof Error ? err.message : "Agent request failed");
+        finishStopped();
+        finishIdle();
+        return;
       }
-    } finally {
-      if (abortRef.current === ac) abortRef.current = null;
-      setLoading(false);
-      setLiveStatus("");
-      setHistory((prev) => prev.map((msg) => (msg.streaming ? { ...msg, streaming: false } : msg)));
+      retry = true;
+      if (!resume) setError(err instanceof Error ? err.message : "Agent request failed");
     }
+    if (retry && !ac.signal.aborted && resumeAttempt.current < 8) {
+      resumeAttempt.current += 1;
+      setError("");
+      setLiveStatus("Host dropped the turn — continuing…");
+      setLoading(true);
+      patchAssistant((msg) => {
+        const note = "Host restarted mid-turn. Continuing…";
+        const blocks = msg.blocks ?? [];
+        if (blocks.some((block) => block.type === "note" && block.text === note)) return msg;
+        return { ...msg, streaming: true, blocks: [...blocks, { type: "note", text: note }] };
+      });
+      await sleep(Math.min(12_000, 1500 * resumeAttempt.current + 1500));
+      if (ac.signal.aborted) {
+        finishStopped();
+        finishIdle();
+        return;
+      }
+      return send(CONTINUE_PROMPT, { resume: true, sessionId: activeId });
+    }
+    if (retry && !ac.signal.aborted) {
+      setError("Host kept dropping the turn. Send another message to resume.");
+    }
+    finishIdle();
   };
 
   const stop = () => {
@@ -1557,67 +1533,6 @@ function AssistantTurn({
         </div>
       )}
     </div>
-  );
-}
-
-function ChatCopy({
-  text,
-  agentId,
-  streaming,
-  onOpen,
-}: {
-  text: string;
-  agentId: string;
-  streaming?: boolean;
-  onOpen: (src: string, alt?: string) => void;
-}) {
-  return (
-    <p className="chat-copy">
-      {tokenizeChat(text).map((part, index) => {
-        if (part.type === "text") return <span key={index}>{part.value}</span>;
-        const src = workspaceMediaUrl(agentId, part.href);
-        if (part.type === "image") {
-          return (
-            <a
-              key={index}
-              className="chat-figure"
-              href={src}
-              onClick={(event) => {
-                event.preventDefault();
-                onOpen(src, part.alt || part.href);
-              }}
-            >
-              <img
-                src={src}
-                alt={part.alt || ""}
-                onError={(event) => event.currentTarget.closest("a")?.classList.add("is-missing")}
-              />
-            </a>
-          );
-        }
-        if (isImageHref(part.href)) {
-          return (
-            <a
-              key={index}
-              className="chat-file-link"
-              href={src}
-              onClick={(event) => {
-                event.preventDefault();
-                onOpen(src, part.label);
-              }}
-            >
-              {part.label}
-            </a>
-          );
-        }
-        return (
-          <a key={index} href={isRemoteSrc(part.href) ? part.href : src} target="_blank" rel="noreferrer">
-            {part.label}
-          </a>
-        );
-      })}
-      {streaming && <span className="cursor" />}
-    </p>
   );
 }
 

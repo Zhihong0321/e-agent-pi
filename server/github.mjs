@@ -112,14 +112,29 @@ function git(args, cwd, token = null) {
     });
     let stdout = "";
     let stderr = "";
+    let done = false;
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      child.kill("SIGTERM");
+      reject(new Error(sanitizeGit(`git ${args[0]} timed out`)));
+    }, 45_000);
     child.stdout.on("data", (chunk) => {
       stdout += chunk;
     });
     child.stderr.on("data", (chunk) => {
       stderr += chunk;
     });
-    child.on("error", (error) => reject(new Error(sanitizeGit(error.message))));
+    child.on("error", (error) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      reject(new Error(sanitizeGit(error.message)));
+    });
     child.on("close", (code) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
       if (code !== 0) {
         reject(new Error(sanitizeGit(stderr || stdout || `git ${args[0]} failed`)));
         return;
@@ -325,7 +340,8 @@ export async function initWorkspace() {
     } else {
       await configureIdentityAt(WORKSPACE);
       await git(["remote", "set-url", "origin", originUrl(config.repo)], WORKSPACE);
-      await git(["fetch", "origin", config.branch], WORKSPACE, config.token);
+      await enableLocalPushAuth(WORKSPACE, config.token);
+      await git(["fetch", "origin", config.branch], WORKSPACE);
       if (!(await isDirty(WORKSPACE))) {
         await git(["reset", "--hard", `origin/${config.branch}`], WORKSPACE);
       }
@@ -367,9 +383,10 @@ export async function syncWorkspace(message = "Website Dev Agent: workspace upda
     }
 
     await configureIdentityAt(WORKSPACE);
+    await enableLocalPushAuth(WORKSPACE, config.token);
     await git(["add", "-A"], WORKSPACE);
     await git(["commit", "-m", message], WORKSPACE);
-    await git(["push", "origin", `HEAD:${config.branch}`], WORKSPACE, config.token);
+    await git(["push", "origin", `HEAD:${config.branch}`], WORKSPACE);
     const sha = await currentSha(WORKSPACE);
     if (sha) await saveSetting("last_commit_sha", sha);
     await recordSync({ repo: WEBSITE_SYNC_REPO, sha, status: "ok", message: "pushed" });
@@ -471,9 +488,11 @@ export async function initGitWorkspace(opts) {
       }
       await git(["clone", "--branch", config.branch, "--single-branch", originUrl(config.repo), "."], dir, token);
       await git(["remote", "set-url", "origin", originUrl(config.repo)], dir);
+      await enableLocalPushAuth(dir, token);
     } else {
       await git(["remote", "set-url", "origin", originUrl(config.repo)], dir);
-      await git(["fetch", "origin", config.branch], dir, token);
+      await enableLocalPushAuth(dir, token);
+      await git(["fetch", "origin", config.branch], dir);
       await ensureOnConfiguredBranch(dir, config.branch);
       const dirty = await isDirty(dir);
       let ahead = await commitsAhead(dir, config.branch);
@@ -550,7 +569,7 @@ export async function syncGitWorkspace(opts) {
       }
     }
     try {
-      await git(["fetch", "origin", config.branch], dir, config.token);
+      await git(["fetch", "origin", config.branch], dir);
     } catch {
       // Public fetch can fail with a bad token; still try to push local commits.
     }
@@ -558,7 +577,7 @@ export async function syncGitWorkspace(opts) {
     if (ahead < 1) {
       return getGitWorkspaceStatus({ dir, repo: config.repo, branch: config.branch, pushed: false });
     }
-    await git(["push", "origin", `HEAD:${config.branch}`], dir, config.token);
+    await git(["push", "origin", `HEAD:${config.branch}`], dir);
     const sha = await currentSha(dir);
     await recordSync({ repo: config.repo, sha, status: "ok", message: `${config.repo} pushed` });
     return getGitWorkspaceStatus({ dir, repo: config.repo, branch: config.branch, pushed: true });
