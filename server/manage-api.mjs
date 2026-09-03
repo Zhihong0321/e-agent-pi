@@ -6,6 +6,7 @@
  *   POST   /api/manage/scrapling          { force?, agent? }
  *   GET    /api/manage/agents
  *   POST   /api/manage/agents             { name, rolePrompt?, scrapling?, skillIds?, mcpIds? }
+ *          scrapling defaults to true (skill + MCP attached)
  *   GET    /api/manage/agents/:id
  *   PATCH  /api/manage/agents/:id
  *   DELETE /api/manage/agents/:id
@@ -26,7 +27,6 @@ import {
   publicMcp,
   publicSkill,
   updateAgent,
-  WEBSITE_AGENT_ID,
 } from "./catalog.mjs";
 import { dbReady } from "./db.mjs";
 import { ensureScraplingForWebsite, scraplingPublic } from "./scrapling.mjs";
@@ -95,9 +95,8 @@ export async function handleManage(req, res, url, ctx) {
   if (method === "POST" && pathname === "/api/manage/scrapling") {
     const body = JSON.parse((await readBody(req)) || "{}");
     const result = await ensureScraplingForWebsite({ force: Boolean(body.force) });
-    const agentRef = typeof body.agent === "string" && body.agent.trim() ? body.agent.trim() : WEBSITE_AGENT_ID;
-    if (agentRef !== WEBSITE_AGENT_ID && agentRef !== "website") {
-      await attachAgentResources(agentRef, {
+    if (typeof body.agent === "string" && body.agent.trim()) {
+      await attachAgentResources(body.agent.trim(), {
         skills: ["scrapling-official"],
         mcp: result.mcp?.attached ? ["scrapling"] : [],
       });
@@ -118,15 +117,7 @@ export async function handleManage(req, res, url, ctx) {
       json(res, 400, { error: "name is required" });
       return true;
     }
-    let agent = await createAgent(body);
-    if (body.scrapling) {
-      const installed = await ensureScraplingForWebsite();
-      const mcp = installed.mcp?.attached ? ["scrapling"] : [];
-      agent = await attachAgentResources(agent.id, {
-        skills: ["scrapling-official"],
-        mcp,
-      });
-    }
+    const agent = await createAgent(body);
     json(res, 201, { agent: publicAgent(agent, { includeRole: true }) });
     return true;
   }

@@ -55,6 +55,7 @@ Volume layout is listed under **Agents = Role + Skills + MCP**.
 - Each studio chat belongs to one agent and is its own Pi session. New chat does not reuse another chat's memory.
 - After file edits, the **host** zips the workspace and publishes to ee-html; the agent must not git-commit, deploy, or call the host API.
 - **Proposal Agent** is the exception: it edits a separate clone of `Zhihong0321/ee-proposal`. The host commits and pushes; Railway deploys the live proposal. The agent still must not run git itself.
+- **Package Updater** maintains `package` / `package_item` / `product` in `prod_main` through the Postgres proxy. It does not publish a site.
 - Live site (Website Dev Agent): `https://ee-html.up.railway.app/app/<slug>/` (default slug `e-agent-site`)
 - Live site (Proposal Agent): `https://ee-proposal-production.up.railway.app/shell.html#proposal`
 
@@ -87,13 +88,13 @@ Install **does not** attach. A skill written to the library stays unused until i
 
 After attach, the next chat with that agent restarts Pi with the new bundle.
 
-Website Dev Agent is seeded with the **Impeccable** design skill ([docs](https://impeccable.style/docs/)), **Scrapling** (skill + MCP) for live page fetches, and **spawn-subagents** (in-process scout/researcher/worker/reviewer children). **Proposal Agent** is seeded with `update-proposal` + spawn-subagents. It clones [Zhihong0321/ee-proposal](https://github.com/Zhihong0321/ee-proposal) into `/storage/workspaces/proposal`, edits from text/image/PDF, and the host git-pushes so Railway deploys https://ee-proposal-production.up.railway.app/shell.html#proposal. Settings Agent does not get Impeccable, Scrapling, or spawn-subagents. Boot always reloads Website Dev Agent's role from `agent/ROLE.md` so the git/GitHub ban and ee-html rules actually apply (Postgres used to keep the first seed forever).
+Website Dev Agent is seeded with the **Impeccable** design skill ([docs](https://impeccable.style/docs/)), **Scrapling** (skill + MCP) for live page fetches, and **spawn-subagents** (in-process scout/researcher/worker/reviewer children). **Proposal Agent** is seeded with `update-proposal` + spawn-subagents. It clones [Zhihong0321/ee-proposal](https://github.com/Zhihong0321/ee-proposal) into `/storage/workspaces/proposal`, edits from text/image/PDF, and the host git-pushes so Railway deploys https://ee-proposal-production.up.railway.app/shell.html#proposal. **Scrapling is default on every agent**, including Settings Agent. Boot always reloads Website Dev Agent's role from `agent/ROLE.md` so the git/GitHub ban and ee-html rules actually apply (Postgres used to keep the first seed forever).
 
 On boot the host runs `npx impeccable install --providers=pi --scope=project` in a staging directory, copies `.pi/skills/impeccable` into `/storage/library/skills/impeccable`, and attaches it to Website Dev Agent. It does **not** install into the GitHub workspace — that would commit the pack into the site repo, and Pi would not load it anyway (`--no-skills` plus `--skill <library path>`).
 
 `/impeccable init` writes `PRODUCT.md` (and later `DESIGN.md`) in the workspace; those files *are* site artifacts and should sync. Refresh the pack with Settings Agent: `node $CLOUD_PI_CATALOG skills install-impeccable --force`.
 
-On boot the host also downloads the official Scrapling Agent Skill zip into `/storage/library/skills/scrapling-official`, registers the `scrapling` MCP server (`/opt/scrapling/bin/scrapling mcp`), and attaches both to Website Dev Agent. The Docker image installs Python, `scrapling[all]`, and Chromium. Refresh with `node $CLOUD_PI_CATALOG skills install-scrapling --force`.
+On boot the host also downloads the official Scrapling Agent Skill zip into `/storage/library/skills/scrapling-official`, registers the `scrapling` MCP server (`/opt/scrapling/bin/scrapling mcp`), and attaches both to **every** agent. New agents get the same grant. The Docker image installs Python, `scrapling[all]`, and Chromium. Refresh with `node $CLOUD_PI_CATALOG skills install-scrapling --force`.
 
 ### Settings vs studio
 
@@ -109,6 +110,7 @@ On boot the host also downloads the official Scrapling Agent Skill zip into `/st
 | `/storage/storage` | Pi session dir |
 | `/storage/pi` | Shared Pi models.json |
 | `/storage/library/skills` | Host skill library (install target) |
+| `/storage/browser/profiles` | Persistent Chromium profiles (site logins) |
 | `/storage/runtime/<agent-id>` | Per-agent Pi dir (role, mcp.json, settings) |
 
 ## Code map
@@ -120,13 +122,16 @@ On boot the host also downloads the official Scrapling Agent Skill zip into `/st
 | `src/main.tsx` | `/settings` vs studio |
 | `agent/ROLE.md` | Seed prompt for Website Dev Agent |
 | `agent/roles/proposal.md` | Seed prompt for Proposal Agent |
+| `agent/roles/package.md` | Seed prompt for Package Updater (prod_main catalog) |
 | `agent/roles/settings.md` | Seed prompt for Settings Agent |
 | `agent/skills/` | Bundled skills copied into the host library on boot |
 | `server/catalog-cli.mjs` | Chat-side catalog CLI (`CLOUD_PI_CATALOG`) |
 | `agent/model-catalog.json` | Luna + Kimi catalog |
 | `server/catalog.mjs` | `agents`, `skills`, `mcp_servers`, attachments |
 | `server/impeccable.mjs` | Official Impeccable Pi skill → library + Website Dev Agent |
-| `server/scrapling.mjs` | Official Scrapling skill zip + MCP → library + Website Dev Agent |
+| `server/scrapling.mjs` | Official Scrapling skill zip + MCP → library + every agent |
+| `server/sites.mjs` | Per-site username/password + persistent headless login |
+| `server/newpages.mjs` | NEWPAGES merchant news CRUD (first site automation) |
 | `server/runtime.mjs` | Per-agent Pi dir + `--no-skills --skill` args + optional subagent extension |
 | `agent/extensions/subagents.ts` | In-process `spawn_subagent` for Cloud Pi (not a third-party npm package) |
 | `agent/skills/spawn-subagents/` | Skill that teaches when to delegate; attaching it also loads the extension |

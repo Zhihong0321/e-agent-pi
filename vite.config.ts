@@ -54,11 +54,14 @@ export default defineConfig({
     host: "127.0.0.1",
     port: 47821,
     strictPort: true,
+    watch: {
+      ignored: ["**/*.zip"],
+    },
     proxy: {
       "/api": {
         target: "http://127.0.0.1:47831",
-        timeout: 310000,
-        proxyTimeout: 310000,
+        timeout: 3_600_000,
+        proxyTimeout: 3_600_000,
       },
     },
   },
@@ -68,8 +71,8 @@ export default defineConfig({
     proxy: {
       "/api": {
         target: "http://127.0.0.1:47831",
-        timeout: 310000,
-        proxyTimeout: 310000,
+        timeout: 3_600_000,
+        proxyTimeout: 3_600_000,
       },
     },
   },

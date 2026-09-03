@@ -7,11 +7,12 @@ import {
   attachAgentResources,
   createMcpServer,
   getMcpServer,
+  getSkill,
+  listAgents,
   publicMcp,
   publicSkill,
   registerSkillDir,
   updateMcpServer,
-  WEBSITE_AGENT_ID,
 } from "./catalog.mjs";
 import { SKILLS_DIR } from "./paths.mjs";
 
@@ -224,32 +225,66 @@ async function ensureScraplingMcp() {
   };
   const existing = await getMcpServer(SCRAPLING_MCP_SLUG);
   const server = existing ? await updateMcpServer(existing.id, payload) : await createMcpServer(payload);
-  await attachAgentResources(WEBSITE_AGENT_ID, { mcp: [SCRAPLING_MCP_SLUG] });
   return { attached: true, server: publicMcp(server) };
 }
 
 /**
- * Install the skill pack, register it, attach skill + MCP to Website Dev Agent.
+ * Attach Scrapling skill + MCP to one agent if they exist in the library.
+ * @param {string} agentRef
+ */
+export async function grantScraplingToAgent(agentRef) {
+  const skills = (await getSkill(SCRAPLING_SKILL_SLUG)) ? [SCRAPLING_SKILL_SLUG] : [];
+  const mcp = (await getMcpServer(SCRAPLING_MCP_SLUG)) ? [SCRAPLING_MCP_SLUG] : [];
+  if (!skills.length && !mcp.length) return null;
+  return attachAgentResources(agentRef, { skills, mcp });
+}
+
+/**
+ * Attach Scrapling to every agent on the host.
+ */
+export async function attachScraplingToAllAgents() {
+  const agents = await listAgents();
+  const attached = [];
+  for (const agent of agents) {
+    const next = await grantScraplingToAgent(agent.id);
+    attached.push({
+      id: agent.id,
+      slug: agent.slug,
+      attached: Boolean(next),
+    });
+  }
+  return attached;
+}
+
+/**
+ * Install the skill pack, register MCP, attach skill + MCP to every agent.
  *
  * @param {{ force?: boolean }} [opts]
  */
 export async function ensureScraplingForWebsite({ force = false } = {}) {
+  return ensureScraplingDefault({ force });
+}
+
+/**
+ * @param {{ force?: boolean }} [opts]
+ */
+export async function ensureScraplingDefault({ force = false } = {}) {
   const installed = await installScraplingSkill({ force });
   const skill = await registerSkillDir({
     slug: SCRAPLING_SKILL_SLUG,
     source: "scrapling",
     sourceUrl: SCRAPLING_DOCS,
   });
-  const agent = await attachAgentResources(WEBSITE_AGENT_ID, { skills: [SCRAPLING_SKILL_SLUG] });
   const mcp = await ensureScraplingMcp();
+  const agents = await attachScraplingToAllAgents();
   return {
     skipped: installed.skipped,
     dest: installed.dest,
     skill: publicSkill(skill),
     mcp,
-    attachedTo: agent.slug,
+    attachedTo: agents.filter((row) => row.attached).map((row) => row.slug),
     bin: scraplingBinPath(),
     binPresent: await scraplingBinExists(),
-    note: "Attached to Website Dev Agent. Next chat with that agent loads Scrapling. Do not copy the pack into the workspace.",
+    note: "Scrapling is default on every agent. Next chat with an agent loads it. Do not copy the pack into a workspace.",
   };
 }

@@ -5,11 +5,11 @@ description: Install skills and MCP on this Cloud Pi host and attach them to spe
 
 # Manage host settings from chat
 
-This skill is for **Settings Agent** only. Do not attach it to Website Dev Agent or Proposal Agent.
+This skill is for **Settings Agent** only. Do not attach it to Website Dev Agent, Proposal Agent, NEWPAGES Site Manager, or Package Updater.
 
 The catalog CLI is `node "$CLOUD_PI_CATALOG"`. Always print JSON. Parse `ok` before telling the user it worked.
 
-Agents include `website`, `settings`, and `proposal` (Eternalgy solar proposal).
+Agents include `website`, `settings`, `proposal` (Eternalgy solar proposal), `newpages` (NEWPAGES Site Manager), and `package` (Package Updater).
 
 ## Mental model
 
@@ -65,9 +65,21 @@ node "$CLOUD_PI_CATALOG" skills install-impeccable
 node "$CLOUD_PI_CATALOG" skills install-impeccable --force
 ```
 
-## Refresh Scrapling (Website Dev Agent)
+## Site logins (headless browser)
 
-Official scrape skill pack plus the host `scrapling` MCP server. Installs into the library and attaches to Website Dev Agent only. Runtime (`scrapling` CLI, Chromium) ships in the Docker image — do not pip install on the server.
+Operator usernames/passwords live on Settings → Sites. Pi uses:
+
+```bash
+node "$CLOUD_PI_SITES" status
+node "$CLOUD_PI_SITES" login newpages
+node "$CLOUD_PI_SITES" np news
+```
+
+The first site is NEWPAGES merchant. Session persists in `/storage/browser/profiles/<slug>`.
+
+## Refresh Scrapling (all agents)
+
+Official scrape skill pack plus the host `scrapling` MCP server. Installs into the library and attaches to **every** agent by default (including new agents). Runtime (`scrapling` CLI, Chromium) ships in the Docker image — do not pip install on the server.
 
 ```bash
 node "$CLOUD_PI_CATALOG" skills install-scrapling

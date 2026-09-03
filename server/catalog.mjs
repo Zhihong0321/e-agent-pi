@@ -5,8 +5,11 @@ import { getPool } from "./db.mjs";
 import {
   BUNDLED_SKILLS,
   DEFAULT_AGENT_ID,
+  DEFAULT_NEWPAGES_LIVE_URL,
   DEFAULT_PROPOSAL_LIVE_URL,
   DEFAULT_PROPOSAL_REPO,
+  NEWPAGES_AGENT_ID,
+  NEWPAGES_ROLE_FILE,
   OPS_AGENT_ID,
   PACKAGE_AGENT_ID,
   PACKAGE_ROLE_FILE,
@@ -262,7 +265,22 @@ export async function createAgent(input = {}) {
   );
   const agent = mapAgent(result.rows[0]);
   await setAgentAttachments(agent.id, input.skillIds, input.mcpIds);
-  return getAgent(agent.id);
+  let created = await getAgent(agent.id);
+  if (input.scrapling !== false) {
+    try {
+      const { grantScraplingToAgent } = await import("./scrapling.mjs");
+      created = (await grantScraplingToAgent(created.id)) || created;
+    } catch {
+      // Skill library is installed after first-boot seed.
+    }
+  }
+  try {
+    const siteSkill = await getSkill("site-browser");
+    if (siteSkill) created = await attachAgentResources(created.id, { skills: ["site-browser"] });
+  } catch {
+    // Bundled skill lands on first rescan.
+  }
+  return created;
 }
 
 /**
@@ -347,6 +365,9 @@ export async function attachAgentResources(agentRef, { skills = [], mcp = [], de
         agent.slug === "website" ||
         agent.id === PROPOSAL_AGENT_ID ||
         agent.slug === "proposal" ||
+        agent.id === NEWPAGES_AGENT_ID ||
+        agent.slug === "newpages" ||
+        agent.slug === "newpages-site-manager" ||
         agent.id === PACKAGE_AGENT_ID ||
         agent.slug === "package" ||
         agent.slug === "package-updater")
@@ -365,6 +386,17 @@ export async function attachAgentResources(agentRef, { skills = [], mcp = [], de
   return updateAgent(agent.id, { skillIds, mcpIds });
 }
 
+export async function attachSkillToAllAgents(slug) {
+  const skill = await getSkill(slug);
+  if (!skill) return [];
+  const agents = await listAgents();
+  const attached = [];
+  for (const agent of agents) {
+    attached.push(await attachAgentResources(agent.id, { skills: [slug] }));
+  }
+  return attached;
+}
+
 export async function deleteAgent(id) {
   const agent = await getAgent(id);
   if (!agent) return false;
@@ -376,6 +408,9 @@ export async function deleteAgent(id) {
   }
   if (agent.id === PROPOSAL_AGENT_ID || agent.slug === "proposal") {
     throw new Error("The Proposal Agent cannot be deleted.");
+  }
+  if (agent.id === NEWPAGES_AGENT_ID || agent.slug === "newpages" || agent.slug === "newpages-site-manager") {
+    throw new Error("The NEWPAGES Site Manager cannot be deleted.");
   }
   if (agent.id === PACKAGE_AGENT_ID || agent.slug === "package" || agent.slug === "package-updater") {
     throw new Error("The Package Updater cannot be deleted.");
@@ -698,6 +733,20 @@ export async function seedAgentCatalog() {
     liveUrl: DEFAULT_PROPOSAL_LIVE_URL,
   });
 
+  const newpagesRole = await readFile(NEWPAGES_ROLE_FILE, "utf8").catch(() => "You are NEWPAGES Site Manager.");
+  await seedSystemAgent({
+    id: NEWPAGES_AGENT_ID,
+    slug: "newpages",
+    name: "NEWPAGES Site Manager",
+    short: "N",
+    headline: "Runs the Eternalgy NEWPAGES merchant listing",
+    description:
+      "Lists, creates, and deletes NEWPAGES news using Settings → Sites credentials. Login once; session stays on the volume.",
+    color: "rose",
+    rolePrompt: newpagesRole,
+    liveUrl: DEFAULT_NEWPAGES_LIVE_URL,
+  });
+
   const packageRole = await readFile(PACKAGE_ROLE_FILE, "utf8").catch(() => "You are Package Updater.");
   await seedSystemAgent({
     id: PACKAGE_AGENT_ID,
@@ -738,6 +787,15 @@ export async function seedAgentCatalog() {
     await getPool().query(`INSERT INTO agent_skills (agent_id, skill_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [
       PROPOSAL_AGENT_ID,
       proposalSkillId,
+    ]);
+  }
+
+  const siteBrowser = await getPool().query(`SELECT id FROM skills WHERE slug = 'site-browser'`);
+  const siteBrowserId = siteBrowser.rows[0]?.id;
+  if (siteBrowserId) {
+    await getPool().query(`INSERT INTO agent_skills (agent_id, skill_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [
+      NEWPAGES_AGENT_ID,
+      siteBrowserId,
     ]);
   }
 

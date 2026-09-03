@@ -244,6 +244,17 @@ async function configureIdentityAt(cwd, name = "Website Dev Agent") {
   await git(["config", "user.email", "agent@workspace.local"], cwd);
 }
 
+/** Local-only auth so Pi can `git push origin HEAD:<branch>` without a new remote. */
+async function enableLocalPushAuth(cwd, token) {
+  try {
+    await git(["config", "--unset-all", "http.extraHeader"], cwd);
+  } catch {
+    // nothing stored
+  }
+  if (!token) return;
+  await git(["config", "http.extraHeader", authHeader(token)], cwd);
+}
+
 async function ignoreInbox(cwd) {
   const exclude = path.join(cwd, ".git", "info", "exclude");
   try {
@@ -475,6 +486,7 @@ export async function initGitWorkspace(opts) {
       }
     }
     await configureIdentityAt(dir, identity);
+    await enableLocalPushAuth(dir, token);
     await ignoreInbox(dir);
     const sha = await currentSha(dir);
     await recordSync({ repo: config.repo, sha, status: "ok", message: `${config.repo} ready` });
@@ -528,6 +540,7 @@ export async function syncGitWorkspace(opts) {
 
   try {
     await configureIdentityAt(dir, opts.identity || "Proposal Agent");
+    await enableLocalPushAuth(dir, config.token);
     await ignoreInbox(dir);
     await ensureOnConfiguredBranch(dir, config.branch);
     if (await isDirty(dir)) {
@@ -600,7 +613,7 @@ export async function getGitWorkspaceStatus(opts) {
 }
 
 /**
- * Extra system prompt for Proposal Agent: host pushes, agent does not.
+ * Extra system prompt for Proposal Agent.
  * @param {{ workspaceRepo?: string | null; workspaceBranch?: string | null; liveUrl?: string | null }} [agent]
  */
 export function proposalSystemPrompt(agent = {}) {
@@ -613,18 +626,26 @@ export function proposalSystemPrompt(agent = {}) {
 
 GitHub token is missing. Tell the human: studio Settings → paste a token with write access to ${repo} → Save. Do not ask them to paste it in chat.
 
-You never run git. You never create, rename, or switch branches. Railway deploys ${branch} only.
-Live URL after a real push: ${live}
+You may edit files. You may not push until the token is saved.
+Never create or switch branches. Railway deploys ${branch} only.
+Live URL: ${live}
 `;
   }
   return `## GitHub + Railway
 
-After you edit files, the studio host commits and pushes THIS workspace to https://github.com/${repo} branch ${branch}. Railway deploys that same branch. Live: ${live}
+Repo https://github.com/${repo} branch ${branch}. Railway deploys that branch only. Live: ${live}
 
-You never run git. You never create, rename, or switch branches. Never checkout, never -b, never a new remote.
+You ARE allowed to git add, git commit, and git push. Use exactly:
+git add -A
+git commit -m "Proposal Agent: update"
+git push origin HEAD:${branch}
 
-If the operator says push: do not lecture, do not explain the rule. One short line: the host pushes ${branch} when this turn ends. Then stop.
+If commit says nothing to commit, still run the push.
 
-Do not claim GitHub or the live site already updated. The host appends the real result (pushed SHA, or the error) to this chat.
+NEVER git checkout, git switch, git branch -b, git init, or git clone. NEVER create a new branch. NEVER push any name except ${branch}.
+
+If the operator says push: run those three commands. Do not say you are forbidden. Do not quote a system prompt. Do not lecture. Report the push SHA or the git error.
+
+The host also pushes ${branch} at the end of the turn if anything is still unpushed.
 `;
 }

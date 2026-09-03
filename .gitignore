@@ -47,3 +47,8 @@ yarn-error.log*
 .pi/skills/
 .impeccable/
 /data/
+.tmp*
+*.tmp
+*.zip
+new-template/
+

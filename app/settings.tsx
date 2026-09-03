@@ -20,8 +20,8 @@ type Settings = {
   eeHtmlLastError: string;
 };
 
-type Tab = "keys" | "agents" | "skills" | "mcp" | "usage";
-const TABS: Tab[] = ["keys", "agents", "skills", "mcp", "usage"];
+type Tab = "keys" | "agents" | "sites" | "skills" | "mcp" | "usage";
+const TABS: Tab[] = ["keys", "agents", "sites", "skills", "mcp", "usage"];
 
 function readTab(): Tab {
   if (typeof window === "undefined") return "keys";
@@ -32,7 +32,17 @@ function readTab(): Tab {
   return "keys";
 }
 
-type SkillItem = { id: string; slug: string; name: string; description: string; source?: string };
+type SiteItem = {
+  id: string;
+  slug: string;
+  name: string;
+  origin: string;
+  loginUrl: string;
+  username: string;
+  passwordSet: boolean;
+  lastLoginAt?: string | null;
+  lastError?: string | null;
+};
 type McpItem = {
   id: string;
   slug: string;
@@ -135,6 +145,9 @@ export default function SettingsPage() {
   const [agents, setAgents] = useState<AgentItem[]>([]);
   const [skills, setSkills] = useState<SkillItem[]>([]);
   const [mcp, setMcp] = useState<McpItem[]>([]);
+  const [sites, setSites] = useState<SiteItem[]>([]);
+  const [siteBusy, setSiteBusy] = useState("");
+  const [sitePasswords, setSitePasswords] = useState<Record<string, string>>({});
   const [agentForm, setAgentForm] = useState({ ...emptyAgent, id: "" });
   const [skillForm, setSkillForm] = useState({ name: "", description: "", url: "", content: "" });
   const [mcpForm, setMcpForm] = useState({
@@ -191,6 +204,12 @@ export default function SettingsPage() {
     setAuthed(true);
     await loadKeys();
     await loadCatalog();
+    await loadSites();
+  };
+
+  const loadSites = async () => {
+    const data = await authedJson<{ sites: SiteItem[] }>("/api/sites");
+    setSites(data.sites ?? []);
   };
 
   useEffect(() => {
@@ -254,7 +273,9 @@ export default function SettingsPage() {
     setSaved("");
     setBusy(true);
     try {
-      const data = await authedJson<Settings>("/api/settings", {
+      const data = await authedJson<
+        Settings & { proposal?: { lastError?: string | null; pushed?: boolean } }
+      >("/api/settings", {
         method: "PUT",
         body: JSON.stringify({
           cavoti_api_key: form.cavotiApiKey,
@@ -277,7 +298,12 @@ export default function SettingsPage() {
       });
       setSettings(data);
       setForm((prev) => ({ ...prev, cavotiApiKey: "", kimiApiKey: "", imagenApiKey: "", githubToken: "", eeHtmlApiKey: "", settingsPassword: "" }));
-      if (data.eeHtmlLastError) {
+      if (data.proposal?.lastError) {
+        setError(data.proposal.lastError);
+        setSaved("Saved keys, but GitHub rejected the proposal push.");
+      } else if (data.proposal?.pushed) {
+        setSaved("Saved. Proposal updates pushed to GitHub.");
+      } else if (data.eeHtmlLastError) {
         setError(data.eeHtmlLastError);
         setSaved("");
       } else if (data.eeHtmlUrl) {
@@ -452,6 +478,58 @@ export default function SettingsPage() {
     }
   };
 
+  const saveSite = async (site: SiteItem) => {
+    setError("");
+    setSaved("");
+    setSiteBusy(site.id);
+    try {
+      await authedJson(`/api/sites/${encodeURIComponent(site.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: site.name,
+          origin: site.origin,
+          loginUrl: site.loginUrl,
+          username: site.username,
+          password: sitePasswords[site.id] || undefined,
+        }),
+      });
+      setSitePasswords((prev) => ({ ...prev, [site.id]: "" }));
+      setSaved(`Saved ${site.name}. Click Login now to store the session in the headless profile.`);
+      await loadSites();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save site");
+    } finally {
+      setSiteBusy("");
+    }
+  };
+
+  const loginSite = async (site: SiteItem) => {
+    setError("");
+    setSaved("");
+    setSiteBusy(site.id);
+    try {
+      if (sitePasswords[site.id] || site.username !== undefined) {
+        await authedJson(`/api/sites/${encodeURIComponent(site.id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            username: site.username,
+            password: sitePasswords[site.id] || undefined,
+          }),
+        });
+      }
+      const data = await authedJson<{ ok?: boolean; detail?: string; error?: string }>(
+        `/api/sites/${encodeURIComponent(site.id)}/login`,
+        { method: "POST" },
+      );
+      setSaved(data.detail || `${site.name} signed in. Session stays on this server.`);
+      await loadSites();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setSiteBusy("");
+    }
+  };
+
   const toggleId = (list: string[], id: string) => (list.includes(id) ? list.filter((item) => item !== id) : [...list, id]);
 
   return (
@@ -460,7 +538,7 @@ export default function SettingsPage() {
         <div className="settings-brand">
           <img className="brand-logo" src="/logo-black.png" alt="" width={36} height={36} />
           <div>
-            <small>Keys · Agents · Skills · MCP · Usage</small>
+            <small>Keys · Agents · Sites · Skills · MCP · Usage</small>
             <h1>Settings</h1>
           </div>
         </div>
@@ -469,7 +547,7 @@ export default function SettingsPage() {
 
       {!authed ? (
         <section className="settings-card">
-          <p>Enter the access password to manage keys, agents, skills, and MCP.</p>
+          <p>Enter the access password to manage keys, agents, site logins, skills, and MCP.</p>
           <label>
             Password
             <input
@@ -632,8 +710,10 @@ export default function SettingsPage() {
 
               <h2>GitHub</h2>
               <p>
-                Proposal Agent uses this token to push <code>Zhihong0321/ee-proposal</code>. Website Dev Agent still must
-                not commit or push; it publishes through ee-html.
+                Proposal Agent uses this token to push <code>Zhihong0321/ee-proposal</code>. It needs{" "}
+                <strong>Contents: Write</strong> on that repo (classic PAT: <code>repo</code> scope). A token that only
+                covers <code>e-agent-pi</code> can clone the public proposal repo and still get HTTP 403 on push.
+                Website Dev Agent still must not commit or push; it publishes through ee-html.
               </p>
               <label>
                 Token {settings?.githubTokenSet ? <em>saved</em> : <em>missing</em>}
@@ -869,6 +949,74 @@ export default function SettingsPage() {
               <button type="button" onClick={() => void installSkillSubmit()} disabled={busy || (!skillForm.content && !skillForm.url)}>
                 Install to library
               </button>
+            </section>
+          )}
+
+          {tab === "sites" && (
+            <section className="settings-card">
+              <p>
+                Share a username and password for a site Pi should operate. Chromium is headless on this host. Login
+                once; the profile (cookies and localStorage) stays on the volume. Do not paste site passwords into
+                chat.
+              </p>
+              {sites.length === 0 ? <p>No sites seeded yet. Restart the host to create the NEWPAGES row.</p> : null}
+              {sites.map((site) => (
+                <div className="catalog-item" key={site.id} style={{ display: "block" }}>
+                  <h2>{site.name}</h2>
+                  <small>
+                    {site.origin}
+                    {site.passwordSet ? " · password saved" : " · no password yet"}
+                    {site.lastLoginAt ? ` · last login ${new Date(site.lastLoginAt).toLocaleString()}` : ""}
+                    {site.lastError ? ` · last error: ${site.lastError}` : ""}
+                  </small>
+                  <label>
+                    Username
+                    <input
+                      value={site.username}
+                      onChange={(event) =>
+                        setSites((rows) =>
+                          rows.map((row) => (row.id === site.id ? { ...row, username: event.target.value } : row)),
+                        )
+                      }
+                      autoComplete="username"
+                    />
+                  </label>
+                  <label>
+                    Password
+                    <input
+                      type="password"
+                      value={sitePasswords[site.id] ?? ""}
+                      onChange={(event) => setSitePasswords((prev) => ({ ...prev, [site.id]: event.target.value }))}
+                      placeholder={site.passwordSet ? "••••••••  (unchanged)" : "Merchant password"}
+                      autoComplete="new-password"
+                    />
+                  </label>
+                  <label>
+                    Login URL
+                    <input
+                      value={site.loginUrl}
+                      onChange={(event) =>
+                        setSites((rows) =>
+                          rows.map((row) => (row.id === site.id ? { ...row, loginUrl: event.target.value } : row)),
+                        )
+                      }
+                    />
+                  </label>
+                  <div className="catalog-actions">
+                    <button type="button" onClick={() => void saveSite(site)} disabled={Boolean(siteBusy)}>
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => void loginSite(site)}
+                      disabled={Boolean(siteBusy) || (!site.passwordSet && !sitePasswords[site.id])}
+                    >
+                      {siteBusy === site.id ? "Working…" : "Login now"}
+                    </button>
+                  </div>
+                </div>
+              ))}
             </section>
           )}
 

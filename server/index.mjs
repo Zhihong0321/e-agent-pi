@@ -22,7 +22,7 @@ import {
 } from "./db.mjs";
 import { envFlags, loadRecentFromDb, logEvent, railwayMeta, recentEvents } from "./debug.mjs";
 import { latestSample, metricsPayload, setPiAliveGetter, startSampler, stopSampler } from "./metrics.mjs";
-import { listWorkspaceFiles } from "./files.mjs";
+import { fileMime, listWorkspaceFiles, resolveWorkspaceFile } from "./files.mjs";
 import { getGitStatus, getGitWorkspaceStatus, initGitWorkspace, initWorkspace, syncGitWorkspace } from "./github.mjs";
 import { forgetBundleHash, hostConfigured, hostPublic, publishWorkspace } from "./ee-html.mjs";
 import { imagenConfigured, imagenPublic } from "./imagen.mjs";
@@ -38,12 +38,14 @@ import {
   DEFAULT_PROPOSAL_REPO,
   DIST_DIR,
   IMAGEN_CLI,
+  SITES_CLI,
   LIBRARY_DIR,
   PDF_CLI,
   PI_AGENT_DIR,
   PI_CLI_PATH,
-  PACKAGE_AGENT_ID,
   PI_PACKAGE_DIR,
+  NEWPAGES_AGENT_ID,
+  PACKAGE_AGENT_ID,
   PROPOSAL_AGENT_ID,
   ROOT,
   RUNTIME_DIR,
@@ -52,11 +54,13 @@ import {
   WORKSPACE,
   WORKSPACES_DIR,
   agentWorkspace,
+  isNewpagesAgent,
   isPackageAgent,
   isProposalAgent,
 } from "./paths.mjs";
 import { applyPiEvent, createTurn, extractReply, serializeTurn } from "./pi-stream.mjs";
 import {
+  attachSkillToAllAgents,
   catalogCounts,
   createAgent,
   createMcpServer,
@@ -80,9 +84,20 @@ import {
 } from "./catalog.mjs";
 import { ensureImpeccableForWebsite } from "./impeccable.mjs";
 import { ensureScraplingForWebsite, scraplingPublic } from "./scrapling.mjs";
+import { closeBrowsers } from "./browser.mjs";
+import { ensureSitesSchema, getSite, listSites, upsertSite, deleteSite } from "./sites.mjs";
+import {
+  ensureNewpagesLogin,
+  newpagesCategories,
+  newpagesCreate,
+  newpagesDelete,
+  newpagesNews,
+  newpagesStatus,
+} from "./newpages.mjs";
 import { handleManage } from "./manage-api.mjs";
 import { buildPiArgs, materializeAgentRuntime } from "./runtime.mjs";
-import { attachmentSummary, materializeAttachments } from "./attachments.mjs";
+import { attachmentChatMarkup, attachmentSummary, materializeAttachments } from "./attachments.mjs";
+import { ensureAgyEnvironment, handleTestAgy } from "./test-agy.mjs";
 
 const HOST = "0.0.0.0";
 const PORT = Number(process.env.PORT) || 8080;
@@ -187,6 +202,8 @@ function readBody(req) {
 function wantsAuth(pathname, method = "GET") {
   if (pathname === "/api/settings") return true;
   if (pathname === "/api/manage" || pathname.startsWith("/api/manage/")) return true;
+  if (pathname === "/api/sites" || pathname.startsWith("/api/sites/")) return true;
+  if (pathname === "/api/np" || pathname.startsWith("/api/np/")) return true;
   const mutating = method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
   if (!mutating) return false;
   return (
@@ -303,6 +320,7 @@ async function publishProposal(agent) {
       name: agent?.name || "Proposal Agent",
       baseUrl: live.replace(/\/shell\.html.*$/, ""),
       lastError: git.lastError,
+      pushed: Boolean(git.pushed),
       git,
     };
   } catch (error) {
@@ -342,6 +360,17 @@ async function resolveAgentProfile(agentId) {
   const fallback = dbReady() ? await getAgent(WEBSITE_AGENT_ID) : null;
   if (fallback) return fallback;
   throw new Error("No agent is configured.");
+}
+
+function attachFallback(profile) {
+  if (isProposalAgent(profile)) return "Please update the proposal from the attached files.";
+  if (isNewpagesAgent(profile)) {
+    return "Please use the attached files for NEWPAGES news. Copy images into this workspace and pass absolute paths to create.";
+  }
+  if (isPackageAgent(profile)) {
+    return "Please use the attached price list or product sheet for the package/product catalog.";
+  }
+  return "Please use the attached files.";
 }
 
 async function getClient(profile) {
@@ -394,6 +423,7 @@ async function getClient(profile) {
           CLOUD_PI_ROOT: ROOT,
           CLOUD_PI_CATALOG: CATALOG_CLI,
           CLOUD_PI_IMAGEN: IMAGEN_CLI,
+          CLOUD_PI_SITES: SITES_CLI,
           CLOUD_PI_PDF: PDF_CLI,
           ...resolved.env,
         },
@@ -623,6 +653,53 @@ async function switchModel(modelId) {
   return entry;
 }
 
+/**
+ * Wait until Pi emits agent_settled. RpcClient.waitForIdle() uses a wall-clock
+ * timer from subscribe-time, so a long but still-streaming turn (thinking,
+ * tools, tokens) is killed with "Timeout waiting for agent to become idle"
+ * even though the process is alive. Reset the timer on every event instead.
+ * Subscribe before prompt() so a fast agent_settled is not missed.
+ * @param {import("@earendil-works/pi-coding-agent").RpcClient} pi
+ * @param {number} [inactivityMs]
+ */
+function waitUntilAgentSettled(pi, inactivityMs = 300_000) {
+  /** @type {() => void} */
+  let unsubscribe = () => {};
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let timer;
+  let finished = false;
+  /** @type {(ok: boolean, error?: Error) => void} */
+  let finish = () => {};
+
+  const promise = new Promise((resolve, reject) => {
+    finish = (ok, error) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      unsubscribe();
+      if (ok) resolve();
+      else reject(error ?? new Error("Agent wait cancelled"));
+    };
+    const bump = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        finish(false, new Error("Agent went silent before finishing the turn."));
+      }, inactivityMs);
+    };
+    unsubscribe = pi.onEvent((event) => {
+      if (event?.type === "agent_settled") {
+        finish(true);
+        return;
+      }
+      bump();
+    });
+    bump();
+  });
+  promise.cancel = () => finish(false, new Error("Agent wait cancelled"));
+  void promise.catch(() => {});
+  return promise;
+}
+
 async function chat(message, modelId, session, onEvent, images) {
   if (modelId) await switchModel(modelId);
   const pi = await ensurePiOnSession(session);
@@ -640,10 +717,11 @@ async function chat(message, modelId, session, onEvent, images) {
     }
   });
 
+  const settled = waitUntilAgentSettled(pi);
   try {
     onEvent?.({ type: "status", text: "Working…" }, turn);
     await pi.prompt(message, images?.length ? images : undefined);
-    await pi.waitForIdle(300_000);
+    await settled;
     const text = (await pi.getLastAssistantText())?.trim() || turn.text.trim();
     if (text) {
       turn.text = text;
@@ -654,6 +732,13 @@ async function chat(message, modelId, session, onEvent, images) {
     if (!text && assistantError) throw new Error(assistantError);
     if (!text && !turn.blocks.length) throw new Error("No response from agent.");
     return turn;
+  } catch (error) {
+    settled.cancel();
+    const msg = error instanceof Error ? error.message : "";
+    if (msg.includes("silent before finishing")) {
+      await pi.abort().catch(() => {});
+    }
+    throw error;
   } finally {
     unsubscribe();
   }
@@ -706,6 +791,21 @@ async function runManageTurn({ message, agentId, sessionId, modelId }) {
     agentId: session.agentId,
     scrapling: await scraplingPublic().catch(() => null),
   };
+}
+
+function hostStatusNote(host, { proposal = false } = {}) {
+  if (!host) return null;
+  if (proposal) {
+    if (host.lastError) return `GitHub push failed: ${host.lastError}`;
+    if (host.pushed || host.git?.pushed) {
+      const sha = host.git?.sha ? ` ${String(host.git.sha).slice(0, 7)}` : "";
+      return `Pushed to GitHub${sha}. Railway will deploy ${host.url || ""}`.trim();
+    }
+    const sha = host.git?.sha ? String(host.git.sha).slice(0, 7) : "clean";
+    return `GitHub: nothing new to push (${sha}).`;
+  }
+  if (host.lastError) return `ee-html publish failed: ${host.lastError}`;
+  return null;
 }
 
 async function serveStatic(res, urlPath) {
@@ -771,6 +871,7 @@ async function prepareDirs() {
   await mkdir(DATA_DIR, { recursive: true });
   await mkdir(WORKSPACE, { recursive: true });
   await mkdir(WORKSPACES_DIR, { recursive: true });
+  await mkdir(agentWorkspace({ id: NEWPAGES_AGENT_ID, slug: "newpages" }), { recursive: true });
   await mkdir(agentWorkspace({ id: PACKAGE_AGENT_ID, slug: "package" }), { recursive: true });
   await mkdir(STORAGE, { recursive: true });
   await mkdir(PI_AGENT_DIR, { recursive: true });
@@ -848,6 +949,17 @@ async function bootServices() {
       "info",
       `proposal workspace git=${git.connected} dirty=${git.dirty} repo=${git.repo || "none"} push=${git.canPush ? "on" : "off"}`,
     );
+    if (git.connected && git.canPush) {
+      const synced = await syncGitWorkspace({
+        dir: agentWorkspace({ id: PROPOSAL_AGENT_ID, slug: "proposal" }),
+        repo: agent?.workspaceRepo || DEFAULT_PROPOSAL_REPO,
+        branch: agent?.workspaceBranch || "main",
+        identity: "Proposal Agent",
+        message: "Proposal Agent: update",
+      });
+      if (synced.lastError) logEvent("error", `proposal git: ${synced.lastError}`);
+      else if (synced.pushed) logEvent("info", `proposal pushed ${synced.sha || synced.repo}`);
+    }
   } catch (error) {
     logEvent("error", `proposal workspace init failed: ${sanitizeError(error)}`);
   }
@@ -874,12 +986,23 @@ async function bootServices() {
       logEvent(
         "info",
         result.skipped
-          ? `scrapling skill already in library; attached to website mcp=${result.mcp?.attached ? "on" : "off"} bin=${result.binPresent ? "yes" : "no"}`
-          : `scrapling skill installed for website agent mcp=${result.mcp?.attached ? "on" : "off"} bin=${result.binPresent ? "yes" : "no"}`,
+          ? `scrapling already in library; default on ${result.attachedTo?.join(",") || "none"} mcp=${result.mcp?.attached ? "on" : "off"} bin=${result.binPresent ? "yes" : "no"}`
+          : `scrapling installed; default on ${result.attachedTo?.join(",") || "none"} mcp=${result.mcp?.attached ? "on" : "off"} bin=${result.binPresent ? "yes" : "no"}`,
       );
     }
   } catch (error) {
     logEvent("error", `scrapling install failed: ${sanitizeError(error)}`);
+  }
+
+  boot.step = "sites";
+  try {
+    if (dbReady()) {
+      await ensureSitesSchema();
+      const attached = await attachSkillToAllAgents("site-browser");
+      logEvent("info", `site-browser skill on ${attached.length} agents`);
+    }
+  } catch (error) {
+    logEvent("error", `site logins failed: ${sanitizeError(error)}`);
   }
 
   boot.step = "catalog";
@@ -895,6 +1018,13 @@ async function bootServices() {
     else logEvent("info", "ee-html API key not set");
   } catch (error) {
     logEvent("error", `ee-html publish failed: ${sanitizeError(error)}`);
+  }
+
+  boot.step = "agy-environment";
+  try {
+    await ensureAgyEnvironment();
+  } catch (error) {
+    logEvent("error", `agy environment failed: ${sanitizeError(error)}`);
   }
 
   boot.step = "ready";
@@ -956,6 +1086,101 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "GET" && pathname === "/api/sites") {
+      json(res, 200, { sites: dbReady() ? await listSites() : [] });
+      return;
+    }
+
+    if (req.method === "POST" && pathname === "/api/sites") {
+      const body = JSON.parse((await readBody(req)) || "{}");
+      if (!dbReady()) {
+        json(res, 503, { error: "Database is not connected" });
+        return;
+      }
+      const site = await upsertSite(body);
+      json(res, 200, { site });
+      return;
+    }
+
+    {
+      const siteMatch = pathname.match(/^\/api\/sites\/([^/]+)(?:\/(login|status))?$/);
+      if (siteMatch && dbReady()) {
+        const siteId = decodeURIComponent(siteMatch[1]);
+        const action = siteMatch[2] || "";
+        const existing = await getSite(siteId);
+        if (!existing) {
+          json(res, 404, { error: "Site not found" });
+          return;
+        }
+        if (req.method === "GET" && !action) {
+          json(res, 200, { site: existing });
+          return;
+        }
+        if (req.method === "PATCH" && !action) {
+          const body = JSON.parse((await readBody(req)) || "{}");
+          const site = await upsertSite({ ...existing, ...body, slug: existing.slug, id: existing.id });
+          json(res, 200, { site });
+          return;
+        }
+        if (req.method === "DELETE" && !action) {
+          await deleteSite(existing.id);
+          json(res, 200, { ok: true, id: existing.id });
+          return;
+        }
+        if (req.method === "POST" && action === "login") {
+          if (existing.slug !== "newpages") {
+            json(res, 400, { error: `Login automation for ${existing.slug} is not implemented yet.` });
+            return;
+          }
+          try {
+            const result = await ensureNewpagesLogin();
+            json(res, 200, { ok: true, ...result });
+          } catch (error) {
+            json(res, 500, { ok: false, error: sanitizeError(error) });
+          }
+          return;
+        }
+        if (req.method === "GET" && action === "status") {
+          json(res, 200, await newpagesStatus());
+          return;
+        }
+      }
+    }
+
+    if (pathname.startsWith("/api/np/") || pathname === "/api/np") {
+      if (!dbReady()) {
+        json(res, 503, { error: "Database is not connected" });
+        return;
+      }
+      try {
+        if (req.method === "GET" && pathname === "/api/np/ready") {
+          json(res, 200, await newpagesStatus());
+          return;
+        }
+        if (req.method === "GET" && pathname === "/api/np/news") {
+          json(res, 200, await newpagesNews());
+          return;
+        }
+        if (req.method === "GET" && pathname === "/api/np/news/categories") {
+          json(res, 200, { categories: await newpagesCategories() });
+          return;
+        }
+        if (req.method === "POST" && pathname === "/api/np/news") {
+          const body = JSON.parse((await readBody(req)) || "{}");
+          json(res, 200, await newpagesCreate(body));
+          return;
+        }
+        const del = pathname.match(/^\/api\/np\/news\/(\d+)$/);
+        if (req.method === "DELETE" && del) {
+          json(res, 200, await newpagesDelete(del[1]));
+          return;
+        }
+      } catch (error) {
+        json(res, 500, { error: sanitizeError(error) });
+        return;
+      }
+    }
+
     if (req.method === "GET" && pathname === "/api/settings") {
       json(res, 200, publicSettings());
       return;
@@ -973,8 +1198,16 @@ const server = createServer(async (req, res) => {
       await initWorkspace().catch((error) => logEvent("error", `workspace reinit: ${sanitizeError(error)}`));
       await ensureCatalog();
       const host = await publishToHost({ force: true });
+      const proposalAgent = dbReady() ? await getAgent(PROPOSAL_AGENT_ID).catch(() => null) : null;
+      await initGitWorkspace({
+        dir: agentWorkspace({ id: PROPOSAL_AGENT_ID, slug: "proposal" }),
+        repo: proposalAgent?.workspaceRepo || DEFAULT_PROPOSAL_REPO,
+        branch: proposalAgent?.workspaceBranch || "main",
+        identity: "Proposal Agent",
+      }).catch((error) => logEvent("error", `proposal reinit: ${sanitizeError(error)}`));
+      const proposal = await publishProposal(proposalAgent || { id: PROPOSAL_AGENT_ID, slug: "proposal" });
       logEvent("info", "settings saved to postgres");
-      json(res, 200, { ...publicSettings(), host });
+      json(res, 200, { ...publicSettings(), host, proposal });
       return;
     }
 
@@ -1015,6 +1248,33 @@ const server = createServer(async (req, res) => {
       const agentRef = url.searchParams.get("agent");
       const agent = agentRef && dbReady() ? await getAgent(agentRef).catch(() => null) : null;
       json(res, 200, { files: await listWorkspaceFiles(agentWorkspace(agent || { slug: "website" })) });
+      return;
+    }
+
+    if (req.method === "GET" && pathname === "/api/files/raw") {
+      const agentRef = url.searchParams.get("agent");
+      const rel = url.searchParams.get("path") || "";
+      const agent = agentRef && dbReady() ? await getAgent(agentRef).catch(() => null) : null;
+      const resolved = resolveWorkspaceFile(agentWorkspace(agent || { slug: "website" }), rel);
+      if (!resolved) {
+        json(res, 400, { error: "Bad path" });
+        return;
+      }
+      try {
+        const info = await stat(resolved.full);
+        if (!info.isFile()) {
+          json(res, 404, { error: "Not found" });
+          return;
+        }
+        res.writeHead(200, {
+          "Content-Type": fileMime(resolved.full),
+          "Cache-Control": "private, max-age=120",
+          "Content-Length": info.size,
+        });
+        createReadStream(resolved.full).pipe(res);
+      } catch {
+        json(res, 404, { error: "Not found" });
+      }
       return;
     }
 
@@ -1314,9 +1574,11 @@ const server = createServer(async (req, res) => {
         return;
       }
       const prompt = packed.prompt
-        ? `${packed.prompt}\n${trimmed || (isPackageAgent(profile) ? "Please use the attached price list or product sheet for the package/product catalog." : "Please update the proposal from the attached files.")}`
+        ? `${packed.prompt}\n${trimmed || attachFallback(profile)}`
         : trimmed;
-      const storedUser = trimmed || (packed.files.length ? `Attached: ${attachmentSummary(packed.files)}` : prompt);
+      const storedUser =
+        [trimmed, attachmentChatMarkup(packed.files)].filter(Boolean).join("\n\n") ||
+        (packed.files.length ? `Attached: ${attachmentSummary(packed.files)}` : prompt);
 
       logEvent("info", `chat session=${session.id}: ${storedUser.slice(0, 120)}`);
       await insertMessage({
@@ -1364,6 +1626,27 @@ const server = createServer(async (req, res) => {
           ),
         );
         lastTurn = turn;
+        let host = null;
+        const websiteChat = !session.agentId || session.agentId === WEBSITE_AGENT_ID;
+        if (websiteChat) {
+          try {
+            host = await publishToHost();
+          } catch (error) {
+            logEvent("error", `ee-html publish failed: ${sanitizeError(error)}`);
+            host = { ...hostPublic(), lastError: sanitizeError(error) };
+          }
+        } else if (isProposalAgent(profile)) {
+          host = await publishProposal(profile);
+        }
+        const hostNote = hostStatusNote(host, { proposal: isProposalAgent(profile) });
+        if (hostNote) {
+          turn.blocks.push({ type: "note", text: hostNote });
+          lastTurn = turn;
+          if (!res.writableEnded) {
+            writeSse(res, { type: "note", text: hostNote });
+            if (host?.lastError) writeSse(res, { type: "error", error: host.lastError });
+          }
+        }
         await persister.finish(turn, false);
         if (session.title && session.title !== "New chat" && client) {
           await client.setSessionName(session.title).catch(() => {});
@@ -1383,21 +1666,7 @@ const server = createServer(async (req, res) => {
               : null,
           });
         }
-
-        let host = null;
-        const websiteChat = !session.agentId || session.agentId === WEBSITE_AGENT_ID;
-        if (websiteChat) {
-          try {
-            host = await publishToHost();
-          } catch (error) {
-            logEvent("error", `ee-html publish failed: ${sanitizeError(error)}`);
-            host = { ...hostPublic(), lastError: sanitizeError(error) };
-          }
-          if (host && !res.writableEnded) writeSse(res, { type: "host", host });
-        } else if (isProposalAgent(profile)) {
-          host = await publishProposal(profile);
-          if (host && !res.writableEnded) writeSse(res, { type: "host", host });
-        }
+        if (host && !res.writableEnded) writeSse(res, { type: "host", host });
       } catch (error) {
         await persister.finish(lastTurn, false).catch(() => {});
         logEvent("error", sanitizeError(error));
@@ -1407,6 +1676,10 @@ const server = createServer(async (req, res) => {
         if (!res.writableEnded) res.end();
       }
       return;
+    }
+
+    if (pathname === "/test-agy" || pathname.startsWith("/api/test-agy")) {
+      return handleTestAgy(req, res, url);
     }
 
     if (pathname.startsWith("/api/")) {
@@ -1441,6 +1714,7 @@ async function shutdown() {
   logEvent("info", "shutdown");
   stopSampler();
   if (client) await client.stop().catch(() => {});
+  await closeBrowsers().catch(() => {});
   await closeDb().catch(() => {});
   process.exit(0);
 }

@@ -52,6 +52,8 @@ Optional: \`--aspect 16:9\` (Google) or \`--size 1024x1024\` (OpenAI-compatible)
 Rules:
 - Use this CLI only. Do not curl \`/api/*\`. Do not invent another image API or put the key in files.
 - Write files under the workspace (\`assets/\` is preferred). Then reference the file from HTML/CSS.
+- After generating, include the image in your reply with markdown so the operator can view it in chat:
+  \`![short description](assets/hero.png)\`
 - If \`$CLOUD_PI_IMAGEN\` is missing, image generation is not configured.
 `;
 }

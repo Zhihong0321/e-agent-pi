@@ -103,3 +103,14 @@ export function attachmentSummary(files) {
   if (!files?.length) return "";
   return files.map((file) => file.name).join(", ");
 }
+
+/**
+ * Markdown the chat UI can render: images inline, other files as links.
+ * @param {{ name: string; rel: string; kind?: string }[]} files
+ */
+export function attachmentChatMarkup(files) {
+  if (!files?.length) return "";
+  return files
+    .map((file) => (file.kind === "image" ? `![${file.name}](${file.rel})` : `[${file.name}](${file.rel})`))
+    .join("\n");
+}

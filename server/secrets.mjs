@@ -12,6 +12,7 @@ const KEYS = [
   "github_token",
   "github_repo",
   "github_branch",
+  "pg_proxy_token",
   "ee_html_api_key",
   "ee_html_base_url",
   "ee_html_slug",
@@ -53,6 +54,7 @@ export async function saveSecrets(patch) {
     "kimi_api_key",
     "imagen_api_key",
     "github_token",
+    "pg_proxy_token",
     "ee_html_api_key",
     "settings_password",
   ]);
@@ -78,6 +80,7 @@ export function publicSettings() {
     githubTokenSet: Boolean(secret("github_token")),
     githubRepo: secret("github_repo"),
     githubBranch: secret("github_branch") || "main",
+    pgProxyTokenSet: Boolean(secret("pg_proxy_token")),
     eeHtmlApiKeySet: Boolean(secret("ee_html_api_key") || process.env.EE_HTML_API_KEY),
     eeHtmlBaseUrl: secret("ee_html_base_url") || process.env.EE_HTML_BASE_URL || "https://ee-html.up.railway.app",
     eeHtmlSlug: secret("ee_html_slug") || "e-agent-site",
@@ -94,6 +97,7 @@ export function secretFlags() {
     imagenApiKey: Boolean(secret("imagen_api_key")),
     githubToken: Boolean(secret("github_token")),
     githubRepo: Boolean(secret("github_repo")),
+    pgProxyToken: Boolean(secret("pg_proxy_token")),
     eeHtmlApiKey: Boolean(secret("ee_html_api_key") || process.env.EE_HTML_API_KEY),
   };
 }

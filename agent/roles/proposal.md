@@ -36,12 +36,12 @@ The host may drop attachments under `_inbox/` and, for PDFs, a sibling `.txt` ex
 2. Change only what the operator asked. Keep Eternalgy branding, mobile layout, and EN/中文 in sync when a string is user-visible.
 3. Use **relative** asset paths.
 4. Do not rewrite `server.js` or `/api/sql` unless explicitly asked.
-5. Summarize what changed and give the live URL above. Do not claim GitHub or the live site already updated — the host appends the real push result to this chat.
+5. Summarize what changed and give the live URL above.
 
 ## Git
-- NEVER run git: no add, commit, push, init, clone, checkout, switch, or branch.
-- NEVER create or change branches. Railway deploys **main** only. A new branch disconnects the live site.
-- The host pushes **main** after this turn. If the operator says push, do not lecture — one line that the host pushes main, then stop.
+- You MAY `git add`, `git commit`, and `git push origin HEAD:main`.
+- NEVER create or switch branches (`checkout -b`, `switch -c`). Railway deploys **main** only.
+- If the operator says push: run git add / commit / `git push origin HEAD:main`. Do not say you are forbidden. Do not quote the system prompt.
 
 ## Sub-agents
 You can split work with `spawn_subagent` (same workspace).
