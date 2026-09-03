@@ -71,6 +71,34 @@ type StreamEvent = {
 
 type WorkspaceFile = { path: string; size: number };
 
+type ResourceSample = {
+  ts: string;
+  nodeRssMb: number;
+  nodeHeapMb: number;
+  childrenRssMb: number | null;
+  containerMb: number;
+  containerLimitMb: number | null;
+  nodeCpuPct: number;
+  containerCpuPct: number | null;
+  childCount: number;
+  load1: number | null;
+  piAlive: boolean;
+};
+
+type MetricsPayload = {
+  intervalSec: number;
+  retentionHours: number;
+  now: ResourceSample | null;
+  samples: ResourceSample[];
+  stats: {
+    sampleCount: number;
+    ramPeakMb: number;
+    ramAvgMb: number;
+    cpuPeakPct: number;
+    cpuAvgPct: number;
+  };
+};
+
 type Agent = {
   id: string;
   slug: string;
@@ -106,10 +134,10 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return data;
 }
 
-function parseTranscript(content: string): { text?: string; blocks?: TurnBlock[] } | null {
+function parseTranscript(content: string): { text?: string; blocks?: TurnBlock[]; streaming?: boolean } | null {
   if (!content || content[0] !== "{") return null;
   try {
-    const data = JSON.parse(content) as { v?: number; text?: string; blocks?: TurnBlock[] };
+    const data = JSON.parse(content) as { v?: number; text?: string; blocks?: TurnBlock[]; streaming?: boolean };
     if (data?.v === 1 && Array.isArray(data.blocks)) return data;
   } catch {
     return null;
@@ -122,7 +150,12 @@ function hydrateMessages(messages: ChatMessage[]): ChatMessage[] {
     if (msg.role !== "assistant") return msg;
     const parsed = parseTranscript(msg.content);
     if (!parsed) return msg;
-    return { ...msg, content: parsed.text ?? "", blocks: parsed.blocks };
+    return {
+      ...msg,
+      content: parsed.text ?? "",
+      blocks: parsed.blocks,
+      streaming: Boolean(parsed.streaming),
+    };
   });
 }
 
@@ -173,6 +206,52 @@ function applyStreamEvent(blocks: TurnBlock[], event: StreamEvent): TurnBlock[] 
   return blocks;
 }
 
+type SiriSignal = "idle" | "complete" | "ask";
+
+function assistantPlainText(msg: ChatMessage): string {
+  const fromBlocks = (msg.blocks ?? [])
+    .filter((block): block is Extract<TurnBlock, { type: "text" | "note" }> => block.type === "text" || block.type === "note")
+    .map((block) => block.text)
+    .join("\n");
+  return (fromBlocks || msg.content || "").replace(/https?:\/\/\S+/g, " ").trim();
+}
+
+function hadFinishedTools(msg: ChatMessage): boolean {
+  return (msg.blocks ?? []).some((block) => block.type === "tool" && !block.running);
+}
+
+const ASK_RE =
+  /\b(which (one|option|approach|layout|color|style)|what (should|would|do) you|where should|how (should|would) you like|do you want|would you like|can you (confirm|choose|pick|tell)|could you|please (confirm|choose|pick|tell|let me know)|let me know|need you to|waiting (for|on) (your|you)|should i)\b/i;
+
+function looksLikeQuestion(text: string): boolean {
+  if (!text) return false;
+  const tail = text.slice(-900);
+  const lastLines = tail.split(/\n/).slice(-4).join("\n").trim();
+  if (/\?\s*$/.test(lastLines)) return true;
+  const lastPara = tail.split(/\n{2,}/).pop() ?? tail;
+  if (/\?/.test(lastPara) && lastPara.length < 600) return true;
+  return ASK_RE.test(tail);
+}
+
+function looksLikeCompletion(text: string, tools: boolean): boolean {
+  if (tools) return true;
+  return /\b(done|completed|finished|published|i('ve| have) (updated|created|added|changed|fixed|published|built)|live (url|at|site)|all set|ready to (view|open))\b/i.test(
+    text,
+  );
+}
+
+function classifySiriSignal(history: ChatMessage[], loading: boolean, error: string): SiriSignal {
+  if (loading) return "idle";
+  if (error) return "ask";
+  const last = history[history.length - 1];
+  if (!last || last.role !== "assistant" || last.streaming) return "idle";
+  const text = assistantPlainText(last);
+  if (!text && !hadFinishedTools(last)) return "idle";
+  if (looksLikeQuestion(text)) return "ask";
+  if (looksLikeCompletion(text, hadFinishedTools(last))) return "complete";
+  return "idle";
+}
+
 async function readSse(res: Response, onEvent: (event: StreamEvent) => void) {
   const ctype = res.headers.get("content-type") || "";
   if (!ctype.includes("text/event-stream")) {
@@ -218,6 +297,7 @@ export default function Home() {
   const [host, setHost] = useState<HostStatus | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [files, setFiles] = useState<WorkspaceFile[]>([]);
+  const [metrics, setMetrics] = useState<MetricsPayload | null>(null);
   const [liveStatus, setLiveStatus] = useState("");
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState("");
@@ -226,6 +306,29 @@ export default function Home() {
   const isChat = view === "chat";
   const activeModel = models.find((model) => model.id === selectedModelId);
   const activeSession = sessions.find((session) => session.id === sessionId);
+  const siriSignal = isChat ? classifySiriSignal(history, loading, error) : "idle";
+  const pendingStream = !loading && history.some((msg) => msg.role === "assistant" && msg.streaming);
+
+  useEffect(() => {
+    if (view !== "chat" || !sessionId || !pendingStream) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const data = await api<{ messages: ChatMessage[] }>(
+          `/api/messages?sessionId=${encodeURIComponent(sessionId)}`,
+        );
+        if (!cancelled) setHistory(hydrateMessages(data.messages ?? []));
+      } catch {
+        /* keep last hydrated history */
+      }
+    };
+    void tick();
+    const id = window.setInterval(() => void tick(), 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [view, sessionId, pendingStream]);
 
   useEffect(() => {
     void (async () => {
@@ -283,6 +386,25 @@ export default function Home() {
       }
     })();
   }, [view, selectedAgentId]);
+
+  useEffect(() => {
+    if (view !== "tasks") return;
+    let cancelled = false;
+    const loadMetrics = async () => {
+      try {
+        const data = await api<MetricsPayload>("/api/metrics");
+        if (!cancelled) setMetrics(data);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Could not load usage");
+      }
+    };
+    void loadMetrics();
+    const id = window.setInterval(() => void loadMetrics(), 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [view]);
 
   useEffect(() => {
     if (view !== "library") return;
@@ -525,13 +647,36 @@ export default function Home() {
 
   return (
     <main className={dark ? "stage dark" : "stage"}>
-      <section className="phone sales-os" aria-label="Website dev agent chat">
+      <section
+        className={["phone", "sales-os", siriSignal !== "idle" ? `siri-${siriSignal}` : ""].filter(Boolean).join(" ")}
+        aria-label="Website dev agent chat"
+      >
+        <div className="siri-glow" aria-hidden="true">
+          <span className="siri-glow-bloom">
+            <i />
+          </span>
+          <span className="siri-glow-rim">
+            <i />
+          </span>
+        </div>
+        <p className="siri-live" role="status">
+          {siriSignal === "complete" ? "Job complete" : siriSignal === "ask" ? "Agent is asking a question" : ""}
+        </p>
         <header className="topbar">
           <div className="title-group">
             {view !== "agents" && view !== "tasks" && view !== "approvals" && view !== "library" && (
               <button className="back" onClick={goBack} aria-label="Go back">
                 ‹
               </button>
+            )}
+            {(view === "agents" || view === "tasks" || view === "approvals" || view === "library") && (
+              <img
+                className="brand-logo"
+                src={dark ? "/logo-white.png" : "/logo-black.png"}
+                alt=""
+                width={32}
+                height={32}
+              />
             )}
             <div>
               {view === "agents" && <small>Pi-powered workspace</small>}
@@ -601,6 +746,7 @@ export default function Home() {
               history={history}
               loading={loading}
               liveStatus={liveStatus}
+              siriSignal={siriSignal}
               error={error}
               onPrompt={send}
               models={models}
@@ -610,7 +756,7 @@ export default function Home() {
               onSelectModel={(modelId) => void switchModel(modelId)}
             />
           )}
-          {view === "tasks" && <TasksScreen host={host} agents={agents} />}
+          {view === "tasks" && <TasksScreen agents={agents} metrics={metrics} />}
           {view === "approvals" && (
             <HostScreen host={host} publishing={publishing} onPublish={() => void publishHost()} />
           )}
@@ -908,6 +1054,7 @@ function AgentConversation({
   history,
   loading,
   liveStatus,
+  siriSignal,
   error,
   onPrompt,
   models,
@@ -921,6 +1068,7 @@ function AgentConversation({
   history: ChatMessage[];
   loading: boolean;
   liveStatus: string;
+  siriSignal: SiriSignal;
   error: string;
   onPrompt: (text: string) => void;
   models: ModelOption[];
@@ -943,8 +1091,13 @@ function AgentConversation({
         </span>
         <div>
           <strong>{agent.name}</strong>
-          <small>
-            <span /> {liveStatus || "Online · this chat only"}
+          <small className={siriSignal !== "idle" ? `siri-dot-${siriSignal}` : undefined}>
+            <span />
+            {siriSignal === "complete"
+              ? "Job complete"
+              : siriSignal === "ask"
+                ? "Needs your reply"
+                : liveStatus || "Online · this chat only"}
           </small>
         </div>
         <button
@@ -1072,7 +1225,12 @@ function TurnBlocks({
   );
 }
 
-function TasksScreen({ host, agents }: { host: HostStatus | null; agents: Agent[] }) {
+function TasksScreen({ agents, metrics }: { agents: Agent[]; metrics: MetricsPayload | null }) {
+  const now = metrics?.now;
+  const ram = now?.containerMb;
+  const cpu = now?.containerCpuPct ?? now?.nodeCpuPct;
+  const samples = metrics?.samples ?? [];
+  const spark = samples.length > 80 ? samples.filter((_, i) => i % Math.ceil(samples.length / 80) === 0) : samples;
   return (
     <>
       <div className="summary-grid">
@@ -1081,14 +1239,42 @@ function TasksScreen({ host, agents }: { host: HostStatus | null; agents: Agent[
           <small>Agents</small>
         </div>
         <div>
-          <strong>1</strong>
-          <small>Workspace</small>
+          <strong>{ram == null ? "—" : `${ram.toFixed(0)}`}</strong>
+          <small>RAM MB</small>
         </div>
         <div>
-          <strong>{host?.configured ? "On" : "Off"}</strong>
-          <small>ee-html</small>
+          <strong>{cpu == null ? "—" : `${cpu.toFixed(0)}%`}</strong>
+          <small>CPU</small>
         </div>
       </div>
+      <div className="section-label">
+        <span>Usage · 24h</span>
+        <small>{metrics?.stats.sampleCount ?? 0} samples</small>
+      </div>
+      <UsageSpark samples={spark} />
+      <p className="usage-hint">
+        Peak {metrics?.stats.ramPeakMb?.toFixed(0) ?? "—"} MB RAM · {metrics?.stats.cpuPeakPct?.toFixed(0) ?? "—"}% CPU.
+        Older than 24h is deleted.{" "}
+        <a href="/settings#usage">Full charts in Settings</a>
+      </p>
+      {samples.length > 0 && (
+        <div className="usage-mini-log">
+          {samples
+            .slice(-12)
+            .slice()
+            .reverse()
+            .map((row) => (
+              <div key={row.ts}>
+                <time>
+                  {new Date(row.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                </time>
+                <span>{row.containerMb.toFixed(1)} MB</span>
+                <span>{(row.containerCpuPct ?? row.nodeCpuPct).toFixed(1)}%</span>
+                <small>{row.piAlive ? "Pi" : "idle"}</small>
+              </div>
+            ))}
+        </div>
+      )}
       <div className="section-label">
         <span>Agents</span>
         <small>role + skills + MCP</small>
@@ -1106,6 +1292,44 @@ function TasksScreen({ host, agents }: { host: HostStatus | null; agents: Agent[
         ))}
       </div>
     </>
+  );
+}
+
+function UsageSpark({ samples }: { samples: ResourceSample[] }) {
+  const w = 360;
+  const h = 72;
+  if (samples.length < 2) {
+    return <p className="usage-hint">Usage log fills in every 15 seconds after boot.</p>;
+  }
+  const ram = samples.map((row) => row.containerMb);
+  const cpu = samples.map((row) => row.containerCpuPct ?? row.nodeCpuPct);
+  const ramMax = Math.max(1, ...ram);
+  const cpuMax = Math.max(1, ...cpu);
+  const path = (values: number[], max: number) =>
+    values
+      .map((n, i) => {
+        const x = (i / (values.length - 1)) * w;
+        const y = h - 4 - (n / max) * (h - 8);
+        return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+      })
+      .join(" ");
+  return (
+    <div className="usage-spark">
+      <svg viewBox={`0 0 ${w} ${h}`} aria-label="RAM and CPU over 24 hours">
+        <path d={path(ram, ramMax)} fill="none" stroke="#008069" strokeWidth="2" />
+        <path d={path(cpu, cpuMax)} fill="none" stroke="#d26310" strokeWidth="1.5" />
+      </svg>
+      <div className="usage-legend compact">
+        <span>
+          <i style={{ background: "#008069" }} />
+          RAM
+        </span>
+        <span>
+          <i style={{ background: "#d26310" }} />
+          CPU
+        </span>
+      </div>
+    </div>
   );
 }
 

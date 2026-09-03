@@ -37,7 +37,7 @@ export function extractReply(content) {
   return "Agent reply";
 }
 
-export function serializeTurn(turn) {
+export function serializeTurn(turn, extra = {}) {
   const blocks = turn.blocks.map((block) => {
     if (block.type !== "tool") return { ...block };
     return {
@@ -49,7 +49,12 @@ export function serializeTurn(turn) {
       isError: block.isError,
     };
   });
-  return JSON.stringify({ v: 1, text: turn.text, blocks });
+  return JSON.stringify({
+    v: 1,
+    text: turn.text,
+    blocks,
+    streaming: Boolean(extra.streaming),
+  });
 }
 
 /**
@@ -209,7 +214,7 @@ function toolDetail(name, args) {
   if (typeof args === "string") return clip(args, 160);
   if (typeof args !== "object") return String(args);
   const record = /** @type {Record<string, unknown>} */ (args);
-  const keys = ["path", "file_path", "filePath", "command", "pattern", "query", "glob", "url"];
+  const keys = ["path", "file_path", "filePath", "command", "pattern", "query", "glob", "url", "description", "prompt", "agent", "id"];
   for (const key of keys) {
     if (record[key] != null) return clip(String(record[key]), 160);
   }

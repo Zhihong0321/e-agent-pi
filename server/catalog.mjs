@@ -639,6 +639,15 @@ export async function seedAgentCatalog() {
     ]);
   }
 
+  const spawnRow = await getPool().query(`SELECT id FROM skills WHERE slug = 'spawn-subagents'`);
+  const spawnId = spawnRow.rows[0]?.id;
+  if (spawnId) {
+    await getPool().query(`INSERT INTO agent_skills (agent_id, skill_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [
+      WEBSITE_AGENT_ID,
+      spawnId,
+    ]);
+  }
+
   await getPool().query(`UPDATE sessions SET agent_id = $1 WHERE agent_id IS NULL`, [WEBSITE_AGENT_ID]);
 }
 

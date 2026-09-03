@@ -11,10 +11,15 @@ function password() {
   return secret("settings_password") || DEFAULT_PASSWORD;
 }
 
-export function checkPassword(input) {
-  const a = sha(String(input ?? ""));
-  const b = sha(password());
+function sameSecret(got, expected) {
+  const a = sha(String(got ?? ""));
+  const b = sha(String(expected ?? ""));
+  if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
+}
+
+export function checkPassword(input) {
+  return sameSecret(input, password());
 }
 
 export function sessionToken() {
@@ -46,6 +51,29 @@ export function hasSession(req) {
   const right = Buffer.from(expect);
   if (left.length !== right.length) return false;
   return timingSafeEqual(left, right);
+}
+
+export function apiToken(req) {
+  const auth = String(req.headers.authorization || "");
+  const match = auth.match(/^Bearer\s+(\S+)/i);
+  if (match) return match[1].trim();
+  const header = req.headers["x-api-key"];
+  if (typeof header === "string" && header.trim()) return header.trim();
+  if (Array.isArray(header) && header[0]) return String(header[0]).trim();
+  return "";
+}
+
+/**
+ * Settings cookie, or Bearer / X-Api-Key matching the settings password
+ * or CLOUD_PI_MANAGE_KEY / manage_api_key.
+ */
+export function hasApiAuth(req) {
+  if (hasSession(req)) return true;
+  const token = apiToken(req);
+  if (!token) return false;
+  if (checkPassword(token)) return true;
+  const manageKey = process.env.CLOUD_PI_MANAGE_KEY?.trim() || secret("manage_api_key");
+  return Boolean(manageKey) && sameSecret(token, manageKey);
 }
 
 export function sessionCookie(token, clear = false) {

@@ -63,6 +63,26 @@ node "$CLOUD_PI_CATALOG" skills install-impeccable
 node "$CLOUD_PI_CATALOG" skills install-impeccable --force
 ```
 
+## Refresh Scrapling (Website Dev Agent)
+
+Official scrape skill pack plus the host `scrapling` MCP server. Installs into the library and attaches to Website Dev Agent only. Runtime (`scrapling` CLI, Chromium) ships in the Docker image — do not pip install on the server.
+
+```bash
+node "$CLOUD_PI_CATALOG" skills install-scrapling
+node "$CLOUD_PI_CATALOG" skills install-scrapling --force
+```
+
+## Sub-agents (Website Dev Agent)
+
+`spawn-subagents` is a host skill **and** an in-process Pi extension (`spawn_subagent`). Install is the bundled skill in the library; attach it to an agent to load the tools. Boot attaches it to Website Dev Agent. Do not `pi install` npm subagent packages on this host.
+
+```bash
+node "$CLOUD_PI_CATALOG" agents attach website --skill spawn-subagents
+node "$CLOUD_PI_CATALOG" agents detach website --skill spawn-subagents
+```
+
+Children share the workspace, cannot nest, and cap at three running at once. Detach, then the next chat with that agent drops the tools.
+
 ## Install MCP
 
 ```bash

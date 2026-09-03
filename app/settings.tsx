@@ -20,8 +20,8 @@ type Settings = {
   eeHtmlLastError: string;
 };
 
-type Tab = "keys" | "agents" | "skills" | "mcp";
-const TABS: Tab[] = ["keys", "agents", "skills", "mcp"];
+type Tab = "keys" | "agents" | "skills" | "mcp" | "usage";
+const TABS: Tab[] = ["keys", "agents", "skills", "mcp", "usage"];
 
 function readTab(): Tab {
   if (typeof window === "undefined") return "keys";
@@ -57,6 +57,34 @@ type AgentItem = {
   mcpIds: string[];
   skills: SkillItem[];
   mcp: McpItem[];
+};
+
+type ResourceSample = {
+  ts: string;
+  nodeRssMb: number;
+  nodeHeapMb: number;
+  childrenRssMb: number | null;
+  containerMb: number;
+  containerLimitMb: number | null;
+  nodeCpuPct: number;
+  containerCpuPct: number | null;
+  childCount: number;
+  load1: number | null;
+  piAlive: boolean;
+};
+
+type MetricsPayload = {
+  intervalSec: number;
+  retentionHours: number;
+  now: ResourceSample | null;
+  samples: ResourceSample[];
+  stats: {
+    sampleCount: number;
+    ramPeakMb: number;
+    ramAvgMb: number;
+    cpuPeakPct: number;
+    cpuAvgPct: number;
+  };
 };
 
 const emptyAgent = {
@@ -122,6 +150,7 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState("");
   const [busy, setBusy] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [metrics, setMetrics] = useState<MetricsPayload | null>(null);
 
   const loadKeys = async () => {
     const data = await authedJson<Settings>("/api/settings");
@@ -173,6 +202,25 @@ export default function SettingsPage() {
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
+
+  useEffect(() => {
+    if (!authed || tab !== "usage") return;
+    let cancelled = false;
+    const loadMetrics = async () => {
+      try {
+        const data = await authedJson<MetricsPayload>("/api/metrics");
+        if (!cancelled) setMetrics(data);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Could not load usage");
+      }
+    };
+    void loadMetrics();
+    const id = window.setInterval(() => void loadMetrics(), 15000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [authed, tab]);
 
   const goTab = (item: Tab) => {
     setTab(item);
@@ -409,9 +457,12 @@ export default function SettingsPage() {
   return (
     <main className="settings-page">
       <header>
-        <div>
-          <small>Keys · Agents · Skills · MCP</small>
-          <h1>Settings</h1>
+        <div className="settings-brand">
+          <img className="brand-logo" src="/logo-black.png" alt="" width={36} height={36} />
+          <div>
+            <small>Keys · Agents · Skills · MCP · Usage</small>
+            <h1>Settings</h1>
+          </div>
         </div>
         <a href="/">Back to studio</a>
       </header>
@@ -626,8 +677,8 @@ export default function SettingsPage() {
           {tab === "agents" && (
             <section className="settings-card">
               <p>
-                An agent is Role + Skills + MCP. Tick only what this agent should see, or ask Settings Agent in
-                studio chat to install and attach for you.
+                An agent is Role + Skills + MCP. Tick <code>spawn-subagents</code> on Website Dev Agent to
+                allow in-process child agents. Or ask Settings Agent in studio chat to install and attach.
               </p>
               <div className="catalog-list">
                 {agents.map((agent) => (
@@ -927,11 +978,199 @@ export default function SettingsPage() {
               </div>
             </section>
           )}
+
+          {tab === "usage" && <UsagePanel data={metrics} />}
         </>
       )}
 
       {error && <p className="settings-error">{error}</p>}
       {saved && <p className="settings-ok">{saved}</p>}
     </main>
+  );
+}
+
+function formatMb(n: number | null | undefined) {
+  if (n == null || Number.isNaN(n)) return "—";
+  return `${n.toFixed(1)} MB`;
+}
+
+function formatPct(n: number | null | undefined) {
+  if (n == null || Number.isNaN(n)) return "—";
+  return `${n.toFixed(1)}%`;
+}
+
+function formatClock(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function downsample<T>(rows: T[], max = 240): T[] {
+  if (rows.length <= max) return rows;
+  const step = rows.length / max;
+  const out: T[] = [];
+  for (let i = 0; i < max; i++) out.push(rows[Math.min(rows.length - 1, Math.floor(i * step))]);
+  return out;
+}
+
+function UsagePanel({ data }: { data: MetricsPayload | null }) {
+  const now = data?.now;
+  const samples = data?.samples ?? [];
+  const stats = data?.stats;
+  const log = samples.slice(-48).slice().reverse();
+  const ramLimit = now?.containerLimitMb;
+  const ramPct = now && ramLimit ? Math.min(100, (now.containerMb / ramLimit) * 100) : null;
+
+  return (
+    <section className="settings-card usage-card">
+      <p>
+        Sampled every {data?.intervalSec ?? 15}s. Rows older than {data?.retentionHours ?? 24} hours are deleted.
+        Overhead is a /proc read plus one small Postgres insert — not a profiler.
+      </p>
+      <div className="usage-grid">
+        <UsageStat label="Replica RAM" value={formatMb(now?.containerMb)} hint={ramLimit ? `${formatPct(ramPct)} of ${formatMb(ramLimit)}` : "Node + children"} />
+        <UsageStat label="Node RSS" value={formatMb(now?.nodeRssMb)} hint={`heap ${formatMb(now?.nodeHeapMb)}`} />
+        <UsageStat label="Pi / children" value={formatMb(now?.childrenRssMb)} hint={now?.piAlive ? `${now.childCount} procs · Pi up` : `${now?.childCount ?? 0} procs · Pi idle`} />
+        <UsageStat label="CPU" value={formatPct(now?.containerCpuPct ?? now?.nodeCpuPct)} hint={`Node ${formatPct(now?.nodeCpuPct)} · 1 core = 100%`} />
+      </div>
+      <div className="usage-grid usage-grid-4">
+        <UsageStat label="24h RAM peak" value={formatMb(stats?.ramPeakMb)} hint={`avg ${formatMb(stats?.ramAvgMb)}`} />
+        <UsageStat label="24h CPU peak" value={formatPct(stats?.cpuPeakPct)} hint={`avg ${formatPct(stats?.cpuAvgPct)}`} />
+        <UsageStat label="Samples" value={String(stats?.sampleCount ?? 0)} hint="kept for 24h" />
+        <UsageStat label="Load 1m" value={now?.load1 == null ? "—" : now.load1.toFixed(2)} hint="host load average" />
+      </div>
+      <h2>RAM · last 24 hours</h2>
+      <UsageChart
+        samples={downsample(samples)}
+        series={[
+          { key: "container", color: "#008069", label: "Replica" },
+          { key: "node", color: "#3b82f6", label: "Node" },
+          { key: "children", color: "#8b5cf6", label: "Children" },
+        ]}
+        valueOf={(row, key) => (key === "node" ? row.nodeRssMb : key === "children" ? row.childrenRssMb : row.containerMb)}
+        unit="MB"
+      />
+      <h2>CPU · last 24 hours</h2>
+      <UsageChart
+        samples={downsample(samples)}
+        series={[
+          { key: "container", color: "#d26310", label: "Replica" },
+          { key: "node", color: "#008069", label: "Node" },
+        ]}
+        valueOf={(row, key) => (key === "node" ? row.nodeCpuPct : row.containerCpuPct ?? row.nodeCpuPct)}
+        unit="%"
+      />
+      <h2>Recent log</h2>
+      {log.length === 0 ? (
+        <p>No samples yet. The first point is written at boot, then every 15 seconds.</p>
+      ) : (
+        <div className="usage-log">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>RAM</th>
+                <th>Node</th>
+                <th>Children</th>
+                <th>CPU</th>
+                <th>Pi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {log.map((row) => (
+                <tr key={row.ts}>
+                  <td>{formatClock(row.ts)}</td>
+                  <td>{formatMb(row.containerMb)}</td>
+                  <td>{formatMb(row.nodeRssMb)}</td>
+                  <td>{formatMb(row.childrenRssMb)}</td>
+                  <td>{formatPct(row.containerCpuPct ?? row.nodeCpuPct)}</td>
+                  <td>{row.piAlive ? "up" : "idle"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function UsageStat({ label, value, hint }: { label: string; value: string; hint: string }) {
+  return (
+    <div className="usage-stat">
+      <small>{label}</small>
+      <strong>{value}</strong>
+      <span>{hint}</span>
+    </div>
+  );
+}
+
+function UsageChart({
+  samples,
+  series,
+  valueOf,
+  unit,
+}: {
+  samples: ResourceSample[];
+  series: { key: string; color: string; label: string }[];
+  valueOf: (row: ResourceSample, key: string) => number | null | undefined;
+  unit: string;
+}) {
+  const w = 640;
+  const h = 168;
+  const pad = { t: 10, r: 12, b: 24, l: 40 };
+  const innerW = w - pad.l - pad.r;
+  const innerH = h - pad.t - pad.b;
+  const values = samples.flatMap((row) => series.map((item) => valueOf(row, item.key) ?? 0));
+  const max = Math.max(1, ...values) * 1.15;
+  const xAt = (i: number) => pad.l + (samples.length < 2 ? innerW / 2 : (i / (samples.length - 1)) * innerW);
+  const yAt = (n: number) => pad.t + innerH - (n / max) * innerH;
+  const first = samples[0];
+  const last = samples[samples.length - 1];
+
+  return (
+    <div className="usage-chart">
+      <svg viewBox={`0 0 ${w} ${h}`} role="img" aria-label={`${series.map((item) => item.label).join(", ")} ${unit}`}>
+        <line x1={pad.l} y1={pad.t} x2={pad.l} y2={pad.t + innerH} stroke="currentColor" strokeOpacity="0.18" />
+        <line x1={pad.l} y1={pad.t + innerH} x2={pad.l + innerW} y2={pad.t + innerH} stroke="currentColor" strokeOpacity="0.18" />
+        <text x={4} y={pad.t + 4} className="usage-axis">
+          {max.toFixed(0)}
+          {unit}
+        </text>
+        <text x={4} y={pad.t + innerH} className="usage-axis">
+          0
+        </text>
+        {samples.length === 0 ? (
+          <text x={w / 2} y={h / 2} textAnchor="middle" className="usage-axis">
+            Waiting for samples
+          </text>
+        ) : (
+          series.map((item) => {
+            const pts = samples
+              .map((row, i) => `${xAt(i)},${yAt(valueOf(row, item.key) ?? 0)}`)
+              .join(" ");
+            return <polyline key={item.key} fill="none" stroke={item.color} strokeWidth="2" points={pts} />;
+          })
+        )}
+        {first && last && (
+          <>
+            <text x={pad.l} y={h - 6} className="usage-axis">
+              {formatClock(first.ts)}
+            </text>
+            <text x={pad.l + innerW} y={h - 6} textAnchor="end" className="usage-axis">
+              {formatClock(last.ts)}
+            </text>
+          </>
+        )}
+      </svg>
+      <div className="usage-legend">
+        {series.map((item) => (
+          <span key={item.key}>
+            <i style={{ background: item.color }} />
+            {item.label}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }

@@ -22,4 +22,17 @@ node "$CLOUD_PI_CATALOG" help
 
 `$CLOUD_PI_CATALOG` is set in your environment. If it is missing, use `$CLOUD_PI_ROOT/server/catalog-cli.mjs`.
 
-Read the `manage-host-settings` skill and follow it. After attach/detach, tell the operator the next chat with that agent will load the new bundle.
+Read the `manage-host-settings` skill and follow it. After attach/detach, tell the operator the next chat with that agent will load the new bundle. Refresh Scrapling with `node "$CLOUD_PI_CATALOG" skills install-scrapling --force`.
+
+Cursor and other machines can manage this host over HTTP with the settings password:
+
+```bash
+curl -sS -H "Authorization: Bearer $SETTINGS_PASSWORD" https://e-agent.up.railway.app/api/manage
+curl -sS -H "Authorization: Bearer $SETTINGS_PASSWORD" -H "Content-Type: application/json" \
+  -d '{"force":false}' https://e-agent.up.railway.app/api/manage/scrapling
+curl -sS -H "Authorization: Bearer $SETTINGS_PASSWORD" -H "Content-Type: application/json" \
+  -d '{"name":"Scraper","rolePrompt":"...","scrapling":true}' https://e-agent.up.railway.app/api/manage/agents
+curl -sS -H "Authorization: Bearer $SETTINGS_PASSWORD" -H "Content-Type: application/json" \
+  -d '{"agent":"website","message":"Fetch https://example.com as markdown with Scrapling."}' \
+  https://e-agent.up.railway.app/api/manage/turn
+``` Website Dev Agent can spawn in-process sub-agents when `spawn-subagents` is attached (`agents attach website --skill spawn-subagents`). Do not `pi install` third-party subagent packages on this host.

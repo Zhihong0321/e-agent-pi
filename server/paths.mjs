@@ -36,3 +36,5 @@ export const PI_PACKAGE_DIR = path.join(ROOT, "node_modules", "@earendil-works",
 export const CATALOG_CLI = path.join(ROOT, "server", "catalog-cli.mjs");
 export const IMAGEN_CLI = path.join(ROOT, "server", "imagen-cli.mjs");
 export const IMAGEN_SKILL_DIR = path.join(ROOT, "agent", "imagen");
+export const SUBAGENTS_EXTENSION = path.join(ROOT, "agent", "extensions", "subagents.ts");
+export const SPAWN_SUBAGENTS_SLUG = "spawn-subagents";

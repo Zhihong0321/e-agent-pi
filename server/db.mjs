@@ -63,11 +63,26 @@ export async function connectDb() {
       meta JSONB,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    CREATE TABLE IF NOT EXISTS resource_samples (
+      id SERIAL PRIMARY KEY,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      node_rss_mb REAL NOT NULL,
+      node_heap_mb REAL NOT NULL,
+      children_rss_mb REAL,
+      container_mb REAL,
+      container_limit_mb REAL,
+      node_cpu_pct REAL,
+      container_cpu_pct REAL,
+      child_count INT,
+      load1 REAL,
+      pi_alive BOOLEAN
+    );
   `);
 
   await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS session_id TEXT`);
   await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS agent_id TEXT`);
   await pool.query(`CREATE INDEX IF NOT EXISTS messages_session_id_idx ON messages (session_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS resource_samples_created_at_idx ON resource_samples (created_at)`);
   await migrateLegacyMessages();
 }
 
@@ -235,6 +250,23 @@ export async function insertMessage(row) {
 }
 
 /**
+ * @param {number} id
+ * @param {string} content
+ */
+export async function updateMessage(id, content) {
+  const result = await getPool().query(
+    `UPDATE messages SET content = $2 WHERE id = $1
+     RETURNING id, session_id AS "sessionId", role, content, model_id AS "modelId", created_at AS "createdAt"`,
+    [id, content],
+  );
+  const sessionId = result.rows[0]?.sessionId;
+  if (sessionId) {
+    await getPool().query(`UPDATE sessions SET updated_at = NOW() WHERE id = $1`, [sessionId]);
+  }
+  return result.rows[0] ?? null;
+}
+
+/**
  * @param {string} sessionId
  * @param {number} [limit]
  */
@@ -271,4 +303,85 @@ export async function latestGitSync() {
      LIMIT 1`,
   );
   return result.rows[0] ?? null;
+}
+
+/**
+ * @param {{
+ *   ts?: string;
+ *   nodeRssMb: number;
+ *   nodeHeapMb: number;
+ *   childrenRssMb: number | null;
+ *   containerMb: number;
+ *   containerLimitMb: number | null;
+ *   nodeCpuPct: number;
+ *   containerCpuPct: number | null;
+ *   childCount: number;
+ *   load1: number | null;
+ *   piAlive: boolean;
+ * }} row
+ */
+export async function insertResourceSample(row) {
+  await getPool().query(
+    `INSERT INTO resource_samples (
+       created_at, node_rss_mb, node_heap_mb, children_rss_mb, container_mb, container_limit_mb,
+       node_cpu_pct, container_cpu_pct, child_count, load1, pi_alive
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+    [
+      row.ts ?? new Date().toISOString(),
+      row.nodeRssMb,
+      row.nodeHeapMb,
+      row.childrenRssMb,
+      row.containerMb,
+      row.containerLimitMb,
+      row.nodeCpuPct,
+      row.containerCpuPct,
+      row.childCount,
+      row.load1,
+      row.piAlive,
+    ],
+  );
+}
+
+/**
+ * @param {number} hours
+ */
+export async function listResourceSamples(hours = 24) {
+  const result = await getPool().query(
+    `SELECT created_at AS ts,
+            node_rss_mb AS "nodeRssMb",
+            node_heap_mb AS "nodeHeapMb",
+            children_rss_mb AS "childrenRssMb",
+            container_mb AS "containerMb",
+            container_limit_mb AS "containerLimitMb",
+            node_cpu_pct AS "nodeCpuPct",
+            container_cpu_pct AS "containerCpuPct",
+            child_count AS "childCount",
+            load1,
+            pi_alive AS "piAlive"
+     FROM resource_samples
+     WHERE created_at >= NOW() - ($1 * INTERVAL '1 hour')
+     ORDER BY created_at ASC`,
+    [hours],
+  );
+  return result.rows.map((row) => ({
+    ...row,
+    ts: row.ts instanceof Date ? row.ts.toISOString() : String(row.ts),
+    nodeRssMb: Number(row.nodeRssMb),
+    nodeHeapMb: Number(row.nodeHeapMb),
+    childrenRssMb: row.childrenRssMb == null ? null : Number(row.childrenRssMb),
+    containerMb: Number(row.containerMb),
+    containerLimitMb: row.containerLimitMb == null ? null : Number(row.containerLimitMb),
+    nodeCpuPct: Number(row.nodeCpuPct),
+    containerCpuPct: row.containerCpuPct == null ? null : Number(row.containerCpuPct),
+    childCount: Number(row.childCount) || 0,
+    load1: row.load1 == null ? null : Number(row.load1),
+    piAlive: Boolean(row.piAlive),
+  }));
+}
+
+/**
+ * @param {number} hours
+ */
+export async function pruneResourceSamples(hours = 24) {
+  await getPool().query(`DELETE FROM resource_samples WHERE created_at < NOW() - ($1 * INTERVAL '1 hour')`, [hours]);
 }

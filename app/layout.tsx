@@ -5,8 +5,13 @@ export const metadata: Metadata = {
   title: "Sales OS on Chat — AI Automation Prototype",
   description: "A conversational, AI-assisted Sales OS concept built on familiar messaging interaction patterns.",
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: [
+      { url: "/favicon.ico", sizes: "48x48" },
+      { url: "/favicon-32.png", type: "image/png", sizes: "32x32" },
+      { url: "/favicon-16.png", type: "image/png", sizes: "16x16" },
+    ],
+    apple: "/apple-touch-icon.png",
+    shortcut: "/favicon.ico",
   },
 };
 

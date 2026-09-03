@@ -17,15 +17,17 @@ import {
   listMessages,
   listSessions,
   setSetting,
+  updateMessage,
   updateSession,
 } from "./db.mjs";
 import { envFlags, loadRecentFromDb, logEvent, railwayMeta, recentEvents } from "./debug.mjs";
+import { latestSample, metricsPayload, setPiAliveGetter, startSampler, stopSampler } from "./metrics.mjs";
 import { listWorkspaceFiles } from "./files.mjs";
 import { getGitStatus, initWorkspace } from "./github.mjs";
 import { forgetBundleHash, hostConfigured, hostPublic, publishWorkspace } from "./ee-html.mjs";
 import { imagenConfigured, imagenPublic } from "./imagen.mjs";
 import { findModel, resolveModelCredentials } from "./models.mjs";
-import { hasSession, sessionCookie, sessionToken, checkPassword } from "./auth.mjs";
+import { hasApiAuth, hasSession, sessionCookie, sessionToken, checkPassword } from "./auth.mjs";
 import { loadSecrets, publicSettings, saveSecrets, secret, secretFlags } from "./secrets.mjs";
 import {
   BUNDLED_MODELS,
@@ -68,6 +70,8 @@ import {
   WEBSITE_AGENT_ID,
 } from "./catalog.mjs";
 import { ensureImpeccableForWebsite } from "./impeccable.mjs";
+import { ensureScraplingForWebsite, scraplingPublic } from "./scrapling.mjs";
+import { handleManage } from "./manage-api.mjs";
 import { buildPiArgs, materializeAgentRuntime } from "./runtime.mjs";
 
 const HOST = "0.0.0.0";
@@ -150,6 +154,7 @@ function readBody(req) {
 
 function wantsAuth(pathname, method = "GET") {
   if (pathname === "/api/settings") return true;
+  if (pathname === "/api/manage" || pathname.startsWith("/api/manage/")) return true;
   const mutating = method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
   if (!mutating) return false;
   return (
@@ -163,7 +168,7 @@ function wantsAuth(pathname, method = "GET") {
 }
 
 function authorized(req) {
-  return hasSession(req);
+  return hasApiAuth(req);
 }
 
 async function snapshot() {
@@ -206,11 +211,13 @@ async function snapshot() {
     activeModelId,
     modelsConfigured: modelCatalog?.filter((entry) => entry.available).length ?? 0,
     imagen: imagenPublic(),
+    scrapling: await scraplingPublic().catch(() => null),
     piClient: Boolean(client),
     env: envFlags(),
     secrets: secretFlags(),
     railway: railwayMeta(),
     node: process.version,
+    resources: latestSample(),
     events: recentEvents(),
   };
 }
@@ -288,7 +295,7 @@ async function getClient(profile) {
       });
       logEvent(
         "info",
-        `starting Pi agent=${agent.slug} skills=${agent.skills?.length ?? 0} mcp=${agent.mcp?.length ?? 0} imagen=${imagenConfigured() ? "on" : "off"} ${active.provider}/${active.model}`,
+        `starting Pi agent=${agent.slug} skills=${agent.skills?.length ?? 0} mcp=${agent.mcp?.length ?? 0} subagents=${(agent.skills ?? []).some((row) => row.slug === "spawn-subagents") ? "on" : "off"} imagen=${imagenConfigured() ? "on" : "off"} ${active.provider}/${active.model}`,
       );
 
       const pi = new RpcClient({
@@ -298,6 +305,8 @@ async function getClient(profile) {
         model: active.model,
         env: {
           ...process.env,
+          PATH: ["/opt/scrapling/bin", process.env.PATH || ""].filter(Boolean).join(path.delimiter),
+          SCRAPLING_BIN: process.env.SCRAPLING_BIN || "/opt/scrapling/bin/scrapling",
           PI_CODING_AGENT_DIR: runtimeDir,
           PI_PACKAGE_DIR,
           CLOUD_PI_ROOT: ROOT,
@@ -435,6 +444,85 @@ function writeSse(res, data) {
   res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
+/**
+ * Save the live Pi transcript as it grows so a tab close still leaves history in Postgres.
+ * @param {string} sessionId
+ * @param {string | null} modelId
+ */
+function createTurnPersister(sessionId, modelId) {
+  /** @type {{ id: number } | null} */
+  let row = null;
+  let started = false;
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let timer = null;
+  /** @type {string | null} */
+  let pending = null;
+  let writing = Promise.resolve();
+
+  /**
+   * @param {string} content
+   */
+  function write(content) {
+    writing = writing
+      .then(async () => {
+        if (!row) {
+          row = await insertMessage({
+            sessionId,
+            role: "assistant",
+            content,
+            modelId,
+          });
+          return;
+        }
+        await updateMessage(row.id, content);
+      })
+      .catch((error) => {
+        logEvent("warn", `turn persist failed: ${sanitizeError(error)}`);
+      });
+    return writing;
+  }
+
+  return {
+    /**
+     * @param {ReturnType<typeof createTurn>} turn
+     * @param {boolean} streaming
+     */
+    schedule(turn, streaming) {
+      const content = serializeTurn(turn, { streaming });
+      if (!started) {
+        started = true;
+        write(content);
+        return;
+      }
+      pending = content;
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        const next = pending;
+        pending = null;
+        if (next) write(next);
+      }, 400);
+    },
+    /**
+     * @param {ReturnType<typeof createTurn>} turn
+     * @param {boolean} [streaming]
+     */
+    async finish(turn, streaming = false) {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      pending = null;
+      if (!started && !turn.blocks.length && !turn.text) {
+        await writing;
+        return;
+      }
+      await write(serializeTurn(turn, { streaming }));
+      await writing;
+    },
+  };
+}
+
 async function switchModel(modelId) {
   const catalog = await ensureCatalog();
   const entry = findModel(catalog, modelId);
@@ -460,7 +548,7 @@ async function chat(message, modelId, session, onEvent) {
   const unsubscribe = pi.onEvent((event) => {
     try {
       const mapped = applyPiEvent(turn, event);
-      if (mapped) onEvent?.(mapped);
+      if (mapped) onEvent?.(mapped, turn);
       if (event.type === "message_end" && event.message?.role === "assistant" && event.message?.errorMessage) {
         assistantError = event.message.errorMessage;
       }
@@ -470,7 +558,7 @@ async function chat(message, modelId, session, onEvent) {
   });
 
   try {
-    onEvent?.({ type: "status", text: "Working…" });
+    onEvent?.({ type: "status", text: "Working…" }, turn);
     await pi.prompt(message);
     await pi.waitForIdle(300_000);
     const text = (await pi.getLastAssistantText())?.trim() || turn.text.trim();
@@ -486,6 +574,55 @@ async function chat(message, modelId, session, onEvent) {
   } finally {
     unsubscribe();
   }
+}
+
+async function runManageTurn({ message, agentId, sessionId, modelId }) {
+  const trimmed = String(message || "").trim();
+  let session =
+    typeof sessionId === "string" && sessionId.trim() ? await getSession(sessionId.trim()) : null;
+  if (sessionId && !session) throw new Error("Session not found");
+  if (!session) {
+    const ref = typeof agentId === "string" && agentId.trim() ? agentId.trim() : WEBSITE_AGENT_ID;
+    const agent = await getAgent(ref);
+    if (!agent) throw new Error("Unknown agent");
+    session = await createSession({
+      title: titleFromMessage(trimmed),
+      modelId: typeof modelId === "string" ? modelId : activeModelId,
+      agentId: agent.id,
+    });
+  }
+
+  logEvent("info", `manage turn session=${session.id}: ${trimmed.slice(0, 120)}`);
+  await insertMessage({
+    sessionId: session.id,
+    role: "user",
+    content: trimmed,
+    modelId: typeof modelId === "string" ? modelId : activeModelId,
+  });
+
+  const turn = await withPi(() => chat(trimmed, typeof modelId === "string" ? modelId : undefined, session));
+  await insertMessage({
+    sessionId: session.id,
+    role: "assistant",
+    content: serializeTurn(turn),
+    modelId: activeModelId,
+  });
+
+  const tools = (turn.blocks || [])
+    .filter((block) => block.type === "tool")
+    .map((block) => ({
+      name: block.name,
+      detail: block.detail,
+      isError: Boolean(block.isError),
+    }));
+
+  return {
+    reply: turn.text,
+    tools,
+    session: publicSession({ ...session, preview: turn.text || trimmed }),
+    agentId: session.agentId,
+    scrapling: await scraplingPublic().catch(() => null),
+  };
 }
 
 async function serveStatic(res, urlPath) {
@@ -573,6 +710,15 @@ async function bootServices() {
     logEvent("error", `postgres failed: ${boot.error}`);
   }
 
+  boot.step = "metrics";
+  try {
+    setPiAliveGetter(() => Boolean(client));
+    startSampler();
+    logEvent("info", "resource sampler every 15s, keep 24h");
+  } catch (error) {
+    logEvent("error", `resource sampler failed: ${sanitizeError(error)}`);
+  }
+
   boot.step = "pi-config";
   try {
     await writePiModels();
@@ -615,6 +761,21 @@ async function bootServices() {
     logEvent("error", `impeccable install failed: ${sanitizeError(error)}`);
   }
 
+  boot.step = "scrapling";
+  try {
+    if (dbReady()) {
+      const result = await ensureScraplingForWebsite();
+      logEvent(
+        "info",
+        result.skipped
+          ? `scrapling skill already in library; attached to website mcp=${result.mcp?.attached ? "on" : "off"} bin=${result.binPresent ? "yes" : "no"}`
+          : `scrapling skill installed for website agent mcp=${result.mcp?.attached ? "on" : "off"} bin=${result.binPresent ? "yes" : "no"}`,
+      );
+    }
+  } catch (error) {
+    logEvent("error", `scrapling install failed: ${sanitizeError(error)}`);
+  }
+
   boot.step = "catalog";
   try {
     await ensureCatalog();
@@ -643,7 +804,7 @@ const server = createServer(async (req, res) => {
     res.writeHead(204, {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Api-Key",
     });
     res.end();
     return;
@@ -675,6 +836,20 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (pathname === "/api/manage" || pathname.startsWith("/api/manage/")) {
+      const handled = await handleManage(req, res, url, {
+        json,
+        readBody,
+        sanitizeError,
+        resetPi,
+        runTurn: runManageTurn,
+        snapshot,
+      });
+      if (handled) return;
+      json(res, 404, { error: "Not found" });
+      return;
+    }
+
     if (req.method === "GET" && pathname === "/api/settings") {
       json(res, 200, publicSettings());
       return;
@@ -699,6 +874,11 @@ const server = createServer(async (req, res) => {
 
     if (req.method === "GET" && pathname === "/api/health") {
       json(res, 200, await snapshot());
+      return;
+    }
+
+    if (req.method === "GET" && pathname === "/api/metrics") {
+      json(res, 200, await metricsPayload());
       return;
     }
 
@@ -1041,43 +1221,41 @@ const server = createServer(async (req, res) => {
       res.socket?.setNoDelay?.(true);
       writeSse(res, { type: "session", sessionId: session.id, session: publicSession(session) });
 
-      let finished = false;
+      const persister = createTurnPersister(session.id, activeModelId);
+      /** @type {ReturnType<typeof createTurn>} */
+      let lastTurn = createTurn();
       const heartbeat = setInterval(() => {
         if (!res.writableEnded) res.write(`: ping ${Date.now()}\n\n`);
       }, 15000);
-      const abortIfOpen = () => {
-        if (!finished) client?.abort().catch(() => {});
-      };
-      req.on("close", abortIfOpen);
 
       try {
         const turn = await withPi(() =>
-          chat(trimmed, typeof modelId === "string" ? modelId : undefined, session, (event) => {
+          chat(trimmed, typeof modelId === "string" ? modelId : undefined, session, (event, liveTurn) => {
+            if (liveTurn) lastTurn = liveTurn;
             if (!res.writableEnded) writeSse(res, event);
+            if (liveTurn) persister.schedule(liveTurn, true);
           }),
         );
-        await insertMessage({
-          sessionId: session.id,
-          role: "assistant",
-          content: serializeTurn(turn),
-          modelId: activeModelId,
-        });
+        lastTurn = turn;
+        await persister.finish(turn, false);
         if (session.title && session.title !== "New chat" && client) {
           await client.setSessionName(session.title).catch(() => {});
         }
 
         const active = activeModelId ? findModel(modelCatalog ?? [], activeModelId) : null;
-        writeSse(res, {
-          type: "done",
-          reply: turn.text,
-          blocks: JSON.parse(serializeTurn(turn)).blocks,
-          sessionId: session.id,
-          session: publicSession({ ...session, preview: turn.text || trimmed }),
-          activeModelId,
-          activeModel: active
-            ? { id: active.id, label: active.label, provider: active.provider, model: active.model }
-            : null,
-        });
+        if (!res.writableEnded) {
+          writeSse(res, {
+            type: "done",
+            reply: turn.text,
+            blocks: JSON.parse(serializeTurn(turn)).blocks,
+            sessionId: session.id,
+            session: publicSession({ ...session, preview: turn.text || trimmed }),
+            activeModelId,
+            activeModel: active
+              ? { id: active.id, label: active.label, provider: active.provider, model: active.model }
+              : null,
+          });
+        }
 
         let host = null;
         const websiteChat = !session.agentId || session.agentId === WEBSITE_AGENT_ID;
@@ -1091,12 +1269,11 @@ const server = createServer(async (req, res) => {
           if (host && !res.writableEnded) writeSse(res, { type: "host", host });
         }
       } catch (error) {
+        await persister.finish(lastTurn, false).catch(() => {});
         logEvent("error", sanitizeError(error));
         if (!res.writableEnded) writeSse(res, { type: "error", error: sanitizeError(error) });
       } finally {
-        finished = true;
         clearInterval(heartbeat);
-        req.off("close", abortIfOpen);
         if (!res.writableEnded) res.end();
       }
       return;
@@ -1132,6 +1309,7 @@ server.listen(PORT, HOST, () => {
 
 async function shutdown() {
   logEvent("info", "shutdown");
+  stopSampler();
   if (client) await client.stop().catch(() => {});
   await closeDb().catch(() => {});
   process.exit(0);

@@ -37,6 +37,7 @@ const USAGE = `Cloud Pi catalog CLI. Prints JSON.
   node $CLOUD_PI_CATALOG skills get <id-or-slug>
   node $CLOUD_PI_CATALOG skills install [--file PATH | --url URL | --content MD] [--name slug] [--description ...]
   node $CLOUD_PI_CATALOG skills install-impeccable [--force]
+  node $CLOUD_PI_CATALOG skills install-scrapling [--force]
   node $CLOUD_PI_CATALOG skills delete <id-or-slug>
   node $CLOUD_PI_CATALOG skills rescan
 
@@ -181,6 +182,10 @@ async function run(argv) {
     if (action === "install-impeccable") {
       const { ensureImpeccableForWebsite } = await import("./impeccable.mjs");
       return { ok: true, ...(await ensureImpeccableForWebsite({ force: Boolean(opts.force) })) };
+    }
+    if (action === "install-scrapling") {
+      const { ensureScraplingForWebsite } = await import("./scrapling.mjs");
+      return { ok: true, ...(await ensureScraplingForWebsite({ force: Boolean(opts.force) })) };
     }
     if (action === "delete") {
       const skill = await getSkill(target);

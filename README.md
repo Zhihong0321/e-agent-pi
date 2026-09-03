@@ -73,6 +73,7 @@ The host keeps **one** Pi RPC process (Railway is a single replica). Switching a
 - `--append-system-prompt` → materialized `/storage/runtime/<agent-id>/ROLE.md`
 - `--no-skills` plus `--skill <library path>` for **only** the skills attached to that agent
 - `--no-extensions`; if the agent has MCP, also `--extension npm:pi-mcp-adapter` and a runtime `mcp.json` that lists **only** that agent's servers
+- If `spawn-subagents` is attached, also `--extension agent/extensions/subagents.ts` (in-process `spawn_subagent` tool). Children share the workspace, cannot nest, and cap at three running
 - `PI_CODING_AGENT_DIR=/storage/runtime/<agent-id>` so Pi does not read the shared `/storage/pi` skill/MCP dirs
 
 Install **does not** attach. A skill written to the library stays unused until it is attached to an agent.
@@ -84,11 +85,13 @@ Install **does not** attach. A skill written to the library stays unused until i
 
 After attach, the next chat with that agent restarts Pi with the new bundle.
 
-Website Dev Agent is seeded with the **Impeccable** design skill ([docs](https://impeccable.style/docs/)) and **no** MCP. Settings Agent does not get Impeccable. Boot always reloads Website Dev Agent's role from `agent/ROLE.md` so the git/GitHub ban and ee-html rules actually apply (Postgres used to keep the first seed forever).
+Website Dev Agent is seeded with the **Impeccable** design skill ([docs](https://impeccable.style/docs/)), **Scrapling** (skill + MCP) for live page fetches, and **spawn-subagents** (in-process scout/researcher/worker/reviewer children). Settings Agent does not get Impeccable, Scrapling, or spawn-subagents. Boot always reloads Website Dev Agent's role from `agent/ROLE.md` so the git/GitHub ban and ee-html rules actually apply (Postgres used to keep the first seed forever).
 
 On boot the host runs `npx impeccable install --providers=pi --scope=project` in a staging directory, copies `.pi/skills/impeccable` into `/storage/library/skills/impeccable`, and attaches it to Website Dev Agent. It does **not** install into the GitHub workspace — that would commit the pack into the site repo, and Pi would not load it anyway (`--no-skills` plus `--skill <library path>`).
 
 `/impeccable init` writes `PRODUCT.md` (and later `DESIGN.md`) in the workspace; those files *are* site artifacts and should sync. Refresh the pack with Settings Agent: `node $CLOUD_PI_CATALOG skills install-impeccable --force`.
+
+On boot the host also downloads the official Scrapling Agent Skill zip into `/storage/library/skills/scrapling-official`, registers the `scrapling` MCP server (`/opt/scrapling/bin/scrapling mcp`), and attaches both to Website Dev Agent. The Docker image installs Python, `scrapling[all]`, and Chromium. Refresh with `node $CLOUD_PI_CATALOG skills install-scrapling --force`.
 
 ### Settings vs studio
 
@@ -119,7 +122,10 @@ On boot the host runs `npx impeccable install --providers=pi --scope=project` in
 | `agent/model-catalog.json` | Luna + Kimi catalog |
 | `server/catalog.mjs` | `agents`, `skills`, `mcp_servers`, attachments |
 | `server/impeccable.mjs` | Official Impeccable Pi skill → library + Website Dev Agent |
-| `server/runtime.mjs` | Per-agent Pi dir + `--no-skills --skill` args |
+| `server/scrapling.mjs` | Official Scrapling skill zip + MCP → library + Website Dev Agent |
+| `server/runtime.mjs` | Per-agent Pi dir + `--no-skills --skill` args + optional subagent extension |
+| `agent/extensions/subagents.ts` | In-process `spawn_subagent` for Cloud Pi (not a third-party npm package) |
+| `agent/skills/spawn-subagents/` | Skill that teaches when to delegate; attaching it also loads the extension |
 | `server/db.mjs` | `settings`, `sessions`, `messages`, `git_syncs`, `debug_events` |
 | `server/index.mjs` | HTTP: `dist/` + `/api/*` (agents, skills, MCP, chat, git, health) |
 | `server/pi-stream.mjs` | Pi RPC events → live chat transcript |

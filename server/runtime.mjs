@@ -2,7 +2,16 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { imagenConfigured, imagenSystemPrompt } from "./imagen.mjs";
 import { hostSystemPrompt } from "./ee-html.mjs";
-import { IMAGEN_SKILL_DIR, RUNTIME_DIR, STORAGE } from "./paths.mjs";
+import { IMAGEN_SKILL_DIR, RUNTIME_DIR, SPAWN_SUBAGENTS_SLUG, STORAGE, SUBAGENTS_EXTENSION } from "./paths.mjs";
+
+/**
+ * @param {{ slug?: string; dirPath?: string }[] | undefined} skills
+ */
+export function agentHasSubagents(skills) {
+  return (skills || []).some(
+    (skill) => skill.slug === SPAWN_SUBAGENTS_SLUG || (skill.dirPath && skill.dirPath.replace(/\\/g, "/").endsWith(`/${SPAWN_SUBAGENTS_SLUG}`)),
+  );
+}
 
 /**
  * @param {{ slug: string; command?: string | null; args?: unknown; url?: string | null; env?: Record<string, string> | null; config?: Record<string, unknown> | null }} server
@@ -57,7 +66,7 @@ export async function materializeAgentRuntime(agent, mcpServers, modelsJson) {
 /**
  * @param {{
  *   agent: { name: string };
- *   skills: { dirPath: string }[];
+ *   skills: { slug?: string; dirPath: string }[];
  *   mcpCount: number;
  *   runtimeDir: string;
  *   provider: string;
@@ -87,6 +96,7 @@ export function buildPiArgs(opts) {
     if (skill.dirPath) args.push("--skill", skill.dirPath);
   }
   if (opts.mcpCount) args.push("--extension", "npm:pi-mcp-adapter");
+  if (agentHasSubagents(opts.skills)) args.push("--extension", SUBAGENTS_EXTENSION);
   if (opts.sessionFile) args.push("--session", opts.sessionFile);
   return args;
 }
