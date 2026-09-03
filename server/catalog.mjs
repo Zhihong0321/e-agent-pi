@@ -584,19 +584,6 @@ export async function copyBundledSkills() {
   }
 }
 
-async function seedAgent(row) {
-  await getPool().query(
-    `INSERT INTO agents (id, slug, name, short, headline, description, color, role_prompt)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-     ON CONFLICT (id) DO UPDATE SET
-       role_prompt = CASE
-         WHEN agents.role_prompt IS NULL OR agents.role_prompt = '' THEN EXCLUDED.role_prompt
-         ELSE agents.role_prompt
-       END`,
-    [row.id, row.slug, row.name, row.short, row.headline, row.description, row.color, row.rolePrompt],
-  );
-}
-
 async function seedSystemAgent(row) {
   await getPool().query(
     `INSERT INTO agents (id, slug, name, short, headline, description, color, role_prompt)
@@ -622,13 +609,13 @@ export async function seedAgentCatalog() {
 
   const websiteRole = await readFile(ROLE_FILE, "utf8").catch(() => "You are Website Dev Agent.");
   const settingsRole = await readFile(SETTINGS_ROLE_FILE, "utf8").catch(() => "You are Settings Agent.");
-  await seedAgent({
+  await seedSystemAgent({
     id: WEBSITE_AGENT_ID,
     slug: "website",
     name: "Website Dev Agent",
     short: "W",
     headline: "Ready to build in the workspace",
-    description: "Designs static websites in the GitHub-backed workspace",
+    description: "Designs static websites; the host publishes them to ee-html",
     color: "emerald",
     rolePrompt: websiteRole,
   });

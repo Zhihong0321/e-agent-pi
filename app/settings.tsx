@@ -5,9 +5,19 @@ type Settings = {
   cavotiBaseUrl: string;
   kimiApiKeySet: boolean;
   kimiBaseUrl: string;
+  imagenApiKeySet: boolean;
+  imagenBaseUrl: string;
+  imagenModel: string;
+  imagenApi: string;
   githubTokenSet: boolean;
   githubRepo: string;
   githubBranch: string;
+  eeHtmlApiKeySet: boolean;
+  eeHtmlBaseUrl: string;
+  eeHtmlSlug: string;
+  eeHtmlName: string;
+  eeHtmlUrl: string;
+  eeHtmlLastError: string;
 };
 
 type Tab = "keys" | "agents" | "skills" | "mcp";
@@ -81,9 +91,17 @@ export default function SettingsPage() {
     cavotiBaseUrl: "",
     kimiApiKey: "",
     kimiBaseUrl: "",
+    imagenApiKey: "",
+    imagenBaseUrl: "",
+    imagenModel: "",
+    imagenApi: "auto",
     githubToken: "",
     githubRepo: "",
     githubBranch: "main",
+    eeHtmlApiKey: "",
+    eeHtmlBaseUrl: "",
+    eeHtmlSlug: "e-agent-site",
+    eeHtmlName: "Website Dev Agent",
     settingsPassword: "",
   });
   const [agents, setAgents] = useState<AgentItem[]>([]);
@@ -103,6 +121,7 @@ export default function SettingsPage() {
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
   const [busy, setBusy] = useState(false);
+  const [publishing, setPublishing] = useState(false);
 
   const loadKeys = async () => {
     const data = await authedJson<Settings>("/api/settings");
@@ -111,8 +130,14 @@ export default function SettingsPage() {
       ...prev,
       cavotiBaseUrl: data.cavotiBaseUrl,
       kimiBaseUrl: data.kimiBaseUrl,
+      imagenBaseUrl: data.imagenBaseUrl,
+      imagenModel: data.imagenModel,
+      imagenApi: data.imagenApi || "auto",
       githubRepo: data.githubRepo,
       githubBranch: data.githubBranch,
+      eeHtmlBaseUrl: data.eeHtmlBaseUrl,
+      eeHtmlSlug: data.eeHtmlSlug,
+      eeHtmlName: data.eeHtmlName,
     }));
   };
 
@@ -188,19 +213,66 @@ export default function SettingsPage() {
           cavoti_base_url: form.cavotiBaseUrl,
           kimi_api_key: form.kimiApiKey,
           kimi_base_url: form.kimiBaseUrl,
+          imagen_api_key: form.imagenApiKey,
+          imagen_base_url: form.imagenBaseUrl,
+          imagen_model: form.imagenModel,
+          imagen_api: form.imagenApi,
           github_token: form.githubToken,
           github_repo: form.githubRepo,
           github_branch: form.githubBranch,
+          ee_html_api_key: form.eeHtmlApiKey,
+          ee_html_base_url: form.eeHtmlBaseUrl,
+          ee_html_slug: form.eeHtmlSlug,
+          ee_html_name: form.eeHtmlName,
           settings_password: form.settingsPassword,
         }),
       });
       setSettings(data);
-      setForm((prev) => ({ ...prev, cavotiApiKey: "", kimiApiKey: "", githubToken: "", settingsPassword: "" }));
-      setSaved("Saved to Postgres. Models and GitHub will use these keys.");
+      setForm((prev) => ({ ...prev, cavotiApiKey: "", kimiApiKey: "", imagenApiKey: "", githubToken: "", eeHtmlApiKey: "", settingsPassword: "" }));
+      if (data.eeHtmlLastError) {
+        setError(data.eeHtmlLastError);
+        setSaved("");
+      } else if (data.eeHtmlUrl) {
+        setSaved(`Saved. Live site: ${data.eeHtmlUrl}`);
+      } else if (data.eeHtmlApiKeySet) {
+        setSaved("Saved. Host will publish once the workspace has index.html.");
+      } else {
+        setSaved("Saved to Postgres. Add the HTML host API key to publish to ee-html.");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const publishHost = async () => {
+    setError("");
+    setSaved("");
+    setPublishing(true);
+    try {
+      const host = await authedJson<{
+        configured?: boolean;
+        url?: string | null;
+        lastError?: string | null;
+      }>("/api/host", { method: "POST" });
+      setSettings((prev) =>
+        prev
+          ? {
+              ...prev,
+              eeHtmlUrl: host.url ?? prev.eeHtmlUrl,
+              eeHtmlLastError: host.lastError ?? "",
+              eeHtmlApiKeySet: host.configured ?? prev.eeHtmlApiKeySet,
+            }
+          : prev,
+      );
+      if (host.lastError) setError(host.lastError);
+      else if (host.url) setSaved(`Published ${host.url}`);
+      else setSaved("Publish skipped — add the API key and an index.html in the workspace.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Publish failed");
+    } finally {
+      setPublishing(false);
     }
   };
 
@@ -373,7 +445,10 @@ export default function SettingsPage() {
 
           {tab === "keys" && (
             <section className="settings-card">
-              <p>Keys are stored in Postgres, not Railway variables. Leave a secret blank to keep the current value.</p>
+              <p>
+                Keys are stored in Postgres, not Railway variables. Leave a secret blank to keep the current value.
+                The Imagen model is host-wide: every Pi agent is told about it after you save.
+              </p>
 
               <h2>Cavoti / Luna</h2>
               <label>
@@ -411,7 +486,101 @@ export default function SettingsPage() {
                 />
               </label>
 
-              <h2>GitHub workspace</h2>
+              <h2>Imagen / image generation</h2>
+              <p>
+                Saved here for every Pi agent. They generate with{" "}
+                <code>node "$CLOUD_PI_IMAGEN" generate --prompt "…" --out assets/hero.png</code>. Google retired classic
+                Imagen IDs in Aug 2026 — use <code>gemini-3.1-flash-image</code> or any proxy / OpenAI-compatible image
+                model.
+              </p>
+              <label>
+                API key {settings?.imagenApiKeySet ? <em>saved</em> : <em>missing</em>}
+                <input
+                  type="password"
+                  value={form.imagenApiKey}
+                  onChange={(event) => setForm({ ...form, imagenApiKey: event.target.value })}
+                  placeholder={settings?.imagenApiKeySet ? "••••••••  (unchanged)" : "Paste key"}
+                />
+              </label>
+              <label>
+                Model ID
+                <input
+                  value={form.imagenModel}
+                  onChange={(event) => setForm({ ...form, imagenModel: event.target.value })}
+                  placeholder="gemini-3.1-flash-image"
+                />
+              </label>
+              <label>
+                API
+                <select value={form.imagenApi} onChange={(event) => setForm({ ...form, imagenApi: event.target.value })}>
+                  <option value="auto">Auto-detect</option>
+                  <option value="google">Google Gemini / Imagen</option>
+                  <option value="openai">OpenAI-compatible (/v1/images/generations)</option>
+                </select>
+              </label>
+              <label>
+                Base URL
+                <input
+                  value={form.imagenBaseUrl}
+                  onChange={(event) => setForm({ ...form, imagenBaseUrl: event.target.value })}
+                  placeholder="https://generativelanguage.googleapis.com/v1beta"
+                />
+              </label>
+
+              <h2>HTML host (ee-html)</h2>
+              <p>
+                Website Dev Agent only edits files. This studio zips the workspace and publishes to{" "}
+                <a href="https://ee-html.up.railway.app/" target="_blank" rel="noreferrer">
+                  ee-html.up.railway.app
+                </a>
+                . Paste the host API key here (or set <code>EE_HTML_API_KEY</code> on Railway).
+              </p>
+              <label>
+                API key {settings?.eeHtmlApiKeySet ? <em>saved</em> : <em>missing</em>}
+                <input
+                  type="password"
+                  value={form.eeHtmlApiKey}
+                  onChange={(event) => setForm({ ...form, eeHtmlApiKey: event.target.value })}
+                  placeholder={settings?.eeHtmlApiKeySet ? "••••••••  (unchanged)" : "Host engine API key"}
+                />
+              </label>
+              <label>
+                Base URL
+                <input
+                  value={form.eeHtmlBaseUrl}
+                  onChange={(event) => setForm({ ...form, eeHtmlBaseUrl: event.target.value })}
+                  placeholder="https://ee-html.up.railway.app"
+                />
+              </label>
+              <label>
+                Slug
+                <input
+                  value={form.eeHtmlSlug}
+                  onChange={(event) => setForm({ ...form, eeHtmlSlug: event.target.value })}
+                  placeholder="e-agent-site"
+                />
+              </label>
+              <label>
+                Display name
+                <input
+                  value={form.eeHtmlName}
+                  onChange={(event) => setForm({ ...form, eeHtmlName: event.target.value })}
+                />
+              </label>
+              {settings?.eeHtmlUrl ? (
+                <p>
+                  Live:{" "}
+                  <a href={settings.eeHtmlUrl} target="_blank" rel="noreferrer">
+                    {settings.eeHtmlUrl}
+                  </a>
+                </p>
+              ) : null}
+              <button type="button" disabled={busy || publishing || !settings?.eeHtmlApiKeySet} onClick={() => void publishHost()}>
+                {publishing ? "Publishing…" : "Publish workspace now"}
+              </button>
+
+              <h2>GitHub (unused for publishing)</h2>
+              <p>Optional backup only. The Website Dev Agent must not commit or push.</p>
               <label>
                 Token {settings?.githubTokenSet ? <em>saved</em> : <em>missing</em>}
                 <input

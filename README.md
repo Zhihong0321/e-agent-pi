@@ -1,6 +1,6 @@
 # Website Studio (Pi agent)
 
-Cloud app for Railway. Users chat with named **Agents**. Each agent is a Role (prompt) plus the Skills and MCP servers attached to it. Pi **Website Dev Agent** only edits a volume workspace (static HTML/CSS/JS). This service does **not** publish to ee-html or serve a public generated site. GitHub is the intended workspace remote.
+Cloud app for Railway. Users chat with named **Agents**. Each agent is a Role (prompt) plus the Skills and MCP servers attached to it. Pi **Website Dev Agent** edits a volume workspace (static HTML/CSS/JS). The **host** zips that workspace and publishes it to [ee-html](https://ee-html.up.railway.app/) (`/app/<slug>/`). The agent must not git-commit or call the host API.
 
 ## Status snapshot
 
@@ -53,8 +53,8 @@ Volume layout is listed under **Agents = Role + Skills + MCP**.
 - Users chat with a chosen **Agent**. An agent is **Role** (prompt) + **Skills** + **MCP** — not a shared bag of tools.
 - Skills and MCP servers are installed once on the host library. Attaching them to an agent is a separate step. Unassigned capabilities are invisible to Pi.
 - Each studio chat belongs to one agent and is its own Pi session. New chat does not reuse another chat's memory.
-- After file edits, the **host** commits/pushes when GitHub is configured; the agent must not deploy or call a host API
-- ee-html (`https://ee-html.up.railway.app/`) is a separate HTML host engine; this app never publishes there
+- After file edits, the **host** zips the workspace and publishes to ee-html; the agent must not git-commit, deploy, or call the host API
+- Live site: `https://ee-html.up.railway.app/app/<slug>/` (default slug `e-agent-site`)
 
 ## Agents = Role + Skills + MCP
 
@@ -84,7 +84,7 @@ Install **does not** attach. A skill written to the library stays unused until i
 
 After attach, the next chat with that agent restarts Pi with the new bundle.
 
-Website Dev Agent is seeded with the **Impeccable** design skill ([docs](https://impeccable.style/docs/)) and **no** MCP. Settings Agent does not get Impeccable.
+Website Dev Agent is seeded with the **Impeccable** design skill ([docs](https://impeccable.style/docs/)) and **no** MCP. Settings Agent does not get Impeccable. Boot always reloads Website Dev Agent's role from `agent/ROLE.md` so the git/GitHub ban and ee-html rules actually apply (Postgres used to keep the first seed forever).
 
 On boot the host runs `npx impeccable install --providers=pi --scope=project` in a staging directory, copies `.pi/skills/impeccable` into `/storage/library/skills/impeccable`, and attaches it to Website Dev Agent. It does **not** install into the GitHub workspace — that would commit the pack into the site repo, and Pi would not load it anyway (`--no-skills` plus `--skill <library path>`).
 
@@ -125,11 +125,12 @@ On boot the host runs `npx impeccable install --providers=pi --scope=project` in
 | `server/pi-stream.mjs` | Pi RPC events → live chat transcript |
 | `server/secrets.mjs` | Keys from Postgres |
 | `server/auth.mjs` | Settings session cookie |
-| `server/github.mjs` | Clone / commit / push workspace |
+| `server/ee-html.mjs` | Zip workspace and POST to the HTML host engine |
+| `server/github.mjs` | Optional GitHub clone (not used for publishing) |
 | `server/models.mjs` | Model availability from DB keys |
 
 ## Open
 
-1. Add GitHub token + `owner/repo` on `/settings` so the workspace syncs.
-2. Push/deploy **`railway`**, not `main`. Session management is in this branch and needs that deploy before production isolates chats.
+1. Add the HTML host API key on `/settings` (or Railway `EE_HTML_API_KEY`). Saving keys or clicking **Publish workspace now** posts the zip to ee-html; Website Dev Agent chats do the same.
+2. Push/deploy **`railway`**, not `main`.
 3. Railway CLI on the Windows machine was blocked by Defender; debug via `/api/health` and `/api/debug`.

@@ -73,7 +73,8 @@ export function envFlags() {
     "RAILWAY_VOLUME_MOUNT_PATH",
     "RAILWAY_PUBLIC_DOMAIN",
     "RAILWAY_ENVIRONMENT_NAME",
-    "RAILWAY_SERVICE_NAME",
+    "EE_HTML_API_KEY",
+    "EE_HTML_BASE_URL",
   ];
   /** @type {Record<string, boolean>} */
   const present = {};

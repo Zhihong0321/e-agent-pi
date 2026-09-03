@@ -21,7 +21,9 @@ import {
 } from "./db.mjs";
 import { envFlags, loadRecentFromDb, logEvent, railwayMeta, recentEvents } from "./debug.mjs";
 import { listWorkspaceFiles } from "./files.mjs";
-import { getGitStatus, initWorkspace, syncWorkspace } from "./github.mjs";
+import { getGitStatus, initWorkspace } from "./github.mjs";
+import { forgetBundleHash, hostConfigured, hostPublic, publishWorkspace } from "./ee-html.mjs";
+import { imagenConfigured, imagenPublic } from "./imagen.mjs";
 import { findModel, resolveModelCredentials } from "./models.mjs";
 import { hasSession, sessionCookie, sessionToken, checkPassword } from "./auth.mjs";
 import { loadSecrets, publicSettings, saveSecrets, secret, secretFlags } from "./secrets.mjs";
@@ -31,6 +33,7 @@ import {
   DATA_DIR,
   DEFAULT_AGENT_ID,
   DIST_DIR,
+  IMAGEN_CLI,
   LIBRARY_DIR,
   PI_AGENT_DIR,
   PI_CLI_PATH,
@@ -195,12 +198,14 @@ async function snapshot() {
     },
     db: { connected: dbReady() },
     git,
+    host: hostPublic(),
     fileCount: files.length,
     sessionCount: dbReady() ? await countSessions().catch(() => 0) : 0,
     catalog: dbReady() ? await catalogCounts().catch(() => null) : null,
     activeAgentId,
     activeModelId,
     modelsConfigured: modelCatalog?.filter((entry) => entry.available).length ?? 0,
+    imagen: imagenPublic(),
     piClient: Boolean(client),
     env: envFlags(),
     secrets: secretFlags(),
@@ -208,6 +213,19 @@ async function snapshot() {
     node: process.version,
     events: recentEvents(),
   };
+}
+
+async function publishToHost({ force = false } = {}) {
+  if (!hostConfigured()) return hostPublic();
+  try {
+    const published = await publishWorkspace({ force });
+    if (published.lastError) logEvent("error", `ee-html: ${published.lastError}`);
+    else if (!published.skipped) logEvent("info", `ee-html published ${published.url}`);
+    return published;
+  } catch (error) {
+    logEvent("error", `ee-html publish failed: ${sanitizeError(error)}`);
+    return { ...hostPublic(), lastError: sanitizeError(error) };
+  }
 }
 
 async function ensureCatalog() {
@@ -224,7 +242,8 @@ function agentBundleKey(agent) {
   const role = createHash("sha1").update(agent.rolePrompt || "").digest("hex").slice(0, 12);
   const skills = (agent.skillIds || []).slice().sort().join(",");
   const mcp = (agent.mcpIds || []).slice().sort().join(",");
-  return `${agent.id}:${skills}:${mcp}:${role}`;
+  const imagen = imagenConfigured() ? `${secret("imagen_model") || "default"}:${secret("imagen_api") || "auto"}` : "off";
+  return `${agent.id}:${skills}:${mcp}:${role}:${imagen}`;
 }
 
 async function resolveAgentProfile(agentId) {
@@ -269,7 +288,7 @@ async function getClient(profile) {
       });
       logEvent(
         "info",
-        `starting Pi agent=${agent.slug} skills=${agent.skills?.length ?? 0} mcp=${agent.mcp?.length ?? 0} ${active.provider}/${active.model}`,
+        `starting Pi agent=${agent.slug} skills=${agent.skills?.length ?? 0} mcp=${agent.mcp?.length ?? 0} imagen=${imagenConfigured() ? "on" : "off"} ${active.provider}/${active.model}`,
       );
 
       const pi = new RpcClient({
@@ -283,6 +302,7 @@ async function getClient(profile) {
           PI_PACKAGE_DIR,
           CLOUD_PI_ROOT: ROOT,
           CLOUD_PI_CATALOG: CATALOG_CLI,
+          CLOUD_PI_IMAGEN: IMAGEN_CLI,
           ...resolved.env,
         },
         args,
@@ -602,6 +622,14 @@ async function bootServices() {
     logEvent("error", `catalog failed: ${sanitizeError(error)}`);
   }
 
+  boot.step = "ee-html";
+  try {
+    if (hostConfigured()) await publishToHost();
+    else logEvent("info", "ee-html API key not set");
+  } catch (error) {
+    logEvent("error", `ee-html publish failed: ${sanitizeError(error)}`);
+  }
+
   boot.step = "ready";
   boot.ready = true;
   logEvent("info", "boot complete");
@@ -654,13 +682,18 @@ const server = createServer(async (req, res) => {
 
     if (req.method === "PUT" && pathname === "/api/settings") {
       const body = JSON.parse((await readBody(req)) || "{}");
+      const previousTarget = `${secret("ee_html_base_url")}|${secret("ee_html_slug")}`;
       await saveSecrets(body);
+      if (`${secret("ee_html_base_url")}|${secret("ee_html_slug")}` !== previousTarget) {
+        await forgetBundleHash();
+      }
       await writePiModels().catch((error) => logEvent("error", sanitizeError(error)));
       await resetPi();
       await initWorkspace().catch((error) => logEvent("error", `workspace reinit: ${sanitizeError(error)}`));
       await ensureCatalog();
+      const host = await publishToHost({ force: true });
       logEvent("info", "settings saved to postgres");
-      json(res, 200, publicSettings());
+      json(res, 200, { ...publicSettings(), host });
       return;
     }
 
@@ -678,6 +711,17 @@ const server = createServer(async (req, res) => {
 
     if (req.method === "GET" && pathname === "/api/git") {
       json(res, 200, await getGitStatus());
+      return;
+    }
+
+    if (req.method === "GET" && pathname === "/api/host") {
+      json(res, 200, hostPublic());
+      return;
+    }
+
+    if (req.method === "POST" && pathname === "/api/host") {
+      const host = await publishToHost({ force: true });
+      json(res, 200, host);
       return;
     }
 
@@ -1035,14 +1079,17 @@ const server = createServer(async (req, res) => {
             : null,
         });
 
-        let git = null;
-        try {
-        git = await syncWorkspace(`${session.title || "Agent"}: ${trimmed.slice(0, 72)}`);
-        } catch (error) {
-          logEvent("error", `git sync failed: ${sanitizeError(error)}`);
-          git = await getGitStatus().catch(() => null);
+        let host = null;
+        const websiteChat = !session.agentId || session.agentId === WEBSITE_AGENT_ID;
+        if (websiteChat) {
+          try {
+            host = await publishToHost();
+          } catch (error) {
+            logEvent("error", `ee-html publish failed: ${sanitizeError(error)}`);
+            host = { ...hostPublic(), lastError: sanitizeError(error) };
+          }
+          if (host && !res.writableEnded) writeSse(res, { type: "host", host });
         }
-        if (git && !res.writableEnded) writeSse(res, { type: "git", git });
       } catch (error) {
         logEvent("error", sanitizeError(error));
         if (!res.writableEnded) writeSse(res, { type: "error", error: sanitizeError(error) });

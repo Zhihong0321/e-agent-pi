@@ -34,3 +34,5 @@ export const PI_CLI_PATH = path.join(
 );
 export const PI_PACKAGE_DIR = path.join(ROOT, "node_modules", "@earendil-works", "pi-coding-agent");
 export const CATALOG_CLI = path.join(ROOT, "server", "catalog-cli.mjs");
+export const IMAGEN_CLI = path.join(ROOT, "server", "imagen-cli.mjs");
+export const IMAGEN_SKILL_DIR = path.join(ROOT, "agent", "imagen");

@@ -14,15 +14,12 @@ type ModelOption = {
   available: boolean;
 };
 
-type GitStatus = {
-  connected: boolean;
+type HostStatus = {
   configured: boolean;
-  repo: string | null;
-  branch: string;
-  sha: string | null;
-  dirty: boolean;
-  htmlUrl: string | null;
-  repoUrl: string | null;
+  baseUrl: string;
+  slug: string;
+  name: string;
+  url: string | null;
   lastError: string | null;
 };
 
@@ -67,7 +64,7 @@ type StreamEvent = {
   status?: string;
   reply?: string;
   blocks?: TurnBlock[];
-  git?: GitStatus;
+  host?: HostStatus;
   session?: ChatSession;
   sessionId?: string;
 };
@@ -89,7 +86,7 @@ type Agent = {
 function agentActions(agent: Agent) {
   return [
     { icon: "✦", title: "Chat to Agent", description: `Talk to ${agent.name}` },
-    { icon: "⌁", title: "Open GitHub repo", description: "Open the connected repository" },
+    { icon: "⌁", title: "Open live site", description: "Open the ee-html hosted site" },
     { icon: "▤", title: "Workspace status", description: "Ask what files exist in the workspace" },
   ];
 }
@@ -218,7 +215,8 @@ export default function Home() {
   const [models, setModels] = useState<ModelOption[]>([]);
   const [selectedModelId, setSelectedModelId] = useState("");
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
-  const [git, setGit] = useState<GitStatus | null>(null);
+  const [host, setHost] = useState<HostStatus | null>(null);
+  const [publishing, setPublishing] = useState(false);
   const [files, setFiles] = useState<WorkspaceFile[]>([]);
   const [liveStatus, setLiveStatus] = useState("");
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -247,8 +245,8 @@ export default function Home() {
   useEffect(() => {
     void (async () => {
       try {
-        const health = await api<{ git?: GitStatus }>("/api/health");
-        if (health.git && !("error" in health.git)) setGit(health.git);
+        const health = await api<{ host?: HostStatus }>("/api/health");
+        if (health.host) setHost(health.host);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Health check failed");
       }
@@ -302,12 +300,24 @@ export default function Home() {
     if (view !== "approvals") return;
     void (async () => {
       try {
-        setGit(await api<GitStatus>("/api/git"));
+        setHost(await api<HostStatus>("/api/host"));
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not load git status");
+        setError(err instanceof Error ? err.message : "Could not load live site status");
       }
     })();
   }, [view]);
+
+  const publishHost = async () => {
+    setError("");
+    setPublishing(true);
+    try {
+      setHost(await api<HostStatus>("/api/host", { method: "POST" }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Publish failed");
+    } finally {
+      setPublishing(false);
+    }
+  };
 
   const switchModel = async (modelId: string) => {
     if (!modelId || modelId === selectedModelId) {
@@ -365,7 +375,7 @@ export default function Home() {
   };
   const openAction = (index: number) => {
     if (index === 1) {
-      const url = git?.htmlUrl ?? git?.repoUrl;
+      const url = host?.url ?? (host?.slug ? `${host.baseUrl}/app/${host.slug}/` : null);
       if (url) window.open(url, "_blank", "noopener,noreferrer");
       return;
     }
@@ -481,7 +491,7 @@ export default function Home() {
             });
           }
         }
-        if (event.type === "git" && event.git) setGit(event.git);
+        if (event.type === "host" && event.host) setHost(event.host);
         if (event.type === "error" && event.error) setError(event.error);
       });
     } catch (err) {
@@ -536,7 +546,15 @@ export default function Home() {
               </button>
             )}
             <a className="demo-badge" href="/settings#agents">Settings</a>
-            <button className="demo-badge">{git?.connected ? "GIT" : "LIVE"}</button>
+            {host?.url ? (
+              <a className="demo-badge" href={host.url} target="_blank" rel="noreferrer">
+                LIVE
+              </a>
+            ) : (
+              <button className="demo-badge" type="button">
+                LIVE
+              </button>
+            )}
             <button className="icon-button" onClick={() => setDark(!dark)} aria-label="Toggle theme">
               {dark ? "☀" : "☾"}
             </button>
@@ -548,7 +566,7 @@ export default function Home() {
             <AgentInbox
               agents={agents}
               onOpen={openAgent}
-              git={git}
+              host={host}
               sessions={sessions}
               onOpenSession={openSession}
               onNewChat={() => void startNewChat()}
@@ -563,7 +581,7 @@ export default function Home() {
               modelMenuOpen={modelMenuOpen}
               onToggleModelMenu={() => setModelMenuOpen((open) => !open)}
               onSelectModel={(modelId) => void switchModel(modelId)}
-              git={git}
+              host={host}
             />
           )}
           {view === "chats" && (
@@ -592,8 +610,10 @@ export default function Home() {
               onSelectModel={(modelId) => void switchModel(modelId)}
             />
           )}
-          {view === "tasks" && <TasksScreen git={git} agents={agents} />}
-          {view === "approvals" && <GitScreen git={git} />}
+          {view === "tasks" && <TasksScreen host={host} agents={agents} />}
+          {view === "approvals" && (
+            <HostScreen host={host} publishing={publishing} onPublish={() => void publishHost()} />
+          )}
           {view === "library" && <LibraryScreen files={files} />}
         </div>
 
@@ -626,7 +646,7 @@ export default function Home() {
             </button>
             <button className={view === "approvals" ? "active" : ""} onClick={() => goRoot("approvals")}>
               <span>{"\u2713"}</span>
-              <small>Git</small>
+              <small>Live</small>
             </button>
             <button className={view === "library" ? "active" : ""} onClick={() => goRoot("library")}>
               <span>▣</span>
@@ -642,14 +662,14 @@ export default function Home() {
 function AgentInbox({
   agents,
   onOpen,
-  git,
+  host,
   sessions,
   onOpenSession,
   onNewChat,
 }: {
   agents: Agent[];
   onOpen: (id: string) => void;
-  git: GitStatus | null;
+  host: HostStatus | null;
   sessions: ChatSession[];
   onOpenSession: (id: string) => void;
   onNewChat: () => void;
@@ -662,9 +682,11 @@ function AgentInbox({
         <div>
           <strong>{agents.length} agents · role + skills + MCP</strong>
           <p>
-            {git?.configured
-              ? `${git.repo} · ${git.branch}${git.sha ? ` · ${git.sha.slice(0, 7)}` : ""}`
-              : "GitHub not connected yet — agents still work in the volume workspace."}
+            {host?.url
+              ? host.url
+              : host?.configured
+                ? "ee-html ready — next Website Dev Agent chat publishes the workspace."
+                : "Add the HTML host API key in Settings to publish to ee-html."}
           </p>
         </div>
       </div>
@@ -723,8 +745,8 @@ function AgentInbox({
           <small>Workspace</small>
         </div>
         <div>
-          <span>{git?.connected ? "On" : "Off"}</span>
-          <small>GitHub</small>
+          <span>{host?.configured ? "On" : "Off"}</span>
+          <small>ee-html</small>
         </div>
         <div>
           <span>Live</span>
@@ -803,7 +825,7 @@ function AgentMenu({
   modelMenuOpen,
   onToggleModelMenu,
   onSelectModel,
-  git,
+  host,
 }: {
   agent: Agent;
   onOpen: (index: number) => void;
@@ -812,7 +834,7 @@ function AgentMenu({
   modelMenuOpen: boolean;
   onToggleModelMenu: () => void;
   onSelectModel: (modelId: string) => void;
-  git: GitStatus | null;
+  host: HostStatus | null;
 }) {
   const active = models.find((model) => model.id === selectedModelId);
   return (
@@ -846,7 +868,7 @@ function AgentMenu({
           <button
             key={action.title}
             onClick={() => onOpen(index)}
-            disabled={index === 1 && !git?.repoUrl}
+            disabled={index === 1 && !host?.url && !host?.configured}
           >
             <span className={`menu-icon accent-${index}`}>{action.icon}</span>
             <span className="row-copy">
@@ -862,7 +884,7 @@ function AgentMenu({
         <div>
           <strong>Agent is ready</strong>
           <small>
-            {active?.label ?? "Pick a model"} · {git?.repo ?? "no GitHub repo"}
+            {active?.label ?? "Pick a model"} · {host?.url ?? "ee-html"}
           </small>
         </div>
         <span className="scope-pill">Pi</span>
@@ -1050,7 +1072,7 @@ function TurnBlocks({
   );
 }
 
-function TasksScreen({ git, agents }: { git: GitStatus | null; agents: Agent[] }) {
+function TasksScreen({ host, agents }: { host: HostStatus | null; agents: Agent[] }) {
   return (
     <>
       <div className="summary-grid">
@@ -1063,8 +1085,8 @@ function TasksScreen({ git, agents }: { git: GitStatus | null; agents: Agent[] }
           <small>Workspace</small>
         </div>
         <div>
-          <strong>{git?.connected ? "Git" : "Off"}</strong>
-          <small>Remote</small>
+          <strong>{host?.configured ? "On" : "Off"}</strong>
+          <small>ee-html</small>
         </div>
       </div>
       <div className="section-label">
@@ -1115,34 +1137,44 @@ function Work({
   );
 }
 
-function GitScreen({ git }: { git: GitStatus | null }) {
+function HostScreen({
+  host,
+  publishing,
+  onPublish,
+}: {
+  host: HostStatus | null;
+  publishing: boolean;
+  onPublish: () => void;
+}) {
+  const url = host?.url ?? (host?.slug ? `${host.baseUrl}/app/${host.slug}/` : null);
   return (
     <>
       <div className="approval-intro">
         <span>⌁</span>
         <div>
-          <strong>{git?.repo ?? "No GitHub repo"}</strong>
-          <p>
-            {git?.branch ?? "main"}
-            {git?.sha ? ` · ${git.sha.slice(0, 7)}` : ""}
-            {git?.dirty ? " · dirty" : ""}
-          </p>
+          <strong>{host?.name ?? "HTML host"}</strong>
+          <p>{host?.slug ?? "e-agent-site"}</p>
         </div>
       </div>
       <div className="approval-list">
         <div className="approval-item">
           <div>
             <span className="agent-avatar tiny emerald">W</span>
-            <small>Workspace git</small>
+            <small>ee-html.up.railway.app</small>
           </div>
-          <h3>{git?.connected ? "Repository connected" : "GitHub disconnected"}</h3>
-          <p>{git?.lastError ?? "The host clones, commits, and pushes. The agent only edits files."}</p>
+          <h3>{host?.url ? "Live site" : host?.configured ? "Ready to publish" : "API key missing"}</h3>
+          <p>
+            {host?.lastError ??
+              (host?.url
+                ? "The host zips the workspace after each Website Dev Agent chat and publishes it here."
+                : "Add the HTML host API key on the Settings page. The agent only edits files.")}
+          </p>
           <div>
-            <button
-              disabled={!git?.repoUrl}
-              onClick={() => git?.repoUrl && window.open(git.repoUrl, "_blank", "noopener,noreferrer")}
-            >
-              Open repo
+            <button disabled={!url} onClick={() => url && window.open(url, "_blank", "noopener,noreferrer")}>
+              Open live site
+            </button>
+            <button disabled={!host?.configured || publishing} onClick={onPublish}>
+              {publishing ? "Publishing…" : "Publish now"}
             </button>
           </div>
         </div>
@@ -1254,8 +1286,8 @@ function ModelPicker({
 
 function introFor(action: number) {
   const copy = [
-    "Tell me what website you want. I only edit files in the workspace. GitHub sync is handled by the host.",
-    "Ask me to create or update pages in the workspace. I do not publish or deploy.",
+    "Tell me what website you want. I only edit files. The host publishes them to ee-html.",
+    "Ask me to create or update pages. The live site is on ee-html, not GitHub.",
     "Ask what files are in the workspace, or tell me what to build next.",
   ];
   return copy[action] ?? copy[0];

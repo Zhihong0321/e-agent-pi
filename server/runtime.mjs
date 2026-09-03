@@ -1,6 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { RUNTIME_DIR, STORAGE } from "./paths.mjs";
+import { imagenConfigured, imagenSystemPrompt } from "./imagen.mjs";
+import { hostSystemPrompt } from "./ee-html.mjs";
+import { IMAGEN_SKILL_DIR, RUNTIME_DIR, STORAGE } from "./paths.mjs";
 
 /**
  * @param {{ slug: string; command?: string | null; args?: unknown; url?: string | null; env?: Record<string, string> | null; config?: Record<string, unknown> | null }} server
@@ -25,7 +27,12 @@ export function mcpServerConfig(server) {
 export async function materializeAgentRuntime(agent, mcpServers, modelsJson) {
   const dir = path.join(RUNTIME_DIR, agent.id);
   await mkdir(dir, { recursive: true });
-  await writeFile(path.join(dir, "ROLE.md"), agent.rolePrompt || "", "utf8");
+  const role = String(agent.rolePrompt || "").trim();
+  const extras = [imagenSystemPrompt()];
+  if (agent.id === "website" || agent.slug === "website") extras.push(hostSystemPrompt());
+  const extraText = extras.filter(Boolean).join("\n\n");
+  const roleText = extraText ? `${role}\n\n${extraText}`.trim() + "\n" : `${role}\n`;
+  await writeFile(path.join(dir, "ROLE.md"), roleText, "utf8");
   await writeFile(path.join(dir, "models.json"), modelsJson);
   /** @type {Record<string, unknown>} */
   const mcp = {};
@@ -74,7 +81,9 @@ export function buildPiArgs(opts) {
     "--no-extensions",
     "--no-prompt-templates",
   ];
-  for (const skill of opts.skills) {
+  const skills = [...(opts.skills || [])];
+  if (imagenConfigured()) skills.push({ dirPath: IMAGEN_SKILL_DIR });
+  for (const skill of skills) {
     if (skill.dirPath) args.push("--skill", skill.dirPath);
   }
   if (opts.mcpCount) args.push("--extension", "npm:pi-mcp-adapter");
