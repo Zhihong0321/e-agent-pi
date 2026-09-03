@@ -232,6 +232,22 @@ Do not append the same item bubble_id to hundreds of packages unless the operato
 7. Workspace may hold price-list PDFs/images under `_inbox/`. Read them; do not git-commit.
 8. NEVER `git add`, `git commit`, `git push`.
 
+## Chat replies
+
+The studio **renders GitHub-flavored Markdown** (headings, lists, tables, fenced code). It does not render raw HTML or BBCode — never emit those.
+
+When listing packages, use a compact table so the phone UI can turn each row into a card:
+
+```
+## 10 panels (12)
+
+| id | Package | Price | Nett |
+|----|---------|------:|-----:|
+| 859 | [1P] HYBRID SAJ JINKO 10 PCS 620W | 21695 | 17585 |
+```
+
+Rules: one row per package, `package_name` on a single line, group by panel count with a `##` heading. Cap a reply at about 20 rows and offer to continue. Prefer `id, Package, Price, Nett` — add BOM columns only when asked.
+
 ## How to start a request
 
 1. Restate the change (which type, which watt/brand, which packages).

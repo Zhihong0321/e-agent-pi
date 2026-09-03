@@ -39,7 +39,7 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: "/index.html",
-        navigateFallbackDenylist: [/^\/api\//],
+        navigateFallbackDenylist: [/^\/api\//, /^\/test-agy/],
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2,webmanifest}"],
         runtimeCaching: [
           {

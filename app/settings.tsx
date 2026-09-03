@@ -812,10 +812,11 @@ export default function SettingsPage() {
               </label>
               <div className="settings-two">
                 <label>
-                  Short
+                  Tile label
                   <input
                     value={agentForm.short}
-                    maxLength={2}
+                    maxLength={4}
+                    placeholder="Up to 4 characters"
                     onChange={(event) => setAgentForm({ ...agentForm, short: event.target.value })}
                   />
                 </label>

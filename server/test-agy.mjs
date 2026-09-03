@@ -397,7 +397,7 @@ export async function handleTestAgy(req, res, url) {
   const pathname = url.pathname;
 
   // Render UI
-  if (req.method === "GET" && pathname === "/test-agy") {
+  if (req.method === "GET" && (pathname === "/test-agy" || pathname === "/api/test-agy/ui")) {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end(renderTestAgyPage());
     return;

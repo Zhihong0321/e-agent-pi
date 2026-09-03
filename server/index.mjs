@@ -1054,6 +1054,10 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (pathname === "/test-agy" || pathname.startsWith("/api/test-agy")) {
+    return handleTestAgy(req, res, url);
+  }
+
   if (wantsAuth(pathname, req.method) && !authorized(req)) {
     json(res, 401, { error: "Unauthorized" });
     return;
@@ -1693,10 +1697,6 @@ const server = createServer(async (req, res) => {
         if (!res.writableEnded) res.end();
       }
       return;
-    }
-
-    if (pathname === "/test-agy" || pathname.startsWith("/api/test-agy")) {
-      return handleTestAgy(req, res, url);
     }
 
     if (pathname.startsWith("/api/")) {

@@ -145,18 +145,44 @@ function toolsLabel(agent: Agent) {
   return parts.length ? parts.join(" · ") : "Role only";
 }
 
+const SHORT_MAX = 4;
+
+/** The text drawn inside the avatar tile. Falls back to the first letter of the name. */
+function avatarLabel(short?: string | null, name?: string | null) {
+  const text = (short ?? "").replace(/\s+/g, " ").trim();
+  if (text) return text.slice(0, SHORT_MAX);
+  const first = (name ?? "").trim().charAt(0);
+  return (first || "A").toUpperCase();
+}
+
+/** Avatar classes, with a length step so 3-4 character labels stay inside the tile. */
+function avatarClass(label: string, extra = "") {
+  const len = [...label].length;
+  const step = len >= 4 ? "len-4" : len === 3 ? "len-3" : "";
+  return ["avatar", extra, step].filter(Boolean).join(" ");
+}
+
 function toolCount(agent: Agent) {
   const n = (agent.skills?.length ?? 0) + (agent.mcp?.length ?? 0);
   return n ? `${n} tool${n === 1 ? "" : "s"}` : "Role only";
 }
 
+class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
+    credentials: "include",
     ...init,
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
   });
   const data = (await res.json()) as T & { error?: string };
-  if (!res.ok) throw new Error(data.error ?? "Request failed");
+  if (!res.ok) throw new ApiError(data.error ?? "Request failed", res.status);
   return data;
 }
 
@@ -774,6 +800,15 @@ export default function Home() {
 
   const askCount = sessions.filter((session) => classifySession(session, loading && session.id === sessionId) === "ask")
     .length;
+  const renameAgentTile = async (id: string, short: string, password?: string) => {
+    if (password) await api("/api/auth/login", { method: "POST", body: JSON.stringify({ password }) });
+    const data = await api<{ agent: Agent }>(`/api/agents/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ short }),
+    });
+    setAgents((list) => list.map((row) => (row.id === id ? { ...row, ...data.agent } : row)));
+  };
+
   const tabTitle = tab === "chats" ? "Chats" : tab === "agents" ? "Agents" : tab === "live" ? "Live site" : "Files";
   const phoneClass = ["phone", inChat ? "in-chat" : "", siriSignal !== "idle" ? `siri-${siriSignal}` : ""]
     .filter(Boolean)
@@ -837,7 +872,7 @@ export default function Home() {
               />
             )}
             {tab === "agents" && (
-              <AgentsTab agents={agents} onOpen={(id) => void startNewChat(id)} />
+              <AgentsTab agents={agents} onOpen={(id) => void startNewChat(id)} onRename={renameAgentTile} />
             )}
             {tab === "live" && (
               <LiveTab host={host} publishing={publishing} onPublish={() => void publishHost()} />
@@ -877,7 +912,9 @@ export default function Home() {
                   <IconBack />
                 </button>
                 <button className="agent-hit" type="button" onClick={() => setSheet("agent")}>
-                  <span className={`avatar sm ${selected.color}`}>{selected.short}</span>
+                  <span className={avatarClass(avatarLabel(selected.short, selected.name), `sm ${selected.color}`)}>
+                    {avatarLabel(selected.short, selected.name)}
+                  </span>
                   <div>
                     <strong>{selected.name}</strong>
                     <span
@@ -1046,7 +1083,9 @@ export default function Home() {
           >
             <div className="sheet-handle" />
             <div className="sheet-hero">
-              <span className={`avatar lg ${selected.color}`}>{selected.short}</span>
+              <span className={avatarClass(avatarLabel(selected.short, selected.name), `lg ${selected.color}`)}>
+                {avatarLabel(selected.short, selected.name)}
+              </span>
               <div>
                 <strong>{selected.name}</strong>
                 <span>{selected.description}</span>
@@ -1191,8 +1230,10 @@ function ChatsTab({
                   className="session-btn"
                   onClick={() => onOpen(session.id)}
                 >
-                  <span className={`avatar ${agent?.color || "emerald"}`}>
-                    {agent?.short || "C"}
+                  <span
+                    className={avatarClass(avatarLabel(agent?.short, agent?.name || "Chat"), agent?.color || "emerald")}
+                  >
+                    {avatarLabel(agent?.short, agent?.name || "Chat")}
                     {flag === "run" && (
                       <span className="spin-badge">
                         <i className="spin" />
@@ -1235,31 +1276,145 @@ function ChatsTab({
 function AgentsTab({
   agents,
   onOpen,
+  onRename,
 }: {
   agents: Agent[];
   onOpen: (id: string) => void;
+  onRename: (id: string, short: string, password?: string) => Promise<void>;
 }) {
+  const [editingId, setEditingId] = useState("");
+  const [draft, setDraft] = useState("");
+  const [password, setPassword] = useState("");
+  const [needsPassword, setNeedsPassword] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [renameError, setRenameError] = useState("");
+
+  const resetEdit = () => {
+    setEditingId("");
+    setDraft("");
+    setPassword("");
+    setNeedsPassword(false);
+    setSaving(false);
+    setRenameError("");
+  };
+
+  const startEdit = (agent: Agent) => {
+    resetEdit();
+    setEditingId(agent.id);
+    setDraft(avatarLabel(agent.short, agent.name));
+  };
+
+  const save = async (agent: Agent) => {
+    const next = draft.replace(/\s+/g, " ").trim();
+    if (!next) {
+      setRenameError("The tile needs at least one character.");
+      return;
+    }
+    setSaving(true);
+    setRenameError("");
+    try {
+      await onRename(agent.id, next, needsPassword ? password : undefined);
+      resetEdit();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        setNeedsPassword(true);
+        setRenameError(password ? "Wrong password." : "Enter the access password to save this tile.");
+        setPassword("");
+      } else {
+        setRenameError(err instanceof Error ? err.message : "Rename failed");
+      }
+      setSaving(false);
+    }
+  };
+
   return (
     <>
       <div className="section-row">
         <span>Your agents</span>
         <small>{agents.length} online</small>
       </div>
-      {agents.map((agent) => (
-        <button key={agent.id} type="button" className="agent-btn" onClick={() => onOpen(agent.id)}>
-          <span className={`avatar ${agent.color}`}>
-            {agent.short}
-            <i className="online" />
-          </span>
-          <span className="row-main">
-            <strong>{agent.name}</strong>
-            <span className="preview">
-              <span>{agent.headline || toolsLabel(agent)}</span>
-            </span>
-          </span>
-          <span className="tool-count">{toolCount(agent)}</span>
-        </button>
-      ))}
+      {agents.map((agent) => {
+        const editing = editingId === agent.id;
+        const label = editing ? draft.trim() || "?" : avatarLabel(agent.short, agent.name);
+        return (
+          <div className={editing ? "agent-row editing" : "agent-row"} key={agent.id}>
+            <div className="agent-row-top">
+              <button
+                type="button"
+                className="agent-btn"
+                onClick={() => {
+                  if (!editing) onOpen(agent.id);
+                }}
+              >
+                <span className={avatarClass(label, agent.color)}>
+                  {label}
+                  <i className="online" />
+                </span>
+                <span className="row-main">
+                  <strong>{agent.name}</strong>
+                  <span className="preview">
+                    <span>{agent.headline || toolsLabel(agent)}</span>
+                  </span>
+                </span>
+                <span className="tool-count">{toolCount(agent)}</span>
+              </button>
+              <button
+                type="button"
+                className={editing ? "tile-edit on" : "tile-edit"}
+                aria-label={editing ? `Stop renaming ${agent.name}` : `Rename the ${agent.name} tile`}
+                onClick={() => (editing ? resetEdit() : startEdit(agent))}
+              >
+                <IconPencil />
+              </button>
+            </div>
+            {editing && (
+              <form
+                className="tile-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void save(agent);
+                }}
+              >
+                <label>
+                  Tile label
+                  <input
+                    value={draft}
+                    maxLength={SHORT_MAX}
+                    autoFocus
+                    spellCheck={false}
+                    placeholder={avatarLabel(agent.short, agent.name)}
+                    onChange={(event) => setDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") resetEdit();
+                    }}
+                  />
+                </label>
+                {needsPassword && (
+                  <label>
+                    Access password
+                    <input
+                      type="password"
+                      value={password}
+                      autoComplete="current-password"
+                      onChange={(event) => setPassword(event.target.value)}
+                    />
+                  </label>
+                )}
+                <div className="tile-form-actions">
+                  <small>Up to {SHORT_MAX} characters inside the square.</small>
+                  <button type="button" className="ghost" onClick={resetEdit}>
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={saving || !draft.trim()}>
+                    {saving ? "Saving…" : "Save"}
+                  </button>
+                </div>
+                {renameError && <p className="tile-error">{renameError}</p>}
+              </form>
+            )}
+          </div>
+        );
+      })}
     </>
   );
 }
@@ -1719,6 +1874,14 @@ function IconSettings(props: IconProps) {
     <svg {...svgProps(props, 18)} strokeWidth={2}>
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+function IconPencil(props: IconProps) {
+  return (
+    <svg {...svgProps(props, 16)} strokeWidth={2}>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
     </svg>
   );
 }
