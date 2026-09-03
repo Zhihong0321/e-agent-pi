@@ -168,6 +168,17 @@ export async function ensureAgyEnvironment() {
           await setSetting("agy_google_accounts", content);
         }
       }
+
+      // Ensure settings.json with oauth-personal exists and is synced
+      const storageSettingsPath = path.join(storageGeminiDir, "settings.json");
+      const homeSettingsPath = path.join(homeGeminiDir, "settings.json");
+      if (!existsSync(storageSettingsPath)) {
+        const dbSettings = await getSetting("agy_settings");
+        const defaultSettings =
+          dbSettings || JSON.stringify({ security: { auth: { selectedType: "oauth-personal" } } }, null, 2);
+        await writeFile(storageSettingsPath, defaultSettings, "utf8").catch(() => {});
+        await writeFile(homeSettingsPath, defaultSettings, "utf8").catch(() => {});
+      }
     } catch (err) {
       logEvent("warn", `ensureAgyEnvironment: db sync failed: ${err?.message || err}`);
     }
@@ -283,7 +294,11 @@ function runAgyCommand(args, options = {}) {
 
     const child = spawn(bin, args, {
       cwd: existsSync(cwd) ? cwd : process.cwd(),
-      env: { ...process.env },
+      env: {
+        ...process.env,
+        HOME: os.homedir(),
+        USER: process.env.USER || "root",
+      },
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -639,7 +654,11 @@ export async function handleTestAgy(req, res, url) {
 
     const child = spawn(bin, args, {
       cwd: existsSync(WORKSPACE) ? WORKSPACE : process.cwd(),
-      env: { ...process.env },
+      env: {
+        ...process.env,
+        HOME: os.homedir(),
+        USER: process.env.USER || "root",
+      },
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -757,7 +776,7 @@ async function saveOAuthCredentials(tokenData, accountsData = null) {
   const creds = {
     access_token: tokenData.access_token || "",
     refresh_token: tokenData.refresh_token || "",
-    scope: tokenData.scope || GOOGLE_AUTH_SCOPES,
+    scope: tokenData.scope || ANTIGRAVITY_SCOPES,
     token_type: tokenData.token_type || "Bearer",
     id_token: tokenData.id_token || "",
     expiry_date: tokenData.expiry_date || (tokenData.expires_in ? Date.now() + tokenData.expires_in * 1000 : null),
@@ -766,6 +785,27 @@ async function saveOAuthCredentials(tokenData, accountsData = null) {
   const credsJson = JSON.stringify(creds, null, 2);
   await writeFile(storageCredsPath, credsJson, "utf8");
   await writeFile(homeCredsPath, credsJson, "utf8").catch(() => {});
+
+  // Persist security settings so agy knows to use oauth-personal
+  const settingsJson = JSON.stringify(
+    {
+      security: {
+        auth: {
+          selectedType: "oauth-personal",
+        },
+      },
+    },
+    null,
+    2,
+  );
+  await writeFile(path.join(storageGeminiDir, "settings.json"), settingsJson, "utf8").catch(() => {});
+  await writeFile(path.join(homeGeminiDir, "settings.json"), settingsJson, "utf8").catch(() => {});
+
+  const installIdPath = path.join(storageGeminiDir, "installation_id");
+  if (!existsSync(installIdPath)) {
+    const { randomUUID } = await import("node:crypto");
+    await writeFile(installIdPath, randomUUID(), "utf8").catch(() => {});
+  }
 
   let email = "";
   if (creds.id_token) {
@@ -787,7 +827,8 @@ async function saveOAuthCredentials(tokenData, accountsData = null) {
     try {
       await setSetting("agy_oauth_creds", credsJson);
       await setSetting("agy_google_accounts", accountsJson);
-      logEvent("info", "saveOAuthCredentials: saved credentials to PostgreSQL (DATABASE_URL)");
+      await setSetting("agy_settings", settingsJson);
+      logEvent("info", "saveOAuthCredentials: saved credentials and settings to PostgreSQL");
     } catch (err) {
       logEvent("warn", `saveOAuthCredentials: db save failed: ${err?.message || err}`);
     }
