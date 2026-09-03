@@ -5,9 +5,11 @@ description: Install skills and MCP on this Cloud Pi host and attach them to spe
 
 # Manage host settings from chat
 
-This skill is for **Settings Agent** only. Do not attach it to Website Dev Agent.
+This skill is for **Settings Agent** only. Do not attach it to Website Dev Agent or Proposal Agent.
 
 The catalog CLI is `node "$CLOUD_PI_CATALOG"`. Always print JSON. Parse `ok` before telling the user it worked.
+
+Agents include `website`, `settings`, and `proposal` (Eternalgy solar proposal).
 
 ## Mental model
 

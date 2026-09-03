@@ -23,7 +23,7 @@ import {
 import { envFlags, loadRecentFromDb, logEvent, railwayMeta, recentEvents } from "./debug.mjs";
 import { latestSample, metricsPayload, setPiAliveGetter, startSampler, stopSampler } from "./metrics.mjs";
 import { listWorkspaceFiles } from "./files.mjs";
-import { getGitStatus, initWorkspace } from "./github.mjs";
+import { getGitStatus, getGitWorkspaceStatus, initGitWorkspace, initWorkspace, syncGitWorkspace } from "./github.mjs";
 import { forgetBundleHash, hostConfigured, hostPublic, publishWorkspace } from "./ee-html.mjs";
 import { imagenConfigured, imagenPublic } from "./imagen.mjs";
 import { findModel, resolveModelCredentials } from "./models.mjs";
@@ -34,17 +34,24 @@ import {
   CATALOG_CLI,
   DATA_DIR,
   DEFAULT_AGENT_ID,
+  DEFAULT_PROPOSAL_LIVE_URL,
+  DEFAULT_PROPOSAL_REPO,
   DIST_DIR,
   IMAGEN_CLI,
   LIBRARY_DIR,
+  PDF_CLI,
   PI_AGENT_DIR,
   PI_CLI_PATH,
   PI_PACKAGE_DIR,
+  PROPOSAL_AGENT_ID,
   ROOT,
   RUNTIME_DIR,
   SKILLS_DIR,
   STORAGE,
   WORKSPACE,
+  WORKSPACES_DIR,
+  agentWorkspace,
+  isProposalAgent,
 } from "./paths.mjs";
 import { applyPiEvent, createTurn, extractReply, serializeTurn } from "./pi-stream.mjs";
 import {
@@ -73,6 +80,7 @@ import { ensureImpeccableForWebsite } from "./impeccable.mjs";
 import { ensureScraplingForWebsite, scraplingPublic } from "./scrapling.mjs";
 import { handleManage } from "./manage-api.mjs";
 import { buildPiArgs, materializeAgentRuntime } from "./runtime.mjs";
+import { attachmentSummary, materializeAttachments } from "./attachments.mjs";
 
 const HOST = "0.0.0.0";
 const PORT = Number(process.env.PORT) || 8080;
@@ -107,12 +115,34 @@ const MIME = {
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".ico": "image/x-icon",
   ".woff2": "font/woff2",
   ".txt": "text/plain; charset=utf-8",
+  ".map": "application/json; charset=utf-8",
 };
+
+function staticHeaders(target) {
+  const ext = path.extname(target).toLowerCase();
+  const base = path.basename(target);
+  /** @type {Record<string, string>} */
+  const headers = { "Content-Type": MIME[ext] || "application/octet-stream" };
+  if (
+    base === "sw.js" ||
+    base === "registerSW.js" ||
+    base.startsWith("workbox-") ||
+    ext === ".html" ||
+    ext === ".webmanifest"
+  ) {
+    headers["Cache-Control"] = "no-cache";
+  } else if (target.includes(`${path.sep}assets${path.sep}`)) {
+    headers["Cache-Control"] = "public, max-age=31536000, immutable";
+  }
+  if (base === "sw.js") headers["Service-Worker-Allowed"] = "/";
+  return headers;
+}
 
 function json(res, status, body, extraHeaders = {}) {
   res.writeHead(status, {
@@ -179,6 +209,18 @@ async function snapshot() {
     git = { error: sanitizeError(error) };
   }
 
+  let proposalGit = null;
+  try {
+    const agent = dbReady() ? await getAgent(PROPOSAL_AGENT_ID).catch(() => null) : null;
+    proposalGit = await getGitWorkspaceStatus({
+      dir: agentWorkspace({ id: PROPOSAL_AGENT_ID, slug: "proposal" }),
+      repo: agent?.workspaceRepo || DEFAULT_PROPOSAL_REPO,
+      branch: agent?.workspaceBranch || "main",
+    });
+  } catch (error) {
+    proposalGit = { error: sanitizeError(error) };
+  }
+
   let files = [];
   try {
     files = await listWorkspaceFiles();
@@ -195,6 +237,7 @@ async function snapshot() {
     paths: {
       dataDir: DATA_DIR,
       workspace: WORKSPACE,
+      proposalWorkspace: agentWorkspace({ id: PROPOSAL_AGENT_ID, slug: "proposal" }),
       storage: STORAGE,
       pi: PI_AGENT_DIR,
       library: LIBRARY_DIR,
@@ -203,6 +246,7 @@ async function snapshot() {
     },
     db: { connected: dbReady() },
     git,
+    proposalGit,
     host: hostPublic(),
     fileCount: files.length,
     sessionCount: dbReady() ? await countSessions().catch(() => 0) : 0,
@@ -232,6 +276,42 @@ async function publishToHost({ force = false } = {}) {
   } catch (error) {
     logEvent("error", `ee-html publish failed: ${sanitizeError(error)}`);
     return { ...hostPublic(), lastError: sanitizeError(error) };
+  }
+}
+
+async function publishProposal(agent) {
+  const live = agent?.liveUrl || DEFAULT_PROPOSAL_LIVE_URL;
+  const repo = agent?.workspaceRepo || DEFAULT_PROPOSAL_REPO;
+  const branch = agent?.workspaceBranch || "main";
+  try {
+    const git = await syncGitWorkspace({
+      dir: agentWorkspace(agent),
+      repo,
+      branch,
+      identity: agent?.name || "Proposal Agent",
+      message: "Proposal Agent: update",
+    });
+    if (git.lastError) logEvent("error", `proposal git: ${git.lastError}`);
+    else if (git.pushed) logEvent("info", `proposal pushed ${git.sha || repo}`);
+    else logEvent("info", `proposal unchanged ${git.sha || repo}`);
+    return {
+      configured: git.configured,
+      url: live,
+      slug: "proposal",
+      name: agent?.name || "Proposal Agent",
+      baseUrl: live.replace(/\/shell\.html.*$/, ""),
+      lastError: git.lastError,
+      git,
+    };
+  } catch (error) {
+    logEvent("error", `proposal push failed: ${sanitizeError(error)}`);
+    return {
+      configured: true,
+      url: live,
+      slug: "proposal",
+      name: agent?.name || "Proposal Agent",
+      lastError: sanitizeError(error),
+    };
   }
 }
 
@@ -300,7 +380,7 @@ async function getClient(profile) {
 
       const pi = new RpcClient({
         cliPath: PI_CLI_PATH,
-        cwd: WORKSPACE,
+        cwd: agentWorkspace(agent),
         provider: active.provider,
         model: active.model,
         env: {
@@ -312,6 +392,7 @@ async function getClient(profile) {
           CLOUD_PI_ROOT: ROOT,
           CLOUD_PI_CATALOG: CATALOG_CLI,
           CLOUD_PI_IMAGEN: IMAGEN_CLI,
+          CLOUD_PI_PDF: PDF_CLI,
           ...resolved.env,
         },
         args,
@@ -540,7 +621,7 @@ async function switchModel(modelId) {
   return entry;
 }
 
-async function chat(message, modelId, session, onEvent) {
+async function chat(message, modelId, session, onEvent, images) {
   if (modelId) await switchModel(modelId);
   const pi = await ensurePiOnSession(session);
   const turn = createTurn();
@@ -559,7 +640,7 @@ async function chat(message, modelId, session, onEvent) {
 
   try {
     onEvent?.({ type: "status", text: "Working…" }, turn);
-    await pi.prompt(message);
+    await pi.prompt(message, images?.length ? images : undefined);
     await pi.waitForIdle(300_000);
     const text = (await pi.getLastAssistantText())?.trim() || turn.text.trim();
     if (text) {
@@ -635,8 +716,7 @@ async function serveStatic(res, urlPath) {
   }
 
   const send = async (target) => {
-    const ext = path.extname(target).toLowerCase();
-    res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream" });
+    res.writeHead(200, staticHeaders(target));
     createReadStream(target).pipe(res);
   };
 
@@ -648,6 +728,11 @@ async function serveStatic(res, urlPath) {
     }
     await send(file);
   } catch {
+    const ext = path.extname(rel).toLowerCase();
+    if (ext && ext !== ".html") {
+      json(res, 404, { error: "Not found" });
+      return;
+    }
     try {
       await send(path.join(DIST_DIR, "index.html"));
     } catch {
@@ -683,6 +768,7 @@ async function writePiModels() {
 async function prepareDirs() {
   await mkdir(DATA_DIR, { recursive: true });
   await mkdir(WORKSPACE, { recursive: true });
+  await mkdir(WORKSPACES_DIR, { recursive: true });
   await mkdir(STORAGE, { recursive: true });
   await mkdir(PI_AGENT_DIR, { recursive: true });
   await mkdir(LIBRARY_DIR, { recursive: true });
@@ -744,6 +830,23 @@ async function bootServices() {
     }
   } catch (error) {
     logEvent("error", `agent catalog failed: ${sanitizeError(error)}`);
+  }
+
+  boot.step = "proposal-workspace";
+  try {
+    const agent = dbReady() ? await getAgent(PROPOSAL_AGENT_ID).catch(() => null) : null;
+    const git = await initGitWorkspace({
+      dir: agentWorkspace({ id: PROPOSAL_AGENT_ID, slug: "proposal" }),
+      repo: agent?.workspaceRepo || DEFAULT_PROPOSAL_REPO,
+      branch: agent?.workspaceBranch || "main",
+      identity: "Proposal Agent",
+    });
+    logEvent(
+      "info",
+      `proposal workspace git=${git.connected} dirty=${git.dirty} repo=${git.repo || "none"} push=${git.canPush ? "on" : "off"}`,
+    );
+  } catch (error) {
+    logEvent("error", `proposal workspace init failed: ${sanitizeError(error)}`);
   }
 
   boot.step = "impeccable";
@@ -906,7 +1009,9 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && pathname === "/api/files") {
-      json(res, 200, { files: await listWorkspaceFiles() });
+      const agentRef = url.searchParams.get("agent");
+      const agent = agentRef && dbReady() ? await getAgent(agentRef).catch(() => null) : null;
+      json(res, 200, { files: await listWorkspaceFiles(agentWorkspace(agent || { slug: "website" })) });
       return;
     }
 
@@ -1162,10 +1267,10 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "POST" && pathname === "/api/chat") {
-      const { message, modelId, sessionId: requestedSessionId, agentId: requestedAgentId } = JSON.parse(
-        (await readBody(req)) || "{}",
-      );
-      if (!message || typeof message !== "string") {
+      const body = JSON.parse((await readBody(req)) || "{}");
+      const { message, modelId, sessionId: requestedSessionId, agentId: requestedAgentId, attachments } = body;
+      const hasFiles = Array.isArray(attachments) && attachments.length > 0;
+      if ((!message || typeof message !== "string" || !message.trim()) && !hasFiles) {
         json(res, 400, { error: "message is required" });
         return;
       }
@@ -1174,7 +1279,7 @@ const server = createServer(async (req, res) => {
         return;
       }
 
-      const trimmed = message.trim();
+      const trimmed = typeof message === "string" ? message.trim() : "";
       let session =
         typeof requestedSessionId === "string" && requestedSessionId.trim()
           ? await getSession(requestedSessionId.trim())
@@ -1197,15 +1302,28 @@ const server = createServer(async (req, res) => {
         });
       }
 
-      logEvent("info", `chat session=${session.id}: ${trimmed.slice(0, 120)}`);
+      const profile = await resolveAgentProfile(session.agentId);
+      let packed = { prompt: "", images: [], files: [] };
+      try {
+        packed = await materializeAttachments(agentWorkspace(profile), attachments);
+      } catch (error) {
+        json(res, 400, { error: sanitizeError(error) });
+        return;
+      }
+      const prompt = packed.prompt
+        ? `${packed.prompt}\n${trimmed || "Please update the proposal from the attached files."}`
+        : trimmed;
+      const storedUser = trimmed || (packed.files.length ? `Attached: ${attachmentSummary(packed.files)}` : prompt);
+
+      logEvent("info", `chat session=${session.id}: ${storedUser.slice(0, 120)}`);
       await insertMessage({
         sessionId: session.id,
         role: "user",
-        content: trimmed,
+        content: storedUser,
         modelId: typeof modelId === "string" ? modelId : activeModelId,
       });
       if (session.title === "New chat") {
-        const title = titleFromMessage(trimmed);
+        const title = titleFromMessage(trimmed || packed.files[0]?.name || "New chat");
         const updated = await updateSession(session.id, { title, modelId: activeModelId });
         if (updated) session = updated;
       }
@@ -1230,11 +1348,17 @@ const server = createServer(async (req, res) => {
 
       try {
         const turn = await withPi(() =>
-          chat(trimmed, typeof modelId === "string" ? modelId : undefined, session, (event, liveTurn) => {
-            if (liveTurn) lastTurn = liveTurn;
-            if (!res.writableEnded) writeSse(res, event);
-            if (liveTurn) persister.schedule(liveTurn, true);
-          }),
+          chat(
+            prompt,
+            typeof modelId === "string" ? modelId : undefined,
+            session,
+            (event, liveTurn) => {
+              if (liveTurn) lastTurn = liveTurn;
+              if (!res.writableEnded) writeSse(res, event);
+              if (liveTurn) persister.schedule(liveTurn, true);
+            },
+            packed.images,
+          ),
         );
         lastTurn = turn;
         await persister.finish(turn, false);
@@ -1249,7 +1373,7 @@ const server = createServer(async (req, res) => {
             reply: turn.text,
             blocks: JSON.parse(serializeTurn(turn)).blocks,
             sessionId: session.id,
-            session: publicSession({ ...session, preview: turn.text || trimmed }),
+            session: publicSession({ ...session, preview: turn.text || storedUser }),
             activeModelId,
             activeModel: active
               ? { id: active.id, label: active.label, provider: active.provider, model: active.model }
@@ -1266,6 +1390,9 @@ const server = createServer(async (req, res) => {
             logEvent("error", `ee-html publish failed: ${sanitizeError(error)}`);
             host = { ...hostPublic(), lastError: sanitizeError(error) };
           }
+          if (host && !res.writableEnded) writeSse(res, { type: "host", host });
+        } else if (isProposalAgent(profile)) {
+          host = await publishProposal(profile);
           if (host && !res.writableEnded) writeSse(res, { type: "host", host });
         }
       } catch (error) {

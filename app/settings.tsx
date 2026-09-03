@@ -630,8 +630,11 @@ export default function SettingsPage() {
                 {publishing ? "Publishing…" : "Publish workspace now"}
               </button>
 
-              <h2>GitHub (unused for publishing)</h2>
-              <p>Optional backup only. The Website Dev Agent must not commit or push.</p>
+              <h2>GitHub</h2>
+              <p>
+                Proposal Agent uses this token to push <code>Zhihong0321/ee-proposal</code>. Website Dev Agent still must
+                not commit or push; it publishes through ee-html.
+              </p>
               <label>
                 Token {settings?.githubTokenSet ? <em>saved</em> : <em>missing</em>}
                 <input

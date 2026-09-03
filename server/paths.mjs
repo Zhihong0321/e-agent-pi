@@ -9,6 +9,7 @@ export const DATA_DIR =
   process.env.DATA_DIR?.trim() ||
   "/storage";
 export const WORKSPACE = path.join(DATA_DIR, "workspace");
+export const WORKSPACES_DIR = path.join(DATA_DIR, "workspaces");
 export const STORAGE = path.join(DATA_DIR, "storage");
 export const PI_AGENT_DIR = path.join(DATA_DIR, "pi");
 export const LIBRARY_DIR = path.join(DATA_DIR, "library");
@@ -16,10 +17,34 @@ export const SKILLS_DIR = path.join(LIBRARY_DIR, "skills");
 export const RUNTIME_DIR = path.join(DATA_DIR, "runtime");
 export const ROLE_FILE = path.join(ROOT, "agent", "ROLE.md");
 export const SETTINGS_ROLE_FILE = path.join(ROOT, "agent", "roles", "settings.md");
+export const PROPOSAL_ROLE_FILE = path.join(ROOT, "agent", "roles", "proposal.md");
 export const BUNDLED_SKILLS = path.join(ROOT, "agent", "skills");
 export const DEFAULT_AGENT_ID = "website";
 export const OPS_AGENT_ID = "ops";
 export const SETTINGS_AGENT_ID = OPS_AGENT_ID;
+export const PROPOSAL_AGENT_ID = "proposal";
+export const DEFAULT_PROPOSAL_REPO = "Zhihong0321/ee-proposal";
+export const DEFAULT_PROPOSAL_LIVE_URL = "https://ee-proposal-production.up.railway.app/shell.html#proposal";
+
+/**
+ * Pi cwd for an agent. Website + Settings share `/storage/workspace`.
+ * Proposal Agent uses a separate clone of ee-proposal.
+ * @param {{ id?: string; slug?: string } | string | null | undefined} agent
+ */
+export function agentWorkspace(agent) {
+  const id = typeof agent === "string" ? agent : agent?.id || agent?.slug || "";
+  const slug = typeof agent === "string" ? agent : agent?.slug || "";
+  if (id === PROPOSAL_AGENT_ID || slug === "proposal") {
+    return path.join(WORKSPACES_DIR, "proposal");
+  }
+  return WORKSPACE;
+}
+
+export function isProposalAgent(agent) {
+  const id = typeof agent === "string" ? agent : agent?.id || "";
+  const slug = typeof agent === "string" ? agent : agent?.slug || "";
+  return id === PROPOSAL_AGENT_ID || slug === "proposal";
+}
 export const DIST_DIR = path.join(ROOT, "dist");
 export const SEED_INDEX = path.join(ROOT, "agent-workspace", "index.html");
 export const BUNDLED_MODELS = path.join(ROOT, ".pi", "agent", "models.json");
@@ -35,6 +60,7 @@ export const PI_CLI_PATH = path.join(
 export const PI_PACKAGE_DIR = path.join(ROOT, "node_modules", "@earendil-works", "pi-coding-agent");
 export const CATALOG_CLI = path.join(ROOT, "server", "catalog-cli.mjs");
 export const IMAGEN_CLI = path.join(ROOT, "server", "imagen-cli.mjs");
+export const PDF_CLI = path.join(ROOT, "server", "pdf-cli.mjs");
 export const IMAGEN_SKILL_DIR = path.join(ROOT, "agent", "imagen");
 export const SUBAGENTS_EXTENSION = path.join(ROOT, "agent", "extensions", "subagents.ts");
 export const SPAWN_SUBAGENTS_SLUG = "spawn-subagents";

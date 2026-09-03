@@ -2,7 +2,8 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { imagenConfigured, imagenSystemPrompt } from "./imagen.mjs";
 import { hostSystemPrompt } from "./ee-html.mjs";
-import { IMAGEN_SKILL_DIR, RUNTIME_DIR, SPAWN_SUBAGENTS_SLUG, STORAGE, SUBAGENTS_EXTENSION } from "./paths.mjs";
+import { proposalSystemPrompt } from "./github.mjs";
+import { IMAGEN_SKILL_DIR, RUNTIME_DIR, SPAWN_SUBAGENTS_SLUG, STORAGE, SUBAGENTS_EXTENSION, isProposalAgent } from "./paths.mjs";
 
 /**
  * @param {{ slug?: string; dirPath?: string }[] | undefined} skills
@@ -39,6 +40,7 @@ export async function materializeAgentRuntime(agent, mcpServers, modelsJson) {
   const role = String(agent.rolePrompt || "").trim();
   const extras = [imagenSystemPrompt()];
   if (agent.id === "website" || agent.slug === "website") extras.push(hostSystemPrompt());
+  if (isProposalAgent(agent)) extras.push(proposalSystemPrompt(agent));
   const extraText = extras.filter(Boolean).join("\n\n");
   const roleText = extraText ? `${role}\n\n${extraText}`.trim() + "\n" : `${role}\n`;
   await writeFile(path.join(dir, "ROLE.md"), roleText, "utf8");

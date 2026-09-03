@@ -7,7 +7,7 @@ import { WORKSPACE } from "./paths.mjs";
  * @param {string} [base]
  * @returns {Promise<{ path: string; size: number }[]>}
  */
-export async function listWorkspaceFiles(dir = WORKSPACE, base = WORKSPACE) {
+export async function listWorkspaceFiles(dir = WORKSPACE, base = dir) {
   /** @type {{ path: string; size: number }[]} */
   const out = [];
   let entries;
@@ -18,7 +18,7 @@ export async function listWorkspaceFiles(dir = WORKSPACE, base = WORKSPACE) {
   }
 
   for (const entry of entries) {
-    if (entry.name === ".git") continue;
+    if (entry.name === ".git" || entry.name === "_inbox" || entry.name === "node_modules") continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       out.push(...(await listWorkspaceFiles(full, base)));

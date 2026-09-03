@@ -40,4 +40,4 @@ Cap: three children running at once on this host (queued after that). Keep promp
 
 ## After they finish
 
-Synthesize. Apply reviewer feedback yourself or with another `worker`. Then tell the human what changed and the live ee-html URL. You still do not publish; the host does.
+Synthesize. Apply reviewer feedback yourself or with another `worker`. Then tell the human what changed and the live URL (ee-html for Website Dev Agent, the Railway proposal URL for Proposal Agent). You still do not publish or git-push; the host does.

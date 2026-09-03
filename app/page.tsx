@@ -4,6 +4,24 @@ type View = "agents" | "menu" | "chats" | "chat" | "tasks" | "approvals" | "libr
 
 const SESSION_KEY = "e-agent-active-session";
 const AGENT_KEY = "e-agent-active-agent";
+const FULLSCREEN_KEY = "e-agent-fullscreen";
+
+function prefersStandalone() {
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    window.matchMedia("(display-mode: fullscreen)").matches ||
+    Boolean((navigator as { standalone?: boolean }).standalone)
+  );
+}
+
+function readFullPreference() {
+  if (prefersStandalone()) return true;
+  try {
+    return window.localStorage.getItem(FULLSCREEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 type ModelOption = {
   id: string;
@@ -107,14 +125,28 @@ type Agent = {
   headline: string;
   description: string;
   color: string;
+  liveUrl?: string | null;
+  workspaceRepo?: string | null;
   skills: { id: string; name: string; description: string }[];
   mcp: { id: string; name: string; description: string }[];
 };
 
+type PendingFile = { name: string; mime: string; data: string };
+
+function agentLiveUrl(agent?: Agent | null, host?: HostStatus | null) {
+  if (agent?.liveUrl) return agent.liveUrl;
+  if (host?.url) return host.url;
+  if (host?.slug) return `${host.baseUrl}/app/${host.slug}/`;
+  return null;
+}
+
 function agentActions(agent: Agent) {
+  const live = agent.liveUrl
+    ? { icon: "⌁", title: "Open live proposal", description: "Open the Railway proposal site" }
+    : { icon: "⌁", title: "Open live site", description: "Open the ee-html hosted site" };
   return [
     { icon: "✦", title: "Chat to Agent", description: `Talk to ${agent.name}` },
-    { icon: "⌁", title: "Open live site", description: "Open the ee-html hosted site" },
+    live,
     { icon: "▤", title: "Workspace status", description: "Ask what files exist in the workspace" },
   ];
 }
@@ -285,6 +317,7 @@ export default function Home() {
   const [view, setView] = useState<View>("agents");
   const [actionIndex, setActionIndex] = useState(0);
   const [dark, setDark] = useState(false);
+  const [full, setFull] = useState(readFullPreference);
   const [message, setMessage] = useState("");
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -297,12 +330,22 @@ export default function Home() {
   const [host, setHost] = useState<HostStatus | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [files, setFiles] = useState<WorkspaceFile[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [metrics, setMetrics] = useState<MetricsPayload | null>(null);
   const [liveStatus, setLiveStatus] = useState("");
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState("");
   const historyLoad = useRef(0);
   const selected = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0];
+
+  const toggleFull = () => {
+    setFull((prev) => {
+      const next = !prev;
+      window.localStorage.setItem(FULLSCREEN_KEY, next ? "1" : "0");
+      return next;
+    });
+  };
   const isChat = view === "chat";
   const activeModel = models.find((model) => model.id === selectedModelId);
   const activeSession = sessions.find((session) => session.id === sessionId);
@@ -410,13 +453,15 @@ export default function Home() {
     if (view !== "library") return;
     void (async () => {
       try {
-        const data = await api<{ files: WorkspaceFile[] }>("/api/files");
+        const data = await api<{ files: WorkspaceFile[] }>(
+          `/api/files${selectedAgentId ? `?agent=${encodeURIComponent(selectedAgentId)}` : ""}`,
+        );
         setFiles(data.files ?? []);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not load files");
       }
     })();
-  }, [view]);
+  }, [view, selectedAgentId]);
 
   useEffect(() => {
     if (view !== "approvals") return;
@@ -497,7 +542,7 @@ export default function Home() {
   };
   const openAction = (index: number) => {
     if (index === 1) {
-      const url = host?.url ?? (host?.slug ? `${host.baseUrl}/app/${host.slug}/` : null);
+      const url = agentLiveUrl(selected, host);
       if (url) window.open(url, "_blank", "noopener,noreferrer");
       return;
     }
@@ -625,6 +670,21 @@ export default function Home() {
     }
   };
 
+  const pickFiles = async (list: FileList | null) => {
+    if (!list?.length) return;
+    const next: PendingFile[] = [];
+    for (const file of Array.from(list).slice(0, 6)) {
+      const data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("Could not read file"));
+        reader.readAsDataURL(file);
+      });
+      next.push({ name: file.name, mime: file.type || "", data });
+    }
+    setPendingFiles((prev) => [...prev, ...next].slice(0, 6));
+  };
+
   const goBack = () => {
     if (view === "chat") setView("chats");
     else if (view === "chats") setView("menu");
@@ -646,7 +706,7 @@ export default function Home() {
             : view[0].toUpperCase() + view.slice(1);
 
   return (
-    <main className={dark ? "stage dark" : "stage"}>
+    <main className={["stage", dark ? "dark" : "", full ? "full" : ""].filter(Boolean).join(" ")}>
       <section
         className={["phone", "sales-os", siriSignal !== "idle" ? `siri-${siriSignal}` : ""].filter(Boolean).join(" ")}
         aria-label="Website dev agent chat"
@@ -691,8 +751,8 @@ export default function Home() {
               </button>
             )}
             <a className="demo-badge" href="/settings#agents">Settings</a>
-            {host?.url ? (
-              <a className="demo-badge" href={host.url} target="_blank" rel="noreferrer">
+            {agentLiveUrl(selected, host) ? (
+              <a className="demo-badge" href={agentLiveUrl(selected, host)!} target="_blank" rel="noreferrer">
                 LIVE
               </a>
             ) : (
@@ -700,6 +760,14 @@ export default function Home() {
                 LIVE
               </button>
             )}
+            <button
+              className="icon-button"
+              onClick={toggleFull}
+              aria-label={full ? "Exit fullscreen" : "Enter fullscreen"}
+              aria-pressed={full}
+            >
+              {full ? "⤡" : "⤢"}
+            </button>
             <button className="icon-button" onClick={() => setDark(!dark)} aria-label="Toggle theme">
               {dark ? "☀" : "☾"}
             </button>
@@ -765,19 +833,64 @@ export default function Home() {
 
         {isChat && (
           <div className="composer-wrap">
-            <button className="attach" aria-label="Attach file">
-              ＋
-            </button>
-            <input
-              value={message}
-              onChange={(event) => setMessage(event.target.value)}
-              onKeyDown={(event) => event.key === "Enter" && void send()}
-              placeholder={loading ? "Agent is working…" : `Message ${selected?.name ?? "agent"}…`}
-              disabled={loading}
-            />
-            <button className="send" onClick={() => void send()} aria-label="Send" disabled={loading}>
-              ➤
-            </button>
+            {pendingFiles.length > 0 && (
+              <div className="attach-chips">
+                {pendingFiles.map((file, index) => (
+                  <button
+                    key={`${file.name}-${index}`}
+                    type="button"
+                    className="attach-chip"
+                    onClick={() => setPendingFiles((prev) => prev.filter((_, i) => i !== index))}
+                    aria-label={`Remove ${file.name}`}
+                  >
+                    {file.name} ×
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="composer-row">
+              <input
+                ref={fileInput}
+                type="file"
+                accept="image/*,.pdf,application/pdf"
+                multiple
+                hidden
+                onChange={(event) => {
+                  void pickFiles(event.target.files);
+                  event.target.value = "";
+                }}
+              />
+              <button
+                className="attach"
+                type="button"
+                aria-label="Attach image or PDF"
+                disabled={loading}
+                onClick={() => fileInput.current?.click()}
+              >
+                ＋
+              </button>
+              <input
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                onKeyDown={(event) => event.key === "Enter" && void send()}
+                placeholder={
+                  loading
+                    ? "Agent is working…"
+                    : selected?.slug === "proposal"
+                      ? "Text, screenshot, or PDF to update the proposal…"
+                      : `Message ${selected?.name ?? "agent"}…`
+                }
+                disabled={loading}
+              />
+              <button
+                className="send"
+                onClick={() => void send()}
+                aria-label="Send"
+                disabled={loading || (!message.trim() && !pendingFiles.length)}
+              >
+                ➤
+              </button>
+            </div>
           </div>
         )}
         {!isChat && (
@@ -828,11 +941,8 @@ function AgentInbox({
         <div>
           <strong>{agents.length} agents · role + skills + MCP</strong>
           <p>
-            {host?.url
-              ? host.url
-              : host?.configured
-                ? "ee-html ready — next Website Dev Agent chat publishes the workspace."
-                : "Add the HTML host API key in Settings to publish to ee-html."}
+            Website Dev Agent publishes to ee-html. Proposal Agent updates the Eternalgy proposal at
+            ee-proposal-production after a GitHub push.
           </p>
         </div>
       </div>
@@ -1014,7 +1124,7 @@ function AgentMenu({
           <button
             key={action.title}
             onClick={() => onOpen(index)}
-            disabled={index === 1 && !host?.url && !host?.configured}
+            disabled={index === 1 && !agentLiveUrl(agent, host)}
           >
             <span className={`menu-icon accent-${index}`}>{action.icon}</span>
             <span className="row-copy">
@@ -1030,7 +1140,7 @@ function AgentMenu({
         <div>
           <strong>Agent is ready</strong>
           <small>
-            {active?.label ?? "Pick a model"} · {host?.url ?? "ee-html"}
+            {active?.label ?? "Pick a model"} · {agentLiveUrl(agent, host) ?? "ee-html"}
           </small>
         </div>
         <span className="scope-pill">Pi</span>
@@ -1124,14 +1234,14 @@ function AgentConversation({
       <div className="bubble agent-bubble">
         <span className="mini-agent">✦</span>
         <div>
-          <p>{introFor(actionIndex)}</p>
+          <p>{introFor(actionIndex, agent)}</p>
           <time>Now</time>
         </div>
       </div>
       {history.length === 0 && (
         <div className="quick-actions">
           <small>QUICK START</small>
-          {promptsFor(actionIndex).map((prompt) => (
+          {promptsFor(actionIndex, agent).map((prompt) => (
             <button key={prompt} onClick={() => void onPrompt(prompt)}>
               {prompt}
             </button>
@@ -1508,7 +1618,15 @@ function ModelPicker({
   );
 }
 
-function introFor(action: number) {
+function introFor(action: number, agent?: Agent) {
+  if (agent?.slug === "proposal") {
+    const copy = [
+      "Send a text change, invoice screenshot, or PDF. I will update the Eternalgy proposal; the host pushes to GitHub so Railway deploys it.",
+      "Open the live proposal, or ask me to change client, package, quotation, or images.",
+      "Ask what files are in the proposal workspace, or what is currently on proposal.html.",
+    ];
+    return copy[action] ?? copy[0];
+  }
   const copy = [
     "Tell me what website you want. I only edit files. The host publishes them to ee-html.",
     "Ask me to create or update pages. The live site is on ee-html, not GitHub.",
@@ -1517,7 +1635,15 @@ function introFor(action: number) {
   return copy[action] ?? copy[0];
 }
 
-function promptsFor(action: number) {
+function promptsFor(action: number, agent?: Agent) {
+  if (agent?.slug === "proposal") {
+    const primary = [
+      "Change the client name on the proposal cover",
+      "List the proposal workspace files",
+      "Update the package to 36pcs Jinko 650W",
+    ];
+    return action === 0 ? primary : primary.slice().reverse();
+  }
   const primary = [
     "Create a simple landing page with a hero and contact section",
     "List the files in the workspace",

@@ -5,7 +5,11 @@ import { getPool } from "./db.mjs";
 import {
   BUNDLED_SKILLS,
   DEFAULT_AGENT_ID,
+  DEFAULT_PROPOSAL_LIVE_URL,
+  DEFAULT_PROPOSAL_REPO,
   OPS_AGENT_ID,
+  PROPOSAL_AGENT_ID,
+  PROPOSAL_ROLE_FILE,
   ROLE_FILE,
   SETTINGS_ROLE_FILE,
   SKILLS_DIR,
@@ -59,6 +63,9 @@ export async function ensureCatalogSchema() {
       color TEXT NOT NULL DEFAULT 'emerald',
       role_prompt TEXT NOT NULL DEFAULT '',
       model_id TEXT,
+      workspace_repo TEXT,
+      workspace_branch TEXT,
+      live_url TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
@@ -100,6 +107,9 @@ export async function ensureCatalogSchema() {
   `);
   await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS agent_id TEXT`);
   await pool.query(`CREATE INDEX IF NOT EXISTS sessions_agent_id_idx ON sessions (agent_id)`);
+  await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS workspace_repo TEXT`);
+  await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS workspace_branch TEXT`);
+  await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS live_url TEXT`);
 }
 
 function mapAgent(row) {
@@ -114,6 +124,9 @@ function mapAgent(row) {
     color: row.color,
     rolePrompt: row.rolePrompt ?? row.role_prompt,
     modelId: row.modelId ?? row.model_id ?? null,
+    workspaceRepo: row.workspaceRepo ?? row.workspace_repo ?? null,
+    workspaceBranch: row.workspaceBranch ?? row.workspace_branch ?? null,
+    liveUrl: row.liveUrl ?? row.live_url ?? null,
     createdAt: row.createdAt ?? row.created_at,
     updatedAt: row.updatedAt ?? row.updated_at,
   };
@@ -121,6 +134,7 @@ function mapAgent(row) {
 
 const AGENT_SELECT = `id, slug, name, short, headline, description, color,
   role_prompt AS "rolePrompt", model_id AS "modelId",
+  workspace_repo AS "workspaceRepo", workspace_branch AS "workspaceBranch", live_url AS "liveUrl",
   created_at AS "createdAt", updated_at AS "updatedAt"`;
 
 const SKILL_SELECT = `id, slug, name, description, source, source_url AS "sourceUrl",
@@ -226,8 +240,8 @@ export async function createAgent(input = {}) {
   const name = String(input.name || "").trim() || "New agent";
   const slug = slugify(input.slug || name);
   const result = await getPool().query(
-    `INSERT INTO agents (id, slug, name, short, headline, description, color, role_prompt, model_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `INSERT INTO agents (id, slug, name, short, headline, description, color, role_prompt, model_id, workspace_repo, workspace_branch, live_url)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      RETURNING ${AGENT_SELECT}`,
     [
       id,
@@ -239,6 +253,9 @@ export async function createAgent(input = {}) {
       String(input.color || "emerald").trim() || "emerald",
       String(input.rolePrompt || "").trim(),
       input.modelId ?? null,
+      input.workspaceRepo ? String(input.workspaceRepo).trim() : null,
+      input.workspaceBranch ? String(input.workspaceBranch).trim() : null,
+      input.liveUrl ? String(input.liveUrl).trim() : null,
     ],
   );
   const agent = mapAgent(result.rows[0]);
@@ -265,6 +282,9 @@ export async function updateAgent(id, patch) {
     color: "color",
     rolePrompt: "role_prompt",
     modelId: "model_id",
+    workspaceRepo: "workspace_repo",
+    workspaceBranch: "workspace_branch",
+    liveUrl: "live_url",
   };
   for (const [key, column] of Object.entries(map)) {
     if (patch[key] === undefined) continue;
@@ -318,7 +338,7 @@ export async function attachAgentResources(agentRef, { skills = [], mcp = [], de
   for (const ref of skills) {
     const skill = await getSkill(ref);
     if (!skill) throw new Error(`Unknown skill: ${ref}`);
-    if (!detach && skill.slug === "manage-host-settings" && (agent.id === WEBSITE_AGENT_ID || agent.slug === "website")) {
+    if (!detach && skill.slug === "manage-host-settings" && (agent.id === WEBSITE_AGENT_ID || agent.slug === "website" || agent.id === PROPOSAL_AGENT_ID || agent.slug === "proposal")) {
       throw new Error("manage-host-settings stays on Settings Agent only.");
     }
     if (detach) skillIds = skillIds.filter((id) => id !== skill.id);
@@ -341,6 +361,9 @@ export async function deleteAgent(id) {
   }
   if (agent.id === OPS_AGENT_ID || agent.slug === "settings" || agent.slug === "ops") {
     throw new Error("The Settings Agent cannot be deleted.");
+  }
+  if (agent.id === PROPOSAL_AGENT_ID || agent.slug === "proposal") {
+    throw new Error("The Proposal Agent cannot be deleted.");
   }
   await getPool().query(`UPDATE sessions SET agent_id = $1 WHERE agent_id = $2`, [WEBSITE_AGENT_ID, agent.id]);
   await getPool().query(`DELETE FROM agents WHERE id = $1`, [agent.id]);
@@ -586,8 +609,8 @@ export async function copyBundledSkills() {
 
 async function seedSystemAgent(row) {
   await getPool().query(
-    `INSERT INTO agents (id, slug, name, short, headline, description, color, role_prompt)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO agents (id, slug, name, short, headline, description, color, role_prompt, workspace_repo, workspace_branch, live_url)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      ON CONFLICT (id) DO UPDATE SET
        slug = EXCLUDED.slug,
        name = EXCLUDED.name,
@@ -596,8 +619,23 @@ async function seedSystemAgent(row) {
        description = EXCLUDED.description,
        color = EXCLUDED.color,
        role_prompt = EXCLUDED.role_prompt,
+       workspace_repo = COALESCE(EXCLUDED.workspace_repo, agents.workspace_repo),
+       workspace_branch = COALESCE(EXCLUDED.workspace_branch, agents.workspace_branch),
+       live_url = COALESCE(EXCLUDED.live_url, agents.live_url),
        updated_at = NOW()`,
-    [row.id, row.slug, row.name, row.short, row.headline, row.description, row.color, row.rolePrompt],
+    [
+      row.id,
+      row.slug,
+      row.name,
+      row.short,
+      row.headline,
+      row.description,
+      row.color,
+      row.rolePrompt,
+      row.workspaceRepo ?? null,
+      row.workspaceBranch ?? null,
+      row.liveUrl ?? null,
+    ],
   );
 }
 
@@ -630,6 +668,21 @@ export async function seedAgentCatalog() {
     rolePrompt: settingsRole,
   });
 
+  const proposalRole = await readFile(PROPOSAL_ROLE_FILE, "utf8").catch(() => "You are Proposal Agent.");
+  await seedSystemAgent({
+    id: PROPOSAL_AGENT_ID,
+    slug: "proposal",
+    name: "Proposal Agent",
+    short: "P",
+    headline: "Updates the Eternalgy solar proposal",
+    description: "Edits Zhihong0321/ee-proposal from text, images, or PDFs. Host pushes; Railway deploys.",
+    color: "orange",
+    rolePrompt: proposalRole,
+    workspaceRepo: DEFAULT_PROPOSAL_REPO,
+    workspaceBranch: "main",
+    liveUrl: DEFAULT_PROPOSAL_LIVE_URL,
+  });
+
   const manageRow = await getPool().query(`SELECT id FROM skills WHERE slug = 'manage-host-settings'`);
   const manageId = manageRow.rows[0]?.id;
   if (manageId) {
@@ -645,6 +698,19 @@ export async function seedAgentCatalog() {
     await getPool().query(`INSERT INTO agent_skills (agent_id, skill_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [
       WEBSITE_AGENT_ID,
       spawnId,
+    ]);
+    await getPool().query(`INSERT INTO agent_skills (agent_id, skill_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [
+      PROPOSAL_AGENT_ID,
+      spawnId,
+    ]);
+  }
+
+  const proposalSkill = await getPool().query(`SELECT id FROM skills WHERE slug = 'update-proposal'`);
+  const proposalSkillId = proposalSkill.rows[0]?.id;
+  if (proposalSkillId) {
+    await getPool().query(`INSERT INTO agent_skills (agent_id, skill_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [
+      PROPOSAL_AGENT_ID,
+      proposalSkillId,
     ]);
   }
 
@@ -704,6 +770,9 @@ export function publicAgent(agent, { includeRole = false } = {}) {
     description: agent.description,
     color: agent.color,
     modelId: agent.modelId ?? null,
+    workspaceRepo: agent.workspaceRepo ?? null,
+    workspaceBranch: agent.workspaceBranch ?? null,
+    liveUrl: agent.liveUrl ?? null,
     rolePrompt: includeRole ? agent.rolePrompt : undefined,
     skillIds: agent.skillIds ?? agent.skills?.map((row) => row.id) ?? [],
     mcpIds: agent.mcpIds ?? agent.mcp?.map((row) => row.id) ?? [],

@@ -27,7 +27,7 @@ const USAGE = `Cloud Pi catalog CLI. Prints JSON.
 
   node $CLOUD_PI_CATALOG agents list
   node $CLOUD_PI_CATALOG agents get <id-or-slug>
-  node $CLOUD_PI_CATALOG agents create --name NAME [--short S] [--color emerald] [--headline ...] [--description ...] [--role TEXT | --role-file PATH]
+  node $CLOUD_PI_CATALOG agents create --name NAME [--short S] [--color emerald] [--headline ...] [--description ...] [--role TEXT | --role-file PATH] [--repo owner/name] [--branch main] [--live-url URL]
   node $CLOUD_PI_CATALOG agents update <id> [--name ...] [--role TEXT | --role-file PATH]
   node $CLOUD_PI_CATALOG agents attach <id> [--skill slug] [--mcp slug]
   node $CLOUD_PI_CATALOG agents detach <id> [--skill slug] [--mcp slug]
@@ -124,6 +124,9 @@ async function run(argv) {
         headline: flag(opts, "headline"),
         description: flag(opts, "description"),
         rolePrompt,
+        workspaceRepo: flag(opts, "repo") || undefined,
+        workspaceBranch: flag(opts, "branch") || undefined,
+        liveUrl: flag(opts, "live-url") || undefined,
       });
       return { ok: true, agent: dumpAgent(agent) };
     }
@@ -137,6 +140,9 @@ async function run(argv) {
       if (flag(opts, "color")) patch.color = flag(opts, "color");
       if (flag(opts, "headline")) patch.headline = flag(opts, "headline");
       if (flag(opts, "description")) patch.description = flag(opts, "description");
+      if (flag(opts, "repo")) patch.workspaceRepo = flag(opts, "repo");
+      if (flag(opts, "branch")) patch.workspaceBranch = flag(opts, "branch");
+      if (flag(opts, "live-url")) patch.liveUrl = flag(opts, "live-url");
       if (rolePrompt) patch.rolePrompt = rolePrompt;
       const agent = await updateAgent(current.id, patch);
       return { ok: true, agent: dumpAgent(agent) };

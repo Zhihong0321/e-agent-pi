@@ -53,8 +53,10 @@ Volume layout is listed under **Agents = Role + Skills + MCP**.
 - Users chat with a chosen **Agent**. An agent is **Role** (prompt) + **Skills** + **MCP** — not a shared bag of tools.
 - Skills and MCP servers are installed once on the host library. Attaching them to an agent is a separate step. Unassigned capabilities are invisible to Pi.
 - Each studio chat belongs to one agent and is its own Pi session. New chat does not reuse another chat's memory.
-- After file edits, the **host** zips the workspace and publishes to ee-html; the agent must not git-commit, deploy, or call the host API
-- Live site: `https://ee-html.up.railway.app/app/<slug>/` (default slug `e-agent-site`)
+- After file edits, the **host** zips the workspace and publishes to ee-html; the agent must not git-commit, deploy, or call the host API.
+- **Proposal Agent** is the exception: it edits a separate clone of `Zhihong0321/ee-proposal`. The host commits and pushes; Railway deploys the live proposal. The agent still must not run git itself.
+- Live site (Website Dev Agent): `https://ee-html.up.railway.app/app/<slug>/` (default slug `e-agent-site`)
+- Live site (Proposal Agent): `https://ee-proposal-production.up.railway.app/shell.html#proposal`
 
 ## Agents = Role + Skills + MCP
 
@@ -85,7 +87,7 @@ Install **does not** attach. A skill written to the library stays unused until i
 
 After attach, the next chat with that agent restarts Pi with the new bundle.
 
-Website Dev Agent is seeded with the **Impeccable** design skill ([docs](https://impeccable.style/docs/)), **Scrapling** (skill + MCP) for live page fetches, and **spawn-subagents** (in-process scout/researcher/worker/reviewer children). Settings Agent does not get Impeccable, Scrapling, or spawn-subagents. Boot always reloads Website Dev Agent's role from `agent/ROLE.md` so the git/GitHub ban and ee-html rules actually apply (Postgres used to keep the first seed forever).
+Website Dev Agent is seeded with the **Impeccable** design skill ([docs](https://impeccable.style/docs/)), **Scrapling** (skill + MCP) for live page fetches, and **spawn-subagents** (in-process scout/researcher/worker/reviewer children). **Proposal Agent** is seeded with `update-proposal` + spawn-subagents. It clones [Zhihong0321/ee-proposal](https://github.com/Zhihong0321/ee-proposal) into `/storage/workspaces/proposal`, edits from text/image/PDF, and the host git-pushes so Railway deploys https://ee-proposal-production.up.railway.app/shell.html#proposal. Settings Agent does not get Impeccable, Scrapling, or spawn-subagents. Boot always reloads Website Dev Agent's role from `agent/ROLE.md` so the git/GitHub ban and ee-html rules actually apply (Postgres used to keep the first seed forever).
 
 On boot the host runs `npx impeccable install --providers=pi --scope=project` in a staging directory, copies `.pi/skills/impeccable` into `/storage/library/skills/impeccable`, and attaches it to Website Dev Agent. It does **not** install into the GitHub workspace — that would commit the pack into the site repo, and Pi would not load it anyway (`--no-skills` plus `--skill <library path>`).
 
@@ -102,7 +104,8 @@ On boot the host also downloads the official Scrapling Agent Skill zip into `/st
 
 | Path | Purpose |
 |------|---------|
-| `/storage/workspace` | Pi cwd (site files) |
+| `/storage/workspace` | Pi cwd for Website Dev Agent (site files) |
+| `/storage/workspaces/proposal` | Pi cwd for Proposal Agent (`ee-proposal` clone) |
 | `/storage/storage` | Pi session dir |
 | `/storage/pi` | Shared Pi models.json |
 | `/storage/library/skills` | Host skill library (install target) |
@@ -116,6 +119,7 @@ On boot the host also downloads the official Scrapling Agent Skill zip into `/st
 | `app/settings.tsx` | Password-gated keys, agents, skills, MCP |
 | `src/main.tsx` | `/settings` vs studio |
 | `agent/ROLE.md` | Seed prompt for Website Dev Agent |
+| `agent/roles/proposal.md` | Seed prompt for Proposal Agent |
 | `agent/roles/settings.md` | Seed prompt for Settings Agent |
 | `agent/skills/` | Bundled skills copied into the host library on boot |
 | `server/catalog-cli.mjs` | Chat-side catalog CLI (`CLOUD_PI_CATALOG`) |

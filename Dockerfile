@@ -16,6 +16,7 @@ RUN apt-get update \
     python3-venv \
     python3-pip \
     unzip \
+    poppler-utils \
   && rm -rf /var/lib/apt/lists/*
 
 # Scrapling CLI + Chromium (HTTP fetchers, headless, stealth). Layer is independent of app copy.
