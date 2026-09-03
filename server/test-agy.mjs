@@ -1282,7 +1282,15 @@ function renderTestAgyPage() {
         if (data.authUrl) {
           document.getElementById('oauth-flow').style.display = 'block';
           document.getElementById('oauth-link').href = data.authUrl;
-          document.getElementById('p2-out').textContent = '✅ OAuth URL generated!\n\nClick the link below or open this URL in your browser:\n' + data.authUrl + '\n\nInstructions:\n' + (data.instructions || 'Sign in, copy code, and submit.');
+          document.getElementById('p2-out').textContent = [
+            '✅ OAuth URL generated!',
+            '',
+            'Click the link below or open this URL in your browser:',
+            data.authUrl,
+            '',
+            'Instructions:',
+            (data.instructions || 'Sign in, copy code, and submit.')
+          ].join(String.fromCharCode(10));
         } else {
           document.getElementById('p2-out').textContent = 'Warning: ' + (data.error || 'No auth URL returned');
         }
