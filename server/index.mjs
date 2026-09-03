@@ -42,6 +42,7 @@ import {
   PDF_CLI,
   PI_AGENT_DIR,
   PI_CLI_PATH,
+  PACKAGE_AGENT_ID,
   PI_PACKAGE_DIR,
   PROPOSAL_AGENT_ID,
   ROOT,
@@ -51,6 +52,7 @@ import {
   WORKSPACE,
   WORKSPACES_DIR,
   agentWorkspace,
+  isPackageAgent,
   isProposalAgent,
 } from "./paths.mjs";
 import { applyPiEvent, createTurn, extractReply, serializeTurn } from "./pi-stream.mjs";
@@ -769,6 +771,7 @@ async function prepareDirs() {
   await mkdir(DATA_DIR, { recursive: true });
   await mkdir(WORKSPACE, { recursive: true });
   await mkdir(WORKSPACES_DIR, { recursive: true });
+  await mkdir(agentWorkspace({ id: PACKAGE_AGENT_ID, slug: "package" }), { recursive: true });
   await mkdir(STORAGE, { recursive: true });
   await mkdir(PI_AGENT_DIR, { recursive: true });
   await mkdir(LIBRARY_DIR, { recursive: true });
@@ -1311,7 +1314,7 @@ const server = createServer(async (req, res) => {
         return;
       }
       const prompt = packed.prompt
-        ? `${packed.prompt}\n${trimmed || "Please update the proposal from the attached files."}`
+        ? `${packed.prompt}\n${trimmed || (isPackageAgent(profile) ? "Please use the attached price list or product sheet for the package/product catalog." : "Please update the proposal from the attached files.")}`
         : trimmed;
       const storedUser = trimmed || (packed.files.length ? `Attached: ${attachmentSummary(packed.files)}` : prompt);
 

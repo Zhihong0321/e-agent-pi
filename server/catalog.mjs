@@ -8,6 +8,8 @@ import {
   DEFAULT_PROPOSAL_LIVE_URL,
   DEFAULT_PROPOSAL_REPO,
   OPS_AGENT_ID,
+  PACKAGE_AGENT_ID,
+  PACKAGE_ROLE_FILE,
   PROPOSAL_AGENT_ID,
   PROPOSAL_ROLE_FILE,
   ROLE_FILE,
@@ -338,7 +340,17 @@ export async function attachAgentResources(agentRef, { skills = [], mcp = [], de
   for (const ref of skills) {
     const skill = await getSkill(ref);
     if (!skill) throw new Error(`Unknown skill: ${ref}`);
-    if (!detach && skill.slug === "manage-host-settings" && (agent.id === WEBSITE_AGENT_ID || agent.slug === "website" || agent.id === PROPOSAL_AGENT_ID || agent.slug === "proposal")) {
+    if (
+      !detach &&
+      skill.slug === "manage-host-settings" &&
+      (agent.id === WEBSITE_AGENT_ID ||
+        agent.slug === "website" ||
+        agent.id === PROPOSAL_AGENT_ID ||
+        agent.slug === "proposal" ||
+        agent.id === PACKAGE_AGENT_ID ||
+        agent.slug === "package" ||
+        agent.slug === "package-updater")
+    ) {
       throw new Error("manage-host-settings stays on Settings Agent only.");
     }
     if (detach) skillIds = skillIds.filter((id) => id !== skill.id);
@@ -364,6 +376,9 @@ export async function deleteAgent(id) {
   }
   if (agent.id === PROPOSAL_AGENT_ID || agent.slug === "proposal") {
     throw new Error("The Proposal Agent cannot be deleted.");
+  }
+  if (agent.id === PACKAGE_AGENT_ID || agent.slug === "package" || agent.slug === "package-updater") {
+    throw new Error("The Package Updater cannot be deleted.");
   }
   await getPool().query(`UPDATE sessions SET agent_id = $1 WHERE agent_id = $2`, [WEBSITE_AGENT_ID, agent.id]);
   await getPool().query(`DELETE FROM agents WHERE id = $1`, [agent.id]);
@@ -683,6 +698,18 @@ export async function seedAgentCatalog() {
     liveUrl: DEFAULT_PROPOSAL_LIVE_URL,
   });
 
+  const packageRole = await readFile(PACKAGE_ROLE_FILE, "utf8").catch(() => "You are Package Updater.");
+  await seedSystemAgent({
+    id: PACKAGE_AGENT_ID,
+    slug: "package",
+    name: "Package Updater",
+    short: "K",
+    headline: "Updates Eternalgy packages and products",
+    description: "Monthly catalog: prices, new products, and package BOMs in prod_main via the Postgres proxy.",
+    color: "amber",
+    rolePrompt: packageRole,
+  });
+
   const manageRow = await getPool().query(`SELECT id FROM skills WHERE slug = 'manage-host-settings'`);
   const manageId = manageRow.rows[0]?.id;
   if (manageId) {
@@ -711,6 +738,15 @@ export async function seedAgentCatalog() {
     await getPool().query(`INSERT INTO agent_skills (agent_id, skill_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [
       PROPOSAL_AGENT_ID,
       proposalSkillId,
+    ]);
+  }
+
+  const packageSkill = await getPool().query(`SELECT id FROM skills WHERE slug = 'update-package-catalog'`);
+  const packageSkillId = packageSkill.rows[0]?.id;
+  if (packageSkillId) {
+    await getPool().query(`INSERT INTO agent_skills (agent_id, skill_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [
+      PACKAGE_AGENT_ID,
+      packageSkillId,
     ]);
   }
 
