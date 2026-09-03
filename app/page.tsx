@@ -1478,6 +1478,13 @@ function promptsFor(agent?: Agent) {
       "Update the package to 36pcs Jinko 650W",
     ];
   }
+  if (agent?.slug === "package") {
+    return [
+      "List active Residential packages for 8–12 panels",
+      "Show the BOM for [1P] STRING SAJ JINKO 8 PCS 650W",
+      "What would change if we add a 660W Jinko panel?",
+    ];
+  }
   if (agent?.slug === "settings" || /settings/i.test(agent?.name ?? "")) {
     return ["Install the Impeccable skill", "Attach Scrapling MCP to Website Dev Agent", "List installed MCP servers"];
   }
