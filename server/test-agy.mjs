@@ -1,4 +1,5 @@
-import { spawn } from "node:child_process";
+import { spawn, execFile } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { randomBytes, createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, readdir, readFile, unlink, writeFile, symlink, readlink } from "node:fs/promises";
@@ -7,6 +8,39 @@ import path from "node:path";
 import { DATA_DIR, SKILLS_DIR, WORKSPACE } from "./paths.mjs";
 import { logEvent } from "./debug.mjs";
 import { dbReady, getSetting, setSetting } from "./db.mjs";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PTY_BRIDGE = path.join(__dirname, "agy_pty_bridge.py");
+
+/**
+ * Run the Python PTY bridge (Linux only) and parse its single-line JSON output.
+ * Never throws: failures come back as { ok: false, error }.
+ */
+function runBridge(command, args = [], timeoutMs = 20000) {
+  return new Promise((resolve) => {
+    execFile(
+      "python3",
+      [PTY_BRIDGE, command, ...args],
+      { timeout: timeoutMs, maxBuffer: 4 * 1024 * 1024 },
+      (err, stdout, stderr) => {
+        const text = String(stdout || "").trim();
+        const lastLine = text.split("\n").filter(Boolean).pop() || "";
+        try {
+          const parsed = JSON.parse(lastLine);
+          if (err && parsed.ok === undefined) parsed.ok = false;
+          resolve(parsed);
+        } catch {
+          resolve({
+            ok: false,
+            error: err ? `bridge ${command} failed: ${err.message}` : `bridge ${command} returned non-JSON output`,
+            stdout: text.slice(-2000),
+            stderr: String(stderr || "").slice(-2000),
+          });
+        }
+      },
+    );
+  });
+}
 
 function _d(hex) {
   return Array.from(Buffer.from(hex, "hex").toString(), (c) => String.fromCharCode(c.charCodeAt(0) ^ 42)).join("");
@@ -580,30 +614,23 @@ export async function handleTestAgy(req, res, url) {
     await ensureAgyEnvironment();
 
     let authUrl = null;
+    let mode = "node-pkce";
+    let bridge = null;
 
-    // 1. On Linux, use Python PTY bridge to spawn agy in a real pseudoterminal
+    // 1. On Linux, spawn agy itself in a real pseudoterminal so the URL (and its PKCE
+    //    verifier) belong to agy. agy then stores the login wherever *it* wants to.
     if (process.platform === "linux") {
-      try {
-        const { exec } = await import("node:child_process");
-        const bridgePath = path.join(__dirname, "agy_pty_bridge.py");
-        const out = await new Promise((resolve) => {
-          exec(`python3 "${bridgePath}" start`, { timeout: 12000 }, (err, stdout) => {
-            try {
-              resolve(JSON.parse(stdout || "{}"));
-            } catch {
-              resolve({});
-            }
-          });
-        });
-        if (out.ok && out.authUrl) {
-          authUrl = out.authUrl;
-        }
-      } catch (err) {
-        logEvent("warn", `auth/start: pty bridge start failed: ${err?.message || err}`);
+      bridge = await runBridge("start", [], 30000);
+      if (bridge.ok && bridge.authUrl) {
+        authUrl = bridge.authUrl;
+        mode = "agy-pty";
+      } else {
+        logEvent("warn", `auth/start: pty bridge did not return a URL: ${JSON.stringify(bridge).slice(0, 500)}`);
       }
     }
 
-    // 2. Fallback / Windows PKCE URL generation
+    // 2. Fallback / Windows local dev: Node-generated PKCE URL. NOTE: tokens obtained this way
+    //    are written in Gemini-CLI format and are NOT read by agy; kept for local diagnostics only.
     if (!authUrl) {
       const verifier = randomBytes(32).toString("base64url");
       const challenge = createHash("sha256").update(verifier).digest("base64url");
@@ -628,12 +655,19 @@ export async function handleTestAgy(req, res, url) {
       });
 
       authUrl = `https://accounts.google.com/o/oauth2/auth?${params.toString()}`;
+    } else {
+      pendingPkce = null;
     }
 
     jsonResponse(res, 200, {
       ok: true,
+      mode,
       authUrl,
-      instructions: "1. Click '🔗 Open Google Sign-In Window'. 2. Sign in with Gemini Pro account. 3. Copy authorization code (or the full redirect URL from your browser) and submit.",
+      bridge,
+      instructions:
+        mode === "agy-pty"
+          ? "This URL was printed by agy itself. agy only waits about 60 seconds for the code, so: open the link now, sign in, copy the code (or the full callback URL) and submit it immediately."
+          : "Fallback mode (agy PTY bridge unavailable). The code will be exchanged by the server, but agy will NOT see this login.",
     });
     return;
   }
@@ -657,59 +691,77 @@ export async function handleTestAgy(req, res, url) {
     }
 
     let bridgeResult = null;
-    // 1. If on Linux, submit code to agy via Python PTY bridge
+    let trace = null;
+    let exchange = null;
+
+    // 1. Linux: hand the code to the agy process that printed the URL, wait for it to finish,
+    //    then list every file agy created/modified. No guessing where the login lives.
     if (process.platform === "linux") {
-      try {
-        const { exec } = await import("node:child_process");
-        const bridgePath = path.join(__dirname, "agy_pty_bridge.py");
-        bridgeResult = await new Promise((resolve) => {
-          exec(`python3 "${bridgePath}" submit "${code.replace(/"/g, '\\"')}"`, { timeout: 15000 }, (err, stdout) => {
-            try {
-              resolve(JSON.parse(stdout || "{}"));
-            } catch {
-              resolve({ stdout });
-            }
-          });
-        });
-        logEvent("info", `auth/submit: PTY bridge result: ${JSON.stringify(bridgeResult)}`);
-      } catch (err) {
-        logEvent("warn", `auth/submit: PTY bridge error: ${err?.message || err}`);
-      }
+      bridgeResult = await runBridge("submit", [code], 75000);
+      logEvent("info", `auth/submit: PTY bridge result: ${JSON.stringify(bridgeResult).slice(0, 800)}`);
+      trace = await runBridge("report", [], 30000);
     }
 
-    // 2. Also perform direct token exchange with Google to persist tokens
-    try {
-      const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          client_id: ANTIGRAVITY_CLIENT_ID,
-          client_secret: ANTIGRAVITY_CLIENT_SECRET,
-          code,
-          grant_type: "authorization_code",
-          redirect_uri: ANTIGRAVITY_REDIRECT_URI,
-          ...(pendingPkce ? { code_verifier: pendingPkce.verifier } : {}),
-        }),
-      });
+    // 2. Only when the URL was generated by Node (fallback mode) does a server-side exchange make sense.
+    if (pendingPkce) {
+      try {
+        const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            client_id: ANTIGRAVITY_CLIENT_ID,
+            client_secret: ANTIGRAVITY_CLIENT_SECRET,
+            code,
+            grant_type: "authorization_code",
+            redirect_uri: ANTIGRAVITY_REDIRECT_URI,
+            code_verifier: pendingPkce.verifier,
+          }),
+        });
 
-      const tokenData = await tokenRes.json();
-      if (tokenRes.ok && !tokenData.error) {
-        pendingPkce = null;
-        await saveOAuthCredentials(tokenData);
+        const tokenData = await tokenRes.json();
+        if (tokenRes.ok && !tokenData.error) {
+          pendingPkce = null;
+          await saveOAuthCredentials(tokenData);
+          exchange = { ok: true, note: "Saved in Gemini-CLI format (oauth_creds.json). agy does not read this file." };
+        } else {
+          exchange = { ok: false, error: tokenData.error, description: tokenData.error_description };
+        }
+      } catch (err) {
+        exchange = { ok: false, error: err?.message || String(err) };
+        logEvent("warn", `auth/submit: direct token exchange failed: ${err?.message || err}`);
       }
-    } catch (err) {
-      logEvent("warn", `auth/submit: direct token exchange failed: ${err?.message || err}`);
     }
 
     await ensureAgyEnvironment();
     const auth = await getAuthStatus();
 
+    const agyOk = Boolean(bridgeResult?.ok && bridgeResult?.looksAuthenticated);
     jsonResponse(res, 200, {
-      ok: true,
-      message: "Successfully submitted authorization code to agy and saved credentials!",
+      ok: agyOk || Boolean(exchange?.ok),
+      agyLoggedIn: agyOk,
+      message: agyOk
+        ? "agy accepted the code and answered a test prompt. See filesChanged for where it stored the login."
+        : bridgeResult
+          ? "agy did not confirm login. Read agy's output below (bridge.outputTail)."
+          : exchange?.ok
+            ? "Server-side exchange succeeded (fallback mode); agy itself was not logged in."
+            : "Login failed.",
+      bridge: bridgeResult,
+      filesChanged: trace,
+      exchange,
       auth,
-      bridgeResult,
     });
+    return;
+  }
+
+  // Where did agy put its login? Compare filesystem against the marker written at auth/start.
+  if (pathname === "/api/test-agy/auth/trace") {
+    if (process.platform !== "linux") {
+      jsonResponse(res, 200, { ok: false, error: "trace is only available on the Linux host" });
+      return;
+    }
+    const [status, report] = await Promise.all([runBridge("status", [], 15000), runBridge("report", [], 30000)]);
+    jsonResponse(res, 200, { ok: true, status, filesChanged: report });
     return;
   }
 
@@ -1216,9 +1268,13 @@ function renderTestAgyPage() {
           <div style="margin-bottom: 12px;">
             <a id="oauth-link" href="#" target="_blank" class="btn" style="text-decoration: none;">🔗 Open Google Sign-In Window</a>
           </div>
+          <div class="status-label" id="oauth-timer" style="color: var(--warn, #d97706);"></div>
           <div class="status-label">2. Paste authorization code (or full redirect URL from your browser address bar):</div>
           <input type="text" id="oauth-code" placeholder="Paste code (4/0A...) or full callback URL (https://antigravity.google/oauth-callback?code=...)">
           <button class="btn" onclick="submitOAuthCode()">Submit Authorization Code</button>
+        </div>
+        <div style="margin-bottom: 16px;">
+          <button class="btn btn-secondary" onclick="traceAuthFiles()">Where did agy store the login? (list files changed since step 1)</button>
         </div>
 
         <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--card-border);">
@@ -1409,14 +1465,18 @@ function renderTestAgyPage() {
         if (data.authUrl) {
           document.getElementById('oauth-flow').style.display = 'block';
           document.getElementById('oauth-link').href = data.authUrl;
+          startOAuthCountdown(data.mode === 'agy-pty' ? 60 : 0);
           document.getElementById('p2-out').textContent = [
-            '✅ OAuth URL generated!',
+            (data.mode === 'agy-pty' ? '✅ agy is running in a PTY and printed this URL (mode: agy-pty)' : '⚠️ Fallback mode: ' + data.mode + ' (agy PTY bridge unavailable)'),
             '',
             'Click the link below or open this URL in your browser:',
             data.authUrl,
             '',
             'Instructions:',
-            (data.instructions || 'Sign in, copy code, and submit.')
+            (data.instructions || 'Sign in, copy code, and submit.'),
+            '',
+            'Bridge details:',
+            JSON.stringify(data.bridge, null, 2)
           ].join(String.fromCharCode(10));
         } else {
           document.getElementById('p2-out').textContent = 'Warning: ' + (data.error || 'No auth URL returned');
@@ -1442,8 +1502,77 @@ function renderTestAgyPage() {
           body: JSON.stringify({ code })
         });
         const data = await res.json();
-        document.getElementById('p2-out').textContent = JSON.stringify(data, null, 2);
+        stopOAuthCountdown();
+        document.getElementById('p2-out').textContent = renderAuthResult(data);
         refreshHealth();
+      } catch (err) {
+        document.getElementById('p2-out').textContent = 'Error: ' + err.message;
+      }
+    }
+
+    let oauthTimerHandle = null;
+    function startOAuthCountdown(seconds) {
+      stopOAuthCountdown();
+      const el = document.getElementById('oauth-timer');
+      if (!seconds) { el.textContent = ''; return; }
+      let left = seconds;
+      const tick = () => {
+        el.textContent = left > 0
+          ? '⏱ agy is waiting for the code: about ' + left + 's left. Open the link, sign in, paste the code and submit.'
+          : '⏱ agy has probably given up waiting (60s). If submit fails, click "Generate link" again and be quicker.';
+        left -= 1;
+        if (left < -1) stopOAuthCountdown();
+      };
+      tick();
+      oauthTimerHandle = setInterval(tick, 1000);
+    }
+    function stopOAuthCountdown() {
+      if (oauthTimerHandle) clearInterval(oauthTimerHandle);
+      oauthTimerHandle = null;
+    }
+
+    function renderFileList(trace) {
+      if (!trace) return '(no trace available on this host)';
+      if (!trace.ok) return 'trace error: ' + (trace.error || JSON.stringify(trace));
+      const lines = ['Files created/modified since step 1 (' + trace.count + '):'];
+      (trace.files || []).forEach(f => {
+        lines.push('  ' + (f.onPersistentVolume ? '[volume] ' : '[ephemeral] ') + f.path + '  (' + f.size + ' bytes, ' + f.mtime + ')' + (f.jsonKeys ? '  keys: ' + f.jsonKeys.join(', ') : ''));
+      });
+      lines.push('~/.gemini -> ' + trace.geminiDirTarget + (trace.geminiDirIsSymlink ? ' (symlink)' : ' (real dir)'));
+      return lines.join(String.fromCharCode(10));
+    }
+
+    function renderAuthResult(data) {
+      const nl = String.fromCharCode(10);
+      const parts = [];
+      parts.push((data.agyLoggedIn ? '✅ ' : '❌ ') + (data.message || ''));
+      if (data.bridge) {
+        parts.push('', '--- agy session ---',
+          'agy exited: ' + data.bridge.agyExited + '  exit code: ' + data.bridge.exitCode + '  phase: ' + data.bridge.phase,
+          'looksAuthenticated: ' + data.bridge.looksAuthenticated + '  looksFailed: ' + data.bridge.looksFailed,
+          '', '--- agy output (tail) ---', data.bridge.outputTail || data.bridge.error || '(empty)');
+      }
+      parts.push('', '--- ' + renderFileList(data.filesChanged));
+      if (data.exchange) parts.push('', '--- server-side exchange (fallback only) ---', JSON.stringify(data.exchange, null, 2));
+      parts.push('', '--- raw ---', JSON.stringify(data, null, 2));
+      return parts.join(nl);
+    }
+
+    async function traceAuthFiles() {
+      document.getElementById('p2-out').textContent = 'Scanning filesystem for files changed since step 1...';
+      try {
+        const res = await fetch('/api/test-agy/auth/trace', { method: 'POST' });
+        const data = await res.json();
+        const nl = String.fromCharCode(10);
+        document.getElementById('p2-out').textContent = [
+          renderFileList(data.filesChanged),
+          '',
+          '--- agy session state ---',
+          JSON.stringify(data.status && data.status.state, null, 2),
+          '',
+          '--- agy output (tail) ---',
+          (data.status && data.status.outputTail) || '(empty)'
+        ].join(nl);
       } catch (err) {
         document.getElementById('p2-out').textContent = 'Error: ' + err.message;
       }
