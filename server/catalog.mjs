@@ -112,6 +112,9 @@ export async function ensureCatalogSchema() {
   `);
   await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS agent_id TEXT`);
   await pool.query(`CREATE INDEX IF NOT EXISTS sessions_agent_id_idx ON sessions (agent_id)`);
+  await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS engine TEXT NOT NULL DEFAULT 'pi'`);
+  await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS agy_conversation_id TEXT`);
+  await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS engine TEXT NOT NULL DEFAULT 'pi'`);
   await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS workspace_repo TEXT`);
   await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS workspace_branch TEXT`);
   await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS live_url TEXT`);
@@ -127,6 +130,7 @@ function mapAgent(row) {
     headline: row.headline,
     description: row.description,
     color: row.color,
+    engine: row.engine || "pi",
     rolePrompt: row.rolePrompt ?? row.role_prompt,
     modelId: row.modelId ?? row.model_id ?? null,
     workspaceRepo: row.workspaceRepo ?? row.workspace_repo ?? null,
@@ -138,6 +142,7 @@ function mapAgent(row) {
 }
 
 const AGENT_SELECT = `id, slug, name, short, headline, description, color,
+  COALESCE(engine, 'pi') AS engine,
   role_prompt AS "rolePrompt", model_id AS "modelId",
   workspace_repo AS "workspaceRepo", workspace_branch AS "workspaceBranch", live_url AS "liveUrl",
   created_at AS "createdAt", updated_at AS "updatedAt"`;
@@ -252,9 +257,10 @@ export async function createAgent(input = {}) {
   const id = input.id || randomUUID();
   const name = String(input.name || "").trim() || "New agent";
   const slug = slugify(input.slug || name);
+  const engine = input.engine === "agy" ? "agy" : "pi";
   const result = await getPool().query(
-    `INSERT INTO agents (id, slug, name, short, headline, description, color, role_prompt, model_id, workspace_repo, workspace_branch, live_url)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    `INSERT INTO agents (id, slug, name, short, headline, description, color, engine, role_prompt, model_id, workspace_repo, workspace_branch, live_url)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
      RETURNING ${AGENT_SELECT}`,
     [
       id,
@@ -264,6 +270,7 @@ export async function createAgent(input = {}) {
       String(input.headline || "").trim(),
       String(input.description || "").trim(),
       String(input.color || "emerald").trim() || "emerald",
+      engine,
       String(input.rolePrompt || "").trim(),
       input.modelId ?? null,
       input.workspaceRepo ? String(input.workspaceRepo).trim() : null,
@@ -308,6 +315,7 @@ export async function updateAgent(id, patch) {
     headline: "headline",
     description: "description",
     color: "color",
+    engine: "engine",
     rolePrompt: "role_prompt",
     modelId: "model_id",
     workspaceRepo: "workspace_repo",
@@ -871,6 +879,7 @@ export function publicAgent(agent, { includeRole = false } = {}) {
     headline: agent.headline,
     description: agent.description,
     color: agent.color,
+    engine: agent.engine || "pi",
     modelId: agent.modelId ?? null,
     workspaceRepo: agent.workspaceRepo ?? null,
     workspaceBranch: agent.workspaceBranch ?? null,

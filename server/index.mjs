@@ -98,6 +98,7 @@ import { handleManage } from "./manage-api.mjs";
 import { buildPiArgs, materializeAgentRuntime } from "./runtime.mjs";
 import { attachmentChatMarkup, attachmentSummary, materializeAttachments } from "./attachments.mjs";
 import { ensureAgyEnvironment, handleTestAgy } from "./test-agy.mjs";
+import { chatAgy, AGY_MODELS } from "./agy-stream.mjs";
 
 const HOST = "0.0.0.0";
 const PORT = Number(process.env.PORT) || 8080;
@@ -547,6 +548,8 @@ function publicSession(session) {
   return {
     id: session.id,
     title: session.title,
+    engine: session.engine || "pi",
+    agyConversationId: session.agyConversationId ?? null,
     modelId: session.modelId ?? null,
     agentId: session.agentId ?? null,
     preview: session.preview ? extractReply(session.preview) : null,
@@ -776,12 +779,21 @@ async function runManageTurn({ message, agentId, sessionId, modelId }) {
     modelId: typeof modelId === "string" ? modelId : activeModelId,
   });
 
-  const turn = await withPi(() => chat(trimmed, typeof modelId === "string" ? modelId : undefined, session));
+  const profile = await resolveAgentProfile(session.agentId);
+  const turn =
+    session.engine === "agy"
+      ? await chatAgy({
+          message: trimmed,
+          modelId: typeof modelId === "string" ? modelId : undefined,
+          session,
+          profile,
+        })
+      : await withPi(() => chat(trimmed, typeof modelId === "string" ? modelId : undefined, session));
   await insertMessage({
     sessionId: session.id,
     role: "assistant",
     content: serializeTurn(turn),
-    modelId: activeModelId,
+    modelId: session.engine === "agy" ? (modelId || session.modelId || "gemini-3.8-flash-high") : activeModelId,
   });
 
   const tools = (turn.blocks || [])
@@ -1471,12 +1483,21 @@ const server = createServer(async (req, res) => {
         json(res, 400, { error: "Unknown agent" });
         return;
       }
+      const requestedEngine =
+        body.engine === "agy" ? "agy" : body.engine === "pi" ? "pi" : agent.engine || "pi";
       const session = await createSession({
         title,
-        modelId: typeof body.modelId === "string" ? body.modelId : activeModelId,
+        modelId:
+          typeof body.modelId === "string"
+            ? body.modelId
+            : requestedEngine === "agy"
+              ? "gemini-3.8-flash-high"
+              : activeModelId,
         agentId: agent.id,
+        engine: requestedEngine,
+        agyConversationId: typeof body.agyConversationId === "string" ? body.agyConversationId : undefined,
       });
-      logEvent("info", `session created ${session.id}`);
+      logEvent("info", `session created ${session.id} (engine=${session.engine || "pi"})`);
       json(res, 201, { session: publicSession(session) });
       return;
     }
@@ -1505,14 +1526,20 @@ const server = createServer(async (req, res) => {
 
         if (req.method === "PATCH") {
           const body = JSON.parse((await readBody(req)) || "{}");
-          const title = typeof body.title === "string" ? body.title.trim() : "";
-          if (!title) {
-            json(res, 400, { error: "title is required" });
+          const patch = {};
+          if (typeof body.title === "string" && body.title.trim()) patch.title = body.title.trim();
+          if (body.engine === "agy" || body.engine === "pi") patch.engine = body.engine;
+          if (typeof body.modelId === "string" && body.modelId.trim()) patch.modelId = body.modelId.trim();
+          if (typeof body.agyConversationId === "string" && body.agyConversationId.trim()) {
+            patch.agyConversationId = body.agyConversationId.trim();
+          }
+          if (!Object.keys(patch).length) {
+            json(res, 400, { error: "title, engine, or modelId is required" });
             return;
           }
-          const updated = await updateSession(sessionId, { title });
-          if (activeStudioSessionId === sessionId && client) {
-            await client.setSessionName(title).catch(() => {});
+          const updated = await updateSession(sessionId, patch);
+          if (patch.title && activeStudioSessionId === sessionId && client) {
+            await client.setSessionName(patch.title).catch(() => {});
           }
           json(res, 200, { session: publicSession(updated) });
           return;
@@ -1532,7 +1559,11 @@ const server = createServer(async (req, res) => {
 
     if (req.method === "GET" && pathname === "/api/models") {
       const catalog = await ensureCatalog();
-      json(res, 200, { activeModelId, models: publicModels(catalog) });
+      json(res, 200, {
+        activeModelId,
+        models: publicModels(catalog),
+        agyModels: AGY_MODELS,
+      });
       return;
     }
 
@@ -1580,9 +1611,17 @@ const server = createServer(async (req, res) => {
           json(res, 400, { error: "Unknown agent" });
           return;
         }
+        const requestedEngine =
+          body.engine === "agy" ? "agy" : body.engine === "pi" ? "pi" : agent.engine || "pi";
         session = await createSession({
-          modelId: typeof modelId === "string" ? modelId : activeModelId,
+          modelId:
+            typeof modelId === "string"
+              ? modelId
+              : requestedEngine === "agy"
+                ? "gemini-3.8-flash-high"
+                : activeModelId,
           agentId: agent.id,
+          engine: requestedEngine,
         });
       }
 
@@ -1601,16 +1640,19 @@ const server = createServer(async (req, res) => {
         [trimmed, attachmentChatMarkup(packed.files)].filter(Boolean).join("\n\n") ||
         (packed.files.length ? `Attached: ${attachmentSummary(packed.files)}` : prompt);
 
-      logEvent("info", `chat session=${session.id}: ${storedUser.slice(0, 120)}`);
+      logEvent("info", `chat session=${session.id} (engine=${session.engine || "pi"}): ${storedUser.slice(0, 120)}`);
       await insertMessage({
         sessionId: session.id,
         role: "user",
         content: storedUser,
-        modelId: typeof modelId === "string" ? modelId : activeModelId,
+        modelId: typeof modelId === "string" ? modelId : session.modelId || activeModelId,
       });
       if (session.title === "New chat") {
         const title = titleFromMessage(trimmed || packed.files[0]?.name || "New chat");
-        const updated = await updateSession(session.id, { title, modelId: activeModelId });
+        const updated = await updateSession(session.id, {
+          title,
+          modelId: session.engine === "agy" ? (modelId || session.modelId || "gemini-3.8-flash-high") : activeModelId,
+        });
         if (updated) session = updated;
       }
 
@@ -1625,7 +1667,10 @@ const server = createServer(async (req, res) => {
       res.socket?.setNoDelay?.(true);
       writeSse(res, { type: "session", sessionId: session.id, session: publicSession(session) });
 
-      const persister = createTurnPersister(session.id, activeModelId);
+      const persister = createTurnPersister(
+        session.id,
+        session.engine === "agy" ? (modelId || session.modelId || "gemini-3.8-flash-high") : activeModelId,
+      );
       /** @type {ReturnType<typeof createTurn>} */
       let lastTurn = createTurn();
       const heartbeat = setInterval(() => {
@@ -1633,19 +1678,35 @@ const server = createServer(async (req, res) => {
       }, 15000);
 
       try {
-        const turn = await withPi(() =>
-          chat(
-            prompt,
-            typeof modelId === "string" ? modelId : undefined,
+        let turn;
+        if (session.engine === "agy") {
+          turn = await chatAgy({
+            message: prompt,
+            modelId: typeof modelId === "string" ? modelId : session.modelId || undefined,
             session,
-            (event, liveTurn) => {
+            profile,
+            onEvent: (event, liveTurn) => {
               if (liveTurn) lastTurn = liveTurn;
               if (!res.writableEnded) writeSse(res, event);
               if (liveTurn) persister.schedule(liveTurn, true);
             },
-            packed.images,
-          ),
-        );
+            images: packed.images,
+          });
+        } else {
+          turn = await withPi(() =>
+            chat(
+              prompt,
+              typeof modelId === "string" ? modelId : undefined,
+              session,
+              (event, liveTurn) => {
+                if (liveTurn) lastTurn = liveTurn;
+                if (!res.writableEnded) writeSse(res, event);
+                if (liveTurn) persister.schedule(liveTurn, true);
+              },
+              packed.images,
+            ),
+          );
+        }
         lastTurn = turn;
         let host = null;
         const websiteChat = !session.agentId || session.agentId === WEBSITE_AGENT_ID;
@@ -1669,11 +1730,16 @@ const server = createServer(async (req, res) => {
           }
         }
         await persister.finish(turn, false);
-        if (session.title && session.title !== "New chat" && client) {
+        if (session.title && session.title !== "New chat" && client && session.engine !== "agy") {
           await client.setSessionName(session.title).catch(() => {});
         }
 
-        const active = activeModelId ? findModel(modelCatalog ?? [], activeModelId) : null;
+        const active =
+          session.engine === "agy"
+            ? AGY_MODELS.find((m) => m.id === (modelId || session.modelId)) || AGY_MODELS[0]
+            : activeModelId
+              ? findModel(modelCatalog ?? [], activeModelId)
+              : null;
         if (!res.writableEnded) {
           writeSse(res, {
             type: "done",
@@ -1681,7 +1747,7 @@ const server = createServer(async (req, res) => {
             blocks: JSON.parse(serializeTurn(turn)).blocks,
             sessionId: session.id,
             session: publicSession({ ...session, preview: turn.text || storedUser }),
-            activeModelId,
+            activeModelId: active?.id ?? activeModelId,
             activeModel: active
               ? { id: active.id, label: active.label, provider: active.provider, model: active.model }
               : null,

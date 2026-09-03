@@ -43,6 +43,7 @@ type ModelOption = {
   provider: string;
   model: string;
   available: boolean;
+  engine?: "pi" | "agy" | string;
 };
 
 type HostStatus = {
@@ -75,6 +76,8 @@ type ChatMessage = {
 type ChatSession = {
   id: string;
   title: string;
+  engine?: "pi" | "agy" | string;
+  agyConversationId?: string | null;
   modelId?: string | null;
   agentId?: string | null;
   preview?: string | null;
@@ -112,6 +115,7 @@ type Agent = {
   headline: string;
   description: string;
   color: string;
+  engine?: "pi" | "agy" | string;
   liveUrl?: string | null;
   workspaceRepo?: string | null;
   skills: { id: string; name: string; description: string }[];
@@ -392,6 +396,8 @@ export default function Home() {
   const [inboxReady, setInboxReady] = useState(false);
   const [error, setError] = useState("");
   const [models, setModels] = useState<ModelOption[]>([]);
+  const [agyModels, setAgyModels] = useState<ModelOption[]>([]);
+  const [selectedEngine, setSelectedEngine] = useState<"pi" | "agy">("pi");
   const [selectedModelId, setSelectedModelId] = useState("");
   const [sheet, setSheet] = useState<Sheet>(null);
   const [host, setHost] = useState<HostStatus | null>(null);
@@ -413,7 +419,10 @@ export default function Home() {
   const selected = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0] ?? FALLBACK_AGENT;
 
   const inChat = view === "chat";
-  const activeModel = models.find((model) => model.id === selectedModelId);
+  const currentModels = selectedEngine === "agy" ? agyModels : models;
+  const activeModel =
+    currentModels.find((model) => model.id === selectedModelId) ??
+    (selectedEngine === "agy" ? agyModels[0] : models.find((model) => model.id === selectedModelId));
   const siriSignal = inChat ? classifySiriSignal(history, loading, error) : "idle";
   const pendingStream = !loading && history.some((msg) => msg.role === "assistant" && msg.streaming);
   const liveUrl = agentLiveUrl(selected, host);
@@ -468,8 +477,11 @@ export default function Home() {
   useEffect(() => {
     void (async () => {
       try {
-        const data = await api<{ models?: ModelOption[]; activeModelId?: string }>("/api/models");
+        const data = await api<{ models?: ModelOption[]; agyModels?: ModelOption[]; activeModelId?: string }>(
+          "/api/models",
+        );
         setModels(data.models ?? []);
+        setAgyModels(data.agyModels ?? []);
         if (data.activeModelId) setSelectedModelId(data.activeModelId);
         else if (data.models?.length) {
           const first = data.models.find((model) => model.available) ?? data.models[0];
@@ -546,6 +558,17 @@ export default function Home() {
       return;
     }
     setError("");
+    if (selectedEngine === "agy") {
+      setSelectedModelId(modelId);
+      if (sessionId) {
+        void api(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ modelId }),
+        }).catch(() => {});
+      }
+      setSheet(null);
+      return;
+    }
     try {
       const data = await api<{ activeModelId?: string }>("/api/model", {
         method: "POST",
@@ -556,6 +579,29 @@ export default function Home() {
       setError(err instanceof Error ? err.message : "Model switch failed");
     } finally {
       setSheet(null);
+    }
+  };
+
+  const switchEngine = async (engine: "pi" | "agy") => {
+    setSelectedEngine(engine);
+    const availableModels = engine === "agy" ? agyModels : models;
+    const defaultModel =
+      availableModels.find((m) => m.available)?.id ??
+      availableModels[0]?.id ??
+      (engine === "agy" ? "gemini-3.8-flash-high" : "");
+    if (defaultModel) setSelectedModelId(defaultModel);
+    if (sessionId) {
+      try {
+        const data = await api<{ session: ChatSession }>(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ engine, modelId: defaultModel }),
+        });
+        if (data.session) {
+          setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, ...data.session } : s)));
+        }
+      } catch {
+        // ignore patch error
+      }
     }
   };
 
@@ -581,6 +627,10 @@ export default function Home() {
     window.localStorage.setItem(SESSION_KEY, id);
     const session = sessions.find((row) => row.id === id);
     if (session?.agentId) pickAgent(session.agentId);
+    if (session?.engine === "agy" || session?.engine === "pi") {
+      setSelectedEngine(session.engine);
+    }
+    if (session?.modelId) setSelectedModelId(session.modelId);
     const loadId = ++historyLoad.current;
     void (async () => {
       try {
@@ -594,9 +644,11 @@ export default function Home() {
     })();
   };
 
-  const startNewChat = async (agentId?: string) => {
+  const startNewChat = async (agentId?: string, engine?: "pi" | "agy") => {
     const agent = agents.find((row) => row.id === agentId) ?? (selected.id ? selected : undefined);
     if (agent) pickAgent(agent.id);
+    const chosenEngine = engine || (agent?.engine === "agy" ? "agy" : selectedEngine);
+    setSelectedEngine(chosenEngine);
     setError("");
     setHistory([]);
     setSessionId("");
@@ -604,13 +656,22 @@ export default function Home() {
     setSheet(null);
     if (!agent?.id) return;
     try {
+      const defaultModel =
+        chosenEngine === "agy"
+          ? (agyModels[0]?.id || "gemini-3.8-flash-high")
+          : selectedModelId || undefined;
       const data = await api<{ session: ChatSession }>("/api/sessions", {
         method: "POST",
-        body: JSON.stringify({ modelId: selectedModelId || undefined, agentId: agent.id }),
+        body: JSON.stringify({
+          modelId: defaultModel,
+          agentId: agent.id,
+          engine: chosenEngine,
+        }),
       });
       const created = data.session;
       setSessions((prev) => [created, ...prev.filter((session) => session.id !== created.id)]);
       setSessionId(created.id);
+      if (created.modelId) setSelectedModelId(created.modelId);
       window.localStorage.setItem(SESSION_KEY, created.id);
       historyLoad.current += 1;
     } catch (err) {
@@ -632,9 +693,17 @@ export default function Home() {
     const agent = selected;
     if (!activeId) {
       try {
+        const defaultModel =
+          selectedEngine === "agy"
+            ? (agyModels[0]?.id || "gemini-3.8-flash-high")
+            : selectedModelId || undefined;
         const data = await api<{ session: ChatSession }>("/api/sessions", {
           method: "POST",
-          body: JSON.stringify({ modelId: selectedModelId || undefined, agentId: agent?.id }),
+          body: JSON.stringify({
+            modelId: defaultModel,
+            agentId: agent?.id,
+            engine: selectedEngine,
+          }),
         });
         activeId = data.session.id;
         setSessionId(activeId);
@@ -696,6 +765,7 @@ export default function Home() {
           modelId: selectedModelId || undefined,
           sessionId: activeId,
           agentId: agent?.id,
+          engine: selectedEngine,
           attachments: files,
         }),
         signal: ac.signal,
@@ -707,6 +777,11 @@ export default function Home() {
       } else {
         await readSse(res, (event) => {
           if (event.status) setLiveStatus(event.status);
+          if (event.type === "session" && event.session) {
+            if (event.session.engine === "agy" || event.session.engine === "pi") {
+              setSelectedEngine(event.session.engine);
+            }
+          }
           if (event.type === "thinking" || event.type === "text" || event.type === "tool" || event.type === "note") {
             patchAssistant((msg) => ({
               ...msg,
@@ -727,6 +802,9 @@ export default function Home() {
                 const rest = prev.filter((session) => session.id !== event.session!.id);
                 return [{ ...event.session!, preview: event.reply || trimmed }, ...rest];
               });
+              if (event.session.engine === "agy" || event.session.engine === "pi") {
+                setSelectedEngine(event.session.engine);
+              }
             }
           }
           if (event.type === "host" && event.host) {
@@ -939,12 +1017,13 @@ export default function Home() {
                   </div>
                 </button>
                 <button
-                  className="model-chip"
+                  className={["model-chip", selectedEngine === "agy" ? "agy" : ""].filter(Boolean).join(" ")}
                   type="button"
                   onClick={() => setSheet("model")}
-                  aria-label="Switch model"
+                  aria-label="Switch engine and model"
                 >
-                  {activeModel?.shortLabel ?? "Model"}
+                  <span className="engine-tag">{selectedEngine === "agy" ? "AGY" : "Pi"}</span>
+                  <span>{activeModel?.shortLabel ?? "Model"}</span>
                   <IconChevron />
                 </button>
                 {loading && (
@@ -1046,11 +1125,36 @@ export default function Home() {
         >
           <div className="sheet-handle" />
           <div className="sheet-title">
-            <strong>Model for this chat</strong>
+            <strong>Engine & Model</strong>
             <span>Switch anytime</span>
           </div>
-          {models.map((model) => {
-            const tone = !model.available ? "muted" : /gpt|openai|luna/i.test(model.label) ? "blue" : "";
+          <div className="engine-switch">
+            <button
+              type="button"
+              className={selectedEngine === "pi" ? "engine-tab on" : "engine-tab"}
+              onClick={() => void switchEngine("pi")}
+            >
+              <span>Pi Coding Agent</span>
+              <small>Metered API keys</small>
+            </button>
+            <button
+              type="button"
+              className={selectedEngine === "agy" ? "engine-tab on agy" : "engine-tab agy"}
+              onClick={() => void switchEngine("agy")}
+            >
+              <span>Antigravity (AGY)</span>
+              <small>Gemini Pro (OAuth)</small>
+            </button>
+          </div>
+          {(selectedEngine === "agy" ? (agyModels.length ? agyModels : models) : models).map((model) => {
+            const tone =
+              selectedEngine === "agy"
+                ? "agy"
+                : !model.available
+                  ? "muted"
+                  : /gpt|openai|luna/i.test(model.label)
+                    ? "blue"
+                    : "";
             return (
               <button
                 key={model.id}
@@ -1060,7 +1164,7 @@ export default function Home() {
                 onClick={() => void switchModel(model.id)}
               >
                 <span className={["model-mark", tone].filter(Boolean).join(" ")}>
-                  {model.shortLabel.slice(0, 3)}
+                  {model.shortLabel.slice(0, 4)}
                 </span>
                 <span>
                   <strong>{model.label}</strong>
@@ -1250,6 +1354,7 @@ function ChatsTab({
                         {flag === "done" && <IconTicks />}
                         {flag === "ask" && <span className="ask-dot">?</span>}
                         {flag === "run" && <span className="working">Working</span>}
+                        {session.engine === "agy" && <span className="tag-agy">AGY</span>}
                         <span>{previewText(session.preview) || "New chat"}</span>
                       </span>
                       {flag === "ask" && <span className="unread-badge">1</span>}
