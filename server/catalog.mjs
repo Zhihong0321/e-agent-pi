@@ -237,6 +237,14 @@ function mapMcp(row) {
   };
 }
 
+const SHORT_MAX = 4;
+
+/** Avatar tile label: up to 4 visible characters, case as typed. */
+function normalizeShort(value, fallback = "A") {
+  const text = String(value ?? "").replace(/\s+/g, " ").trim();
+  return (text || fallback).slice(0, SHORT_MAX);
+}
+
 /**
  * @param {object} [input]
  */
@@ -252,7 +260,7 @@ export async function createAgent(input = {}) {
       id,
       slug,
       name,
-      String(input.short || name[0] || "A").slice(0, 2).toUpperCase(),
+      normalizeShort(input.short, name[0] || "A"),
       String(input.headline || "").trim(),
       String(input.description || "").trim(),
       String(input.color || "emerald").trim() || "emerald",
@@ -310,7 +318,7 @@ export async function updateAgent(id, patch) {
     if (patch[key] === undefined) continue;
     let value = patch[key];
     if (key === "slug") value = slugify(value);
-    if (key === "short") value = String(value || "A").slice(0, 2).toUpperCase();
+    if (key === "short") value = normalizeShort(value);
     fields.push(`${column} = $${i++}`);
     values.push(value);
   }
