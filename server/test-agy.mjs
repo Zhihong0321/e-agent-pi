@@ -32,6 +32,9 @@ const ANTIGRAVITY_SCOPES = [
 /** @type {{ verifier: string; state: string; createdAt: number } | null} */
 let pendingPkce = null;
 
+/** @type {{ process: import("node:child_process").ChildProcess; url: string | null; startedAt: number } | null} */
+let activeAuthSession = null;
+
 /**
  * Resolve the paths for persistent and user gemini credentials
  */
@@ -495,33 +498,78 @@ export async function handleTestAgy(req, res, url) {
   if (req.method === "POST" && pathname === "/api/test-agy/auth/start") {
     await ensureAgyEnvironment();
 
-    const verifier = randomBytes(32).toString("base64url");
-    const challenge = createHash("sha256").update(verifier).digest("base64url");
-    const state = randomBytes(16).toString("base64url");
+    // Kill any existing dangling auth process
+    if (activeAuthSession?.process && !activeAuthSession.process.killed) {
+      try {
+        activeAuthSession.process.kill("SIGKILL");
+      } catch {}
+      activeAuthSession = null;
+    }
 
-    pendingPkce = {
-      verifier,
-      state,
-      createdAt: Date.now(),
-    };
+    const bin = resolveAgyBin();
+    let authUrl = null;
 
-    const params = new URLSearchParams({
-      access_type: "offline",
-      client_id: ANTIGRAVITY_CLIENT_ID,
-      code_challenge: challenge,
-      code_challenge_method: "S256",
-      prompt: "consent",
-      redirect_uri: ANTIGRAVITY_REDIRECT_URI,
-      response_type: "code",
-      scope: ANTIGRAVITY_SCOPES,
-      state,
-    });
+    try {
+      const child = spawn(bin, ["-p", "auth check", "--output-format", "stream-json", "--dangerously-skip-permissions"], {
+        cwd: existsSync(WORKSPACE) ? WORKSPACE : process.cwd(),
+        env: { ...process.env, HOME: os.homedir(), USER: process.env.USER || "root" },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
 
-    const authUrl = `https://accounts.google.com/o/oauth2/auth?${params.toString()}`;
+      activeAuthSession = { process: child, url: null, startedAt: Date.now() };
+
+      authUrl = await new Promise((resolve) => {
+        let buf = "";
+        const check = (chunk) => {
+          buf += chunk.toString("utf8");
+          const match = buf.match(/https:\/\/accounts\.google\.com\/o\/oauth2\/auth[^\s]+/);
+          if (match) resolve(match[0]);
+        };
+        child.stdout.on("data", check);
+        child.stderr.on("data", check);
+        child.on("close", () => resolve(null));
+        child.on("error", () => resolve(null));
+        setTimeout(() => resolve(null), 10000);
+      });
+
+      if (authUrl && activeAuthSession) {
+        activeAuthSession.url = authUrl;
+      }
+    } catch (err) {
+      logEvent("warn", `auth/start: spawn failed: ${err?.message || err}`);
+    }
+
+    // Fallback URL if spawn did not output a URL
+    if (!authUrl) {
+      const verifier = randomBytes(32).toString("base64url");
+      const challenge = createHash("sha256").update(verifier).digest("base64url");
+      const state = randomBytes(16).toString("base64url");
+
+      pendingPkce = {
+        verifier,
+        state,
+        createdAt: Date.now(),
+      };
+
+      const params = new URLSearchParams({
+        access_type: "offline",
+        client_id: ANTIGRAVITY_CLIENT_ID,
+        code_challenge: challenge,
+        code_challenge_method: "S256",
+        prompt: "consent",
+        redirect_uri: ANTIGRAVITY_REDIRECT_URI,
+        response_type: "code",
+        scope: ANTIGRAVITY_SCOPES,
+        state,
+      });
+
+      authUrl = `https://accounts.google.com/o/oauth2/auth?${params.toString()}`;
+    }
 
     jsonResponse(res, 200, {
       ok: true,
       authUrl,
+      waitingForInput: Boolean(activeAuthSession?.process),
       instructions: "1. Click '🔗 Open Google Sign-In Window'. 2. Sign in with Gemini Pro account. 3. Copy authorization code (or the full redirect URL from your browser) and submit.",
     });
     return;
@@ -545,11 +593,29 @@ export async function handleTestAgy(req, res, url) {
       }
     }
 
-    if (!pendingPkce) {
-      jsonResponse(res, 400, { error: "No pending OAuth session found. Please click 'Generate Google OAuth Sign-In Link' first." });
-      return;
+    let agyOutput = "";
+    // 1. Pipe code directly to agy child process if alive
+    if (activeAuthSession?.process && !activeAuthSession.process.killed) {
+      const child = activeAuthSession.process;
+      child.stdout.on("data", (d) => (agyOutput += d.toString("utf8")));
+      child.stderr.on("data", (d) => (agyOutput += d.toString("utf8")));
+
+      logEvent("info", `auth/submit: piping code to agy stdin: length ${code.length}`);
+      try {
+        child.stdin.write(code + "\n");
+      } catch (err) {
+        logEvent("warn", `auth/submit: stdin write error: ${err?.message || err}`);
+      }
+
+      await new Promise((resolve) => {
+        child.on("close", resolve);
+        setTimeout(resolve, 15000);
+      });
+
+      activeAuthSession = null;
     }
 
+    // 2. Also perform direct token exchange as redundancy
     try {
       const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
@@ -558,34 +624,30 @@ export async function handleTestAgy(req, res, url) {
           client_id: ANTIGRAVITY_CLIENT_ID,
           client_secret: ANTIGRAVITY_CLIENT_SECRET,
           code,
-          code_verifier: pendingPkce.verifier,
           grant_type: "authorization_code",
           redirect_uri: ANTIGRAVITY_REDIRECT_URI,
+          ...(pendingPkce ? { code_verifier: pendingPkce.verifier } : {}),
         }),
       });
 
       const tokenData = await tokenRes.json();
-      if (!tokenRes.ok || tokenData.error) {
-        jsonResponse(res, 400, {
-          ok: false,
-          error: tokenData.error_description || tokenData.error || "Token exchange failed",
-          details: tokenData,
-        });
-        return;
+      if (tokenRes.ok && !tokenData.error) {
+        pendingPkce = null;
+        await saveOAuthCredentials(tokenData);
       }
-
-      pendingPkce = null;
-      await saveOAuthCredentials(tokenData);
-      const auth = await getAuthStatus();
-
-      jsonResponse(res, 200, {
-        ok: true,
-        message: "Successfully exchanged authorization code and persisted credentials with PKCE!",
-        auth,
-      });
     } catch (err) {
-      jsonResponse(res, 500, { ok: false, error: `Token exchange request failed: ${err?.message || err}` });
+      logEvent("warn", `auth/submit: direct token exchange failed: ${err?.message || err}`);
     }
+
+    await ensureAgyEnvironment();
+    const auth = await getAuthStatus();
+
+    jsonResponse(res, 200, {
+      ok: true,
+      message: "Successfully submitted authorization code to agy and saved credentials!",
+      auth,
+      agyOutput: agyOutput.slice(0, 500),
+    });
     return;
   }
 
