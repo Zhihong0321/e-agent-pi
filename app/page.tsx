@@ -1,6 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type SVGProps } from "react";
 
-type View = "agents" | "menu" | "chats" | "chat" | "tasks" | "approvals" | "library";
+type Tab = "chats" | "agents" | "live" | "files";
+type View = Tab | "chat";
+type Sheet = null | "model" | "agent";
+type ChatFilter = "all" | "ask" | "done";
 
 const SESSION_KEY = "e-agent-active-session";
 const AGENT_KEY = "e-agent-active-agent";
@@ -39,6 +42,8 @@ type HostStatus = {
   name: string;
   url: string | null;
   lastError: string | null;
+  pushed?: boolean;
+  git?: { pushed?: boolean; sha?: string | null; lastError?: string | null };
 };
 
 type TurnBlock =
@@ -89,34 +94,6 @@ type StreamEvent = {
 
 type WorkspaceFile = { path: string; size: number };
 
-type ResourceSample = {
-  ts: string;
-  nodeRssMb: number;
-  nodeHeapMb: number;
-  childrenRssMb: number | null;
-  containerMb: number;
-  containerLimitMb: number | null;
-  nodeCpuPct: number;
-  containerCpuPct: number | null;
-  childCount: number;
-  load1: number | null;
-  piAlive: boolean;
-};
-
-type MetricsPayload = {
-  intervalSec: number;
-  retentionHours: number;
-  now: ResourceSample | null;
-  samples: ResourceSample[];
-  stats: {
-    sampleCount: number;
-    ramPeakMb: number;
-    ramAvgMb: number;
-    cpuPeakPct: number;
-    cpuAvgPct: number;
-  };
-};
-
 type Agent = {
   id: string;
   slug: string;
@@ -132,6 +109,19 @@ type Agent = {
 };
 
 type PendingFile = { name: string; mime: string; data: string };
+type SessionFlag = "ask" | "done" | "run" | "";
+
+const FALLBACK_AGENT: Agent = {
+  id: "",
+  slug: "website",
+  name: "Website Dev Agent",
+  short: "W",
+  headline: "Builds and publishes your site",
+  description: "Edits the workspace and publishes to ee-html. Never touches git.",
+  color: "emerald",
+  skills: [],
+  mcp: [],
+};
 
 function agentLiveUrl(agent?: Agent | null, host?: HostStatus | null) {
   if (agent?.liveUrl) return agent.liveUrl;
@@ -140,20 +130,14 @@ function agentLiveUrl(agent?: Agent | null, host?: HostStatus | null) {
   return null;
 }
 
-function agentActions(agent: Agent) {
-  const live = agent.liveUrl
-    ? { icon: "⌁", title: "Open live proposal", description: "Open the Railway proposal site" }
-    : { icon: "⌁", title: "Open live site", description: "Open the ee-html hosted site" };
-  return [
-    { icon: "✦", title: "Chat to Agent", description: `Talk to ${agent.name}` },
-    live,
-    { icon: "▤", title: "Workspace status", description: "Ask what files exist in the workspace" },
-  ];
-}
-
 function toolsLabel(agent: Agent) {
   const parts = [...(agent.skills ?? []).map((row) => row.name), ...(agent.mcp ?? []).map((row) => row.name)];
   return parts.length ? parts.join(" · ") : "Role only";
+}
+
+function toolCount(agent: Agent) {
+  const n = (agent.skills?.length ?? 0) + (agent.mcp?.length ?? 0);
+  return n ? `${n} tool${n === 1 ? "" : "s"}` : "Role only";
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -284,6 +268,36 @@ function classifySiriSignal(history: ChatMessage[], loading: boolean, error: str
   return "idle";
 }
 
+function classifySession(session: ChatSession, running: boolean): SessionFlag {
+  if (running) return "run";
+  const text = session.preview || "";
+  if (!text) return "";
+  if (looksLikeQuestion(text)) return "ask";
+  if (looksLikeCompletion(text, true)) return "done";
+  return session.messageCount ? "done" : "";
+}
+
+function dayGroup(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Earlier";
+  const now = new Date();
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startThat = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const diff = (startToday - startThat) / 86400000;
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Yesterday";
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+function hostHost(url: string | null | undefined) {
+  if (!url) return "";
+  try {
+    return new URL(url).host + new URL(url).pathname.replace(/\/$/, "");
+  } catch {
+    return url.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  }
+}
+
 async function readSse(res: Response, onEvent: (event: StreamEvent) => void) {
   const ctype = res.headers.get("content-type") || "";
   if (!ctype.includes("text/event-stream")) {
@@ -314,43 +328,40 @@ async function readSse(res: Response, onEvent: (event: StreamEvent) => void) {
 }
 
 export default function Home() {
-  const [view, setView] = useState<View>("agents");
-  const [actionIndex, setActionIndex] = useState(0);
-  const [dark, setDark] = useState(false);
-  const [full, setFull] = useState(readFullPreference);
+  const [view, setView] = useState<View>("chats");
+  const [tab, setTab] = useState<Tab>("chats");
+  const [full] = useState(readFullPreference);
   const [message, setMessage] = useState("");
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [sessionId, setSessionId] = useState("");
   const [loading, setLoading] = useState(false);
+  const [inboxReady, setInboxReady] = useState(false);
   const [error, setError] = useState("");
   const [models, setModels] = useState<ModelOption[]>([]);
   const [selectedModelId, setSelectedModelId] = useState("");
-  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [sheet, setSheet] = useState<Sheet>(null);
   const [host, setHost] = useState<HostStatus | null>(null);
+  const [publishOk, setPublishOk] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [files, setFiles] = useState<WorkspaceFile[]>([]);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
-  const [metrics, setMetrics] = useState<MetricsPayload | null>(null);
   const [liveStatus, setLiveStatus] = useState("");
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState("");
+  const [chatFilter, setChatFilter] = useState<ChatFilter>("all");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const historyLoad = useRef(0);
-  const selected = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0];
+  const abortRef = useRef<AbortController | null>(null);
+  const selected = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0] ?? FALLBACK_AGENT;
 
-  const toggleFull = () => {
-    setFull((prev) => {
-      const next = !prev;
-      window.localStorage.setItem(FULLSCREEN_KEY, next ? "1" : "0");
-      return next;
-    });
-  };
-  const isChat = view === "chat";
+  const inChat = view === "chat";
   const activeModel = models.find((model) => model.id === selectedModelId);
-  const activeSession = sessions.find((session) => session.id === sessionId);
-  const siriSignal = isChat ? classifySiriSignal(history, loading, error) : "idle";
+  const siriSignal = inChat ? classifySiriSignal(history, loading, error) : "idle";
   const pendingStream = !loading && history.some((msg) => msg.role === "assistant" && msg.streaming);
+  const liveUrl = agentLiveUrl(selected, host);
 
   useEffect(() => {
     if (view !== "chat" || !sessionId || !pendingStream) return;
@@ -400,7 +411,6 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (view !== "chat" && view !== "menu") return;
     void (async () => {
       try {
         const data = await api<{ models?: ModelOption[]; activeModelId?: string }>("/api/models");
@@ -414,43 +424,23 @@ export default function Home() {
         setError(err instanceof Error ? err.message : "Could not load models");
       }
     })();
-  }, [view]);
+  }, []);
 
   useEffect(() => {
-    if (view !== "chat" && view !== "chats" && view !== "menu" && view !== "agents") return;
     void (async () => {
       try {
-        const query =
-          view === "agents" || !selectedAgentId ? "" : `?agentId=${encodeURIComponent(selectedAgentId)}`;
-        const data = await api<{ sessions: ChatSession[] }>(`/api/sessions${query}`);
+        const data = await api<{ sessions: ChatSession[] }>("/api/sessions");
         setSessions(data.sessions ?? []);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not load chats");
+      } finally {
+        setInboxReady(true);
       }
     })();
   }, [view, selectedAgentId]);
 
   useEffect(() => {
-    if (view !== "tasks") return;
-    let cancelled = false;
-    const loadMetrics = async () => {
-      try {
-        const data = await api<MetricsPayload>("/api/metrics");
-        if (!cancelled) setMetrics(data);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Could not load usage");
-      }
-    };
-    void loadMetrics();
-    const id = window.setInterval(() => void loadMetrics(), 15000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, [view]);
-
-  useEffect(() => {
-    if (view !== "library") return;
+    if (tab !== "files" && view !== "files") return;
     void (async () => {
       try {
         const data = await api<{ files: WorkspaceFile[] }>(
@@ -461,10 +451,10 @@ export default function Home() {
         setError(err instanceof Error ? err.message : "Could not load files");
       }
     })();
-  }, [view, selectedAgentId]);
+  }, [tab, view, selectedAgentId]);
 
   useEffect(() => {
-    if (view !== "approvals") return;
+    if (tab !== "live" && view !== "live") return;
     void (async () => {
       try {
         setHost(await api<HostStatus>("/api/host"));
@@ -472,7 +462,7 @@ export default function Home() {
         setError(err instanceof Error ? err.message : "Could not load live site status");
       }
     })();
-  }, [view]);
+  }, [tab, view]);
 
   const publishHost = async () => {
     setError("");
@@ -488,7 +478,7 @@ export default function Home() {
 
   const switchModel = async (modelId: string) => {
     if (!modelId || modelId === selectedModelId) {
-      setModelMenuOpen(false);
+      setSheet(null);
       return;
     }
     setError("");
@@ -501,33 +491,32 @@ export default function Home() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Model switch failed");
     } finally {
-      setModelMenuOpen(false);
+      setSheet(null);
     }
   };
 
-  const openAgent = (id: string) => {
+  const pickAgent = (id: string) => {
     setSelectedAgentId(id);
     window.localStorage.setItem(AGENT_KEY, id);
-    setView("menu");
-    setError("");
   };
-  const openChats = (index = 0) => {
-    setActionIndex(index);
-    setView("chats");
+
+  const goTab = (next: Tab) => {
+    setTab(next);
+    setView(next);
+    setSheet(null);
     setError("");
+    setSearchOpen(false);
   };
+
   const openSession = (id: string) => {
-    setActionIndex(0);
     setSessionId(id);
     setHistory([]);
     setView("chat");
+    setSheet(null);
     setError("");
     window.localStorage.setItem(SESSION_KEY, id);
     const session = sessions.find((row) => row.id === id);
-    if (session?.agentId) {
-      setSelectedAgentId(session.agentId);
-      window.localStorage.setItem(AGENT_KEY, session.agentId);
-    }
+    if (session?.agentId) pickAgent(session.agentId);
     const loadId = ++historyLoad.current;
     void (async () => {
       try {
@@ -540,49 +529,28 @@ export default function Home() {
       }
     })();
   };
-  const openAction = (index: number) => {
-    if (index === 1) {
-      const url = agentLiveUrl(selected, host);
-      if (url) window.open(url, "_blank", "noopener,noreferrer");
-      return;
-    }
-    openChats(index);
-  };
 
-  const startNewChat = async () => {
+  const startNewChat = async (agentId?: string) => {
+    const agent = agents.find((row) => row.id === agentId) ?? (selected.id ? selected : undefined);
+    if (agent) pickAgent(agent.id);
     setError("");
+    setHistory([]);
+    setSessionId("");
+    setView("chat");
+    setSheet(null);
+    if (!agent?.id) return;
     try {
       const data = await api<{ session: ChatSession }>("/api/sessions", {
         method: "POST",
-        body: JSON.stringify({ modelId: selectedModelId || undefined, agentId: selected?.id }),
+        body: JSON.stringify({ modelId: selectedModelId || undefined, agentId: agent.id }),
       });
       const created = data.session;
       setSessions((prev) => [created, ...prev.filter((session) => session.id !== created.id)]);
-      setHistory([]);
       setSessionId(created.id);
       window.localStorage.setItem(SESSION_KEY, created.id);
       historyLoad.current += 1;
-      setView("chat");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start a new chat");
-    }
-  };
-
-  const removeSession = async (id: string) => {
-    if (!window.confirm("Delete this chat? The agent will forget this conversation.")) return;
-    setError("");
-    try {
-      await api(`/api/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
-      const next = sessions.filter((session) => session.id !== id);
-      setSessions(next);
-      if (sessionId === id) {
-        setSessionId("");
-        setHistory([]);
-        window.localStorage.removeItem(SESSION_KEY);
-        setView("chats");
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not delete chat");
     }
   };
 
@@ -591,11 +559,12 @@ export default function Home() {
     if (!trimmed || loading) return;
     historyLoad.current += 1;
     let activeId = sessionId;
+    const agent = selected;
     if (!activeId) {
       try {
         const data = await api<{ session: ChatSession }>("/api/sessions", {
           method: "POST",
-          body: JSON.stringify({ modelId: selectedModelId || undefined, agentId: selected?.id }),
+          body: JSON.stringify({ modelId: selectedModelId || undefined, agentId: agent?.id }),
         });
         activeId = data.session.id;
         setSessionId(activeId);
@@ -606,8 +575,12 @@ export default function Home() {
         return;
       }
     }
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
     setMessage("");
     setError("");
+    setPublishOk(false);
     setLoading(true);
     setLiveStatus("Working…");
     setHistory((prev) => [
@@ -632,8 +605,9 @@ export default function Home() {
           message: trimmed,
           modelId: selectedModelId || undefined,
           sessionId: activeId,
-          agentId: selected?.id,
+          agentId: agent?.id,
         }),
+        signal: ac.signal,
       });
       await readSse(res, (event) => {
         if (event.status) setLiveStatus(event.status);
@@ -658,16 +632,35 @@ export default function Home() {
             });
           }
         }
-        if (event.type === "host" && event.host) setHost(event.host);
+        if (event.type === "host" && event.host) {
+          setHost(event.host);
+          const failed = Boolean(event.host.lastError);
+          const pushed = event.host.pushed ?? event.host.git?.pushed;
+          setPublishOk(!failed && (pushed === true || (event.host.git == null && !failed)));
+        }
         if (event.type === "error" && event.error) setError(event.error);
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Agent request failed");
+      if ((err as { name?: string }).name === "AbortError") {
+        patchAssistant((msg) => ({
+          ...msg,
+          streaming: false,
+          content: msg.content || "Stopped.",
+          blocks: (msg.blocks ?? []).map((block) => (block.type === "tool" ? { ...block, running: false } : block)),
+        }));
+      } else {
+        setError(err instanceof Error ? err.message : "Agent request failed");
+      }
     } finally {
+      if (abortRef.current === ac) abortRef.current = null;
       setLoading(false);
       setLiveStatus("");
       setHistory((prev) => prev.map((msg) => (msg.streaming ? { ...msg, streaming: false } : msg)));
     }
+  };
+
+  const stop = () => {
+    abortRef.current?.abort();
   };
 
   const pickFiles = async (list: FileList | null) => {
@@ -686,31 +679,21 @@ export default function Home() {
   };
 
   const goBack = () => {
-    if (view === "chat") setView("chats");
-    else if (view === "chats") setView("menu");
-    else setView("agents");
-  };
-  const goRoot = (next: View) => {
-    setView(next);
+    setSheet(null);
     setError("");
+    setView(tab);
   };
-  const title =
-    view === "agents"
-      ? "Studio"
-      : view === "menu"
-        ? selected?.name.replace(" Agent", "") || "Agent"
-        : view === "chats"
-          ? "Chats"
-          : view === "chat"
-            ? activeSession?.title || "New chat"
-            : view[0].toUpperCase() + view.slice(1);
+
+  const askCount = sessions.filter((session) => classifySession(session, loading && session.id === sessionId) === "ask")
+    .length;
+  const tabTitle = tab === "chats" ? "Chats" : tab === "agents" ? "Agents" : tab === "live" ? "Live site" : "Files";
+  const phoneClass = ["phone", inChat ? "in-chat" : "", siriSignal !== "idle" ? `siri-${siriSignal}` : ""]
+    .filter(Boolean)
+    .join(" ");
 
   return (
-    <main className={["stage", dark ? "dark" : "", full ? "full" : ""].filter(Boolean).join(" ")}>
-      <section
-        className={["phone", "sales-os", siriSignal !== "idle" ? `siri-${siriSignal}` : ""].filter(Boolean).join(" ")}
-        aria-label="Website dev agent chat"
-      >
+    <main className={["stage", full ? "full" : ""].filter(Boolean).join(" ")}>
+      <section className={phoneClass} aria-label="Website studio chat">
         <div className="siri-glow" aria-hidden="true">
           <span className="siri-glow-bloom">
             <i />
@@ -722,756 +705,492 @@ export default function Home() {
         <p className="siri-live" role="status">
           {siriSignal === "complete" ? "Job complete" : siriSignal === "ask" ? "Agent is asking a question" : ""}
         </p>
-        <header className="topbar">
-          <div className="title-group">
-            {view !== "agents" && view !== "tasks" && view !== "approvals" && view !== "library" && (
-              <button className="back" onClick={goBack} aria-label="Go back">
-                ‹
+
+        <div className="inbox" inert={inChat ? true : undefined}>
+          <div className="inbox-head">
+            <div className="inbox-brand">
+              <img src="/logo-black.png" alt="" />
+              <h1>{tabTitle}</h1>
+            </div>
+            <div className="inbox-actions">
+              <button
+                className="icon-btn"
+                type="button"
+                aria-label={tab === "chats" ? "Search chats" : "Open settings"}
+                onClick={() => {
+                  if (tab === "chats") setSearchOpen((open) => !open);
+                  else window.location.assign("/settings");
+                }}
+              >
+                <IconSearch />
               </button>
-            )}
-            {(view === "agents" || view === "tasks" || view === "approvals" || view === "library") && (
-              <img
-                className="brand-logo"
-                src={dark ? "/logo-white.png" : "/logo-black.png"}
-                alt=""
-                width={32}
-                height={32}
-              />
-            )}
-            <div>
-              {view === "agents" && <small>Pi-powered workspace</small>}
-              {view === "chats" && <small>Each chat is a separate session</small>}
-              <h1 className={view === "chat" ? "chat-title" : undefined}>{title}</h1>
+              <button className="icon-btn primary" type="button" aria-label="New chat" onClick={() => void startNewChat()}>
+                <IconPlus />
+              </button>
             </div>
           </div>
-          <div className="header-buttons">
-            {(view === "chats" || view === "chat") && (
-              <button className="icon-button" onClick={() => void startNewChat()} aria-label="New chat">
-                ＋
-              </button>
+          <div className="inbox-body">
+            {error && !inChat && <p className="session-error">{error}</p>}
+            {tab === "chats" && (
+              <ChatsTab
+                sessions={sessions}
+                agents={agents}
+                ready={inboxReady}
+                filter={chatFilter}
+                query={query}
+                searchOpen={searchOpen}
+                runningId={loading ? sessionId : ""}
+                askCount={askCount}
+                onFilter={setChatFilter}
+                onQuery={setQuery}
+                onOpen={openSession}
+              />
             )}
-            <a className="demo-badge" href="/settings#agents">Settings</a>
-            {agentLiveUrl(selected, host) ? (
-              <a className="demo-badge" href={agentLiveUrl(selected, host)!} target="_blank" rel="noreferrer">
-                LIVE
-              </a>
-            ) : (
-              <button className="demo-badge" type="button">
-                LIVE
-              </button>
+            {tab === "agents" && (
+              <AgentsTab agents={agents} host={host} onOpen={(id) => void startNewChat(id)} />
             )}
-            <button
-              className="icon-button"
-              onClick={toggleFull}
-              aria-label={full ? "Exit fullscreen" : "Enter fullscreen"}
-              aria-pressed={full}
-            >
-              {full ? "⤡" : "⤢"}
-            </button>
-            <button className="icon-button" onClick={() => setDark(!dark)} aria-label="Toggle theme">
-              {dark ? "☀" : "☾"}
-            </button>
+            {tab === "live" && (
+              <LiveTab host={host} publishing={publishing} onPublish={() => void publishHost()} />
+            )}
+            {tab === "files" && <FilesTab files={files} />}
           </div>
-        </header>
-
-        <div className={isChat ? "content chat-content" : "content"}>
-          {view === "agents" && (
-            <AgentInbox
-              agents={agents}
-              onOpen={openAgent}
-              host={host}
-              sessions={sessions}
-              onOpenSession={openSession}
-              onNewChat={() => void startNewChat()}
-            />
-          )}
-          {view === "menu" && selected && (
-            <AgentMenu
-              agent={selected}
-              onOpen={openAction}
-              models={models}
-              selectedModelId={selectedModelId}
-              modelMenuOpen={modelMenuOpen}
-              onToggleModelMenu={() => setModelMenuOpen((open) => !open)}
-              onSelectModel={(modelId) => void switchModel(modelId)}
-              host={host}
-            />
-          )}
-          {view === "chats" && (
-            <ChatList
-              sessions={sessions}
-              activeId={sessionId}
-              error={error}
-              onOpen={openSession}
-              onNewChat={() => void startNewChat()}
-              onDelete={(id) => void removeSession(id)}
-            />
-          )}
-          {view === "chat" && selected && (
-            <AgentConversation
-              agent={selected}
-              actionIndex={actionIndex}
-              history={history}
-              loading={loading}
-              liveStatus={liveStatus}
-              siriSignal={siriSignal}
-              error={error}
-              onPrompt={send}
-              models={models}
-              activeModel={activeModel}
-              modelMenuOpen={modelMenuOpen}
-              onToggleModelMenu={() => setModelMenuOpen((open) => !open)}
-              onSelectModel={(modelId) => void switchModel(modelId)}
-            />
-          )}
-          {view === "tasks" && <TasksScreen agents={agents} metrics={metrics} />}
-          {view === "approvals" && (
-            <HostScreen host={host} publishing={publishing} onPublish={() => void publishHost()} />
-          )}
-          {view === "library" && <LibraryScreen files={files} />}
+          <nav className="bottom-nav">
+            {(
+              [
+                { id: "chats" as const, label: "Chats", badge: askCount, icon: <IconChats /> },
+                { id: "agents" as const, label: "Agents", badge: 0, icon: <IconAgents /> },
+                { id: "live" as const, label: "Live", badge: 0, icon: <IconLive /> },
+                { id: "files" as const, label: "Files", badge: 0, icon: <IconFiles /> },
+              ] as const
+            ).map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={tab === item.id ? "nav-btn on" : "nav-btn"}
+                onClick={() => goTab(item.id)}
+              >
+                <span className="nav-pill">{item.icon}</span>
+                <small>{item.label}</small>
+                {item.badge ? <span className="badge">{item.badge}</span> : null}
+              </button>
+            ))}
+          </nav>
         </div>
 
-        {isChat && (
-          <div className="composer-wrap">
-            {pendingFiles.length > 0 && (
-              <div className="attach-chips">
-                {pendingFiles.map((file, index) => (
+        <div className="chat-pane" inert={inChat ? undefined : true}>
+          {selected && (
+            <>
+              <header className="chat-head">
+                <button className="back-btn" type="button" onClick={goBack} aria-label="Back">
+                  <IconBack />
+                </button>
+                <button className="agent-hit" type="button" onClick={() => setSheet("agent")}>
+                  <span className={`avatar sm ${selected.color}`}>{selected.short}</span>
+                  <div>
+                    <strong>{selected.name}</strong>
+                    <span
+                      className={[
+                        "status-line",
+                        loading ? "working" : "",
+                        siriSignal === "complete" ? "complete" : "",
+                        siriSignal === "ask" ? "ask" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                    >
+                      <i className="status-dot" />
+                      {loading
+                        ? liveStatus || "Working…"
+                        : siriSignal === "complete"
+                          ? "Job complete"
+                          : siriSignal === "ask"
+                            ? "Needs your reply"
+                            : "Online · this chat only"}
+                    </span>
+                  </div>
+                </button>
+                <button
+                  className="model-chip"
+                  type="button"
+                  onClick={() => setSheet("model")}
+                  aria-label="Switch model"
+                >
+                  {activeModel?.shortLabel ?? "Model"}
+                  <IconChevron />
+                </button>
+                {loading && (
+                  <div className="work-bar">
+                    <i />
+                  </div>
+                )}
+              </header>
+              <AgentConversation
+                agent={selected}
+                history={history}
+                loading={loading}
+                error={error}
+                liveUrl={liveUrl}
+                siriSignal={siriSignal}
+                publishOk={publishOk}
+                onPrompt={(text) => void send(text)}
+              />
+              <div className="composer">
+                {pendingFiles.length > 0 && (
+                  <div className="attach-chips">
+                    {pendingFiles.map((file, index) => (
+                      <button
+                        key={`${file.name}-${index}`}
+                        type="button"
+                        className="attach-chip"
+                        onClick={() => setPendingFiles((prev) => prev.filter((_, i) => i !== index))}
+                        aria-label={`Remove ${file.name}`}
+                      >
+                        {file.name} ×
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="composer-row">
+                  <input
+                    ref={fileInput}
+                    type="file"
+                    accept="image/*,.pdf,application/pdf"
+                    multiple
+                    hidden
+                    onChange={(event) => {
+                      void pickFiles(event.target.files);
+                      event.target.value = "";
+                    }}
+                  />
                   <button
-                    key={`${file.name}-${index}`}
+                    className="composer-circle attach"
                     type="button"
-                    className="attach-chip"
-                    onClick={() => setPendingFiles((prev) => prev.filter((_, i) => i !== index))}
-                    aria-label={`Remove ${file.name}`}
+                    aria-label="Attach image or PDF"
+                    disabled={loading}
+                    onClick={() => fileInput.current?.click()}
                   >
-                    {file.name} ×
+                    <IconPlus wide />
                   </button>
-                ))}
+                  <div className="composer-field">
+                    <input
+                      value={message}
+                      onChange={(event) => setMessage(event.target.value)}
+                      onKeyDown={(event) => event.key === "Enter" && void send()}
+                      placeholder={loading ? `${selected.name} is working…` : "Message"}
+                      disabled={loading}
+                    />
+                  </div>
+                  {loading ? (
+                    <button className="composer-circle stop" type="button" onClick={stop} aria-label="Stop">
+                      <i />
+                    </button>
+                  ) : message.trim() || pendingFiles.length ? (
+                    <button className="composer-circle send" type="button" onClick={() => void send()} aria-label="Send">
+                      <IconSend />
+                    </button>
+                  ) : (
+                    <button
+                      className="composer-circle mic"
+                      type="button"
+                      aria-label="Focus message"
+                      onClick={() => document.querySelector<HTMLInputElement>(".composer-field input")?.focus()}
+                    >
+                      <IconMic />
+                    </button>
+                  )}
+                </div>
               </div>
-            )}
-            <div className="composer-row">
-              <input
-                ref={fileInput}
-                type="file"
-                accept="image/*,.pdf,application/pdf"
-                multiple
-                hidden
-                onChange={(event) => {
-                  void pickFiles(event.target.files);
-                  event.target.value = "";
-                }}
-              />
+            </>
+          )}
+        </div>
+
+        <div
+          className={sheet ? "sheet-backdrop on" : "sheet-backdrop"}
+          onClick={() => setSheet(null)}
+          aria-hidden={!sheet}
+        />
+        <div
+          className={sheet === "model" ? "sheet on" : "sheet"}
+          aria-hidden={sheet !== "model"}
+          inert={sheet !== "model" ? true : undefined}
+        >
+          <div className="sheet-handle" />
+          <div className="sheet-title">
+            <strong>Model for this chat</strong>
+            <span>Switch anytime</span>
+          </div>
+          {models.map((model) => {
+            const tone = !model.available ? "muted" : /gpt|openai|luna/i.test(model.label) ? "blue" : "";
+            return (
               <button
-                className="attach"
+                key={model.id}
                 type="button"
-                aria-label="Attach image or PDF"
-                disabled={loading}
-                onClick={() => fileInput.current?.click()}
+                className="model-row"
+                disabled={!model.available}
+                onClick={() => void switchModel(model.id)}
               >
-                ＋
+                <span className={["model-mark", tone].filter(Boolean).join(" ")}>
+                  {model.shortLabel.slice(0, 3)}
+                </span>
+                <span>
+                  <strong>{model.label}</strong>
+                  <small>{model.available ? model.provider : "No API key · add in Settings"}</small>
+                </span>
+                {selectedModelId === model.id && (
+                  <span className="check-dot">
+                    <IconCheck />
+                  </span>
+                )}
               </button>
-              <input
-                value={message}
-                onChange={(event) => setMessage(event.target.value)}
-                onKeyDown={(event) => event.key === "Enter" && void send()}
-                placeholder={
-                  loading
-                    ? "Agent is working…"
-                    : selected?.slug === "proposal"
-                      ? "Text, screenshot, or PDF to update the proposal…"
-                      : `Message ${selected?.name ?? "agent"}…`
-                }
-                disabled={loading}
-              />
-              <button
-                className="send"
-                onClick={() => void send()}
-                aria-label="Send"
-                disabled={loading || (!message.trim() && !pendingFiles.length)}
-              >
-                ➤
+            );
+          })}
+        </div>
+        {selected && (
+          <div
+            className={sheet === "agent" ? "sheet on" : "sheet"}
+            aria-hidden={sheet !== "agent"}
+            inert={sheet !== "agent" ? true : undefined}
+          >
+            <div className="sheet-handle" />
+            <div className="sheet-hero">
+              <span className={`avatar lg ${selected.color}`}>{selected.short}</span>
+              <div>
+                <strong>{selected.name}</strong>
+                <span>{selected.description}</span>
+              </div>
+            </div>
+            <div className="group-label" style={{ paddingLeft: 12 }}>
+              Attached to this agent
+            </div>
+            <div className="chip-wrap">
+              {(selected.skills ?? []).map((skill) => (
+                <span className="kind-chip skill" key={`s-${skill.id}`}>
+                  {skill.name}
+                  <b>SKILL</b>
+                </span>
+              ))}
+              {(selected.mcp ?? []).map((server) => (
+                <span className="kind-chip mcp" key={`m-${server.id}`}>
+                  {server.name}
+                  <b>MCP</b>
+                </span>
+              ))}
+              {!selected.skills?.length && !selected.mcp?.length && (
+                <span className="kind-chip skill">
+                  Role only
+                  <b>PROMPT</b>
+                </span>
+              )}
+            </div>
+            <div className="trust-card">
+              <i />
+              Only this role and its attached tools are used. Each chat is its own session — new chats don&apos;t share
+              memory.
+            </div>
+            <div className="sheet-actions">
+              <button className="ghost" type="button" onClick={() => setSheet(null)}>
+                Close
               </button>
+              <a className="primary" href="/settings#agents">
+                Manage in Settings
+              </a>
             </div>
           </div>
-        )}
-        {!isChat && (
-          <nav className="bottom-nav">
-            <button className={view === "agents" || view === "menu" ? "active" : ""} onClick={() => goRoot("agents")}>
-              <span>⌂</span>
-              <small>Agents</small>
-            </button>
-            <button className={view === "tasks" ? "active" : ""} onClick={() => goRoot("tasks")}>
-              <span>◷</span>
-              <small>Tasks</small>
-            </button>
-            <button className={view === "approvals" ? "active" : ""} onClick={() => goRoot("approvals")}>
-              <span>{"\u2713"}</span>
-              <small>Live</small>
-            </button>
-            <button className={view === "library" ? "active" : ""} onClick={() => goRoot("library")}>
-              <span>▣</span>
-              <small>Files</small>
-            </button>
-          </nav>
         )}
       </section>
     </main>
   );
 }
 
-function AgentInbox({
-  agents,
-  onOpen,
-  host,
+function ChatsTab({
   sessions,
-  onOpenSession,
-  onNewChat,
+  agents,
+  ready,
+  filter,
+  query,
+  searchOpen,
+  runningId,
+  askCount,
+  onFilter,
+  onQuery,
+  onOpen,
 }: {
-  agents: Agent[];
-  onOpen: (id: string) => void;
-  host: HostStatus | null;
   sessions: ChatSession[];
-  onOpenSession: (id: string) => void;
-  onNewChat: () => void;
+  agents: Agent[];
+  ready: boolean;
+  filter: ChatFilter;
+  query: string;
+  searchOpen: boolean;
+  runningId: string;
+  askCount: number;
+  onFilter: (filter: ChatFilter) => void;
+  onQuery: (query: string) => void;
+  onOpen: (id: string) => void;
 }) {
-  const recent = sessions.slice(0, 5);
+  const filtered = sessions.filter((session) => {
+    const flag = classifySession(session, session.id === runningId);
+    if (filter === "ask" && flag !== "ask") return false;
+    if (filter === "done" && flag !== "done") return false;
+    if (query.trim()) {
+      const hay = `${session.title} ${session.preview ?? ""}`.toLowerCase();
+      if (!hay.includes(query.trim().toLowerCase())) return false;
+    }
+    return true;
+  });
+  const groups = groupSessions(filtered);
+  const filters: { id: ChatFilter; label: string; count: number }[] = [
+    { id: "all", label: "All", count: 0 },
+    { id: "ask", label: "Needs reply", count: askCount },
+    { id: "done", label: "Done", count: 0 },
+  ];
+
   return (
     <>
-      <div className="briefing-banner">
-        <span>✦</span>
-        <div>
-          <strong>{agents.length} agents · role + skills + MCP</strong>
-          <p>
-            Website Dev Agent publishes to ee-html. Proposal Agent updates the Eternalgy proposal at
-            ee-proposal-production after a GitHub push.
-          </p>
-        </div>
+      {searchOpen && (
+        <label className="search-bar">
+          <IconSearch />
+          <input
+            autoFocus
+            placeholder="Search chats"
+            value={query}
+            onChange={(event) => onQuery(event.target.value)}
+          />
+        </label>
+      )}
+      <div className="filter-row">
+        {filters.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={filter === item.id ? "filter-chip on" : "filter-chip"}
+            onClick={() => onFilter(item.id)}
+          >
+            {item.label}
+            {item.count ? <b>{item.count}</b> : null}
+          </button>
+        ))}
       </div>
-      <label className="search">
-        <span>⌕</span>
-        <input placeholder="Search agents" />
-      </label>
-      <div className="section-label">
+      {!ready && (
+        <div>
+          {[1, 2, 3, 4, 5].map((key) => (
+            <div className="skeleton-row" key={key}>
+              <i />
+              <div>
+                <b />
+                <s />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {ready &&
+        groups.map((group) => (
+          <div key={group.label}>
+            <div className="group-label">{group.label}</div>
+            {group.items.map((session) => {
+              const agent = agents.find((row) => row.id === session.agentId);
+              const flag = classifySession(session, session.id === runningId);
+              return (
+                <button
+                  key={session.id}
+                  type="button"
+                  className="session-btn"
+                  onClick={() => onOpen(session.id)}
+                >
+                  <span className={`avatar ${agent?.color || "emerald"}`}>
+                    {agent?.short || "C"}
+                    {flag === "run" && (
+                      <span className="spin-badge">
+                        <i className="spin" />
+                      </span>
+                    )}
+                  </span>
+                  <span className="row-main">
+                    <span className="row-top">
+                      <strong>{session.title}</strong>
+                      <time className={flag === "ask" ? "unread" : undefined}>{formatSessionTime(session.updatedAt)}</time>
+                    </span>
+                    <span className="row-sub">
+                      <span className="preview">
+                        {flag === "done" && <IconTicks />}
+                        {flag === "ask" && <span className="ask-dot">?</span>}
+                        {flag === "run" && <span className="working">Working</span>}
+                        <span>{previewText(session.preview) || "New chat"}</span>
+                      </span>
+                      {flag === "ask" && <span className="unread-badge">1</span>}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      {ready && groups.length === 0 && (
+        <div className="empty-pane">
+          <div className="empty-icon">
+            <IconChats />
+          </div>
+          <strong>Nothing here yet</strong>
+          <p>Chats that match this filter will show up as agents finish or ask you something.</p>
+        </div>
+      )}
+    </>
+  );
+}
+
+function AgentsTab({
+  agents,
+  host,
+  onOpen,
+}: {
+  agents: Agent[];
+  host: HostStatus | null;
+  onOpen: (id: string) => void;
+}) {
+  const url = agentLiveUrl(agents[0], host);
+  const hostLabel = hostHost(url);
+  return (
+    <>
+      <div className="live-banner">
+        <span>
+          <IconLive />
+        </span>
+        <div>
+          <strong>{url ? "Live site is up" : host?.configured ? "Ready to publish" : "Live host not configured"}</strong>
+          <small>{hostLabel || "Add the HTML host API key in Settings"}</small>
+        </div>
+        {url ? (
+          <a href={url} target="_blank" rel="noreferrer">
+            Open
+          </a>
+        ) : (
+          <a href="/settings">Setup</a>
+        )}
+      </div>
+      <div className="section-row">
         <span>Your agents</span>
         <small>{agents.length} online</small>
       </div>
-      <div className="agent-inbox">
-        {agents.map((agent) => (
-          <button className="agent-row" key={agent.id} onClick={() => onOpen(agent.id)}>
-            <span className={`agent-avatar ${agent.color}`}>
-              {agent.short}
-              <i />
+      {agents.map((agent) => (
+        <button key={agent.id} type="button" className="agent-btn" onClick={() => onOpen(agent.id)}>
+          <span className={`avatar ${agent.color}`}>
+            {agent.short}
+            <i className="online" />
+          </span>
+          <span className="row-main">
+            <strong>{agent.name}</strong>
+            <span className="preview">
+              <span>{agent.headline || toolsLabel(agent)}</span>
             </span>
-            <span className="row-copy">
-              <strong>{agent.name}</strong>
-              <small>{agent.headline || toolsLabel(agent)}</small>
-            </span>
-            <span className="row-meta">
-              <time>{(agent.skills?.length ?? 0) + (agent.mcp?.length ?? 0)}</time>
-            </span>
-          </button>
-        ))}
-      </div>
-      <div className="section-label">
-        <span>Recent chats</span>
-        <small>{sessions.length ? `${sessions.length}` : "none"}</small>
-      </div>
-      {recent.length === 0 ? (
-        <button className="new-chat-btn" onClick={onNewChat}>
-          ＋ New chat
+          </span>
+          <span className="tool-count">{toolCount(agent)}</span>
         </button>
-      ) : (
-        <div className="agent-inbox">
-          {recent.map((session) => (
-            <button className="agent-row" key={session.id} onClick={() => onOpenSession(session.id)}>
-              <span className="agent-avatar emerald">C</span>
-              <span className="row-copy">
-                <strong>{session.title}</strong>
-                <small>{previewText(session.preview) || "Empty chat"}</small>
-              </span>
-              <span className="row-meta">
-                <time>{formatSessionTime(session.updatedAt)}</time>
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-      <div className="automation-summary">
-        <div>
-          <span>1</span>
-          <small>Workspace</small>
-        </div>
-        <div>
-          <span>{host?.configured ? "On" : "Off"}</span>
-          <small>ee-html</small>
-        </div>
-        <div>
-          <span>Live</span>
-          <small>Railway</small>
-        </div>
-      </div>
+      ))}
     </>
   );
 }
 
-function ChatList({
-  sessions,
-  activeId,
-  error,
-  onOpen,
-  onNewChat,
-  onDelete,
-}: {
-  sessions: ChatSession[];
-  activeId: string;
-  error: string;
-  onOpen: (id: string) => void;
-  onNewChat: () => void;
-  onDelete: (id: string) => void;
-}) {
-  return (
-    <>
-      <button className="new-chat-btn" onClick={onNewChat}>
-        ＋ New chat
-      </button>
-      {error && <p className="session-error">{error}</p>}
-      <div className="section-label">
-        <span>Conversations</span>
-        <small>{sessions.length ? `${sessions.length}` : "none yet"}</small>
-      </div>
-      {sessions.length === 0 ? (
-        <p className="empty-chats">Each new chat is a separate agent session. Start one to keep this work isolated.</p>
-      ) : (
-        <div className="agent-inbox">
-          {sessions.map((session) => (
-            <div className={session.id === activeId ? "session-row active" : "session-row"} key={session.id}>
-              <button className="agent-row" onClick={() => onOpen(session.id)}>
-                <span className="agent-avatar emerald">C</span>
-                <span className="row-copy">
-                  <strong>{session.title}</strong>
-                  <small>{previewText(session.preview) || "Empty chat"}</small>
-                </span>
-                <span className="row-meta">
-                  <time>{formatSessionTime(session.updatedAt)}</time>
-                  {session.messageCount ? <b>{session.messageCount}</b> : null}
-                </span>
-              </button>
-              <button
-                className="delete-session"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onDelete(session.id);
-                }}
-                aria-label={`Delete ${session.title}`}
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </>
-  );
-}
-
-function AgentMenu({
-  agent,
-  onOpen,
-  models,
-  selectedModelId,
-  modelMenuOpen,
-  onToggleModelMenu,
-  onSelectModel,
-  host,
-}: {
-  agent: Agent;
-  onOpen: (index: number) => void;
-  models: ModelOption[];
-  selectedModelId: string;
-  modelMenuOpen: boolean;
-  onToggleModelMenu: () => void;
-  onSelectModel: (modelId: string) => void;
-  host: HostStatus | null;
-}) {
-  const active = models.find((model) => model.id === selectedModelId);
-  return (
-    <>
-      <div className={`agent-hero hero-${agent.color}`}>
-        <span className={`agent-avatar ${agent.color} large`}>
-          {agent.short}
-          <i />
-        </span>
-        <div>
-          <h2>{agent.name}</h2>
-          <p>{agent.description}</p>
-        </div>
-      </div>
-      <ModelPicker
-        models={models}
-        selectedModelId={selectedModelId}
-        open={modelMenuOpen}
-        onToggle={onToggleModelMenu}
-        onSelect={onSelectModel}
-      />
-      <div className="section-label">
-        <span>Attached</span>
-        <small>{toolsLabel(agent)}</small>
-      </div>
-      <div className="section-label">
-        <span>What would you like to do?</span>
-      </div>
-      <div className="submenu">
-        {agentActions(agent).map((action, index) => (
-          <button
-            key={action.title}
-            onClick={() => onOpen(index)}
-            disabled={index === 1 && !agentLiveUrl(agent, host)}
-          >
-            <span className={`menu-icon accent-${index}`}>{action.icon}</span>
-            <span className="row-copy">
-              <strong>{action.title}</strong>
-              <small>{action.description}</small>
-            </span>
-            <span className="chevron">›</span>
-          </button>
-        ))}
-      </div>
-      <div className="agent-status">
-        <span className="pulse" />
-        <div>
-          <strong>Agent is ready</strong>
-          <small>
-            {active?.label ?? "Pick a model"} · {agentLiveUrl(agent, host) ?? "ee-html"}
-          </small>
-        </div>
-        <span className="scope-pill">Pi</span>
-      </div>
-      <div className="trust-note">
-        <strong>Role + assigned tools only</strong>
-        <p>
-          This chat uses this agent's prompt, {agent.skills?.length ?? 0} skill
-          {(agent.skills?.length ?? 0) === 1 ? "" : "s"}, and {agent.mcp?.length ?? 0} MCP
-          {(agent.mcp?.length ?? 0) === 1 ? " server" : " servers"}.{" "}
-          <a href="/settings#agents">Manage in Settings</a>.
-        </p>
-      </div>
-    </>
-  );
-}
-
-function AgentConversation({
-  agent,
-  actionIndex,
-  history,
-  loading,
-  liveStatus,
-  siriSignal,
-  error,
-  onPrompt,
-  models,
-  activeModel,
-  modelMenuOpen,
-  onToggleModelMenu,
-  onSelectModel,
-}: {
-  agent: Agent;
-  actionIndex: number;
-  history: ChatMessage[];
-  loading: boolean;
-  liveStatus: string;
-  siriSignal: SiriSignal;
-  error: string;
-  onPrompt: (text: string) => void;
-  models: ModelOption[];
-  activeModel?: ModelOption;
-  modelMenuOpen: boolean;
-  onToggleModelMenu: () => void;
-  onSelectModel: (modelId: string) => void;
-}) {
-  const bottomRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [history, loading, liveStatus]);
-
-  return (
-    <div className="conversation">
-      <div className="agent-strip">
-        <span className={`agent-avatar ${agent.color}`}>
-          {agent.short}
-          <i />
-        </span>
-        <div>
-          <strong>{agent.name}</strong>
-          <small className={siriSignal !== "idle" ? `siri-dot-${siriSignal}` : undefined}>
-            <span />
-            {siriSignal === "complete"
-              ? "Job complete"
-              : siriSignal === "ask"
-                ? "Needs your reply"
-                : liveStatus || "Online · this chat only"}
-          </small>
-        </div>
-        <button
-          type="button"
-          className="model-chip"
-          onClick={onToggleModelMenu}
-          aria-expanded={modelMenuOpen}
-          aria-label="Switch model"
-        >
-          {activeModel?.shortLabel ?? "Model"} ▾
-        </button>
-      </div>
-      {modelMenuOpen && (
-        <ModelPicker
-          compact
-          models={models}
-          selectedModelId={activeModel?.id ?? ""}
-          open={modelMenuOpen}
-          onToggle={onToggleModelMenu}
-          onSelect={onSelectModel}
-        />
-      )}
-      <div className="day-pill">Today</div>
-      <div className="bubble agent-bubble">
-        <span className="mini-agent">✦</span>
-        <div>
-          <p>{introFor(actionIndex, agent)}</p>
-          <time>Now</time>
-        </div>
-      </div>
-      {history.length === 0 && (
-        <div className="quick-actions">
-          <small>QUICK START</small>
-          {promptsFor(actionIndex, agent).map((prompt) => (
-            <button key={prompt} onClick={() => void onPrompt(prompt)}>
-              {prompt}
-            </button>
-          ))}
-        </div>
-      )}
-      {history.map((item, index) =>
-        item.role === "user" ? (
-          <div className="bubble user-bubble" key={`u-${index}`}>
-            <p>{item.content}</p>
-            <time>Now ✓✓</time>
-          </div>
-        ) : (
-          <div className="bubble agent-bubble" key={`a-${index}`}>
-            <span className="mini-agent">✦</span>
-            <div>
-              <TurnBlocks blocks={item.blocks} fallback={item.content} streaming={item.streaming} />
-              <time>{item.streaming ? liveStatus || "Now" : "Now"}</time>
-            </div>
-          </div>
-        ),
-      )}
-      {error && (
-        <div className="bubble agent-bubble">
-          <span className="mini-agent">✦</span>
-          <div>
-            <p>{error}</p>
-            <time>Now</time>
-          </div>
-        </div>
-      )}
-      <div ref={bottomRef} />
-    </div>
-  );
-}
-
-function TurnBlocks({
-  blocks,
-  fallback,
-  streaming,
-}: {
-  blocks?: TurnBlock[];
-  fallback: string;
-  streaming?: boolean;
-}) {
-  if (!blocks?.length) {
-    if (!fallback && streaming) return <p className="stream-cursor">Working…</p>;
-    return fallback ? <p style={{ whiteSpace: "pre-wrap" }}>{fallback}</p> : null;
-  }
-  return (
-    <div className="turn-blocks">
-      {blocks.map((block, index) => {
-        const live = Boolean(streaming && index === blocks.length - 1);
-        if (block.type === "thinking") {
-          return (
-            <details key={`t-${index}`} className="think-block" open>
-              <summary>Thinking</summary>
-              <p className={live ? "stream-cursor" : undefined}>{block.text}</p>
-            </details>
-          );
-        }
-        if (block.type === "note") {
-          return (
-            <p className="note-block" key={`n-${index}`}>
-              {block.text}
-            </p>
-          );
-        }
-        if (block.type === "tool") {
-          return (
-            <div
-              className={["tool-block", block.running ? "running" : "", block.isError ? "error" : ""].join(" ")}
-              key={block.id || `tool-${index}`}
-            >
-              <div className="tool-head">
-                <b>{block.name}</b>
-                {block.detail ? <span>{block.detail}</span> : null}
-                {block.running ? <i>running</i> : null}
-              </div>
-              {block.result ? <pre>{block.result}</pre> : null}
-            </div>
-          );
-        }
-        return (
-          <p className={live ? "stream-cursor" : undefined} style={{ whiteSpace: "pre-wrap" }} key={`x-${index}`}>
-            {block.text}
-          </p>
-        );
-      })}
-    </div>
-  );
-}
-
-function TasksScreen({ agents, metrics }: { agents: Agent[]; metrics: MetricsPayload | null }) {
-  const now = metrics?.now;
-  const ram = now?.containerMb;
-  const cpu = now?.containerCpuPct ?? now?.nodeCpuPct;
-  const samples = metrics?.samples ?? [];
-  const spark = samples.length > 80 ? samples.filter((_, i) => i % Math.ceil(samples.length / 80) === 0) : samples;
-  return (
-    <>
-      <div className="summary-grid">
-        <div>
-          <strong>{agents.length || 1}</strong>
-          <small>Agents</small>
-        </div>
-        <div>
-          <strong>{ram == null ? "—" : `${ram.toFixed(0)}`}</strong>
-          <small>RAM MB</small>
-        </div>
-        <div>
-          <strong>{cpu == null ? "—" : `${cpu.toFixed(0)}%`}</strong>
-          <small>CPU</small>
-        </div>
-      </div>
-      <div className="section-label">
-        <span>Usage · 24h</span>
-        <small>{metrics?.stats.sampleCount ?? 0} samples</small>
-      </div>
-      <UsageSpark samples={spark} />
-      <p className="usage-hint">
-        Peak {metrics?.stats.ramPeakMb?.toFixed(0) ?? "—"} MB RAM · {metrics?.stats.cpuPeakPct?.toFixed(0) ?? "—"}% CPU.
-        Older than 24h is deleted.{" "}
-        <a href="/settings#usage">Full charts in Settings</a>
-      </p>
-      {samples.length > 0 && (
-        <div className="usage-mini-log">
-          {samples
-            .slice(-12)
-            .slice()
-            .reverse()
-            .map((row) => (
-              <div key={row.ts}>
-                <time>
-                  {new Date(row.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                </time>
-                <span>{row.containerMb.toFixed(1)} MB</span>
-                <span>{(row.containerCpuPct ?? row.nodeCpuPct).toFixed(1)}%</span>
-                <small>{row.piAlive ? "Pi" : "idle"}</small>
-              </div>
-            ))}
-        </div>
-      )}
-      <div className="section-label">
-        <span>Agents</span>
-        <small>role + skills + MCP</small>
-      </div>
-      <div className="work-list">
-        {agents.map((agent) => (
-          <Work
-            key={agent.id}
-            icon={agent.short}
-            color={agent.color}
-            title={agent.name}
-            detail={toolsLabel(agent)}
-            progress={100}
-          />
-        ))}
-      </div>
-    </>
-  );
-}
-
-function UsageSpark({ samples }: { samples: ResourceSample[] }) {
-  const w = 360;
-  const h = 72;
-  if (samples.length < 2) {
-    return <p className="usage-hint">Usage log fills in every 15 seconds after boot.</p>;
-  }
-  const ram = samples.map((row) => row.containerMb);
-  const cpu = samples.map((row) => row.containerCpuPct ?? row.nodeCpuPct);
-  const ramMax = Math.max(1, ...ram);
-  const cpuMax = Math.max(1, ...cpu);
-  const path = (values: number[], max: number) =>
-    values
-      .map((n, i) => {
-        const x = (i / (values.length - 1)) * w;
-        const y = h - 4 - (n / max) * (h - 8);
-        return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
-      })
-      .join(" ");
-  return (
-    <div className="usage-spark">
-      <svg viewBox={`0 0 ${w} ${h}`} aria-label="RAM and CPU over 24 hours">
-        <path d={path(ram, ramMax)} fill="none" stroke="#008069" strokeWidth="2" />
-        <path d={path(cpu, cpuMax)} fill="none" stroke="#d26310" strokeWidth="1.5" />
-      </svg>
-      <div className="usage-legend compact">
-        <span>
-          <i style={{ background: "#008069" }} />
-          RAM
-        </span>
-        <span>
-          <i style={{ background: "#d26310" }} />
-          CPU
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function Work({
-  icon,
-  color,
-  title,
-  detail,
-  progress,
-}: {
-  icon: string;
-  color: string;
-  title: string;
-  detail: string;
-  progress: number;
-}) {
-  return (
-    <div className="work-item">
-      <span className={`agent-avatar tiny ${color}`}>{icon}</span>
-      <div>
-        <strong>{title}</strong>
-        <small>{detail}</small>
-        <i>
-          <b style={{ width: `${progress}%` }} />
-        </i>
-      </div>
-      <span>›</span>
-    </div>
-  );
-}
-
-function HostScreen({
+function LiveTab({
   host,
   publishing,
   onPublish,
@@ -1482,174 +1201,298 @@ function HostScreen({
 }) {
   const url = host?.url ?? (host?.slug ? `${host.baseUrl}/app/${host.slug}/` : null);
   return (
-    <>
-      <div className="approval-intro">
-        <span>⌁</span>
+    <div className="live-panel">
+      <div className="live-banner" style={{ margin: 0 }}>
+        <span>
+          <IconLive />
+        </span>
         <div>
           <strong>{host?.name ?? "HTML host"}</strong>
-          <p>{host?.slug ?? "e-agent-site"}</p>
+          <small>{host?.slug ?? "e-agent-site"}</small>
         </div>
       </div>
-      <div className="approval-list">
-        <div className="approval-item">
-          <div>
-            <span className="agent-avatar tiny emerald">W</span>
-            <small>ee-html.up.railway.app</small>
-          </div>
-          <h3>{host?.url ? "Live site" : host?.configured ? "Ready to publish" : "API key missing"}</h3>
-          <p>
-            {host?.lastError ??
-              (host?.url
-                ? "The host zips the workspace after each Website Dev Agent chat and publishes it here."
-                : "Add the HTML host API key on the Settings page. The agent only edits files.")}
-          </p>
-          <div>
-            <button disabled={!url} onClick={() => url && window.open(url, "_blank", "noopener,noreferrer")}>
-              Open live site
-            </button>
-            <button disabled={!host?.configured || publishing} onClick={onPublish}>
-              {publishing ? "Publishing…" : "Publish now"}
-            </button>
-          </div>
+      <div className="live-card">
+        <h3>{url ? "Live site" : host?.configured ? "Ready to publish" : "API key missing"}</h3>
+        <p>
+          {host?.lastError ??
+            (url
+              ? "The host publishes the workspace to ee-html after each Website Dev Agent chat."
+              : "Add the HTML host API key on the Settings page. The agent only edits files.")}
+        </p>
+        <div className="live-actions">
+          <button type="button" disabled={!url} onClick={() => url && window.open(url, "_blank", "noopener,noreferrer")}>
+            Open live site
+          </button>
+          <button className="secondary" type="button" disabled={!host?.configured || publishing} onClick={onPublish}>
+            {publishing ? "Publishing…" : "Publish now"}
+          </button>
         </div>
       </div>
-    </>
-  );
-}
-
-function LibraryScreen({ files }: { files: WorkspaceFile[] }) {
-  const list = files.length ? files : [{ path: "index.html", size: 0 }];
-  return (
-    <>
-      <label className="search">
-        <span>⌕</span>
-        <input placeholder="Workspace files" />
-      </label>
-      <div className="section-label">
-        <span>Workspace files</span>
-        <small>/storage/workspace</small>
-      </div>
-      <div className="library-grid">
-        {list.map((file) => (
-          <Artifact key={file.path} icon="▤" title={file.path} detail={`${file.size} bytes`} tone="mint" />
-        ))}
-      </div>
-    </>
-  );
-}
-
-function Artifact({ icon, title, detail, tone }: { icon: string; title: string; detail: string; tone: string }) {
-  return (
-    <button className="artifact">
-      <span className={tone}>{icon}</span>
-      <strong>{title}</strong>
-      <small>{detail}</small>
-    </button>
-  );
-}
-
-function ModelPicker({
-  models,
-  selectedModelId,
-  open,
-  onToggle,
-  onSelect,
-  compact = false,
-}: {
-  models: ModelOption[];
-  selectedModelId: string;
-  open: boolean;
-  onToggle: () => void;
-  compact?: boolean;
-  onSelect: (modelId: string) => void;
-}) {
-  if (!compact) {
-    return (
-      <div className="model-panel">
-        <div className="section-label">
-          <span>Model</span>
-          <small>{open ? "Tap to close" : "Tap to switch"}</small>
-        </div>
-        <div className="model-row">
-          {models.map((model) => (
-            <button
-              key={model.id}
-              type="button"
-              className={["model-pill", selectedModelId === model.id ? "selected" : "", model.available ? "" : "disabled"]
-                .filter(Boolean)
-                .join(" ")}
-              disabled={!model.available}
-              onClick={() => onSelect(model.id)}
-            >
-              <strong>{model.shortLabel}</strong>
-              <small>{model.available ? model.label : "Key missing"}</small>
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (!open) return null;
-
-  return (
-    <div className="model-sheet">
-      {models.map((model) => (
-        <button
-          key={model.id}
-          type="button"
-          className={["model-sheet-item", selectedModelId === model.id ? "selected" : "", model.available ? "" : "disabled"]
-            .filter(Boolean)
-            .join(" ")}
-          disabled={!model.available}
-          onClick={() => onSelect(model.id)}
-        >
-          <span>
-            <strong>{model.label}</strong>
-            <small>{model.available ? model.provider : "Add API key first"}</small>
-          </span>
-          {selectedModelId === model.id && <b>{"\u2713"}</b>}
-        </button>
-      ))}
-      <button type="button" className="model-sheet-close" onClick={onToggle}>
-        Done
-      </button>
     </div>
   );
 }
 
-function introFor(action: number, agent?: Agent) {
-  if (agent?.slug === "proposal") {
-    const copy = [
-      "Send a text change, invoice screenshot, or PDF. I will update the Eternalgy proposal; the host pushes to GitHub so Railway deploys it.",
-      "Open the live proposal, or ask me to change client, package, quotation, or images.",
-      "Ask what files are in the proposal workspace, or what is currently on proposal.html.",
-    ];
-    return copy[action] ?? copy[0];
+function FilesTab({ files }: { files: WorkspaceFile[] }) {
+  if (!files.length) {
+    return (
+      <div className="empty-pane tall">
+        <div className="empty-icon muted">
+          <IconFiles />
+        </div>
+        <strong>Workspace files</strong>
+        <p>Files the agent edits live in /storage/workspace and appear here.</p>
+      </div>
+    );
   }
-  const copy = [
-    "Tell me what website you want. I only edit files. The host publishes them to ee-html.",
-    "Ask me to create or update pages. The live site is on ee-html, not GitHub.",
-    "Ask what files are in the workspace, or tell me what to build next.",
-  ];
-  return copy[action] ?? copy[0];
+  return (
+    <>
+      <div className="section-row">
+        <span>Workspace files</span>
+        <small>/storage/workspace</small>
+      </div>
+      {files.map((file) => (
+        <div className="file-row" key={file.path}>
+          <span>
+            <IconFiles />
+          </span>
+          <div>
+            <strong>{file.path}</strong>
+            <small>{file.size} bytes</small>
+          </div>
+        </div>
+      ))}
+    </>
+  );
 }
 
-function promptsFor(action: number, agent?: Agent) {
+function AgentConversation({
+  agent,
+  history,
+  loading,
+  error,
+  liveUrl,
+  siriSignal,
+  publishOk,
+  onPrompt,
+}: {
+  agent: Agent;
+  history: ChatMessage[];
+  loading: boolean;
+  error: string;
+  liveUrl: string | null;
+  siriSignal: SiriSignal;
+  publishOk: boolean;
+  onPrompt: (text: string) => void;
+}) {
+  const bottomRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: "end" });
+  }, [history, loading]);
+
+  const last = history[history.length - 1];
+  const showCard =
+    last?.role === "assistant" && !last.streaming && siriSignal === "complete" && Boolean(liveUrl) && publishOk;
+
+  return (
+    <div className="chat-scroll">
+      <div className="day-pill">Today</div>
+      {history.length === 0 && (
+        <div className="ready-card">
+          <header>
+            <span>✦</span>
+            <div>
+              <strong>{agent.name} is ready</strong>
+              <small>
+                Role + {toolCount(agent)} · this chat only
+              </small>
+            </div>
+          </header>
+          <div className="ready-label">Quick start</div>
+          {promptsFor(agent).map((prompt) => (
+            <button key={prompt} type="button" className="quick-btn" onClick={() => onPrompt(prompt)}>
+              {prompt}
+            </button>
+          ))}
+        </div>
+      )}
+      {history.map((item, index) =>
+        item.role === "user" ? (
+          <div className="bubble-user" key={`u-${index}`}>
+            <p>{item.content}</p>
+            <div className="meta-row">
+              <span>Now</span>
+              <IconTicks color="#53bdeb" />
+            </div>
+          </div>
+        ) : (
+          <AssistantTurn
+            key={`a-${index}`}
+            item={item}
+            showCard={showCard && index === history.length - 1}
+            liveUrl={liveUrl}
+          />
+        ),
+      )}
+      {error && (
+        <div className="bubble-agent">
+          <p>{error}</p>
+          <div className="meta-row">
+            <span>Now</span>
+          </div>
+        </div>
+      )}
+      <div ref={bottomRef} />
+    </div>
+  );
+}
+
+function AssistantTurn({
+  item,
+  showCard,
+  liveUrl,
+}: {
+  item: ChatMessage;
+  showCard: boolean;
+  liveUrl: string | null;
+}) {
+  const blocks = item.blocks ?? [];
+  const textBlocks = blocks.filter((block) => block.type === "text" || block.type === "note");
+  const workBlocks = blocks.filter((block) => block.type === "thinking" || block.type === "tool");
+  const text = textBlocks.map((block) => block.text).join("\n") || item.content;
+  const showTyping = Boolean(item.streaming && !workBlocks.length && !text);
+  const hostLabel = hostHost(liveUrl);
+
+  return (
+    <div className="bubble-agent">
+      {showTyping && (
+        <div className="typing">
+          <i />
+          <i />
+          <i />
+        </div>
+      )}
+      {workBlocks.length > 0 && <TurnBlocks blocks={workBlocks} streaming={item.streaming} />}
+      {text ? (
+        <p>
+          {text}
+          {item.streaming && <span className="cursor" />}
+        </p>
+      ) : null}
+      {showCard && liveUrl && (
+        <a className="site-card" href={liveUrl} target="_blank" rel="noreferrer">
+          <span>
+            <IconLive />
+          </span>
+          <span>
+            <strong>Pushed to GitHub</strong>
+            <small>{hostLabel}</small>
+          </span>
+          <b>Open</b>
+        </a>
+      )}
+      {!item.streaming && (
+        <div className="meta-row">
+          <span>Now</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TurnBlocks({ blocks, streaming }: { blocks: TurnBlock[]; streaming?: boolean }) {
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  return (
+    <div className="turn-stack">
+      {blocks.map((block, index) => {
+        const key = block.type === "tool" ? block.id || `tool-${index}` : `t-${index}`;
+        if (block.type === "thinking") {
+          const done = !streaming || index < blocks.length - 1;
+          const expanded = open[key] ?? !done;
+          return (
+            <div key={key}>
+              <button
+                type="button"
+                className="turn-row"
+                onClick={() => setOpen((prev) => ({ ...prev, [key]: !expanded }))}
+              >
+                {done ? (
+                  <span className="turn-icon think">
+                    <IconCheck tiny />
+                  </span>
+                ) : (
+                  <i className="spin" />
+                )}
+                <span className="turn-copy">
+                  <strong style={{ color: done ? "#10211b" : "#008069" }}>
+                    {done ? "Thought" : "Thinking"}
+                  </strong>
+                </span>
+                <IconChevron rotated={expanded} />
+              </button>
+              {expanded && block.text ? <p className="turn-text">{block.text}</p> : null}
+            </div>
+          );
+        }
+        if (block.type !== "tool") return null;
+        const running = Boolean(block.running);
+        return (
+          <div key={key}>
+            <div className="turn-row" style={{ cursor: "default" }}>
+              {running ? (
+                <i className="spin" />
+              ) : (
+                <span className="turn-icon">
+                  <IconCheck tiny />
+                </span>
+              )}
+              <span className="turn-copy">
+                <strong style={{ color: running ? "#008069" : "#10211b" }}>{block.name}</strong>
+                {block.detail ? <span>{block.detail}</span> : null}
+              </span>
+              <span className="turn-meta">{running ? "" : block.isError ? "error" : ""}</span>
+            </div>
+            {block.result ? <p className="turn-text">{block.result}</p> : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function groupSessions(sessions: ChatSession[]) {
+  const map = new Map<string, ChatSession[]>();
+  for (const session of sessions) {
+    const label = dayGroup(session.updatedAt);
+    const list = map.get(label) ?? [];
+    list.push(session);
+    map.set(label, list);
+  }
+  return [...map.entries()].map(([label, items]) => ({ label, items }));
+}
+
+function promptsFor(agent?: Agent) {
   if (agent?.slug === "proposal") {
-    const primary = [
+    return [
       "Change the client name on the proposal cover",
       "List the proposal workspace files",
       "Update the package to 36pcs Jinko 650W",
     ];
-    return action === 0 ? primary : primary.slice().reverse();
   }
-  const primary = [
-    "Create a simple landing page with a hero and contact section",
-    "List the files in the workspace",
-    "Add a dark theme stylesheet to the site",
+  if (agent?.slug === "settings" || /settings/i.test(agent?.name ?? "")) {
+    return ["Install the Impeccable skill", "Attach Scrapling MCP to Website Dev Agent", "List installed MCP servers"];
+  }
+  if (/scrap/i.test(agent?.name ?? "") || /scrap/i.test(agent?.slug ?? "")) {
+    return [
+      "Fetch https://example.com and summarise it",
+      "Get all product links from a page",
+      "Check if a page has changed since yesterday",
+    ];
+  }
+  return [
+    "Update the hero headline to \"Build faster with Pi\"",
+    "Add a WhatsApp contact button to the footer",
+    "What files are in the workspace?",
   ];
-  return action === 0 ? primary : primary.slice().reverse();
 }
 
 function previewText(text?: string | null) {
@@ -1668,4 +1511,114 @@ function formatSessionTime(value: string) {
     date.getDate() === now.getDate();
   if (sameDay) return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return date.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+type IconProps = SVGProps<SVGSVGElement> & { wide?: boolean; tiny?: boolean; rotated?: boolean; color?: string };
+
+function svgProps(rest: SVGProps<SVGSVGElement>, size = 22): SVGProps<SVGSVGElement> {
+  return {
+    width: size,
+    height: size,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    ...rest,
+  };
+}
+
+function IconSearch(props: IconProps) {
+  return (
+    <svg {...svgProps(props, 18)} strokeWidth={2.2}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M20 20l-3.5-3.5" />
+    </svg>
+  );
+}
+function IconPlus({ wide, ...props }: IconProps) {
+  return (
+    <svg {...svgProps(props, wide ? 22 : 18)} strokeWidth={wide ? 2.2 : 2.4}>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+function IconBack(props: IconProps) {
+  return (
+    <svg {...svgProps(props, 24)} strokeWidth={2.4}>
+      <path d="M15 5l-7 7 7 7" />
+    </svg>
+  );
+}
+function IconChevron({ rotated, ...props }: IconProps) {
+  return (
+    <svg
+      {...svgProps(props, 12)}
+      strokeWidth={3}
+      style={{ transform: rotated ? "rotate(180deg)" : undefined, transition: "transform .2s", flex: "none" }}
+    >
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+function IconSend(props: IconProps) {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" {...props}>
+      <path d="M3 11.5L21 3l-4 18-5.5-6.5z" />
+    </svg>
+  );
+}
+function IconMic(props: IconProps) {
+  return (
+    <svg {...svgProps(props, 20)} strokeWidth={2.2}>
+      <rect x="9" y="3" width="6" height="12" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+    </svg>
+  );
+}
+function IconCheck({ tiny, ...props }: IconProps) {
+  return (
+    <svg {...svgProps(props, tiny ? 10 : 12)} strokeWidth={tiny ? 3.5 : 3.5}>
+      <path d="M5 12l5 5L20 7" />
+    </svg>
+  );
+}
+function IconTicks({ color, ...props }: IconProps) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color || "#53bdeb"} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ flex: "none" }} {...props}>
+      <path d="M2 13l4 4L14 9" />
+      <path d="M10 17l8-8" />
+    </svg>
+  );
+}
+function IconChats(props: IconProps) {
+  return (
+    <svg {...svgProps(props)}>
+      <path d="M4 12a8 8 0 1 1 3 6.2L4 20l1.2-3.4A8 8 0 0 1 4 12z" />
+    </svg>
+  );
+}
+function IconAgents(props: IconProps) {
+  return (
+    <svg {...svgProps(props)}>
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 20a8 8 0 0 1 16 0" />
+    </svg>
+  );
+}
+function IconLive(props: IconProps) {
+  return (
+    <svg {...svgProps(props)}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+    </svg>
+  );
+}
+function IconFiles(props: IconProps) {
+  return (
+    <svg {...svgProps(props)}>
+      <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+    </svg>
+  );
 }
