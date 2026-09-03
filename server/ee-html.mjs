@@ -44,6 +44,20 @@ export function hostPublic() {
 export function hostSystemPrompt() {
   const live = hostPublic();
   const url = live.url || `${live.baseUrl}/app/${live.slug}/`;
+  if (!live.configured) {
+    return `## Live hosting (ee-html)
+
+The HTML host API key is NOT set. The studio will NOT publish this workspace.
+
+Tell the human, plainly: open the studio Settings page, paste the ee-html API key in the HTML host section, set the slug if needed, and click Save. Saving is what publishes. Do not ask them to paste the key in chat. If they paste a key here, refuse to use it and point them at Settings.
+
+Rules:
+- NEVER run git. NEVER git add, commit, push, init, or clone.
+- NEVER curl /api/apps, NEVER send an API key, NEVER zip-and-upload.
+- Do not say the site will go live after this chat. It will not, until the key is saved on Settings.
+- Intended URL after the key is saved: ${url}
+`;
+  }
   return `## Live hosting (ee-html)
 
 The studio host publishes this workspace as a static zip to ${live.baseUrl} after you edit files.
@@ -74,7 +88,9 @@ export async function forgetBundleHash() {
 export async function publishWorkspace(opts = {}) {
   const status = hostPublic();
   if (!hostConfigured()) {
-    return { ...status, skipped: true, lastError: "Add the HTML host API key on the Settings page." };
+    const error = "Add the HTML host API key on the Settings page.";
+    await remember("ee_html_last_error", error);
+    return { ...status, skipped: true, lastError: error };
   }
 
   const index = path.join(WORKSPACE, "index.html");

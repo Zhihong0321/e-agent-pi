@@ -216,11 +216,11 @@ async function snapshot() {
 }
 
 async function publishToHost({ force = false } = {}) {
-  if (!hostConfigured()) return hostPublic();
   try {
     const published = await publishWorkspace({ force });
     if (published.lastError) logEvent("error", `ee-html: ${published.lastError}`);
-    else if (!published.skipped) logEvent("info", `ee-html published ${published.url}`);
+    else if (published.skipped) logEvent("info", `ee-html unchanged ${published.url || hostPublic().slug}`);
+    else logEvent("info", `ee-html published ${published.url}`);
     return published;
   } catch (error) {
     logEvent("error", `ee-html publish failed: ${sanitizeError(error)}`);
