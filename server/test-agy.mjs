@@ -579,48 +579,31 @@ export async function handleTestAgy(req, res, url) {
   if (req.method === "POST" && pathname === "/api/test-agy/auth/start") {
     await ensureAgyEnvironment();
 
-    // Kill any existing dangling auth process
-    if (activeAuthSession?.process && !activeAuthSession.process.killed) {
-      try {
-        activeAuthSession.process.kill("SIGKILL");
-      } catch {}
-      activeAuthSession = null;
-    }
-
-    const bin = resolveAgyBin();
     let authUrl = null;
 
-    try {
-      const child = spawn(bin, ["-p", "auth check", "--output-format", "stream-json", "--dangerously-skip-permissions"], {
-        cwd: existsSync(WORKSPACE) ? WORKSPACE : process.cwd(),
-        env: { ...process.env, HOME: os.homedir(), USER: process.env.USER || "root" },
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-
-      activeAuthSession = { process: child, url: null, startedAt: Date.now() };
-
-      authUrl = await new Promise((resolve) => {
-        let buf = "";
-        const check = (chunk) => {
-          buf += chunk.toString("utf8");
-          const match = buf.match(/https:\/\/accounts\.google\.com\/o\/oauth2\/auth[^\s]+/);
-          if (match) resolve(match[0]);
-        };
-        child.stdout.on("data", check);
-        child.stderr.on("data", check);
-        child.on("close", () => resolve(null));
-        child.on("error", () => resolve(null));
-        setTimeout(() => resolve(null), 10000);
-      });
-
-      if (authUrl && activeAuthSession) {
-        activeAuthSession.url = authUrl;
+    // 1. On Linux, use Python PTY bridge to spawn agy in a real pseudoterminal
+    if (process.platform === "linux") {
+      try {
+        const { exec } = await import("node:child_process");
+        const bridgePath = path.join(__dirname, "agy_pty_bridge.py");
+        const out = await new Promise((resolve) => {
+          exec(`python3 "${bridgePath}" start`, { timeout: 12000 }, (err, stdout) => {
+            try {
+              resolve(JSON.parse(stdout || "{}"));
+            } catch {
+              resolve({});
+            }
+          });
+        });
+        if (out.ok && out.authUrl) {
+          authUrl = out.authUrl;
+        }
+      } catch (err) {
+        logEvent("warn", `auth/start: pty bridge start failed: ${err?.message || err}`);
       }
-    } catch (err) {
-      logEvent("warn", `auth/start: spawn failed: ${err?.message || err}`);
     }
 
-    // Fallback URL if spawn did not output a URL
+    // 2. Fallback / Windows PKCE URL generation
     if (!authUrl) {
       const verifier = randomBytes(32).toString("base64url");
       const challenge = createHash("sha256").update(verifier).digest("base64url");
@@ -650,7 +633,6 @@ export async function handleTestAgy(req, res, url) {
     jsonResponse(res, 200, {
       ok: true,
       authUrl,
-      waitingForInput: Boolean(activeAuthSession?.process),
       instructions: "1. Click '🔗 Open Google Sign-In Window'. 2. Sign in with Gemini Pro account. 3. Copy authorization code (or the full redirect URL from your browser) and submit.",
     });
     return;
@@ -674,29 +656,28 @@ export async function handleTestAgy(req, res, url) {
       }
     }
 
-    let agyOutput = "";
-    // 1. Pipe code directly to agy child process if alive
-    if (activeAuthSession?.process && !activeAuthSession.process.killed) {
-      const child = activeAuthSession.process;
-      child.stdout.on("data", (d) => (agyOutput += d.toString("utf8")));
-      child.stderr.on("data", (d) => (agyOutput += d.toString("utf8")));
-
-      logEvent("info", `auth/submit: piping code to agy stdin: length ${code.length}`);
+    let bridgeResult = null;
+    // 1. If on Linux, submit code to agy via Python PTY bridge
+    if (process.platform === "linux") {
       try {
-        child.stdin.write(code + "\n");
+        const { exec } = await import("node:child_process");
+        const bridgePath = path.join(__dirname, "agy_pty_bridge.py");
+        bridgeResult = await new Promise((resolve) => {
+          exec(`python3 "${bridgePath}" submit "${code.replace(/"/g, '\\"')}"`, { timeout: 15000 }, (err, stdout) => {
+            try {
+              resolve(JSON.parse(stdout || "{}"));
+            } catch {
+              resolve({ stdout });
+            }
+          });
+        });
+        logEvent("info", `auth/submit: PTY bridge result: ${JSON.stringify(bridgeResult)}`);
       } catch (err) {
-        logEvent("warn", `auth/submit: stdin write error: ${err?.message || err}`);
+        logEvent("warn", `auth/submit: PTY bridge error: ${err?.message || err}`);
       }
-
-      await new Promise((resolve) => {
-        child.on("close", resolve);
-        setTimeout(resolve, 15000);
-      });
-
-      activeAuthSession = null;
     }
 
-    // 2. Also perform direct token exchange as redundancy
+    // 2. Also perform direct token exchange with Google to persist tokens
     try {
       const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
@@ -727,7 +708,7 @@ export async function handleTestAgy(req, res, url) {
       ok: true,
       message: "Successfully submitted authorization code to agy and saved credentials!",
       auth,
-      agyOutput: agyOutput.slice(0, 500),
+      bridgeResult,
     });
     return;
   }
