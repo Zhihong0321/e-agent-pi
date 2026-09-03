@@ -81,6 +81,7 @@ export async function connectDb() {
 
   await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS session_id TEXT`);
   await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS agent_id TEXT`);
+  await pool.query(`ALTER TABLE git_syncs ADD COLUMN IF NOT EXISTS repo TEXT`);
   await pool.query(`CREATE INDEX IF NOT EXISTS messages_session_id_idx ON messages (session_id)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS resource_samples_created_at_idx ON resource_samples (created_at)`);
   await migrateLegacyMessages();
@@ -284,24 +285,37 @@ export async function listMessages(sessionId, limit = 200) {
 }
 
 /**
- * @param {{ sha?: string | null; status: string; message?: string | null }} row
+ * @param {{ sha?: string | null; status: string; message?: string | null; repo?: string | null }} row
  */
 export async function insertGitSync(row) {
   const result = await getPool().query(
-    `INSERT INTO git_syncs (sha, status, message) VALUES ($1, $2, $3)
-     RETURNING id, sha, status, message, created_at AS "createdAt"`,
-    [row.sha ?? null, row.status, row.message ?? null],
+    `INSERT INTO git_syncs (sha, status, message, repo) VALUES ($1, $2, $3, $4)
+     RETURNING id, sha, status, message, repo, created_at AS "createdAt"`,
+    [row.sha ?? null, row.status, row.message ?? null, row.repo ?? null],
   );
   return result.rows[0];
 }
 
-export async function latestGitSync() {
-  const result = await getPool().query(
-    `SELECT id, sha, status, message, created_at AS "createdAt"
-     FROM git_syncs
-     ORDER BY id DESC
-     LIMIT 1`,
-  );
+/**
+ * @param {string | null | undefined} [repo]
+ */
+export async function latestGitSync(repo) {
+  const result = repo
+    ? await getPool().query(
+        `SELECT id, sha, status, message, repo, created_at AS "createdAt"
+         FROM git_syncs
+         WHERE repo = $1
+         ORDER BY id DESC
+         LIMIT 1`,
+        [repo],
+      )
+    : await getPool().query(
+        `SELECT id, sha, status, message, repo, created_at AS "createdAt"
+         FROM git_syncs
+         WHERE repo IS NULL
+         ORDER BY id DESC
+         LIMIT 1`,
+      );
   return result.rows[0] ?? null;
 }
 

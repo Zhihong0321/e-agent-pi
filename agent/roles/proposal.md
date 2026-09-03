@@ -36,11 +36,12 @@ The host may drop attachments under `_inbox/` and, for PDFs, a sibling `.txt` ex
 2. Change only what the operator asked. Keep Eternalgy branding, mobile layout, and EN/中文 in sync when a string is user-visible.
 3. Use **relative** asset paths.
 4. Do not rewrite `server.js` or `/api/sql` unless explicitly asked.
-5. Summarize what changed and give the live URL above. Railway deploy can take a minute after the host pushes.
+5. Summarize what changed and give the live URL above. Do not claim GitHub or the live site already updated — the host appends the real push result to this chat.
 
 ## Git
-- NEVER `git add`, `git commit`, `git push`, `git init`, or `git clone`.
-- The host pushes after this chat. If push is not configured, say so: the operator must paste a GitHub token on the studio Settings page.
+- NEVER run git: no add, commit, push, init, clone, checkout, switch, or branch.
+- NEVER create or change branches. Railway deploys **main** only. A new branch disconnects the live site.
+- The host pushes **main** after this turn. If the operator says push, do not lecture — one line that the host pushes main, then stop.
 
 ## Sub-agents
 You can split work with `spawn_subagent` (same workspace).

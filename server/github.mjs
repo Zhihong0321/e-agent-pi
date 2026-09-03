@@ -6,6 +6,7 @@ import { secret } from "./secrets.mjs";
 import { SEED_INDEX, WORKSPACE } from "./paths.mjs";
 
 const DEFAULT_BRANCH = "main";
+const WEBSITE_SYNC_REPO = "host-workspace";
 
 async function recordSync(row) {
   if (!dbReady()) return null;
@@ -67,7 +68,38 @@ function sanitizeGit(text) {
  * @param {string} cwd
  * @param {string | null} token
  */
+function assertFixedBranch(args) {
+  const cmd = args[0];
+  if (cmd === "checkout" && (args.includes("-b") || args.includes("-B"))) {
+    throw new Error("Refusing to create a git branch. Railway stays on the configured branch.");
+  }
+  if (cmd === "switch" && (args.includes("-c") || args.includes("--create") || args.includes("--orphan"))) {
+    throw new Error("Refusing to create or switch git branches. Railway stays on the configured branch.");
+  }
+  if (cmd === "branch") {
+    const flags = args.filter((a) => a.startsWith("-"));
+    const names = args.slice(1).filter((a) => !a.startsWith("-"));
+    const listing = flags.some((f) => f === "-l" || f === "--list" || f === "-a" || f === "-v" || f === "-vv");
+    const deleting = flags.some((f) => f === "-d" || f === "-D" || f === "--delete");
+    if (names.length && !listing && !deleting) {
+      throw new Error("Refusing to create a git branch. Railway stays on the configured branch.");
+    }
+  }
+  if (cmd === "push") {
+    const dest = args.find((a) => a.includes(":"));
+    if (!dest || !/^HEAD:[A-Za-z0-9._/-]+$/.test(dest)) {
+      throw new Error("Push must target the existing configured branch only (git push origin HEAD:<branch>).");
+    }
+  }
+}
+
+/**
+ * @param {string[]} args
+ * @param {string} cwd
+ * @param {string | null} token
+ */
 function git(args, cwd, token = null) {
+  assertFixedBranch(args);
   const fullArgs = token ? ["-c", `http.extraHeader=${authHeader(token)}`, ...args] : args;
   return new Promise((resolve, reject) => {
     const child = spawn("git", fullArgs, {
@@ -133,6 +165,80 @@ async function isDirty(cwd = WORKSPACE) {
   }
 }
 
+async function commitsAhead(cwd, branch) {
+  try {
+    const { stdout } = await git(["rev-list", "--count", `origin/${branch}..HEAD`], cwd);
+    const n = Number.parseInt(String(stdout).trim(), 10);
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    try {
+      const { stdout } = await git(["status", "-sb"], cwd);
+      const match = String(stdout).match(/ahead\s+(\d+)/i);
+      return match ? Number(match[1]) : 0;
+    } catch {
+      return 0;
+    }
+  }
+}
+
+function explainGitError(error, repo) {
+  const text = sanitizeGit(error instanceof Error ? error.message : String(error || "git failed")).trim();
+  if (/403|Permission to .+ denied/i.test(text)) {
+    return `${text}\nToken can sign in but cannot write https://github.com/${repo}. On Settings, paste a PAT with Contents: Write on ${repo} (classic: repo scope). A fine-grained token limited to another repo will 403 here.`;
+  }
+  return text;
+}
+
+async function currentBranchName(cwd) {
+  try {
+    const { stdout } = await git(["rev-parse", "--abbrev-ref", "HEAD"], cwd);
+    return stdout.trim();
+  } catch {
+    return "";
+  }
+}
+
+/** Stay on the Railway branch. Never create a different one. */
+async function ensureOnConfiguredBranch(cwd, branch) {
+  const now = await currentBranchName(cwd);
+  if (!now || now === branch || now === "HEAD") return;
+  try {
+    await git(["rev-parse", "--verify", branch], cwd);
+  } catch {
+    throw new Error(
+      `Workspace is on '${now}'. Branch '${branch}' is missing locally. Refusing to create it — Railway deploys '${branch}' only.`,
+    );
+  }
+  await git(["checkout", branch], cwd);
+}
+
+async function isAncestor(cwd, maybeAncestor, tip) {
+  try {
+    await git(["merge-base", "--is-ancestor", maybeAncestor, tip], cwd);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Restore a host commit that a hard-reset dropped, if reflog still has it. */
+async function recoverUnpushedFromReflog(cwd, branch) {
+  try {
+    const origin = (await git(["rev-parse", `origin/${branch}`], cwd)).stdout.trim();
+    const { stdout } = await git(["reflog", "--format=%H %gs", "-n", "40"], cwd);
+    for (const line of stdout.split("\n")) {
+      const sha = line.slice(0, 40);
+      if (!/^[0-9a-f]{40}$/.test(sha) || sha === origin) continue;
+      if (await isAncestor(cwd, sha, `origin/${branch}`)) continue;
+      await git(["reset", "--hard", sha], cwd);
+      return sha;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 async function configureIdentityAt(cwd, name = "Website Dev Agent") {
   await git(["config", "user.name", name], cwd);
   await git(["config", "user.email", "agent@workspace.local"], cwd);
@@ -191,6 +297,7 @@ export async function initWorkspace() {
     if (!(await pathExists(gitDir))) {
       if (await dirHasFiles(WORKSPACE)) {
         await recordSync({
+          repo: WEBSITE_SYNC_REPO,
           status: "error",
           message: "Workspace already has files and is not a git clone; leaving it as-is",
         });
@@ -217,10 +324,11 @@ export async function initWorkspace() {
     await saveSetting("github_repo", config.repo);
     await saveSetting("github_branch", config.branch);
     if (sha) await saveSetting("last_commit_sha", sha);
-    await recordSync({ sha, status: "ok", message: "workspace ready" });
+    await recordSync({ repo: WEBSITE_SYNC_REPO, sha, status: "ok", message: "workspace ready" });
   } catch (error) {
     await seedWorkspace();
     await recordSync({
+      repo: WEBSITE_SYNC_REPO,
       status: "error",
       message: error instanceof Error ? error.message : "GitHub sync failed",
     });
@@ -238,7 +346,7 @@ export async function syncWorkspace(message = "Website Dev Agent: workspace upda
     return getGitStatus();
   }
   if (!(await pathExists(path.join(WORKSPACE, ".git")))) {
-    await recordSync({ status: "error", message: "Workspace is not a git clone" });
+    await recordSync({ repo: WEBSITE_SYNC_REPO, status: "error", message: "Workspace is not a git clone" });
     return getGitStatus();
   }
 
@@ -253,9 +361,10 @@ export async function syncWorkspace(message = "Website Dev Agent: workspace upda
     await git(["push", "origin", `HEAD:${config.branch}`], WORKSPACE, config.token);
     const sha = await currentSha(WORKSPACE);
     if (sha) await saveSetting("last_commit_sha", sha);
-    await recordSync({ sha, status: "ok", message: "pushed" });
+    await recordSync({ repo: WEBSITE_SYNC_REPO, sha, status: "ok", message: "pushed" });
   } catch (error) {
     await recordSync({
+      repo: WEBSITE_SYNC_REPO,
       status: "error",
       message: error instanceof Error ? error.message : "git push failed",
     });
@@ -279,7 +388,7 @@ export async function getGitStatus() {
   const dirty = connected ? await isDirty(WORKSPACE) : false;
   let last = null;
   try {
-    last = dbReady() ? await latestGitSync() : null;
+    last = dbReady() ? await latestGitSync(WEBSITE_SYNC_REPO) : null;
   } catch {
     last = null;
   }
@@ -342,7 +451,11 @@ export async function initGitWorkspace(opts) {
   try {
     if (!(await pathExists(gitDir))) {
       if (await dirHasFiles(dir)) {
-        await recordSync({ status: "error", message: `${config.repo}: workspace has files and is not a git clone` });
+        await recordSync({
+          repo: config.repo,
+          status: "error",
+          message: `${config.repo}: workspace has files and is not a git clone`,
+        });
         return getGitWorkspaceStatus({ dir, repo: config.repo, branch: config.branch });
       }
       await git(["clone", "--branch", config.branch, "--single-branch", originUrl(config.repo), "."], dir, token);
@@ -350,16 +463,24 @@ export async function initGitWorkspace(opts) {
     } else {
       await git(["remote", "set-url", "origin", originUrl(config.repo)], dir);
       await git(["fetch", "origin", config.branch], dir, token);
-      if (!(await isDirty(dir))) {
-        await git(["reset", "--hard", `origin/${config.branch}`], dir);
+      await ensureOnConfiguredBranch(dir, config.branch);
+      const dirty = await isDirty(dir);
+      let ahead = await commitsAhead(dir, config.branch);
+      if (!dirty && ahead === 0) {
+        const recovered = await recoverUnpushedFromReflog(dir, config.branch);
+        ahead = recovered ? await commitsAhead(dir, config.branch) : 0;
+        if (!recovered) {
+          await git(["reset", "--hard", `origin/${config.branch}`], dir);
+        }
       }
     }
     await configureIdentityAt(dir, identity);
     await ignoreInbox(dir);
     const sha = await currentSha(dir);
-    await recordSync({ sha, status: "ok", message: `${config.repo} ready` });
+    await recordSync({ repo: config.repo, sha, status: "ok", message: `${config.repo} ready` });
   } catch (error) {
     await recordSync({
+      repo: config.repo,
       status: "error",
       message: error instanceof Error ? error.message : "GitHub clone failed",
     });
@@ -378,40 +499,61 @@ export async function syncGitWorkspace(opts) {
   try {
     config = repoConfig({ repo: opts.repo, branch: opts.branch });
   } catch (error) {
-    await recordSync({ status: "error", message: error instanceof Error ? error.message : "Invalid repo" });
+    await recordSync({
+      repo: opts.repo,
+      status: "error",
+      message: error instanceof Error ? error.message : "Invalid repo",
+    });
     return getGitWorkspaceStatus({ dir, repo: opts.repo, branch: opts.branch });
   }
   if (!config) {
     return getGitWorkspaceStatus({ dir, repo: opts.repo, branch: opts.branch });
   }
   if (!(await pathExists(path.join(dir, ".git")))) {
-    await recordSync({ status: "error", message: `${config.repo}: workspace is not a git clone` });
+    await recordSync({
+      repo: config.repo,
+      status: "error",
+      message: `${config.repo}: workspace is not a git clone`,
+    });
     return getGitWorkspaceStatus({ dir, repo: config.repo, branch: config.branch });
   }
   if (!config.token) {
-    await recordSync({ status: "error", message: "Add a GitHub token on Settings to push proposal updates." });
+    await recordSync({
+      repo: config.repo,
+      status: "error",
+      message: "Add a GitHub token on Settings to push proposal updates.",
+    });
     return getGitWorkspaceStatus({ dir, repo: config.repo, branch: config.branch });
   }
 
   try {
     await configureIdentityAt(dir, opts.identity || "Proposal Agent");
     await ignoreInbox(dir);
-    if (!(await isDirty(dir))) {
+    await ensureOnConfiguredBranch(dir, config.branch);
+    if (await isDirty(dir)) {
+      await git(["add", "-A"], dir);
+      if (await isDirty(dir)) {
+        await git(["commit", "-m", opts.message || "Proposal Agent: update"], dir);
+      }
+    }
+    try {
+      await git(["fetch", "origin", config.branch], dir, config.token);
+    } catch {
+      // Public fetch can fail with a bad token; still try to push local commits.
+    }
+    const ahead = await commitsAhead(dir, config.branch);
+    if (ahead < 1) {
       return getGitWorkspaceStatus({ dir, repo: config.repo, branch: config.branch, pushed: false });
     }
-    await git(["add", "-A"], dir);
-    if (!(await isDirty(dir))) {
-      return getGitWorkspaceStatus({ dir, repo: config.repo, branch: config.branch, pushed: false });
-    }
-    await git(["commit", "-m", opts.message || "Proposal Agent: update"], dir);
     await git(["push", "origin", `HEAD:${config.branch}`], dir, config.token);
     const sha = await currentSha(dir);
-    await recordSync({ sha, status: "ok", message: `${config.repo} pushed` });
+    await recordSync({ repo: config.repo, sha, status: "ok", message: `${config.repo} pushed` });
     return getGitWorkspaceStatus({ dir, repo: config.repo, branch: config.branch, pushed: true });
   } catch (error) {
     await recordSync({
+      repo: config.repo,
       status: "error",
-      message: error instanceof Error ? error.message : "git push failed",
+      message: explainGitError(error, config.repo),
     });
     return getGitWorkspaceStatus({ dir, repo: config.repo, branch: config.branch });
   }
@@ -435,7 +577,7 @@ export async function getGitWorkspaceStatus(opts) {
   const dirty = connected ? await isDirty(dir) : false;
   let last = null;
   try {
-    last = dbReady() ? await latestGitSync() : null;
+    last = dbReady() ? await latestGitSync(repo) : null;
   } catch {
     last = null;
   }
@@ -464,26 +606,25 @@ export async function getGitWorkspaceStatus(opts) {
 export function proposalSystemPrompt(agent = {}) {
   const live = agent.liveUrl || "https://ee-proposal-production.up.railway.app/shell.html#proposal";
   const repo = agent.workspaceRepo || "Zhihong0321/ee-proposal";
+  const branch = agent.workspaceBranch || "main";
   const tokenSet = Boolean(secret("github_token"));
   if (!tokenSet) {
     return `## GitHub + Railway
 
-The GitHub token is NOT set. The studio will NOT push this proposal workspace.
+GitHub token is missing. Tell the human: studio Settings → paste a token with write access to ${repo} → Save. Do not ask them to paste it in chat.
 
-Tell the human, plainly: open studio Settings, paste a GitHub token that can write ${repo}, and save. Do not ask them to paste the token in chat.
-
-Rules:
-- NEVER run git. NEVER git add, commit, push, init, or clone.
-- Intended live URL after a successful push: ${live}
+You never run git. You never create, rename, or switch branches. Railway deploys ${branch} only.
+Live URL after a real push: ${live}
 `;
   }
   return `## GitHub + Railway
 
-The studio host commits and pushes this workspace to https://github.com/${repo} after you edit files. Railway then deploys.
-Live URL for the human: ${live}
+After you edit files, the studio host commits and pushes THIS workspace to https://github.com/${repo} branch ${branch}. Railway deploys that same branch. Live: ${live}
 
-Rules:
-- NEVER run git. NEVER git add, commit, push, init, or clone. The host pushes.
-- After you change files, tell the human the live URL above. Deploy can take a minute.
+You never run git. You never create, rename, or switch branches. Never checkout, never -b, never a new remote.
+
+If the operator says push: do not lecture, do not explain the rule. One short line: the host pushes ${branch} when this turn ends. Then stop.
+
+Do not claim GitHub or the live site already updated. The host appends the real result (pushed SHA, or the error) to this chat.
 `;
 }

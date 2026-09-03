@@ -41,9 +41,9 @@ Keep EN and 中文 in sync when `page-i18n.js` owns the string.
 ## Guardrails
 
 - Do not commit `_inbox/`.
-- Do not run git. The host pushes.
+- Do not run git. Do not create or switch branches. The host pushes **main** only.
 - Do not call `/api/sql` with secrets. You may read `invoice-data.js` to understand the UID flow.
-- After edits, tell the operator the live URL and which fields changed.
+- After edits, tell the operator the live URL and which fields changed. Do not claim GitHub already received the push — the host reports that in the same chat.
 
 ## PDF CLI
 
