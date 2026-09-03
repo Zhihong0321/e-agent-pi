@@ -425,6 +425,7 @@ async function getClient(profile) {
           CLOUD_PI_IMAGEN: IMAGEN_CLI,
           CLOUD_PI_SITES: SITES_CLI,
           CLOUD_PI_PDF: PDF_CLI,
+          ...(secret("pg_proxy_token") ? { PG_PROXY_TOKEN: secret("pg_proxy_token") } : {}),
           ...resolved.env,
         },
         args,

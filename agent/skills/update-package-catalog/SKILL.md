@@ -17,7 +17,7 @@ curl -sS -X POST "https://pg-proxy-production.up.railway.app/api/sql" \
   -d '{"db_name":"prod_main","sql":"select now() as now","params":[]}'
 ```
 
-If `$PG_PROXY_TOKEN` is unset, use the Bearer value from the operator's connection packet in this chat. Never echo it.
+If `$PG_PROXY_TOKEN` is missing, tell the operator to save it on **Settings → Keys → Postgres proxy**, then start a new chat. Do not ask them to paste the token here.
 
 Body: `{ "db_name": "prod_main", "sql": "...", "params": [] }`. Parameterized:
 

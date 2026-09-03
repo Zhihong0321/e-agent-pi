@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { DATA_DIR, SKILLS_DIR, WORKSPACE } from "./paths.mjs";
 import { logEvent } from "./debug.mjs";
+import { dbReady, getSetting, setSetting } from "./db.mjs";
 
 const GOOGLE_AUTH_CLIENT_ID = "681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com";
 const GOOGLE_AUTH_SCOPES = [
@@ -114,6 +115,46 @@ export async function ensureAgyEnvironment() {
       await copyFile(storageAccountsPath, homeAccountsPath).catch(() => {});
     }
   } catch {}
+
+  // Synchronize with PostgreSQL (DATABASE_URL) for dual-layer redundancy
+  if (dbReady()) {
+    try {
+      const { storageCredsPath, storageAccountsPath, homeCredsPath, homeAccountsPath } = getGeminiPaths();
+      // If missing on /storage but present in Postgres, restore it
+      if (!existsSync(storageCredsPath)) {
+        const dbCreds = await getSetting("agy_oauth_creds");
+        if (dbCreds && dbCreds.trim().length > 10) {
+          await writeFile(storageCredsPath, dbCreds, "utf8");
+          await writeFile(homeCredsPath, dbCreds, "utf8").catch(() => {});
+          logEvent("info", "ensureAgyEnvironment: rehydrated oauth_creds.json from PostgreSQL");
+        }
+      } else {
+        // If present on /storage, ensure Postgres has a backup copy
+        const dbCreds = await getSetting("agy_oauth_creds");
+        if (!dbCreds) {
+          const content = await readFile(storageCredsPath, "utf8");
+          await setSetting("agy_oauth_creds", content);
+          logEvent("info", "ensureAgyEnvironment: backed up existing oauth_creds.json to PostgreSQL");
+        }
+      }
+
+      if (!existsSync(storageAccountsPath)) {
+        const dbAccounts = await getSetting("agy_google_accounts");
+        if (dbAccounts && dbAccounts.trim().length > 5) {
+          await writeFile(storageAccountsPath, dbAccounts, "utf8");
+          await writeFile(homeAccountsPath, dbAccounts, "utf8").catch(() => {});
+        }
+      } else {
+        const dbAccounts = await getSetting("agy_google_accounts");
+        if (!dbAccounts) {
+          const content = await readFile(storageAccountsPath, "utf8");
+          await setSetting("agy_google_accounts", content);
+        }
+      }
+    } catch (err) {
+      logEvent("warn", `ensureAgyEnvironment: db sync failed: ${err?.message || err}`);
+    }
+  }
 }
 
 /**
@@ -183,6 +224,14 @@ export async function getAuthStatus() {
     isSymlinked = false;
   }
 
+  let postgresSynced = false;
+  if (dbReady()) {
+    try {
+      const dbCreds = await getSetting("agy_oauth_creds");
+      postgresSynced = Boolean(dbCreds && dbCreds.trim().length > 10);
+    } catch {}
+  }
+
   return {
     authenticated: Boolean(hasAccessToken || hasRefreshToken),
     email,
@@ -193,6 +242,7 @@ export async function getAuthStatus() {
     scope,
     credsFile,
     isSymlinked,
+    postgresSynced,
     storageDir: storageGeminiDir,
     homeDir: homeGeminiDir,
   };
@@ -501,6 +551,12 @@ export async function handleTestAgy(req, res, url) {
     await unlink(homeCredsPath).catch(() => {});
     await unlink(storageAccountsPath).catch(() => {});
     await unlink(homeAccountsPath).catch(() => {});
+    if (dbReady()) {
+      try {
+        await setSetting("agy_oauth_creds", "");
+        await setSetting("agy_google_accounts", "");
+      } catch {}
+    }
     jsonResponse(res, 200, { ok: true, message: "Credentials cleared." });
     return;
   }
@@ -682,6 +738,16 @@ async function saveOAuthCredentials(tokenData, accountsData = null) {
   const accountsJson = JSON.stringify(accounts, null, 2);
   await writeFile(storageAccountsPath, accountsJson, "utf8");
   await writeFile(homeAccountsPath, accountsJson, "utf8").catch(() => {});
+
+  if (dbReady()) {
+    try {
+      await setSetting("agy_oauth_creds", credsJson);
+      await setSetting("agy_google_accounts", accountsJson);
+      logEvent("info", "saveOAuthCredentials: saved credentials to PostgreSQL (DATABASE_URL)");
+    } catch (err) {
+      logEvent("warn", `saveOAuthCredentials: db save failed: ${err?.message || err}`);
+    }
+  }
 }
 
 function jsonResponse(res, status, data) {
@@ -1083,15 +1149,16 @@ function renderTestAgyPage() {
           authSub.textContent = 'No OAuth tokens in /storage/.gemini';
         }
 
-        // Storage volume
+        // Storage volume & Postgres (DATABASE_URL)
         const volEl = document.getElementById('st-vol');
         const volSub = document.getElementById('st-vol-sub');
+        const pgTag = data.auth?.postgresSynced ? ' <span class="badge badge-success">PG SYNC</span>' : '';
         if (data.auth?.isSymlinked) {
-          volEl.innerHTML = '<span class="badge badge-success">SYMLINKED</span> /storage/.gemini';
-          volSub.textContent = 'Symlinked to ~/.gemini';
+          volEl.innerHTML = '<span class="badge badge-success">PERSISTENT</span> /storage' + pgTag;
+          volSub.textContent = '/storage/.gemini symlinked to ~/.gemini' + (data.auth?.postgresSynced ? ' · Synced in PostgreSQL' : '');
         } else {
-          volEl.innerHTML = '<span class="badge badge-warn">DIRECT</span> ' + (data.auth?.storageDir || '/storage/.gemini');
-          volSub.textContent = 'Home: ' + (data.auth?.homeDir || '~/.gemini');
+          volEl.innerHTML = '<span class="badge badge-warn">DIRECT</span> /storage' + pgTag;
+          volSub.textContent = (data.auth?.storageDir || '/storage/.gemini') + (data.auth?.postgresSynced ? ' · Synced in PostgreSQL' : '');
         }
 
         // Skills

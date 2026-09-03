@@ -13,7 +13,7 @@ Talk to Postgres **only** through the proxy. Do not invent a direct `DATABASE_UR
 - SQL: `POST https://pg-proxy-production.up.railway.app/api/sql`
 - Database: `prod_main`
 - Profile: `PACKAGE_Updater` (table-level write limiter)
-- Token source: the operator’s connection packet in this chat, or env `$PG_PROXY_TOKEN`. Never print the Bearer token.
+- Token: `$PG_PROXY_TOKEN` from the host vault (Settings → Keys → Postgres proxy). Never print it. Never ask the operator to paste it in chat. If it is missing, tell them to save it there, then start a new chat.
 
 ```bash
 curl -sS -X POST "https://pg-proxy-production.up.railway.app/api/sql" \

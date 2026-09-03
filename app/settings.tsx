@@ -12,6 +12,7 @@ type Settings = {
   githubTokenSet: boolean;
   githubRepo: string;
   githubBranch: string;
+  pgProxyTokenSet: boolean;
   eeHtmlApiKeySet: boolean;
   eeHtmlBaseUrl: string;
   eeHtmlSlug: string;
@@ -136,6 +137,7 @@ export default function SettingsPage() {
     githubToken: "",
     githubRepo: "",
     githubBranch: "main",
+    pgProxyToken: "",
     eeHtmlApiKey: "",
     eeHtmlBaseUrl: "",
     eeHtmlSlug: "e-agent-site",
@@ -289,6 +291,7 @@ export default function SettingsPage() {
           github_token: form.githubToken,
           github_repo: form.githubRepo,
           github_branch: form.githubBranch,
+          pg_proxy_token: form.pgProxyToken,
           ee_html_api_key: form.eeHtmlApiKey,
           ee_html_base_url: form.eeHtmlBaseUrl,
           ee_html_slug: form.eeHtmlSlug,
@@ -297,7 +300,7 @@ export default function SettingsPage() {
         }),
       });
       setSettings(data);
-      setForm((prev) => ({ ...prev, cavotiApiKey: "", kimiApiKey: "", imagenApiKey: "", githubToken: "", eeHtmlApiKey: "", settingsPassword: "" }));
+      setForm((prev) => ({ ...prev, cavotiApiKey: "", kimiApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", settingsPassword: "" }));
       if (data.proposal?.lastError) {
         setError(data.proposal.lastError);
         setSaved("Saved keys, but GitHub rejected the proposal push.");
@@ -707,6 +710,21 @@ export default function SettingsPage() {
               <button type="button" disabled={busy || publishing || !settings?.eeHtmlApiKeySet} onClick={() => void publishHost()}>
                 {publishing ? "Publishing…" : "Publish workspace now"}
               </button>
+
+              <h2>Postgres proxy</h2>
+              <p>
+                Package Updater uses this token for <code>prod_main</code> via the pg-proxy. Paste the JWT only (no{" "}
+                <code>Bearer</code> prefix). Leave blank to keep the saved value. Do not paste the token in chat.
+              </p>
+              <label>
+                Token {settings?.pgProxyTokenSet ? <em>saved</em> : <em>missing</em>}
+                <input
+                  type="password"
+                  value={form.pgProxyToken}
+                  onChange={(event) => setForm({ ...form, pgProxyToken: event.target.value })}
+                  placeholder={settings?.pgProxyTokenSet ? "••••••••  (unchanged)" : "eyJ…"}
+                />
+              </label>
 
               <h2>GitHub</h2>
               <p>
