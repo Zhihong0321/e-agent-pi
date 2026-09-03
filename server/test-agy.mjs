@@ -494,6 +494,61 @@ export async function handleTestAgy(req, res, url) {
     return;
   }
 
+  // Diagnostic inspection endpoint
+  if (req.method === "POST" && pathname === "/api/test-agy/diag") {
+    const body = JSON.parse((await readStreamBody(req)) || "{}");
+    const args = body.args || ["models"];
+    const result = await runAgyCommand(args, { timeout: body.timeout || 15000 });
+    let storageListing = [];
+    let homeListing = [];
+    let configListing = [];
+    try {
+      storageListing = await readdir("/storage/.gemini");
+    } catch (e) {
+      storageListing = [e.message];
+    }
+    try {
+      homeListing = await readdir("/root/.gemini");
+    } catch (e) {
+      homeListing = [e.message];
+    }
+    try {
+      configListing = await readdir("/storage/.gemini/config");
+    } catch (e) {
+      configListing = [e.message];
+    }
+
+    let credsSample = null;
+    try {
+      const raw = await readFile("/storage/.gemini/oauth_creds.json", "utf8");
+      const p = JSON.parse(raw);
+      credsSample = {
+        hasAccess: Boolean(p.access_token),
+        hasRefresh: Boolean(p.refresh_token),
+        tokenType: p.token_type,
+        expiryDate: p.expiry_date,
+        expiryDateType: typeof p.expiry_date,
+        scope: p.scope,
+      };
+    } catch (e) {
+      credsSample = { error: e.message };
+    }
+
+    jsonResponse(res, 200, {
+      ...result,
+      env: {
+        HOME: os.homedir(),
+        USER: process.env.USER,
+        DATA_DIR,
+      },
+      storageListing,
+      homeListing,
+      configListing,
+      credsSample,
+    });
+    return;
+  }
+
   // Headless OAuth start (Probe 2)
   if (req.method === "POST" && pathname === "/api/test-agy/auth/start") {
     await ensureAgyEnvironment();
