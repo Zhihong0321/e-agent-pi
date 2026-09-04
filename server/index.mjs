@@ -22,6 +22,8 @@ import {
 } from "./db.mjs";
 import { envFlags, loadRecentFromDb, logEvent, railwayMeta, recentEvents } from "./debug.mjs";
 import { latestSample, metricsPayload, setPiAliveGetter, startSampler, stopSampler } from "./metrics.mjs";
+import { childrenOf, envInt, killTree, reapLeakedChildren, rpcClientPid } from "./proc.mjs";
+import { pickIdleSlots } from "./pi-idle.mjs";
 import { fileMime, listWorkspaceFiles, resolveWorkspaceFile } from "./files.mjs";
 import { getGitStatus, getGitWorkspaceStatus, initGitWorkspace, initWorkspace, syncGitWorkspace } from "./github.mjs";
 import { forgetBundleHash, hostConfigured, hostPublic, publishWorkspace } from "./ee-html.mjs";
@@ -89,6 +91,7 @@ import {
   newpagesNews,
   newpagesStatus,
 } from "./newpages.mjs";
+import { newpagesHealth } from "./newpages-health.mjs";
 import { handleManage } from "./manage-api.mjs";
 import { buildPiArgs, materializeAgentRuntime } from "./runtime.mjs";
 import { agentEnv } from "./agent-env.mjs";
@@ -125,14 +128,18 @@ const boot = { step: "starting", error: null, ready: false };
  *   activeStudioSessionId: string | null,
  *   resumeSessionFile: string | null,
  *   forceNewPiSession: boolean,
+ *   pid: number | null,
+ *   busy: boolean,
  *   lock: Promise<void>,
  *   lastUsedAt: number,
  * }} PiSlot
  */
 /** @type {Map<string, PiSlot>} */
 const piPool = new Map();
-const MAX_PI_SLOTS = Number(process.env.PI_POOL_SIZE) || 3;
-const PI_SLOT_IDLE_MS = Number(process.env.PI_SLOT_IDLE_MS) || 1_800_000;
+const MAX_PI_SLOTS = envInt("PI_POOL_SIZE", 3, { min: 1, max: 16 });
+const PI_SLOT_IDLE_MS = envInt("PI_SLOT_IDLE_MS", 180_000, { min: 15_000 });
+const PI_KEEP_WARM = envInt("PI_KEEP_WARM", 1, { min: 1, max: 8 });
+const PI_IDLE_SWEEP_MS = envInt("PI_IDLE_SWEEP_MS", 30_000, { min: 10_000, max: 300_000 });
 /** @type {Promise<void>} */
 let poolReserveLock = Promise.resolve();
 /** @type {Map<string, Promise<void>>} */
@@ -220,6 +227,7 @@ function wantsAuth(pathname, method = "GET") {
   if (pathname === "/api/settings") return true;
   if (pathname === "/api/manage" || pathname.startsWith("/api/manage/")) return true;
   if (pathname === "/api/sites" || pathname.startsWith("/api/sites/")) return true;
+  if (pathname === "/api/np/health") return false;
   if (pathname === "/api/np" || pathname.startsWith("/api/np/")) return true;
   const mutating = method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
   if (!mutating) return false;
@@ -292,6 +300,9 @@ async function snapshot() {
     imagen: imagenPublic(),
     scrapling: await scraplingPublic().catch(() => null),
     piPoolSize: piPool.size,
+    piPoolMax: MAX_PI_SLOTS,
+    piKeepWarm: PI_KEEP_WARM,
+    piIdleMs: PI_SLOT_IDLE_MS,
     env: envFlags(),
     secrets: secretFlags(),
     railway: railwayMeta(),
@@ -430,7 +441,16 @@ function withAgentLock(agentId, fn) {
  * @returns {Promise<T>}
  */
 function withSlotLock(slot, fn) {
-  const run = slot.lock.then(fn, fn);
+  const wrapped = async () => {
+    slot.busy = true;
+    try {
+      return await fn();
+    } finally {
+      slot.busy = false;
+      slot.lastUsedAt = Date.now();
+    }
+  };
+  const run = slot.lock.then(wrapped, wrapped);
   slot.lock = run.then(
     () => undefined,
     () => undefined,
@@ -438,18 +458,37 @@ function withSlotLock(slot, fn) {
   return run;
 }
 
+function liveKeepPids() {
+  return [...piPool.values()].map((slot) => slot.pid || rpcClientPid(slot.client)).filter(Boolean);
+}
+
 /**
- * Stop a slot's client without racing an in-flight turn: the stop is chained
- * onto the slot's own lock, so it runs after whatever prompt/turn currently
- * holds it, never mid-flight. The slot is removed from the pool immediately
- * so a new request for the same key gets a fresh slot rather than waiting.
+ * Stop a slot after any in-flight turn, then kill the Pi process tree
+ * (MCP / Scrapling children). On Railway the host is PID 1, so those
+ * children get reparented here if we only call client.stop().
  * @param {PiSlot} slot
  */
-function evictSlot(slot) {
+async function stopSlot(slot) {
+  if (!slot) return;
   piPool.delete(slot.key);
-  slot.lock = slot.lock.then(async () => {
-    if (slot.client) await slot.client.stop().catch(() => {});
+  const run = slot.lock.then(async () => {
+    const client = slot.client;
+    const pid = slot.pid || rpcClientPid(client);
+    slot.client = undefined;
+    slot.booting = undefined;
+    slot.pid = null;
+    if (client) await client.stop().catch(() => {});
+    await killTree(pid);
   });
+  slot.lock = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  await run;
+}
+
+function evictSlot(slot) {
+  void stopSlot(slot);
 }
 
 function evictIfNeeded() {
@@ -459,11 +498,17 @@ function evictIfNeeded() {
   for (const slot of oldest) evictSlot(slot);
 }
 
-function sweepIdleSlots() {
-  const cutoff = Date.now() - PI_SLOT_IDLE_MS;
-  for (const slot of piPool.values()) {
-    if (slot.client && !slot.booting && slot.lastUsedAt < cutoff) evictSlot(slot);
+async function sweepIdleSlots() {
+  const idle = pickIdleSlots([...piPool.values()], {
+    idleMs: PI_SLOT_IDLE_MS,
+    keepWarm: PI_KEEP_WARM,
+  });
+  for (const slot of idle) {
+    logEvent("info", `idle-evict agent=${slot.agentId} keepWarm=${PI_KEEP_WARM} live=${piPool.size}/${MAX_PI_SLOTS}`);
+    await stopSlot(slot);
   }
+  const leaked = await reapLeakedChildren({ keepPids: liveKeepPids() }).catch(() => 0);
+  if (leaked) logEvent("warn", `reaped ${leaked} leaked Pi/MCP child process(es)`);
 }
 
 async function refreshSlotRuntime(slot, agent, modelId) {
@@ -502,6 +547,7 @@ async function startSlotClient(slot, agent, modelId) {
     `starting Pi agent=${agent.slug} skills=${agent.skills?.length ?? 0} mcp=${agent.mcp?.length ?? 0} subagents=${(agent.skills ?? []).some((row) => row.slug === "spawn-subagents") ? "on" : "off"} imagen=${imagenConfigured() ? "on" : "off"} ${active.provider}/${active.model} pool=${piPool.size}/${MAX_PI_SLOTS}`,
   );
 
+  const beforeKids = new Set(await childrenOf(process.pid).catch(() => []));
   const pi = new RpcClient({
     cliPath: PI_CLI_PATH,
     cwd: agentWorkspace(agent),
@@ -515,8 +561,13 @@ async function startSlotClient(slot, agent, modelId) {
   });
   await pi.start();
   slot.client = pi;
+  slot.pid = rpcClientPid(pi);
+  if (!slot.pid) {
+    const born = (await childrenOf(process.pid).catch(() => [])).filter((pid) => !beforeKids.has(pid));
+    slot.pid = born[0] ?? null;
+  }
   slot.lastUsedAt = Date.now();
-  logEvent("info", sessionFile ? `Pi client started session=${sessionFile}` : "Pi client started");
+  logEvent("info", sessionFile ? `Pi client started pid=${slot.pid || "?"} session=${sessionFile}` : `Pi client started pid=${slot.pid || "?"}`);
   return pi;
 }
 
@@ -526,9 +577,12 @@ async function startSlotClient(slot, agent, modelId) {
  * @param {PiSlot} slot
  */
 async function restartSlotClient(slot, agent, modelId) {
+  const oldPid = slot.pid || rpcClientPid(slot.client);
   if (slot.client) await slot.client.stop().catch(() => {});
   slot.client = undefined;
   slot.booting = undefined;
+  slot.pid = null;
+  await killTree(oldPid);
   if (!slot.booting) slot.booting = startSlotClient(slot, agent, modelId);
   try {
     return await slot.booting;
@@ -563,6 +617,8 @@ async function getOrCreatePiSlot(agent, modelId, { sessionFile } = {}) {
         activeStudioSessionId: null,
         resumeSessionFile: sessionFile ?? null,
         forceNewPiSession: false,
+        pid: null,
+        busy: false,
         lock: Promise.resolve(),
         lastUsedAt: 0,
       };
@@ -1003,10 +1059,8 @@ async function serveStatic(res, urlPath) {
  */
 async function resetPiPool({ agentId } = {}) {
   modelCatalog = null;
-  for (const slot of [...piPool.values()]) {
-    if (agentId && slot.agentId !== agentId) continue;
-    evictSlot(slot);
-  }
+  const targets = [...piPool.values()].filter((slot) => !agentId || slot.agentId === agentId);
+  await Promise.all(targets.map((slot) => stopSlot(slot)));
 }
 
 async function writePiModels() {
@@ -1059,11 +1113,11 @@ async function bootServices() {
 
   boot.step = "metrics";
   try {
-    setPiAliveGetter(() => piPool.size > 0);
+    setPiAliveGetter(() => [...piPool.values()].some((slot) => Boolean(slot.client)));
     startSampler();
-    const idleSweep = setInterval(sweepIdleSlots, 300_000);
+    const idleSweep = setInterval(() => void sweepIdleSlots(), PI_IDLE_SWEEP_MS);
     idleSweep.unref?.();
-    logEvent("info", "resource sampler every 15s, keep 24h");
+    logEvent("info", `resource sampler every 15s; Pi idle extras ${PI_SLOT_IDLE_MS / 1000}s, keep ${PI_KEEP_WARM} warm`);
   } catch (error) {
     logEvent("error", `resource sampler failed: ${sanitizeError(error)}`);
   }
@@ -1311,6 +1365,11 @@ const server = createServer(async (req, res) => {
       }
     }
 
+    if (req.method === "GET" && pathname === "/api/np/health") {
+      json(res, 200, await newpagesHealth({ probe: url.searchParams.get("probe") || "" }));
+      return;
+    }
+
     if (pathname.startsWith("/api/np/") || pathname === "/api/np") {
       if (!dbReady()) {
         json(res, 503, { error: "Database is not connected" });
@@ -1385,6 +1444,8 @@ const server = createServer(async (req, res) => {
         host: hostPublic(),
         defaultModelId,
         piPoolSize: piPool.size,
+        piPoolMax: MAX_PI_SLOTS,
+        piKeepWarm: PI_KEEP_WARM,
       });
       return;
     }
@@ -1984,7 +2045,7 @@ server.listen(PORT, HOST, () => {
 async function shutdown() {
   logEvent("info", turnsInFlight ? `shutdown during ${turnsInFlight} in-flight turn(s)` : "shutdown");
   stopSampler();
-  await Promise.allSettled([...piPool.values()].map((slot) => slot.client?.stop().catch(() => {})));
+  await Promise.allSettled([...piPool.values()].map((slot) => stopSlot(slot)));
   await closeBrowsers().catch(() => {});
   await closeDb().catch(() => {});
   process.exit(0);

@@ -134,3 +134,23 @@ export async function markSiteLogin(id, { ok, error }) {
     [id, Boolean(ok), ok ? null : String(error || "").slice(0, 1000)],
   );
 }
+
+export async function saveSiteSession(id, session) {
+  if (!session?.token || !session?.companyId) return;
+  const snapshot = {
+    token: String(session.token).slice(0, 80),
+    companyId: String(session.companyId).slice(0, 32),
+    companyName: String(session.companyName || "").slice(0, 120),
+    npCompanyId: String(session.npCompanyId || "").slice(0, 32),
+    savedAt: new Date().toISOString(),
+  };
+  await getPool().query(
+    `UPDATE site_logins SET
+       extra = COALESCE(extra, '{}'::jsonb) || $2::jsonb,
+       last_login_at = NOW(),
+       last_error = NULL,
+       updated_at = NOW()
+     WHERE id = $1 OR slug = $1`,
+    [id, JSON.stringify({ session: snapshot })],
+  );
+}

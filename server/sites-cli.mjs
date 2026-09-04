@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { closeBrowsers } from "./browser.mjs";
 import { closeDb, connectDb } from "./db.mjs";
 import { loadSecrets } from "./secrets.mjs";
 import { ensureSitesSchema, getSite, listSites, upsertSite } from "./sites.mjs";
@@ -137,4 +138,4 @@ main()
     );
     process.exitCode = 1;
   })
-  .finally(() => closeDb().catch(() => {}));
+  .finally(() => Promise.all([closeBrowsers().catch(() => {}), closeDb().catch(() => {})]));

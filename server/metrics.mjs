@@ -1,6 +1,7 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import os from "node:os";
 import { dbReady, insertResourceSample, listResourceSamples, pruneResourceSamples } from "./db.mjs";
+import { descendants } from "./proc.mjs";
 
 export const INTERVAL_MS = 15_000;
 export const RETENTION_HOURS = 24;
@@ -59,50 +60,6 @@ async function rssKb(pid) {
   if (!text) return null;
   const match = text.match(/^VmRSS:\s+(\d+)\s+kB/m);
   return match ? Number(match[1]) : null;
-}
-
-async function childrenOf(pid) {
-  const direct = await readText(`/proc/${pid}/task/${pid}/children`);
-  if (direct != null) {
-    return direct
-      .trim()
-      .split(/\s+/)
-      .map(Number)
-      .filter((n) => Number.isFinite(n) && n > 0);
-  }
-  try {
-    const tasks = await readdir(`/proc/${pid}/task`);
-    /** @type {Set<number>} */
-    const kids = new Set();
-    for (const tid of tasks) {
-      const text = await readText(`/proc/${pid}/task/${tid}/children`);
-      if (!text) continue;
-      for (const part of text.trim().split(/\s+/)) {
-        const n = Number(part);
-        if (Number.isFinite(n) && n > 0) kids.add(n);
-      }
-    }
-    return [...kids];
-  } catch {
-    return [];
-  }
-}
-
-async function descendants(root) {
-  /** @type {Set<number>} */
-  const seen = new Set();
-  const queue = [root];
-  while (queue.length) {
-    const pid = queue.shift();
-    if (pid == null || seen.has(pid)) continue;
-    seen.add(pid);
-    const kids = await childrenOf(pid);
-    for (const kid of kids) {
-      if (!seen.has(kid)) queue.push(kid);
-    }
-  }
-  seen.delete(root);
-  return [...seen];
 }
 
 async function cgroupMemory() {
