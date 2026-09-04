@@ -1172,6 +1172,7 @@ export default function Home() {
                 engineLabel={selectedEngine === "agy" ? "AGY" : "Pi"}
                 modelLabel={activeModel?.shortLabel ?? ""}
                 onStop={stop}
+                onOpenMedia={(src, alt) => setMedia({ src, alt })}
               />
             </>
           )}
@@ -1890,26 +1891,10 @@ function formatElapsed(ms: number) {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-/** Last meaningful line the agent has narrated so far, trimmed for the working window. */
-function latestNarration(blocks: TurnBlock[]): string {
-  for (let i = blocks.length - 1; i >= 0; i -= 1) {
-    const block = blocks[i];
-    if (block.type !== "text" && block.type !== "note") continue;
-    const lines = block.text
-      .split(/\n+/)
-      .map((line) => line.replace(/[`*_#>]+/g, "").trim())
-      .filter(Boolean);
-    const last = lines[lines.length - 1];
-    if (!last) continue;
-    return last.length > 220 ? `…${last.slice(-220)}` : last;
-  }
-  return "";
-}
-
 /**
- * Full-pane "agent is working" presentation: dims the chat 60%, floats a window that mirrors the
- * live turn (status, steps with spinners/checks, latest narration), and exposes only a Stop button.
- * Holds a short Done/Stopped beat before fading out so the finish reads as an event.
+ * Full-pane "agent is working" presentation: dims the chat 60%, floats a window that carries the
+ * complete live turn (the same Thinking/tool rows and streamed text the chat renders, scrollable and
+ * auto-following), and exposes only a Stop button. Holds a short Done/Stopped beat before fading out.
  */
 function WorkingOverlay({
   active,
@@ -1920,6 +1905,7 @@ function WorkingOverlay({
   engineLabel,
   modelLabel,
   onStop,
+  onOpenMedia,
 }: {
   active: boolean;
   agent: Agent;
@@ -1929,12 +1915,14 @@ function WorkingOverlay({
   engineLabel: string;
   modelLabel: string;
   onStop: () => void;
+  onOpenMedia: (src: string, alt?: string) => void;
 }) {
   const [phase, setPhase] = useState<WorkPhase>(active ? "on" : "off");
   const [seenActive, setSeenActive] = useState(active);
   const [elapsed, setElapsed] = useState(0);
   const [stopped, setStopped] = useState(false);
   const windowRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
 
   // Adjust state during render when the turn starts or ends (React's sanctioned alternative to a setState effect).
   if (active !== seenActive) {
@@ -1962,25 +1950,35 @@ function WorkingOverlay({
     return undefined;
   }, [phase]);
 
+  const blocks = message?.blocks ?? [];
+  const workBlocks = blocks.filter((block) => block.type === "thinking" || block.type === "tool");
+  const text = blocks
+    .filter((block) => block.type === "text" || block.type === "note")
+    .map((block) => block.text)
+    .join("\n");
+  const stepCount = workBlocks.length;
+  const doneCount = workBlocks.filter((block, index) =>
+    block.type === "tool" ? !block.running : index < workBlocks.length - 1 || Boolean(text),
+  ).length;
+
+  // Follow the live transcript unless the reader has scrolled up to inspect something.
+  const contentSize = blocks.length + text.length;
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const distance = body.scrollHeight - body.scrollTop - body.clientHeight;
+    if (distance < 160) body.scrollTop = body.scrollHeight;
+  }, [contentSize]);
+
   if (phase === "off") return null;
 
   const live = phase === "on";
-  const blocks = message?.blocks ?? [];
-  const steps = blocks
-    .map((block, index) => ({ block, index }))
-    .filter(
-      (row): row is { block: Extract<TurnBlock, { type: "thinking" | "tool" }>; index: number } =>
-        row.block.type === "thinking" || row.block.type === "tool",
-    );
-  const isRunning = (row: (typeof steps)[number]) =>
-    live && (row.block.type === "tool" ? Boolean(row.block.running) : row.index === blocks.length - 1);
-  const doneCount = steps.filter((row) => !isRunning(row)).length;
-  const visible = steps.slice(-5);
-  const hidden = steps.length - visible.length;
-  const narration = latestNarration(blocks);
   const label = avatarLabel(agent.short, agent.name);
   const outcome = stopped ? "Stopped" : error ? "Ended with an error" : "Done";
-  const headline = live ? status || "Working…" : outcome;
+  const silent = live && !blocks.length;
+  const headline = !live
+    ? outcome
+    : status || (silent ? `Waiting for ${engineLabel} ${modelLabel} to respond… ${formatElapsed(elapsed)}` : "Working…");
 
   return (
     <div
@@ -2000,11 +1998,12 @@ function WorkingOverlay({
             <span className="working-sub">
               <i className="status-dot" />
               {live ? "Working" : outcome} · {engineLabel} {modelLabel}
+              {stepCount ? ` · ${doneCount}/${stepCount} steps` : ""}
             </span>
           </div>
           <time>{formatElapsed(elapsed)}</time>
         </header>
-        <div className="working-status" role="status" aria-live="polite">
+        <div className={silent ? "working-status silent" : "working-status"} role="status" aria-live="polite">
           {live ? (
             <i className="spin" />
           ) : (
@@ -2014,35 +2013,18 @@ function WorkingOverlay({
           )}
           <span>{headline}</span>
         </div>
-        {steps.length > 0 && (
-          <div className="working-steps">
-            {hidden > 0 && (
-              <small>
-                {hidden} earlier {hidden === 1 ? "step" : "steps"} · {doneCount} done
-              </small>
+        {(workBlocks.length > 0 || text) && (
+          <div className="working-body" ref={bodyRef}>
+            {workBlocks.length > 0 && (
+              <TurnBlocks blocks={workBlocks} streaming={live} agentId={agent.id} onOpen={onOpenMedia} />
             )}
-            {visible.map((row) => {
-              const running = isRunning(row);
-              const key = row.block.type === "tool" ? row.block.id || `tool-${row.index}` : `think-${row.index}`;
-              const name = row.block.type === "tool" ? row.block.name : running ? "Thinking" : "Thought";
-              const detail = row.block.type === "tool" ? row.block.detail : "";
-              return (
-                <div key={key} className={running ? "working-step live" : "working-step"}>
-                  {running ? (
-                    <i className="spin" />
-                  ) : (
-                    <span className={row.block.type === "tool" ? "turn-icon" : "turn-icon think"}>
-                      <IconCheck tiny />
-                    </span>
-                  )}
-                  <strong>{name}</strong>
-                  {detail ? <span>{detail}</span> : null}
-                </div>
-              );
-            })}
+            {text ? (
+              <div className="working-text">
+                <ChatCopy text={text} agentId={agent.id} streaming={live} onOpen={onOpenMedia} />
+              </div>
+            ) : null}
           </div>
         )}
-        {narration ? <p className="working-narration">{narration}</p> : null}
         <button
           type="button"
           className="working-stop"

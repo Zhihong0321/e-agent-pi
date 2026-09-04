@@ -1824,14 +1824,14 @@ a.file-row { color: inherit; text-decoration: none; }
 .usage-hint { margin: 4px 18px 12px; color: var(--muted); font-size: 11px; line-height: 1.45; }
 .usage-hint a { color: var(--green); font-weight: 700; }
 
-/* ---- Working presentation: 60% mask over the chat pane + floating status window ---- */
+/* ---- Working presentation: 60% mask over the chat pane + floating live-transcript window ---- */
 .working-layer {
   position: absolute;
   inset: 0;
   z-index: 30;
   display: grid;
   place-items: center;
-  padding: 20px;
+  padding: 16px;
   background: rgba(6, 18, 14, 0.6);
   -webkit-backdrop-filter: blur(3px);
   backdrop-filter: blur(3px);
@@ -1842,10 +1842,15 @@ a.file-row { color: inherit; text-decoration: none; }
   animation: workingFadeOut 0.3s ease-in 0.62s both;
 }
 .working-window {
-  width: min(100%, 340px);
-  display: grid;
+  width: 100%;
+  max-width: 358px;
+  max-height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
-  padding: 0 18px 18px;
+  padding: 0 14px 14px;
   border-radius: 24px;
   background: linear-gradient(180deg, #ffffff, #f6faf8);
   box-shadow:
@@ -1857,9 +1862,10 @@ a.file-row { color: inherit; text-decoration: none; }
   animation: workingPop 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 .working-layer.done .working-window { animation: workingSink 0.3s ease-in 0.62s both; }
+.working-window > * { flex: none; }
 .working-bar {
   height: 3px;
-  margin: 0 -18px;
+  margin: 0 -14px;
   background: var(--soft);
   overflow: hidden;
 }
@@ -1873,10 +1879,11 @@ a.file-row { color: inherit; text-decoration: none; }
 .working-layer.done .working-bar { background: var(--green); }
 .working-layer.done .working-bar i { display: none; }
 .working-head {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding-top: 4px;
+  padding: 4px 4px 0;
 }
 .working-head > div { flex: 1; min-width: 0; display: grid; gap: 1px; }
 .working-head strong {
@@ -1907,16 +1914,18 @@ a.file-row { color: inherit; text-decoration: none; }
   color: var(--dim);
 }
 .working-status {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 14px;
+  padding: 11px 14px;
   border-radius: 14px;
   background: var(--field);
   font-size: 14px;
   font-weight: 600;
   color: var(--ink);
 }
+.working-status.silent { color: #b45309; background: #fff7e6; }
 .working-status .spin { width: 18px; height: 18px; flex: none; }
 .working-status .turn-icon { width: 18px; height: 18px; }
 .working-status span:last-child {
@@ -1926,40 +1935,30 @@ a.file-row { color: inherit; text-decoration: none; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.working-steps { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; }
-.working-steps small { padding: 0 2px 4px; font-size: 11px; color: var(--dim); }
-.working-step {
-  display: flex;
-  align-items: center;
+/* The live transcript: same blocks the chat shows, scrollable and auto-following. */
+.working-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
-  padding: 6px 4px;
-  font-size: 13px;
-  animation: rise 0.25s ease-out both;
+  border-radius: 12px;
 }
-.working-step .spin { width: 16px; height: 16px; flex: none; }
-.working-step strong { flex: none; font-weight: 600; }
-.working-step.live strong { color: var(--green); }
-.working-step span:last-child {
-  flex: 1;
-  min-width: 0;
-  font-size: 12.5px;
-  color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.working-narration {
-  margin: 0;
-  padding: 0 2px;
-  font-size: 13px;
-  line-height: 1.45;
-  color: #5a6a63;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+.working-body .turn-stack { background: var(--field); grid-template-columns: minmax(0, 1fr); }
+.working-body .turn-stack > div { min-width: 0; }
+.working-body .turn-text { max-height: none; }
+.working-text {
+  padding: 2px 4px 4px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+  overflow-wrap: anywhere;
 }
 .working-stop {
+  min-width: 0;
   height: 48px;
   border-radius: 24px;
   background: var(--ink);
@@ -1987,6 +1986,5 @@ a.file-row { color: inherit; text-decoration: none; }
 @keyframes workingSink { to { opacity: 0; transform: translateY(8px) scale(0.98); } }
 @media (prefers-reduced-motion: reduce) {
   .working-layer,
-  .working-window,
-  .working-step { animation-duration: 0.01s; }
+  .working-window { animation-duration: 0.01s; }
 }
