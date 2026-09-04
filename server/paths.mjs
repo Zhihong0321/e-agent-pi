@@ -31,11 +31,21 @@ export const DEFAULT_PROPOSAL_REPO = "Zhihong0321/ee-proposal";
 export const DEFAULT_PROPOSAL_LIVE_URL = "https://ee-proposal-production.up.railway.app/shell.html#proposal";
 export const DEFAULT_NEWPAGES_LIVE_URL = "https://merchant.newpages.com.my";
 
+export function isWebsiteAgent(agent) {
+  const id = typeof agent === "string" ? agent : agent?.id || "";
+  const slug = typeof agent === "string" ? agent : agent?.slug || "";
+  return id === DEFAULT_AGENT_ID || slug === "website";
+}
+
+export function isSettingsAgent(agent) {
+  const id = typeof agent === "string" ? agent : agent?.id || "";
+  const slug = typeof agent === "string" ? agent : agent?.slug || "";
+  return id === OPS_AGENT_ID || slug === "ops" || slug === "settings";
+}
+
 /**
- * Pi cwd for an agent. Website + Settings share `/storage/workspace`.
- * Proposal Agent uses a separate clone of ee-proposal.
- * NEWPAGES Site Manager uses a separate folder for news images.
- * Package Updater uses a separate folder for price-list uploads.
+ * Pi cwd for an agent. Website Dev Agent owns `/storage/workspace`.
+ * Everyone else gets `/storage/workspaces/<slug>` (ops → settings).
  * @param {{ id?: string; slug?: string } | string | null | undefined} agent
  */
 export function agentWorkspace(agent) {
@@ -50,7 +60,9 @@ export function agentWorkspace(agent) {
   if (id === PACKAGE_AGENT_ID || slug === "package" || slug === "package-updater") {
     return path.join(WORKSPACES_DIR, "package");
   }
-  return WORKSPACE;
+  if (isWebsiteAgent(agent)) return WORKSPACE;
+  const folder = isSettingsAgent(agent) ? "settings" : slug || id || "scratch";
+  return path.join(WORKSPACES_DIR, folder);
 }
 
 export function isProposalAgent(agent) {

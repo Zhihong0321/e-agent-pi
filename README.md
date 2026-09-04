@@ -88,9 +88,9 @@ Install **does not** attach. A skill written to the library stays unused until i
 
 After attach, the next chat with that agent restarts Pi with the new bundle.
 
-Website Dev Agent is seeded with the **Impeccable** design skill ([docs](https://impeccable.style/docs/)), **Scrapling** (skill + MCP) for live page fetches, and **spawn-subagents** (in-process scout/researcher/worker/reviewer children). **Proposal Agent** is seeded with `update-proposal` + spawn-subagents. It clones [Zhihong0321/ee-proposal](https://github.com/Zhihong0321/ee-proposal) into `/storage/workspaces/proposal`, edits from text/image/PDF, and the host git-pushes so Railway deploys https://ee-proposal-production.up.railway.app/shell.html#proposal. **Scrapling is default on every agent**, including Settings Agent. Boot always reloads Website Dev Agent's role from `agent/ROLE.md` so the git/GitHub ban and ee-html rules actually apply (Postgres used to keep the first seed forever).
+Website Dev Agent is seeded with **Scrapling** (skill + MCP) for live page fetches and **spawn-subagents**. **Impeccable** is installed into the library on boot but **not** auto-attached; attach it via Settings Agent for a from-scratch redesign. **Proposal Agent** is seeded with `update-proposal` + spawn-subagents. It clones [Zhihong0321/ee-proposal](https://github.com/Zhihong0321/ee-proposal) into `/storage/workspaces/proposal`, edits from text/image/PDF, and the host git-pushes so Railway deploys https://ee-proposal-production.up.railway.app/shell.html#proposal. **Scrapling is default on every agent**, including Settings Agent. Boot always reloads Website Dev Agent's role from `agent/ROLE.md` so the git/GitHub ban and ee-html rules actually apply (Postgres used to keep the first seed forever).
 
-On boot the host runs `npx impeccable install --providers=pi --scope=project` in a staging directory, copies `.pi/skills/impeccable` into `/storage/library/skills/impeccable`, and attaches it to Website Dev Agent. It does **not** install into the GitHub workspace — that would commit the pack into the site repo, and Pi would not load it anyway (`--no-skills` plus `--skill <library path>`).
+On boot the host runs `npx impeccable install --providers=pi --scope=project` in a staging directory and copies `.pi/skills/impeccable` into `/storage/library/skills/impeccable`. It does **not** attach it to Website Dev Agent and does **not** install into the GitHub workspace.
 
 `/impeccable init` writes `PRODUCT.md` (and later `DESIGN.md`) in the workspace; those files *are* site artifacts and should sync. Refresh the pack with Settings Agent: `node $CLOUD_PI_CATALOG skills install-impeccable --force`.
 
@@ -106,6 +106,7 @@ On boot the host also downloads the official Scrapling Agent Skill zip into `/st
 | Path | Purpose |
 |------|---------|
 | `/storage/workspace` | Pi cwd for Website Dev Agent (site files) |
+| `/storage/workspaces/<slug>` | Pi cwd for every other agent (unknown slugs included; ops → `settings`) |
 | `/storage/workspaces/proposal` | Pi cwd for Proposal Agent (`ee-proposal` clone) |
 | `/storage/storage` | Pi session dir |
 | `/storage/pi` | Shared Pi models.json |
@@ -120,6 +121,10 @@ On boot the host also downloads the official Scrapling Agent Skill zip into `/st
 | `app/page.tsx` | Studio UI (pick an agent, chat) |
 | `app/settings.tsx` | Password-gated keys, agents, skills, MCP |
 | `src/main.tsx` | `/settings` vs studio |
+| `agent/AGENT_BLUEPRINT.md` | SOP for adding an agent: charter, workspace, capabilities, context pack, acceptance test |
+| `agent/context/<slug>/` | Per-agent context packs; wired by `server/context-pack.mjs` into Pi ROLE.md and AGY AGENTS.md |
+| `server/context-pack.mjs` | Load pack, vision line, auto-continue, recovery snapshot, STATE.md journal |
+| `server/agent-env.mjs` | Allowlisted env for agent child processes |
 | `agent/ROLE.md` | Seed prompt for Website Dev Agent |
 | `agent/roles/proposal.md` | Seed prompt for Proposal Agent |
 | `agent/roles/package.md` | Seed prompt for Package Updater (prod_main catalog) |

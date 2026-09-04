@@ -18,6 +18,7 @@ import {
   ROLE_FILE,
   SETTINGS_ROLE_FILE,
   SKILLS_DIR,
+  agentWorkspace,
 } from "./paths.mjs";
 
 export const WEBSITE_AGENT_ID = DEFAULT_AGENT_ID;
@@ -295,6 +296,7 @@ export async function createAgent(input = {}) {
   } catch {
     // Bundled skill lands on first rescan.
   }
+  await mkdir(agentWorkspace(created), { recursive: true });
   return created;
 }
 

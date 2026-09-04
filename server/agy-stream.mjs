@@ -5,6 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import { resolveAgyBin } from "./test-agy.mjs";
 import { createTurn } from "./pi-stream.mjs";
+import { loadContextPack } from "./context-pack.mjs";
+import { agentEnv } from "./agent-env.mjs";
 import { agentWorkspace, isProposalAgent, IMAGEN_SKILL_DIR, SKILLS_DIR } from "./paths.mjs";
 import { imagenConfigured, imagenSystemPrompt } from "./imagen.mjs";
 import { hostSystemPrompt } from "./ee-html.mjs";
@@ -21,6 +23,7 @@ export const AGY_MODELS = [
     model: "gemini-3.8-flash-high",
     available: true,
     engine: "agy",
+    vision: true,
   },
   {
     id: "gemini-3.8-flash-medium",
@@ -30,6 +33,7 @@ export const AGY_MODELS = [
     model: "gemini-3.8-flash-medium",
     available: true,
     engine: "agy",
+    vision: true,
   },
   {
     id: "gemini-3.7-flash-high",
@@ -39,6 +43,7 @@ export const AGY_MODELS = [
     model: "gemini-3.7-flash-high",
     available: true,
     engine: "agy",
+    vision: true,
   },
   {
     id: "gemini-3.1-pro-high",
@@ -48,6 +53,7 @@ export const AGY_MODELS = [
     model: "gemini-3.1-pro-high",
     available: true,
     engine: "agy",
+    vision: true,
   },
   {
     id: "claude-sonnet-4-6",
@@ -57,6 +63,7 @@ export const AGY_MODELS = [
     model: "claude-sonnet-4-6",
     available: true,
     engine: "agy",
+    vision: true,
   },
 ];
 
@@ -99,16 +106,17 @@ export function formatAgyToolDetail(name, params) {
  * @param {object} agent
  * @param {{ skills?: object[] }} [opts]
  */
-export async function materializeAgyWorkspace(agent, { skills = [] } = {}) {
+export async function materializeAgyWorkspace(agent, { skills = [], modelId } = {}) {
   const workspace = agentWorkspace(agent);
   await mkdir(workspace, { recursive: true });
 
-  // 1. Build unified role prompt & host/git guidelines
+  // 1. Build unified role prompt, host fragments, and the context pack
   const role = String(agent.rolePrompt || "").trim();
   const extras = [imagenSystemPrompt()];
   if (agent.id === "website" || agent.slug === "website") extras.push(hostSystemPrompt());
   if (isProposalAgent(agent)) extras.push(proposalSystemPrompt(agent));
-  const extraText = extras.filter(Boolean).join("\n\n");
+  const pack = await loadContextPack(agent, { modelId });
+  const extraText = [...extras.filter(Boolean), pack].filter(Boolean).join("\n\n");
   const fullInstructions = extraText ? `${role}\n\n${extraText}`.trim() + "\n" : `${role}\n`;
 
   // 2. Write AGENTS.md in the workspace directory (native rule discovery in AGY)
@@ -282,7 +290,7 @@ export async function chatAgy({ message, modelId, session, profile, onEvent, ima
     await updateSession(session.id, { agyConversationId: conversationId }).catch(() => {});
   }
 
-  const workspace = await materializeAgyWorkspace(profile, { skills: profile.skills });
+  const workspace = await materializeAgyWorkspace(profile, { skills: profile.skills, modelId });
   const model = modelId || "gemini-3.8-flash-high";
   const bin = resolveAgyBin();
 
@@ -307,11 +315,10 @@ export async function chatAgy({ message, modelId, session, profile, onEvent, ima
 
     const child = spawn(bin, args, {
       cwd: workspace,
-      env: {
-        ...process.env,
+      env: agentEnv(profile, {
         HOME: os.homedir(),
         USER: process.env.USER || "root",
-      },
+      }),
       stdio: ["ignore", "pipe", "pipe"],
     });
 

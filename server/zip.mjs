@@ -4,6 +4,12 @@ import path from "node:path";
 
 const SKIP_DIRS = new Set([".git", ".impeccable", ".pi", "node_modules"]);
 const SKIP_FILES = new Set(["product.md", "design.md", ".ds_store"]);
+const SKIP_BASENAMES = new Set([
+  "profile-2025.pdf",
+  "all-certs.pdf",
+  "solar-panel.png",
+  "solar-panel-2.png",
+]);
 
 const CRC_TABLE = new Uint32Array(256);
 for (let n = 0; n < 256; n++) {
@@ -59,6 +65,7 @@ async function collectFiles(dir, base = dir) {
       continue;
     }
     if (SKIP_FILES.has(entry.name.toLowerCase())) continue;
+    if (SKIP_BASENAMES.has(entry.name.toLowerCase())) continue;
     const info = await stat(full);
     out.push({
       name: path.relative(base, full).replaceAll("\\", "/"),

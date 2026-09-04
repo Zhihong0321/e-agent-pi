@@ -31,23 +31,19 @@ import { hasApiAuth, hasSession, sessionCookie, sessionToken, checkPassword } fr
 import { loadSecrets, publicSettings, saveSecrets, secret, secretFlags } from "./secrets.mjs";
 import {
   BUNDLED_MODELS,
-  CATALOG_CLI,
   DATA_DIR,
   DEFAULT_AGENT_ID,
   DEFAULT_PROPOSAL_LIVE_URL,
   DEFAULT_PROPOSAL_REPO,
   DIST_DIR,
-  IMAGEN_CLI,
-  SITES_CLI,
   LIBRARY_DIR,
-  PDF_CLI,
   PI_AGENT_DIR,
   PI_CLI_PATH,
   PI_PACKAGE_DIR,
   NEWPAGES_AGENT_ID,
   PACKAGE_AGENT_ID,
   PROPOSAL_AGENT_ID,
-  ROOT,
+  SETTINGS_AGENT_ID,
   RUNTIME_DIR,
   SKILLS_DIR,
   STORAGE,
@@ -96,6 +92,19 @@ import {
 } from "./newpages.mjs";
 import { handleManage } from "./manage-api.mjs";
 import { buildPiArgs, materializeAgentRuntime } from "./runtime.mjs";
+import { agentEnv } from "./agent-env.mjs";
+import {
+  AUTO_CONTINUE_PROMPT,
+  appendStateJournal,
+  contextPackFingerprint,
+  enrichRestartPrompt,
+  mergeTurns,
+  modelHasVision,
+  needsAutoContinue,
+  previewContextPack,
+  turnMetrics,
+} from "./context-pack.mjs";
+import { healWebsiteWorkspace } from "./workspace-heal.mjs";
 import { attachmentChatMarkup, attachmentSummary, materializeAttachments } from "./attachments.mjs";
 import { ensureAgyEnvironment, handleTestAgy } from "./test-agy.mjs";
 import { chatAgy, AGY_MODELS } from "./agy-stream.mjs";
@@ -347,12 +356,14 @@ async function ensureCatalog() {
   return modelCatalog;
 }
 
-function agentBundleKey(agent) {
+async function agentBundleKey(agent) {
   const role = createHash("sha1").update(agent.rolePrompt || "").digest("hex").slice(0, 12);
+  const pack = await contextPackFingerprint(agent);
+  const vision = (await modelHasVision(activeModelId)) ? "v" : "nv";
   const skills = (agent.skillIds || []).slice().sort().join(",");
   const mcp = (agent.mcpIds || []).slice().sort().join(",");
   const imagen = imagenConfigured() ? `${secret("imagen_model") || "default"}:${secret("imagen_api") || "auto"}` : "off";
-  return `${agent.id}:${skills}:${mcp}:${role}:${imagen}`;
+  return `${agent.id}:${skills}:${mcp}:${role}:${pack}:${vision}:${imagen}`;
 }
 
 async function resolveAgentProfile(agentId) {
@@ -377,8 +388,12 @@ function attachFallback(profile) {
 
 async function getClient(profile) {
   const agent = profile || (await resolveAgentProfile(activeAgentId));
-  const bundleKey = agentBundleKey(agent);
-  if (client && activeAgentId === agent.id && activeBundleKey === bundleKey) return client;
+  const bundleKey = await agentBundleKey(agent);
+  if (client && activeAgentId === agent.id && activeBundleKey === bundleKey) {
+    const modelsJson = await writePiModels();
+    await materializeAgentRuntime(agent, agent.mcp ?? [], modelsJson, { modelId: activeModelId });
+    return client;
+  }
   if (client) {
     await client.stop().catch(() => {});
     client = undefined;
@@ -395,7 +410,9 @@ async function getClient(profile) {
       }
 
       const modelsJson = await writePiModels();
-      const runtimeDir = await materializeAgentRuntime(agent, agent.mcp ?? [], modelsJson);
+      const runtimeDir = await materializeAgentRuntime(agent, agent.mcp ?? [], modelsJson, {
+        modelId: activeModelId,
+      });
       const sessionFile = resumeSessionFile;
       const args = buildPiArgs({
         agent,
@@ -416,20 +433,10 @@ async function getClient(profile) {
         cwd: agentWorkspace(agent),
         provider: active.provider,
         model: active.model,
-        env: {
-          ...process.env,
-          PATH: ["/opt/scrapling/bin", process.env.PATH || ""].filter(Boolean).join(path.delimiter),
-          SCRAPLING_BIN: process.env.SCRAPLING_BIN || "/opt/scrapling/bin/scrapling",
+        env: agentEnv(agent, {
           PI_CODING_AGENT_DIR: runtimeDir,
           PI_PACKAGE_DIR,
-          CLOUD_PI_ROOT: ROOT,
-          CLOUD_PI_CATALOG: CATALOG_CLI,
-          CLOUD_PI_IMAGEN: IMAGEN_CLI,
-          CLOUD_PI_SITES: SITES_CLI,
-          CLOUD_PI_PDF: PDF_CLI,
-          ...(secret("pg_proxy_token") ? { PG_PROXY_TOKEN: secret("pg_proxy_token") } : {}),
-          ...resolved.env,
-        },
+        }),
         args,
       });
       await pi.start();
@@ -893,6 +900,7 @@ async function prepareDirs() {
   await mkdir(WORKSPACES_DIR, { recursive: true });
   await mkdir(agentWorkspace({ id: NEWPAGES_AGENT_ID, slug: "newpages" }), { recursive: true });
   await mkdir(agentWorkspace({ id: PACKAGE_AGENT_ID, slug: "package" }), { recursive: true });
+  await mkdir(agentWorkspace({ id: SETTINGS_AGENT_ID, slug: "settings" }), { recursive: true });
   await mkdir(STORAGE, { recursive: true });
   await mkdir(PI_AGENT_DIR, { recursive: true });
   await mkdir(LIBRARY_DIR, { recursive: true });
@@ -939,6 +947,7 @@ async function bootServices() {
   boot.step = "workspace";
   try {
     await initWorkspace();
+    await healWebsiteWorkspace();
     const git = await getGitStatus();
     logEvent("info", `workspace ready git=${git.connected} dirty=${git.dirty}`);
   } catch (error) {
@@ -987,12 +996,12 @@ async function bootServices() {
   boot.step = "impeccable";
   try {
     if (dbReady()) {
-      const result = await ensureImpeccableForWebsite();
+      const result = await ensureImpeccableForWebsite({ attach: false });
       logEvent(
         "info",
         result.skipped
-          ? "impeccable skill already in library; attached to website"
-          : "impeccable skill installed for website agent",
+          ? "impeccable skill already in library; not auto-attached"
+          : "impeccable skill installed in library; not auto-attached",
       );
     }
   } catch (error) {
@@ -1318,6 +1327,29 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    {
+      const contextMatch = pathname.match(/^\/api\/agents\/([^/]+)\/context$/);
+      if (contextMatch && req.method === "GET") {
+        if (!dbReady()) {
+          json(res, 503, { error: "Database is not connected" });
+          return;
+        }
+        const existing = await getAgent(decodeURIComponent(contextMatch[1]));
+        if (!existing) {
+          json(res, 404, { error: "Agent not found" });
+          return;
+        }
+        json(
+          res,
+          200,
+          await previewContextPack(existing, {
+            modelId: typeof existing.modelId === "string" ? existing.modelId : activeModelId,
+          }),
+        );
+        return;
+      }
+    }
+
     if (req.method === "POST" && pathname === "/api/agents") {
       const body = JSON.parse((await readBody(req)) || "{}");
       if (!body.name || typeof body.name !== "string") {
@@ -1636,9 +1668,11 @@ const server = createServer(async (req, res) => {
       const prompt = packed.prompt
         ? `${packed.prompt}\n${trimmed || attachFallback(profile)}`
         : trimmed;
+      const chatPrompt = await enrichRestartPrompt(prompt, profile);
       const storedUser =
         [trimmed, attachmentChatMarkup(packed.files)].filter(Boolean).join("\n\n") ||
         (packed.files.length ? `Attached: ${attachmentSummary(packed.files)}` : prompt);
+      const turnStartedAt = Date.now();
 
       logEvent("info", `chat session=${session.id} (engine=${session.engine || "pi"}): ${storedUser.slice(0, 120)}`);
       await insertMessage({
@@ -1678,36 +1712,39 @@ const server = createServer(async (req, res) => {
       }, 15000);
 
       try {
-        let turn;
-        if (session.engine === "agy") {
-          turn = await chatAgy({
-            message: prompt,
-            modelId: typeof modelId === "string" ? modelId : session.modelId || undefined,
-            session,
-            profile,
-            onEvent: (event, liveTurn) => {
-              if (liveTurn) lastTurn = liveTurn;
-              if (!res.writableEnded) writeSse(res, event);
-              if (liveTurn) persister.schedule(liveTurn, true);
-            },
-            images: packed.images,
-          });
-        } else {
-          turn = await withPi(() =>
-            chat(
-              prompt,
-              typeof modelId === "string" ? modelId : undefined,
-              session,
-              (event, liveTurn) => {
-                if (liveTurn) lastTurn = liveTurn;
-                if (!res.writableEnded) writeSse(res, event);
-                if (liveTurn) persister.schedule(liveTurn, true);
-              },
-              packed.images,
-            ),
-          );
-        }
+        const onEvent = (event, liveTurn) => {
+          if (liveTurn) lastTurn = liveTurn;
+          if (!res.writableEnded) writeSse(res, event);
+          if (liveTurn) persister.schedule(liveTurn, true);
+        };
+        const runOnce = (text, images) =>
+          session.engine === "agy"
+            ? chatAgy({
+                message: text,
+                modelId: typeof modelId === "string" ? modelId : session.modelId || undefined,
+                session,
+                profile,
+                onEvent,
+                images,
+              })
+            : withPi(() =>
+                chat(text, typeof modelId === "string" ? modelId : undefined, session, onEvent, images),
+              );
+
+        let turn = await runOnce(chatPrompt, packed.images);
         lastTurn = turn;
+        let autoContinues = 0;
+        while (autoContinues < 2 && needsAutoContinue(turn)) {
+          autoContinues += 1;
+          turn.blocks.push({ type: "note", text: "Continuing…" });
+          lastTurn = turn;
+          if (!res.writableEnded) writeSse(res, { type: "note", text: "Continuing…" });
+          persister.schedule(turn, true);
+          const next = await runOnce(AUTO_CONTINUE_PROMPT);
+          turn = mergeTurns(turn, next);
+          lastTurn = turn;
+        }
+
         let host = null;
         const websiteChat = !session.agentId || session.agentId === WEBSITE_AGENT_ID;
         if (websiteChat) {
@@ -1729,6 +1766,13 @@ const server = createServer(async (req, res) => {
             if (host?.lastError) writeSse(res, { type: "error", error: host.lastError });
           }
         }
+        await appendStateJournal(profile, {
+          sessionId: session.id,
+          text: turn.text,
+          host,
+          startedAt: turnStartedAt,
+        }).catch((error) => logEvent("warn", `STATE.md journal failed: ${sanitizeError(error)}`));
+        logEvent("info", "turn metrics", turnMetrics(turn, { autoContinues }));
         await persister.finish(turn, false);
         if (session.title && session.title !== "New chat" && client && session.engine !== "agy") {
           await client.setSessionName(session.title).catch(() => {});

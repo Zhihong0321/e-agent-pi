@@ -3,6 +3,8 @@ import path from "node:path";
 import { imagenConfigured, imagenSystemPrompt } from "./imagen.mjs";
 import { hostSystemPrompt } from "./ee-html.mjs";
 import { proposalSystemPrompt } from "./github.mjs";
+import { loadContextPack } from "./context-pack.mjs";
+import { interpolatePiModels } from "./models.mjs";
 import { IMAGEN_SKILL_DIR, RUNTIME_DIR, SPAWN_SUBAGENTS_SLUG, STORAGE, SUBAGENTS_EXTENSION, isProposalAgent } from "./paths.mjs";
 
 /**
@@ -30,21 +32,23 @@ export function mcpServerConfig(server) {
 
 /**
  * Write a per-agent Pi dir so skills/MCP are not loaded from the shared host Pi folder.
- * @param {{ id: string; name: string; rolePrompt: string }} agent
+ * @param {{ id: string; name: string; rolePrompt: string; slug?: string }} agent
  * @param {object[]} mcpServers
  * @param {string} modelsJson
+ * @param {{ modelId?: string | null }} [opts]
  */
-export async function materializeAgentRuntime(agent, mcpServers, modelsJson) {
+export async function materializeAgentRuntime(agent, mcpServers, modelsJson, { modelId } = {}) {
   const dir = path.join(RUNTIME_DIR, agent.id);
   await mkdir(dir, { recursive: true });
   const role = String(agent.rolePrompt || "").trim();
   const extras = [imagenSystemPrompt()];
   if (agent.id === "website" || agent.slug === "website") extras.push(hostSystemPrompt());
   if (isProposalAgent(agent)) extras.push(proposalSystemPrompt(agent));
-  const extraText = extras.filter(Boolean).join("\n\n");
+  const pack = await loadContextPack(agent, { modelId });
+  const extraText = [...extras.filter(Boolean), pack].filter(Boolean).join("\n\n");
   const roleText = extraText ? `${role}\n\n${extraText}`.trim() + "\n" : `${role}\n`;
   await writeFile(path.join(dir, "ROLE.md"), roleText, "utf8");
-  await writeFile(path.join(dir, "models.json"), modelsJson);
+  await writeFile(path.join(dir, "models.json"), interpolatePiModels(modelsJson));
   /** @type {Record<string, unknown>} */
   const mcp = {};
   for (const server of mcpServers) {

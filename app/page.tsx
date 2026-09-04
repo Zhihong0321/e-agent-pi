@@ -14,6 +14,10 @@ type Tab = "chats" | "agents" | "live" | "files";
 type View = Tab | "chat";
 type Sheet = null | "model" | "agent";
 type ChatFilter = "all" | "ask" | "done";
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+};
 
 const SESSION_KEY = "e-agent-active-session";
 const AGENT_KEY = "e-agent-active-agent";
@@ -149,7 +153,7 @@ function toolsLabel(agent: Agent) {
   return parts.length ? parts.join(" · ") : "Role only";
 }
 
-const SHORT_MAX = 4;
+const SHORT_MAX = 16;
 
 /** The text drawn inside the avatar tile. Falls back to the first letter of the name. */
 function avatarLabel(short?: string | null, name?: string | null) {
@@ -159,10 +163,10 @@ function avatarLabel(short?: string | null, name?: string | null) {
   return (first || "A").toUpperCase();
 }
 
-/** Avatar classes, with a length step so 3-4 character labels stay inside the tile. */
+/** Avatar classes, with a length step so longer labels shrink and wrap to fit the tile (up to 2 lines, ~8 chars each). */
 function avatarClass(label: string, extra = "") {
   const len = [...label].length;
-  const step = len >= 4 ? "len-4" : len === 3 ? "len-3" : "";
+  const step = len > 8 ? "len-16" : len > 4 ? "len-8" : len === 4 ? "len-4" : len === 3 ? "len-3" : "";
   return ["avatar", extra, step].filter(Boolean).join(" ");
 }
 
@@ -269,7 +273,7 @@ function applyStreamEvent(blocks: TurnBlock[], event: StreamEvent): TurnBlock[] 
   return blocks;
 }
 
-type SiriSignal = "idle" | "complete" | "ask";
+type SiriSignal = "idle" | "working" | "complete" | "ask";
 
 function assistantPlainText(msg: ChatMessage): string {
   const fromBlocks = (msg.blocks ?? [])
@@ -304,7 +308,7 @@ function looksLikeCompletion(text: string, tools: boolean): boolean {
 }
 
 function classifySiriSignal(history: ChatMessage[], loading: boolean, error: string): SiriSignal {
-  if (loading) return "idle";
+  if (loading) return "working";
   if (error) return "ask";
   const last = history[history.length - 1];
   if (!last || last.role !== "assistant" || last.streaming) return "idle";
@@ -385,8 +389,8 @@ async function readSse(res: Response, onEvent: (event: StreamEvent) => void) {
 }
 
 export default function Home() {
-  const [view, setView] = useState<View>("chats");
-  const [tab, setTab] = useState<Tab>("chats");
+  const [view, setView] = useState<View>("agents");
+  const [tab, setTab] = useState<Tab>("agents");
   const [full] = useState(readFullPreference);
   const [message, setMessage] = useState("");
   const [history, setHistory] = useState<ChatMessage[]>([]);
@@ -413,6 +417,8 @@ export default function Home() {
   const [chatFilter, setChatFilter] = useState<ChatFilter>("all");
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installed, setInstalled] = useState(false);
   const historyLoad = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
   const resumeAttempt = useRef(0);
@@ -426,6 +432,32 @@ export default function Home() {
   const siriSignal = inChat ? classifySiriSignal(history, loading, error) : "idle";
   const pendingStream = !loading && history.some((msg) => msg.role === "assistant" && msg.streaming);
   const liveUrl = agentLiveUrl(selected, host);
+
+  useEffect(() => {
+    if (prefersStandalone()) setInstalled(true);
+    const onBeforeInstall = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+    const onInstalled = () => {
+      setInstalled(true);
+      setInstallPrompt(null);
+    };
+    window.addEventListener("beforeinstallprompt", onBeforeInstall);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  const handleInstall = async () => {
+    if (!installPrompt) return;
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    if (choice.outcome === "accepted") setInstalled(true);
+    setInstallPrompt(null);
+  };
 
   useEffect(() => {
     if (view !== "chat" || !sessionId || !pendingStream) return;
@@ -904,7 +936,11 @@ export default function Home() {
           </span>
         </div>
         <p className="siri-live" role="status">
-          {siriSignal === "complete" ? "Job complete" : siriSignal === "ask" ? "Agent is asking a question" : ""}
+          {siriSignal === "working"
+            ? "Agent is working"
+            : siriSignal === "ask"
+              ? "Agent is asking a question"
+              : ""}
         </p>
 
         <div className="inbox" inert={inChat ? true : undefined}>
@@ -914,6 +950,16 @@ export default function Home() {
               <h1>{tabTitle}</h1>
             </div>
             <div className="inbox-actions">
+              {installPrompt && !installed && (
+                <button
+                  className="icon-btn"
+                  type="button"
+                  aria-label="Install app"
+                  onClick={() => void handleInstall()}
+                >
+                  <IconInstall />
+                </button>
+              )}
               <a className="icon-btn" href="/settings" aria-label="Open settings">
                 <IconSettings />
               </a>
@@ -962,8 +1008,8 @@ export default function Home() {
           <nav className="bottom-nav">
             {(
               [
-                { id: "chats" as const, label: "Chats", badge: askCount, icon: <IconChats /> },
                 { id: "agents" as const, label: "Agents", badge: 0, icon: <IconAgents /> },
+                { id: "chats" as const, label: "Chats", badge: askCount, icon: <IconChats /> },
                 { id: "live" as const, label: "Live", badge: 0, icon: <IconLive /> },
                 { id: "files" as const, label: "Files", badge: 0, icon: <IconFiles /> },
               ] as const
@@ -1701,6 +1747,11 @@ function AgentConversation({
           </div>
         </div>
       )}
+      {siriSignal === "complete" && last?.role === "assistant" && !last.streaming && (
+        <div className="task-complete-pill" role="status">
+          Task completed
+        </div>
+      )}
       <div ref={bottomRef} />
     </div>
   );
@@ -1826,65 +1877,104 @@ function TurnBlocks({
   agentId: string;
   onOpen: (src: string, alt?: string) => void;
 }) {
+  const live = Boolean(streaming);
+  const [revealed, setRevealed] = useState(live);
   const [open, setOpen] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    setRevealed(live);
+  }, [live]);
+
+  const showDetails = live || revealed;
+  const steps = blocks.length;
+  const stepLabel = `${steps} ${steps === 1 ? "step" : "steps"}`;
+
   return (
     <div className="turn-stack">
-      {blocks.map((block, index) => {
-        const key = block.type === "tool" ? block.id || `tool-${index}` : `t-${index}`;
-        if (block.type === "thinking") {
-          const done = !streaming || index < blocks.length - 1;
-          const expanded = open[key] ?? !done;
-          return (
-            <div key={key}>
-              <button
-                type="button"
-                className="turn-row"
-                onClick={() => setOpen((prev) => ({ ...prev, [key]: !expanded }))}
-              >
-                {done ? (
-                  <span className="turn-icon think">
-                    <IconCheck tiny />
+      {!live && (
+        <button
+          type="button"
+          className="turn-row"
+          aria-expanded={revealed}
+          onClick={() => setRevealed((prev) => !prev)}
+        >
+          <span className="turn-icon">
+            <IconCheck tiny />
+          </span>
+          <span className="turn-copy">
+            <strong>Thought process</strong>
+            <span>{stepLabel}</span>
+          </span>
+          <IconChevron rotated={revealed} />
+        </button>
+      )}
+      {showDetails && (
+        <div className={live ? undefined : "turn-work"}>
+          {blocks.map((block, index) => {
+            const key = block.type === "tool" ? block.id || `tool-${index}` : `t-${index}`;
+            if (block.type === "thinking") {
+              const done = !live || index < blocks.length - 1;
+              const expanded = open[key] ?? !done;
+              return (
+                <div key={key}>
+                  <button
+                    type="button"
+                    className="turn-row"
+                    onClick={() => setOpen((prev) => ({ ...prev, [key]: !expanded }))}
+                  >
+                    {done ? (
+                      <span className="turn-icon think">
+                        <IconCheck tiny />
+                      </span>
+                    ) : (
+                      <i className="spin" />
+                    )}
+                    <span className="turn-copy">
+                      <strong style={{ color: done ? "#10211b" : "#008069" }}>
+                        {done ? "Thought" : "Thinking"}
+                      </strong>
+                    </span>
+                    <IconChevron rotated={expanded} />
+                  </button>
+                  {expanded && block.text ? <p className="turn-text">{block.text}</p> : null}
+                </div>
+              );
+            }
+            if (block.type !== "tool") return null;
+            const running = Boolean(block.running);
+            const expanded = open[key] ?? live;
+            const hasResult = Boolean(block.result);
+            return (
+              <div key={key}>
+                <button
+                  type="button"
+                  className="turn-row"
+                  disabled={!hasResult}
+                  onClick={() => setOpen((prev) => ({ ...prev, [key]: !expanded }))}
+                >
+                  {running ? (
+                    <i className="spin" />
+                  ) : (
+                    <span className="turn-icon">
+                      <IconCheck tiny />
+                    </span>
+                  )}
+                  <span className="turn-copy">
+                    <strong style={{ color: running ? "#008069" : "#10211b" }}>{block.name}</strong>
+                    {block.detail ? <span>{block.detail}</span> : null}
                   </span>
-                ) : (
-                  <i className="spin" />
-                )}
-                <span className="turn-copy">
-                  <strong style={{ color: done ? "#10211b" : "#008069" }}>
-                    {done ? "Thought" : "Thinking"}
-                  </strong>
-                </span>
-                <IconChevron rotated={expanded} />
-              </button>
-              {expanded && block.text ? <p className="turn-text">{block.text}</p> : null}
-            </div>
-          );
-        }
-        if (block.type !== "tool") return null;
-        const running = Boolean(block.running);
-        return (
-          <div key={key}>
-            <div className="turn-row" style={{ cursor: "default" }}>
-              {running ? (
-                <i className="spin" />
-              ) : (
-                <span className="turn-icon">
-                  <IconCheck tiny />
-                </span>
-              )}
-              <span className="turn-copy">
-                <strong style={{ color: running ? "#008069" : "#10211b" }}>{block.name}</strong>
-                {block.detail ? <span>{block.detail}</span> : null}
-              </span>
-              <span className="turn-meta">{running ? "" : block.isError ? "error" : ""}</span>
-            </div>
-            {block.result ? (
-              <div className="turn-text">
-                <ChatCopy text={block.result} agentId={agentId} onOpen={onOpen} />
+                  {hasResult ? <IconChevron rotated={expanded} /> : <span className="turn-meta">{running ? "" : block.isError ? "error" : ""}</span>}
+                </button>
+                {expanded && block.result ? (
+                  <div className="turn-text">
+                    <ChatCopy text={block.result} agentId={agentId} onOpen={onOpen} />
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-          </div>
-        );
-      })}
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -1979,6 +2069,15 @@ function IconSettings(props: IconProps) {
     <svg {...svgProps(props, 18)} strokeWidth={2}>
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+function IconInstall(props: IconProps) {
+  return (
+    <svg {...svgProps(props, 18)} strokeWidth={2}>
+      <path d="M12 3v12" />
+      <path d="M7 10l5 5 5-5" />
+      <path d="M4 19h16" />
     </svg>
   );
 }

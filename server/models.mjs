@@ -11,7 +11,7 @@ const DEFAULT_BASE_URL = {
   KIMI: "https://api2.cmkey.cn/v1",
 };
 
-/** @typedef {{ id: string; label: string; shortLabel: string; provider: string; model: string; vaultCredential?: string; envPrefix: string; available?: boolean }} CatalogEntry */
+/** @typedef {{ id: string; label: string; shortLabel: string; provider: string; model: string; vaultCredential?: string; envPrefix: string; vision?: boolean; available?: boolean }} CatalogEntry */
 
 /** @type {CatalogEntry[] | null} */
 let catalogCache = null;
@@ -59,4 +59,17 @@ export async function resolveModelCredentials() {
  */
 export function findModel(models, modelId) {
   return models.find((entry) => entry.id === modelId);
+}
+
+/**
+ * Write real API keys into a models.json document so Pi does not need them in env.
+ * @param {string} modelsJson
+ */
+export function interpolatePiModels(modelsJson) {
+  const data = JSON.parse(modelsJson);
+  const cavoti = secret("cavoti_api_key");
+  const kimi = secret("kimi_api_key");
+  if (cavoti && data.providers?.cavoti) data.providers.cavoti.apiKey = cavoti;
+  if (kimi && data.providers?.["kimi-k3"]) data.providers["kimi-k3"].apiKey = kimi;
+  return JSON.stringify(data, null, 2);
 }

@@ -106,17 +106,27 @@ export async function installImpeccableSkill({ force = false } = {}) {
 }
 
 /**
- * Install (if needed), register in the catalog, attach to Website Dev Agent only.
+ * Install (if needed) and register in the catalog. Attach only when asked.
  *
- * @param {{ force?: boolean }} [opts]
+ * @param {{ force?: boolean; attach?: boolean }} [opts]
  */
-export async function ensureImpeccableForWebsite({ force = false } = {}) {
+export async function ensureImpeccableForWebsite({ force = false, attach = true } = {}) {
   const installed = await installImpeccableSkill({ force });
   const skill = await registerSkillDir({
     slug: IMPECCABLE_SLUG,
     source: "impeccable",
     sourceUrl: IMPECCABLE_DOCS,
   });
+  if (!attach) {
+    await attachAgentResources(WEBSITE_AGENT_ID, { skills: [IMPECCABLE_SLUG], detach: true }).catch(() => null);
+    return {
+      skipped: installed.skipped,
+      dest: installed.dest,
+      skill: publicSkill(skill),
+      attachedTo: null,
+      note: "Installed in the library. Attach via Settings Agent when a from-scratch redesign is wanted.",
+    };
+  }
   const agent = await attachAgentResources(WEBSITE_AGENT_ID, { skills: [IMPECCABLE_SLUG] });
   return {
     skipped: installed.skipped,
