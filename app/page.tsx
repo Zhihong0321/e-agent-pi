@@ -412,6 +412,7 @@ export default function Home() {
   const [media, setMedia] = useState<{ src: string; alt?: string } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const [liveStatus, setLiveStatus] = useState("");
+  const [runningId, setRunningId] = useState("");
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState("");
   const [chatFilter, setChatFilter] = useState<ChatFilter>("all");
@@ -422,9 +423,17 @@ export default function Home() {
   const historyLoad = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
   const resumeAttempt = useRef(0);
+  /** Mirrors sessionId for callbacks that outlive a render (the streaming loop). */
+  const sessionIdRef = useRef("");
+  /** True while the running turn's live transcript is not the history on screen (user opened another chat). */
+  const detachedRef = useRef(false);
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
   const selected = agents.find((agent) => agent.id === selectedAgentId) ?? agents[0] ?? FALLBACK_AGENT;
 
   const inChat = view === "chat";
+  const busyHere = loading && sessionId === runningId;
   const currentModels = selectedEngine === "agy" ? agyModels : models;
   const activeModel =
     currentModels.find((model) => model.id === selectedModelId) ??
@@ -657,19 +666,7 @@ export default function Home() {
     }
   };
 
-  const openSession = (id: string) => {
-    setSessionId(id);
-    setHistory([]);
-    setView("chat");
-    setSheet(null);
-    setError("");
-    window.localStorage.setItem(SESSION_KEY, id);
-    const session = sessions.find((row) => row.id === id);
-    if (session?.agentId) pickAgent(session.agentId);
-    if (session?.engine === "agy" || session?.engine === "pi") {
-      setSelectedEngine(session.engine);
-    }
-    if (session?.modelId) setSelectedModelId(session.modelId);
+  const loadHistory = (id: string) => {
     const loadId = ++historyLoad.current;
     void (async () => {
       try {
@@ -683,12 +680,36 @@ export default function Home() {
     })();
   };
 
+  const openSession = (id: string) => {
+    setSessionId(id);
+    setView("chat");
+    setSheet(null);
+    setError("");
+    window.localStorage.setItem(SESSION_KEY, id);
+    const session = sessions.find((row) => row.id === id);
+    if (session?.agentId) pickAgent(session.agentId);
+    if (session?.engine === "agy" || session?.engine === "pi") {
+      setSelectedEngine(session.engine);
+    }
+    if (session?.modelId) setSelectedModelId(session.modelId);
+    // Rejoining the chat that is still working: keep the live transcript instead of reloading over it.
+    const rejoin = loading && id === runningId;
+    if (rejoin && history.some((msg) => msg.streaming && msg.sessionId === id)) {
+      detachedRef.current = false;
+      return;
+    }
+    detachedRef.current = loading;
+    setHistory([]);
+    loadHistory(id);
+  };
+
   const startNewChat = async (agentId?: string, engine?: "pi" | "agy") => {
     const agent = agents.find((row) => row.id === agentId) ?? (selected.id ? selected : undefined);
     if (agent) pickAgent(agent.id);
     const chosenEngine = engine || (agent?.engine === "agy" ? "agy" : selectedEngine);
     setSelectedEngine(chosenEngine);
     setError("");
+    if (loading) detachedRef.current = true;
     setHistory([]);
     setSessionId("");
     setView("chat");
@@ -763,6 +784,8 @@ export default function Home() {
       setError("");
       setPublishOk(false);
       setLoading(true);
+      setRunningId(activeId);
+      detachedRef.current = false;
       setLiveStatus("Working…");
       setHistory((prev) => [
         ...prev,
@@ -790,8 +813,14 @@ export default function Home() {
     const finishIdle = () => {
       if (abortRef.current === ac) abortRef.current = null;
       setLoading(false);
+      setRunningId("");
       setLiveStatus("");
       setHistory((prev) => prev.map((msg) => (msg.streaming ? { ...msg, streaming: false } : msg)));
+      // The user left and came back while the turn ran: the screen holds a stale copy, so fetch the finished transcript.
+      if (detachedRef.current && sessionIdRef.current === activeId) {
+        detachedRef.current = false;
+        loadHistory(activeId);
+      }
     };
     let gotDone = false;
     let retry = false;
@@ -915,8 +944,7 @@ export default function Home() {
     setView(tab);
   };
 
-  const askCount = sessions.filter((session) => classifySession(session, loading && session.id === sessionId) === "ask")
-    .length;
+  const askCount = sessions.filter((session) => classifySession(session, session.id === runningId) === "ask").length;
   const renameAgentTile = async (id: string, short: string, password?: string) => {
     if (password) await api("/api/auth/login", { method: "POST", body: JSON.stringify({ password }) });
     const data = await api<{ agent: Agent }>(`/api/agents/${encodeURIComponent(id)}`, {
@@ -995,7 +1023,7 @@ export default function Home() {
                 filter={chatFilter}
                 query={query}
                 searchOpen={searchOpen}
-                runningId={loading ? sessionId : ""}
+                runningId={runningId}
                 askCount={askCount}
                 onFilter={setChatFilter}
                 onQuery={setQuery}
@@ -1052,7 +1080,7 @@ export default function Home() {
                     <span
                       className={[
                         "status-line",
-                        loading ? "working" : "",
+                        busyHere ? "working" : "",
                         siriSignal === "complete" ? "complete" : "",
                         siriSignal === "ask" ? "ask" : "",
                       ]
@@ -1060,7 +1088,7 @@ export default function Home() {
                         .join(" ")}
                     >
                       <i className="status-dot" />
-                      {loading
+                      {busyHere
                         ? liveStatus || "Working…"
                         : siriSignal === "complete"
                           ? "Job complete"
@@ -1080,7 +1108,7 @@ export default function Home() {
                   <span>{activeModel?.shortLabel ?? "Model"}</span>
                   <IconChevron />
                 </button>
-                {loading && (
+                {busyHere && (
                   <div className="work-bar">
                     <i />
                   </div>
@@ -1139,11 +1167,13 @@ export default function Home() {
                       value={message}
                       onChange={(event) => setMessage(event.target.value)}
                       onKeyDown={(event) => event.key === "Enter" && void send()}
-                      placeholder={loading ? `${selected.name} is working…` : "Message"}
+                      placeholder={
+                        busyHere ? `${selected.name} is working…` : loading ? "Another chat is still working…" : "Message"
+                      }
                       disabled={loading}
                     />
                   </div>
-                  {loading ? (
+                  {busyHere ? (
                     <button className="composer-circle stop" type="button" onClick={stop} aria-label="Stop">
                       <i />
                     </button>
@@ -1164,7 +1194,7 @@ export default function Home() {
                 </div>
               </div>
               <WorkingOverlay
-                active={loading}
+                active={busyHere}
                 agent={selected}
                 status={liveStatus}
                 message={history.findLast((msg) => msg.role === "assistant" && msg.streaming)}
@@ -1172,6 +1202,7 @@ export default function Home() {
                 engineLabel={selectedEngine === "agy" ? "AGY" : "Pi"}
                 modelLabel={activeModel?.shortLabel ?? ""}
                 onStop={stop}
+                onBack={goBack}
                 onOpenMedia={(src, alt) => setMedia({ src, alt })}
               />
             </>
@@ -1905,6 +1936,7 @@ function WorkingOverlay({
   engineLabel,
   modelLabel,
   onStop,
+  onBack,
   onOpenMedia,
 }: {
   active: boolean;
@@ -1915,6 +1947,7 @@ function WorkingOverlay({
   engineLabel: string;
   modelLabel: string;
   onStop: () => void;
+  onBack: () => void;
   onOpenMedia: (src: string, alt?: string) => void;
 }) {
   const [phase, setPhase] = useState<WorkPhase>(active ? "on" : "off");
@@ -2025,18 +2058,27 @@ function WorkingOverlay({
             ) : null}
           </div>
         )}
-        <button
-          type="button"
-          className="working-stop"
-          disabled={!live}
-          onClick={() => {
-            setStopped(true);
-            onStop();
-          }}
-        >
-          <i />
-          Stop
-        </button>
+        <div className="working-actions">
+          <button
+            type="button"
+            className="working-stop"
+            disabled={!live}
+            onClick={() => {
+              setStopped(true);
+              onStop();
+            }}
+          >
+            <i />
+            Stop
+          </button>
+          <button type="button" className="working-back" disabled={!live} onClick={onBack}>
+            <IconBack />
+            Back to chats
+          </button>
+        </div>
+        {live && (
+          <p className="working-hint">{agent.name} keeps working while you are away. Reopen this chat any time.</p>
+        )}
       </div>
     </div>
   );
