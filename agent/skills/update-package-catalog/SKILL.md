@@ -1,11 +1,27 @@
 ---
 name: update-package-catalog
-description: Read and update Eternalgy package/product catalog in prod_main via the Postgres proxy. Use when the operator asks to change package prices, add a product, swap panels/inverters, or inspect a package BOM.
+description: Read and update Eternalgy package/product catalog in prod_main via the Postgres proxy. Use when the operator asks to change package prices, add a product, swap panels/inverters, inspect a package BOM, or sync from the Package google sheet.
 ---
 
 # Update package / product catalog
 
 Live catalog is Postgres `prod_main` through the proxy. Full schema and join rules are in this agent's role prompt. Read that first.
+
+## Package google sheet (almost every request)
+
+Procurement's source of truth is **ETERNALGY PACKAGE PRICE CENTER**. The operator will say "Package google sheet" — that is always:
+
+https://docs.google.com/spreadsheets/d/1aBCKeLnlUci2q98WwTIX77UwDqyrFFsK_1tFaSK4INU/edit
+
+Do not ask for the URL. Do not scrape `/edit`. Pull CSV in one call:
+
+```bash
+node "$CLOUD_PI_PACKAGE_SHEET" pull --live --write _inbox/package-sheet
+```
+
+Stdout is tab summaries. `--tab string --packages` (hybrid / micro / commercial / ev) for one family's rows. `--full` adds invoice text.
+
+Then SELECT the matching `prod_main` rows and diff: price changes, names on the sheet but not in DB (new), names in DB but not on the live tab (deactivate). Confirm before writes. Skip Special / Roadshow when deactivating from the sheet.
 
 ## Call SQL
 

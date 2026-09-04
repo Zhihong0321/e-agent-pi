@@ -772,7 +772,8 @@ export async function seedAgentCatalog() {
     name: "Package Updater",
     short: "K",
     headline: "Updates Eternalgy packages and products",
-    description: "Monthly catalog: prices, new products, and package BOMs in prod_main via the Postgres proxy.",
+    description:
+      "Keeps prod_main in sync with the Package google sheet: prices, new packages/products, and deactivating rows missing from the live tabs.",
     color: "amber",
     rolePrompt: packageRole,
   });

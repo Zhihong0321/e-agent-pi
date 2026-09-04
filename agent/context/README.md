@@ -30,5 +30,5 @@ A model-aware vision line is appended from `agent/model-catalog.json` `vision` (
 - Line numbers in CODEMAP files are from the snapshot date in each file's header. After a
   large edit, refresh them (grep the anchors named in the table).
 - STATE.md files here are seeds; once wired, the host owns them.
-- Sizes (approx. tokens): website ≈ 3.5k, proposal ≈ 5k, package ≈ 2k (+3.5k role),
+- Sizes (approx. tokens): website ≈ 3.5k, proposal ≈ 5k, package ≈ 3.5k (+4k role),
   newpages ≈ 1.5k, settings ≈ 1.5k, shared ≈ 0.8k.

@@ -143,6 +143,7 @@ a folder, not five code edits.
 | `$CLOUD_PI_IMAGEN` | image generation into the workspace |
 | `$CLOUD_PI_SITES` | persistent headless browser + site logins |
 | `$CLOUD_PI_PDF` | PDF text extract |
+| `$CLOUD_PI_PACKAGE_SHEET` | Package Price Center CSV pull (Package Updater only) |
 | `$PG_PROXY_TOKEN` | Postgres proxy token (only if saved on Settings) |
 
 ### 4.3 Environment allowlist

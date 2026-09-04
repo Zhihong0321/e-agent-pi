@@ -1,6 +1,15 @@
 import os from "node:os";
 import path from "node:path";
-import { CATALOG_CLI, IMAGEN_CLI, PDF_CLI, PI_PACKAGE_DIR, ROOT, SITES_CLI, isPackageAgent } from "./paths.mjs";
+import {
+  CATALOG_CLI,
+  IMAGEN_CLI,
+  PACKAGE_SHEET_CLI,
+  PDF_CLI,
+  PI_PACKAGE_DIR,
+  ROOT,
+  SITES_CLI,
+  isPackageAgent,
+} from "./paths.mjs";
 import { secret } from "./secrets.mjs";
 
 const ALLOW_EXACT = new Set([
@@ -62,6 +71,7 @@ export function agentEnv(agent, extra = {}, from = process.env) {
   if (isPackageAgent(agent)) {
     const token = secret("pg_proxy_token");
     if (token) env.PG_PROXY_TOKEN = token;
+    env.CLOUD_PI_PACKAGE_SHEET = PACKAGE_SHEET_CLI;
   }
 
   for (const [key, value] of Object.entries(extra)) {

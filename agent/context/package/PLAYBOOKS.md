@@ -3,8 +3,8 @@
 The six monthly recipes (price change, new product, new package, swap panel/inverter,
 add accessory to many, retire) are written out in
 [agent/roles/package.md](../../roles/package.md) § "Monthly work". They are the playbooks.
-Below: the pre-flight, the read-only lookups that answer 80% of questions, and the
-verification step every write must end with.
+Below: the pre-flight, **the sheet pull** (99% of chats start here), the read-only
+lookups, and the verification step every write must end with.
 
 ### Pre-flight (every chat, once)
 
@@ -12,6 +12,41 @@ verification step every write must end with.
 test -n "$PG_PROXY_TOKEN" && echo token:ok || echo token:MISSING
 ```
 If MISSING: tell the operator "save the Postgres proxy token on Settings → Keys, then start a new chat". Stop. Do not ask for the token in chat.
+
+### Pull: Package google sheet (do this first)
+
+When: operator says "Package google sheet", "latest prices", "sync packages", "new package",
+"deactivate what's not on the list", or pastes the Price Center URL.
+
+```bash
+node "$CLOUD_PI_PACKAGE_SHEET" pull --live --write _inbox/package-sheet
+```
+
+That is **one** tool call. Stdout is tab summaries (counts, columns, price range, sample names).
+Full rows go to `_inbox/package-sheet/packages.json` and `<slug>.csv`. For one family:
+
+```bash
+node "$CLOUD_PI_PACKAGE_SHEET" pull --tab string --packages
+```
+
+(`hybrid` / `micro` / `commercial` / `ev`). `--full` adds invoice text.
+Never `fetch` the `/edit` URL. Never Scrapling / screenshot the workbook.
+
+### Sync sheet → `prod_main` (prices, new, missing)
+
+When: monthly update, or "make the catalog match the sheet".
+
+Read: CLI JSON, then SELECT active rows of that `type` (`id, package_name, panel_qty, price, nett_price, max_discount, active`).
+
+1. Match on `nameKey` vs `lower(btrim(package_name))` after `HYBIRD`→`HYBRID`. If miss, match type + panel count + watt + STRING/MICRO/HYBRID; list unmatched, do not guess.
+2. **Price change:** sheet `price`/`nett` ≠ DB → propose UPDATE. Set `max_discount = price - nett` when the row already follows that pattern.
+3. **New package:** on the sheet, not in DB → clone the closest live package (role recipe 3). New product first if the panel/inverter SKU is new (role recipe 2). Leave `active = false` until told to publish.
+4. **Deactivate:** in DB `active is true` for that family, **not** on the live tab → propose `active = false`. Never this for Special / Roadshow. Never DELETE.
+5. Confirm the three lists (N price, N new, N deactivate) with names + old → new. Then write.
+
+Done when: SELECT back matches the sheet for that family, and you reported ids.
+
+Never: deactivate from the superseded `hybrid-res` tab; use `hybrid-v2`. Never sum item prices to invent a package price.
 
 ### Lookup: packages by panel count / type / brand
 
@@ -61,3 +96,4 @@ select count(*)::int as used_by from package where $1 = any(linked_package_item)
 - Write to invoice, customer, payment, user, voucher, agent tables.
 - SELECT `package.password`.
 - Sum item `selling_price` to "fix" a package price.
+- Scrape the Google Sheets editor when `$CLOUD_PI_PACKAGE_SHEET` exists.

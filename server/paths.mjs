@@ -100,6 +100,7 @@ export const CATALOG_CLI = path.join(ROOT, "server", "catalog-cli.mjs");
 export const IMAGEN_CLI = path.join(ROOT, "server", "imagen-cli.mjs");
 export const SITES_CLI = path.join(ROOT, "server", "sites-cli.mjs");
 export const PDF_CLI = path.join(ROOT, "server", "pdf-cli.mjs");
+export const PACKAGE_SHEET_CLI = path.join(ROOT, "server", "package-sheet-cli.mjs");
 export const IMAGEN_SKILL_DIR = path.join(ROOT, "agent", "imagen");
 export const SUBAGENTS_EXTENSION = path.join(ROOT, "agent", "extensions", "subagents.ts");
 export const SPAWN_SUBAGENTS_SLUG = "spawn-subagents";

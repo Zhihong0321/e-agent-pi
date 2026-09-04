@@ -131,6 +131,8 @@ On boot the host also downloads the official Scrapling Agent Skill zip into `/st
 | `agent/roles/settings.md` | Seed prompt for Settings Agent |
 | `agent/skills/` | Bundled skills copied into the host library on boot |
 | `server/catalog-cli.mjs` | Chat-side catalog CLI (`CLOUD_PI_CATALOG`) |
+| `server/package-sheet.mjs` | Package Price Center Google Sheet CSV pull + parse |
+| `server/package-sheet-cli.mjs` | Package Updater CLI (`CLOUD_PI_PACKAGE_SHEET`) |
 | `agent/model-catalog.json` | Luna + Kimi catalog |
 | `server/catalog.mjs` | `agents`, `skills`, `mcp_servers`, attachments |
 | `server/impeccable.mjs` | Official Impeccable Pi skill → library + Website Dev Agent |

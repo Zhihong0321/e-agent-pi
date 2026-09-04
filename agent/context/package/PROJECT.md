@@ -19,6 +19,38 @@ This file records only what that role prompt does not.
 
 Verified 2026-09-03: a `read_only` token answers HTTP 403 `{"error":"This token is read_only"}` on UPDATE. SELECT works with it.
 
+## Package google sheet (source of truth for the price list)
+
+Operator shorthand: **Package google sheet** / **package sheet** / **Price Center**.
+Do not ask for this URL; it is always this workbook.
+
+| Item | Value |
+|------|-------|
+| Title | ETERNALGY PACKAGE PRICE CENTER |
+| Id | `1aBCKeLnlUci2q98WwTIX77UwDqyrFFsK_1tFaSK4INU` |
+| Edit | https://docs.google.com/spreadsheets/d/1aBCKeLnlUci2q98WwTIX77UwDqyrFFsK_1tFaSK4INU/edit |
+| Access | Anyone with the link (CSV export works; no Google login) |
+| Owner | Procurement Manager |
+| Extract | `node "$CLOUD_PI_PACKAGE_SHEET" pull --live` (tab summaries) or `--tab string --packages` |
+
+Procurement updates this sheet. That is the latest package, pricing, new package, new
+product, and (by absence) what to deactivate. `prod_main` is what the proposal site
+sells; the sheet is what should be true. Diff sheet → DB, then confirm before writes.
+
+Live tabs (2026-09-04; gids are stable if a tab is renamed):
+
+| Slug | Tab | gid | Maps to `package.type` | Notes |
+|------|-----|-----|------------------------|-------|
+| hybrid-v2 | HYBIRD PACKAGE v2 1JUN2026 (2) | 1152370454 | Residential | Current hybrid list. Names say `HYBIRD` (typo) |
+| hybrid-res | HYBIRD Residential package | 851508429 | Residential | **Superseded.** Skip with `--live` |
+| string-res | STRING Residential package | 694235366 | Residential | Current string residential |
+| micro-res | MICRO Residential PACKAGE | 1964999635 | Residential | Current micro |
+| string-com | String commercial | 2110465309 | Tariff B&D Low Voltage | Sheet type is `commercial` |
+| ev | EV Charger | 1691649272 | EV Charger | Different columns; `Price(RM)` only |
+
+A new tab the CLI does not know yet still appears on pull (discovered from htmlview).
+Special / Roadshow is **not** in this workbook — do not deactivate those from a sheet sync.
+
 ## Who else touches these tables
 
 - The **Proposal site** (`ee-proposal`) reads `package`, `product`, `invoice`, `customer`,
@@ -39,9 +71,8 @@ Verified 2026-09-03: a `read_only` token answers HTTP 403 `{"error":"This token 
 | product | 69 | — |
 | brand, category | 0 | — |
 
-Re-verify with a SELECT before quoting these; they drift monthly.
-(Live re-check from this workstation was not possible on 2026-09-04; the numbers above
-are from the 2026-09-03 verification recorded in the role file.)
+Sheet live rows (2026-09-04 pull): hybrid-v2 131 · string-res 100 · micro-res 33 ·
+string-com 122 · ev 15. Re-verify with the CLI + a SELECT; both drift.
 
 ## Observed in chat logs
 

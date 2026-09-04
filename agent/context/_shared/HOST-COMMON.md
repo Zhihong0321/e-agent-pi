@@ -40,6 +40,7 @@ or Scrapling (`scrapling extract get URL --ai-targeted`). Scrape output goes to 
 | `$CLOUD_PI_IMAGEN` | `generate --prompt "..." --out assets/x.png [--aspect 16:9]` (only if HOST.md says imaging is on) |
 | `$CLOUD_PI_SITES` | site logins + NEWPAGES CRUD (NEWPAGES agent only) |
 | `$CLOUD_PI_CATALOG` | host catalog (Settings Agent only) |
+| `$CLOUD_PI_PACKAGE_SHEET` | Package Price Center CSV pull (Package Updater only) |
 | `$CLOUD_PI_ROOT` | `/app`; fallback path for the CLIs above (`$CLOUD_PI_ROOT/server/<name>-cli.mjs`) |
 
 If a var is missing, say so in one line and use the fallback path. Do not go looking for it.

@@ -26,6 +26,22 @@ Use `params` for values (`$1`, `$2`, …). One SQL statement per request.
 
 Verified 2026-09-03: a `read_only` token returns HTTP 403 `{"error":"This token is read_only"}` on UPDATE. SELECT works. If writes fail that way, ask the operator for a write-capable packet on the same `PACKAGE_Updater` profile. Do not try other databases or tables to “get around” it.
 
+## Primary source: Package google sheet
+
+When the operator says **Package google sheet**, **package sheet**, **price sheet**, or **Price Center**, they mean this workbook (do not ask for the URL):
+
+https://docs.google.com/spreadsheets/d/1aBCKeLnlUci2q98WwTIX77UwDqyrFFsK_1tFaSK4INU/edit
+
+Title: **ETERNALGY PACKAGE PRICE CENTER**. Procurement Manager owns it. It is the latest package list, prices, new products, and the list of what should stay active. A package on `prod_main` that is missing from the matching live tab is a deactivate candidate (`active = false`), after confirm.
+
+Pull it in **one** command. Never scrape the Google Sheets editor (slow, canvas, easy to miss rows).
+
+```bash
+node "$CLOUD_PI_PACKAGE_SHEET" pull --live --write _inbox/package-sheet
+```
+
+`--live` skips the superseded `HYBIRD Residential package` tab. `--tab string` (or hybrid / micro / commercial / ev) pulls one family. `--full` adds invoice text. Details: context pack PROJECT / CODEMAP / PLAYBOOKS.
+
 ## Scope (strict)
 
 **May read** (to do the job): `package`, `package_item`, `product`. Lookup-only: `brand`, `category` (both currently empty).
@@ -158,6 +174,8 @@ Most accessory lines are per-package (`pki_res_1_mibet_mounting_20260713`, `1780
 
 ## Monthly work (how to actually do it)
 
+If the operator is working from the Package google sheet (almost always), pull it first
+(`node "$CLOUD_PI_PACKAGE_SHEET" pull --live`) and follow PLAYBOOKS "Sync sheet → prod_main".
 Always SELECT first. Show the operator the current row(s). Wait for an explicit go-ahead before INSERT/UPDATE/DELETE.
 
 ### 1. Price change
@@ -229,7 +247,7 @@ Do not append the same item bubble_id to hundreds of packages unless the operato
 4. Match 1P vs 3P (`[1P]` / `[3P]` in names) and STRING vs MICRO.
 5. Residential vs Tariff B&D vs Roadshow vs EV are different lists. Do not mix types unless asked.
 6. `price` on `package` is the commercial number. Item `selling_price` is often 0 — do not “fix” package price by summing items unless asked.
-7. Workspace may hold price-list PDFs/images under `_inbox/`. Read them; do not git-commit.
+7. Workspace may hold price-list PDFs/images under `_inbox/` and sheet pulls under `_inbox/package-sheet/`. Prefer the Package google sheet over a PDF. Do not git-commit either.
 8. NEVER `git add`, `git commit`, `git push`.
 
 ## Chat replies
@@ -250,8 +268,9 @@ Rules: one row per package, `package_name` on a single line, group by panel coun
 
 ## How to start a request
 
-1. Restate the change (which type, which watt/brand, which packages).
-2. SELECT current rows.
-3. Propose SQL in plain language (N packages, old price → new price).
-4. On go-ahead, run writes one package or one product at a time if the set is small; batched parameterized updates if it is a whole family.
-5. SELECT back the changed rows and report ids + names + new values.
+1. If the operator mentions the sheet, prices, new packages, or deactivating missing ones: pull the Package google sheet first (`node "$CLOUD_PI_PACKAGE_SHEET" pull --live`). Do not ask for the URL.
+2. Restate the change (which type, which watt/brand, which packages).
+3. SELECT current rows in `prod_main`.
+4. Propose SQL in plain language (N packages, old price → new price; or N new / N to deactivate).
+5. On go-ahead, run writes one package or one product at a time if the set is small; batched parameterized updates if it is a whole family.
+6. SELECT back the changed rows and report ids + names + new values.
