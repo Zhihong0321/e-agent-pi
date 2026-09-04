@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
@@ -29,8 +29,9 @@ import { getGitStatus, getGitWorkspaceStatus, initGitWorkspace, initWorkspace, s
 import { forgetBundleHash, hostConfigured, hostPublic, publishWorkspace } from "./ee-html.mjs";
 import { imagenConfigured, imagenPublic } from "./imagen.mjs";
 import { findModel, normalizeCavotiBaseUrl, resolveModelCredentials } from "./models.mjs";
-import { hasApiAuth, hasSession, sessionCookie, sessionToken, checkPassword } from "./auth.mjs";
-import { loadSecrets, publicSettings, saveSecrets, secret, secretFlags } from "./secrets.mjs";
+import { hasApiAuth, hasSession, hasStockAuth, sessionCookie, sessionToken, checkPassword } from "./auth.mjs";
+import { loadSecrets, publicSettings, rememberSecret, saveSecrets, secret, secretFlags } from "./secrets.mjs";
+import { adjustStockItem, ensureStockSchema, listStockItems, listStockMovements, setStockItem } from "./stock.mjs";
 import {
   BUNDLED_MODELS,
   DATA_DIR,
@@ -1232,6 +1233,19 @@ async function bootServices() {
     logEvent("error", `catalog failed: ${sanitizeError(error)}`);
   }
 
+  boot.step = "stock";
+  try {
+    if (dbReady()) {
+      await ensureStockSchema();
+      if (!secret("stock_api_token")) {
+        await rememberSecret("stock_api_token", randomBytes(24).toString("hex"));
+      }
+      logEvent("info", "stock inventory ready");
+    }
+  } catch (error) {
+    logEvent("error", `stock schema failed: ${sanitizeError(error)}`);
+  }
+
   boot.step = "ee-html";
   try {
     if (hostConfigured()) await publishToHost();
@@ -1408,6 +1422,44 @@ const server = createServer(async (req, res) => {
         json(res, 500, { error: sanitizeError(error) });
         return;
       }
+    }
+
+    if (pathname === "/api/stock" || pathname.startsWith("/api/stock/")) {
+      if (!hasStockAuth(req) && !authorized(req)) {
+        json(res, 401, { error: "Unauthorized" });
+        return;
+      }
+      if (!dbReady()) {
+        json(res, 503, { error: "Database is not connected" });
+        return;
+      }
+      try {
+        if (req.method === "GET" && pathname === "/api/stock") {
+          json(res, 200, { items: await listStockItems() });
+          return;
+        }
+        if (req.method === "POST" && pathname === "/api/stock") {
+          const body = JSON.parse((await readBody(req)) || "{}");
+          json(res, 200, { item: await setStockItem(body) });
+          return;
+        }
+        if (req.method === "POST" && pathname === "/api/stock/adjust") {
+          const body = JSON.parse((await readBody(req)) || "{}");
+          json(res, 200, { item: await adjustStockItem(body) });
+          return;
+        }
+        if (req.method === "GET" && pathname === "/api/stock/movements") {
+          const productKey = url.searchParams.get("productKey") || undefined;
+          const limit = url.searchParams.get("limit") || undefined;
+          json(res, 200, { movements: await listStockMovements({ productKey, limit }) });
+          return;
+        }
+      } catch (error) {
+        json(res, 400, { error: sanitizeError(error) });
+        return;
+      }
+      json(res, 404, { error: "Not found" });
+      return;
     }
 
     if (req.method === "GET" && pathname === "/api/settings") {

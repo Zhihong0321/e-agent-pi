@@ -76,6 +76,18 @@ export function hasApiAuth(req) {
   return Boolean(manageKey) && sameSecret(token, manageKey);
 }
 
+/**
+ * Machine auth for the stock inventory API: Bearer / X-Api-Key matching the
+ * host-generated `stock_api_token`. Separate from hasApiAuth so this token
+ * can never unlock /api/manage or /api/settings.
+ */
+export function hasStockAuth(req) {
+  const token = apiToken(req);
+  if (!token) return false;
+  const expected = secret("stock_api_token");
+  return Boolean(expected) && sameSecret(token, expected);
+}
+
 export function sessionCookie(token, clear = false) {
   const secure = process.env.RAILWAY_PUBLIC_DOMAIN ? "; Secure" : "";
   if (clear) {

@@ -88,6 +88,10 @@ export function agentEnv(agent, extra = {}, from = process.env) {
     if (token) env.SALES_PG_PROXY_TOKEN = token;
     const expiresAt = secret("sales_pg_proxy_expires_at");
     if (expiresAt) env.SALES_PG_PROXY_EXPIRES_AT = expiresAt;
+
+    const stockToken = secret("stock_api_token");
+    if (stockToken) env.STOCK_API_TOKEN = stockToken;
+    env.STOCK_API_URL = `http://127.0.0.1:${from.PORT || "8080"}`;
   }
 
   for (const [key, value] of Object.entries(extra)) {

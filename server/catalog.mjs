@@ -445,7 +445,7 @@ export async function deleteAgent(id) {
     throw new Error("The AFA Rate Updater cannot be deleted.");
   }
   if (agent.id === SALES_AGENT_ID || agent.slug === "sales") {
-    throw new Error("The Sales Analyst cannot be deleted.");
+    throw new Error("The Sales and Procurement agent cannot be deleted.");
   }
   await getPool().query(`UPDATE sessions SET agent_id = $1 WHERE agent_id = $2`, [WEBSITE_AGENT_ID, agent.id]);
   await getPool().query(`DELETE FROM agents WHERE id = $1`, [agent.id]);
@@ -804,14 +804,15 @@ export async function seedAgentCatalog() {
     rolePrompt: afaRole,
   });
 
-  const salesRole = await readFile(SALES_ROLE_FILE, "utf8").catch(() => "You are Sales Analyst.");
+  const salesRole = await readFile(SALES_ROLE_FILE, "utf8").catch(() => "You are Sales and Procurement.");
   await seedSystemAgent({
     id: SALES_AGENT_ID,
     slug: "sales",
-    name: "Sales Analyst",
-    short: "SLS",
-    headline: "Answers sales, payment, and outstanding questions",
-    description: "Read-only: queries invoice/payment/submitted_payment in prod_main to answer sales questions.",
+    name: "Sales and Procurement",
+    short: "S&P",
+    headline: "Sales, payment status, and stock on hand",
+    description:
+      "Read-only into prod_main for sales/payment/install-status questions; keeps its own stock inventory to flag models running low.",
     color: "teal",
     rolePrompt: salesRole,
   });

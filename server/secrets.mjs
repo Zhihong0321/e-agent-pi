@@ -27,6 +27,7 @@ const KEYS = [
   "afa_passkey",
   "sales_pg_proxy_token",
   "sales_pg_proxy_expires_at",
+  "stock_api_token",
 ];
 
 export const DEFAULT_PASSWORD = "eternalgy2026";
@@ -66,6 +67,7 @@ export async function saveSecrets(patch) {
     "settings_password",
     "afa_passkey",
     "sales_pg_proxy_token",
+    "stock_api_token",
   ]);
   for (const key of KEYS) {
     if (!(key in patch) || patch[key] === undefined) continue;

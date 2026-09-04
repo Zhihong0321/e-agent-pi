@@ -767,10 +767,12 @@ export default function SettingsPage() {
 
               <h2>Sales DB access</h2>
               <p>
-                Sales Analyst uses this <strong>read-only</strong> pg-proxy token to query <code>invoice</code>,{" "}
-                <code>payment</code>, and <code>submitted_payment</code> on <code>prod_main</code>. Paste the JWT only
-                (no <code>Bearer</code> prefix). Leave blank to keep the saved value. This is a separate,
-                lower-privilege token from the Postgres proxy one above — do not reuse Package Updater's token here.
+                Sales and Procurement uses this <strong>read-only</strong> pg-proxy token to query{" "}
+                <code>invoice</code>, <code>payment</code>, <code>submitted_payment</code>, and the package/product
+                catalog on <code>prod_main</code>. Paste the JWT only (no <code>Bearer</code> prefix). Leave blank to
+                keep the saved value. This is a separate, lower-privilege token from the Postgres proxy one above —
+                do not reuse Package Updater's token here. Its own stock inventory (a separate feature) lives in this
+                app's database and needs no key here.
               </p>
               <label>
                 Token {settings?.salesPgProxyTokenSet ? <em>saved</em> : <em>missing</em>}
