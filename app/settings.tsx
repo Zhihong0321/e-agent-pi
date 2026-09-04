@@ -21,6 +21,8 @@ type Settings = {
   eeHtmlName: string;
   eeHtmlUrl: string;
   eeHtmlLastError: string;
+  afaBaseUrl: string;
+  afaPasskeySet: boolean;
 };
 
 type Tab = "keys" | "agents" | "sites" | "skills" | "mcp" | "usage";
@@ -147,6 +149,8 @@ export default function SettingsPage() {
     eeHtmlSlug: "e-agent-site",
     eeHtmlName: "Website Dev Agent",
     settingsPassword: "",
+    afaBaseUrl: "",
+    afaPasskey: "",
   });
   const [agents, setAgents] = useState<AgentItem[]>([]);
   const [skills, setSkills] = useState<SkillItem[]>([]);
@@ -187,6 +191,7 @@ export default function SettingsPage() {
       eeHtmlBaseUrl: data.eeHtmlBaseUrl,
       eeHtmlSlug: data.eeHtmlSlug,
       eeHtmlName: data.eeHtmlName,
+      afaBaseUrl: data.afaBaseUrl,
     }));
   };
 
@@ -304,10 +309,12 @@ export default function SettingsPage() {
           ee_html_slug: form.eeHtmlSlug,
           ee_html_name: form.eeHtmlName,
           settings_password: form.settingsPassword,
+          afa_base_url: form.afaBaseUrl,
+          afa_passkey: form.afaPasskey,
         }),
       });
       setSettings(data);
-      setForm((prev) => ({ ...prev, cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", settingsPassword: "" }));
+      setForm((prev) => ({ ...prev, cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", settingsPassword: "", afaPasskey: "" }));
       if (data.proposal?.lastError) {
         setError(data.proposal.lastError);
         setSaved("Saved keys, but GitHub rejected the proposal push.");
@@ -748,6 +755,31 @@ export default function SettingsPage() {
                   value={form.pgProxyToken}
                   onChange={(event) => setForm({ ...form, pgProxyToken: event.target.value })}
                   placeholder={settings?.pgProxyTokenSet ? "••••••••  (unchanged)" : "eyJ…"}
+                />
+              </label>
+
+              <h2>AFA Rate API</h2>
+              <p>
+                AFA Rate Updater uses these to <code>POST /api/afa-rates</code> on the live website. Base URL is the
+                site's Railway origin (e.g. <code>https://your-app.up.railway.app</code>, no trailing slash). Leave
+                the passkey blank to keep the saved value. Do not paste the passkey in chat.
+              </p>
+              <label>
+                Base URL
+                <input
+                  type="text"
+                  value={form.afaBaseUrl}
+                  onChange={(event) => setForm({ ...form, afaBaseUrl: event.target.value })}
+                  placeholder="https://your-app.up.railway.app"
+                />
+              </label>
+              <label>
+                Passkey {settings?.afaPasskeySet ? <em>saved</em> : <em>missing</em>}
+                <input
+                  type="password"
+                  value={form.afaPasskey}
+                  onChange={(event) => setForm({ ...form, afaPasskey: event.target.value })}
+                  placeholder={settings?.afaPasskeySet ? "••••••••  (unchanged)" : "eternalgy2026"}
                 />
               </label>
 

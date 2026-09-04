@@ -8,6 +8,7 @@ import {
   PI_PACKAGE_DIR,
   ROOT,
   SITES_CLI,
+  isAfaAgent,
   isPackageAgent,
 } from "./paths.mjs";
 import { secret } from "./secrets.mjs";
@@ -72,6 +73,13 @@ export function agentEnv(agent, extra = {}, from = process.env) {
     const token = secret("pg_proxy_token");
     if (token) env.PG_PROXY_TOKEN = token;
     env.CLOUD_PI_PACKAGE_SHEET = PACKAGE_SHEET_CLI;
+  }
+
+  if (isAfaAgent(agent)) {
+    const passkey = secret("afa_passkey");
+    const baseUrl = secret("afa_base_url");
+    if (passkey) env.AFA_PASSKEY = passkey;
+    if (baseUrl) env.AFA_BASE_URL = baseUrl;
   }
 
   for (const [key, value] of Object.entries(extra)) {

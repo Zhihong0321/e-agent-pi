@@ -3,6 +3,8 @@ import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getPool } from "./db.mjs";
 import {
+  AFA_AGENT_ID,
+  AFA_ROLE_FILE,
   BUNDLED_SKILLS,
   DEFAULT_AGENT_ID,
   DEFAULT_NEWPAGES_LIVE_URL,
@@ -433,6 +435,9 @@ export async function deleteAgent(id) {
   if (agent.id === PACKAGE_AGENT_ID || agent.slug === "package" || agent.slug === "package-updater") {
     throw new Error("The Package Updater cannot be deleted.");
   }
+  if (agent.id === AFA_AGENT_ID || agent.slug === "afa-rate") {
+    throw new Error("The AFA Rate Updater cannot be deleted.");
+  }
   await getPool().query(`UPDATE sessions SET agent_id = $1 WHERE agent_id = $2`, [WEBSITE_AGENT_ID, agent.id]);
   await getPool().query(`DELETE FROM agents WHERE id = $1`, [agent.id]);
   return true;
@@ -776,6 +781,18 @@ export async function seedAgentCatalog() {
       "Keeps prod_main in sync with the Package google sheet: prices, new packages/products, and deactivating rows missing from the live tabs.",
     color: "amber",
     rolePrompt: packageRole,
+  });
+
+  const afaRole = await readFile(AFA_ROLE_FILE, "utf8").catch(() => "You are AFA Rate Updater.");
+  await seedSystemAgent({
+    id: AFA_AGENT_ID,
+    slug: "afa-rate",
+    name: "AFA Rate Updater",
+    short: "AFA",
+    headline: "Sets the monthly AFA rate",
+    description: "One job: POST the monthly AFA rate to the live website's API.",
+    color: "blue",
+    rolePrompt: afaRole,
   });
 
   const manageRow = await getPool().query(`SELECT id FROM skills WHERE slug = 'manage-host-settings'`);
