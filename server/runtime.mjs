@@ -35,10 +35,10 @@ export function mcpServerConfig(server) {
  * @param {{ id: string; name: string; rolePrompt: string; slug?: string }} agent
  * @param {object[]} mcpServers
  * @param {string} modelsJson
- * @param {{ modelId?: string | null }} [opts]
+ * @param {{ modelId?: string | null; runtimeKey?: string | null }} [opts]
  */
-export async function materializeAgentRuntime(agent, mcpServers, modelsJson, { modelId } = {}) {
-  const dir = path.join(RUNTIME_DIR, agent.id);
+export async function materializeAgentRuntime(agent, mcpServers, modelsJson, { modelId, runtimeKey } = {}) {
+  const dir = path.join(RUNTIME_DIR, runtimeKey || agent.id);
   await mkdir(dir, { recursive: true });
   const role = String(agent.rolePrompt || "").trim();
   const extras = [imagenSystemPrompt()];

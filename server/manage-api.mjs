@@ -86,8 +86,7 @@ export async function handleManage(req, res, url, ctx) {
       },
       boot: snap.boot,
       node: snap.node,
-      piClient: snap.piClient,
-      activeAgentId: snap.activeAgentId,
+      piPoolSize: snap.piPoolSize,
     });
     return true;
   }

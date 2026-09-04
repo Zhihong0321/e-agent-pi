@@ -590,28 +590,18 @@ export default function Home() {
       return;
     }
     setError("");
-    if (selectedEngine === "agy") {
-      setSelectedModelId(modelId);
-      if (sessionId) {
-        void api(`/api/sessions/${encodeURIComponent(sessionId)}`, {
-          method: "PATCH",
-          body: JSON.stringify({ modelId }),
-        }).catch(() => {});
-      }
-      setSheet(null);
-      return;
-    }
-    try {
-      const data = await api<{ activeModelId?: string }>("/api/model", {
-        method: "POST",
+    setSelectedModelId(modelId);
+    setSheet(null);
+    if (sessionId) {
+      void api(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+        method: "PATCH",
         body: JSON.stringify({ modelId }),
-      });
-      setSelectedModelId(data.activeModelId ?? modelId);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Model switch failed");
-    } finally {
-      setSheet(null);
+      }).catch(() => {});
     }
+    if (selectedEngine === "agy") return;
+    void api("/api/model", { method: "POST", body: JSON.stringify({ modelId }) }).catch((err) => {
+      setError(err instanceof Error ? err.message : "Model switch failed");
+    });
   };
 
   const switchEngine = async (engine: "pi" | "agy") => {
@@ -648,6 +638,23 @@ export default function Home() {
     setSheet(null);
     setError("");
     setSearchOpen(false);
+  };
+
+  const deleteSessionRow = async (id: string) => {
+    try {
+      await api(`/api/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete chat");
+      return;
+    }
+    setSessions((prev) => prev.filter((session) => session.id !== id));
+    if (sessionId === id) {
+      setSessionId("");
+      setHistory([]);
+      window.localStorage.removeItem(SESSION_KEY);
+      setTab("chats");
+      setView("chats");
+    }
   };
 
   const openSession = (id: string) => {
@@ -992,6 +999,7 @@ export default function Home() {
                 askCount={askCount}
                 onFilter={setChatFilter}
                 onQuery={setQuery}
+                onDelete={deleteSessionRow}
                 onOpen={openSession}
               />
             )}
@@ -1155,6 +1163,16 @@ export default function Home() {
                   )}
                 </div>
               </div>
+              <WorkingOverlay
+                active={loading}
+                agent={selected}
+                status={liveStatus}
+                message={history.findLast((msg) => msg.role === "assistant" && msg.streaming)}
+                error={error}
+                engineLabel={selectedEngine === "agy" ? "AGY" : "Pi"}
+                modelLabel={activeModel?.shortLabel ?? ""}
+                onStop={stop}
+              />
             </>
           )}
         </div>
@@ -1297,6 +1315,7 @@ function ChatsTab({
   onFilter,
   onQuery,
   onOpen,
+  onDelete,
 }: {
   sessions: ChatSession[];
   agents: Agent[];
@@ -1309,6 +1328,7 @@ function ChatsTab({
   onFilter: (filter: ChatFilter) => void;
   onQuery: (query: string) => void;
   onOpen: (id: string) => void;
+  onDelete: (id: string) => void;
 }) {
   const filtered = sessions.filter((session) => {
     const flag = classifySession(session, session.id === runningId);
@@ -1374,39 +1394,53 @@ function ChatsTab({
               const agent = agents.find((row) => row.id === session.agentId);
               const flag = classifySession(session, session.id === runningId);
               return (
-                <button
-                  key={session.id}
-                  type="button"
-                  className="session-btn"
-                  onClick={() => onOpen(session.id)}
-                >
-                  <span
-                    className={avatarClass(avatarLabel(agent?.short, agent?.name || "Chat"), agent?.color || "emerald")}
+                <div key={session.id} className="session-row">
+                  <button
+                    type="button"
+                    className="session-btn"
+                    onClick={() => onOpen(session.id)}
                   >
-                    {avatarLabel(agent?.short, agent?.name || "Chat")}
-                    {flag === "run" && (
-                      <span className="spin-badge">
-                        <i className="spin" />
-                      </span>
-                    )}
-                  </span>
-                  <span className="row-main">
-                    <span className="row-top">
-                      <strong>{session.title}</strong>
-                      <time className={flag === "ask" ? "unread" : undefined}>{formatSessionTime(session.updatedAt)}</time>
+                    <span
+                      className={avatarClass(avatarLabel(agent?.short, agent?.name || "Chat"), agent?.color || "emerald")}
+                    >
+                      {avatarLabel(agent?.short, agent?.name || "Chat")}
+                      {flag === "run" && (
+                        <span className="spin-badge">
+                          <i className="spin" />
+                        </span>
+                      )}
                     </span>
-                    <span className="row-sub">
-                      <span className="preview">
-                        {flag === "done" && <IconTicks />}
-                        {flag === "ask" && <span className="ask-dot">?</span>}
-                        {flag === "run" && <span className="working">Working</span>}
-                        {session.engine === "agy" && <span className="tag-agy">AGY</span>}
-                        <span>{previewText(session.preview) || "New chat"}</span>
+                    <span className="row-main">
+                      <span className="row-top">
+                        <strong>{session.title}</strong>
+                        <time className={flag === "ask" ? "unread" : undefined}>{formatSessionTime(session.updatedAt)}</time>
                       </span>
-                      {flag === "ask" && <span className="unread-badge">1</span>}
+                      <span className="row-sub">
+                        <span className="preview">
+                          {flag === "done" && <IconTicks />}
+                          {flag === "ask" && <span className="ask-dot">?</span>}
+                          {flag === "run" && <span className="working">Working</span>}
+                          {session.engine === "agy" && <span className="tag-agy">AGY</span>}
+                          <span>{previewText(session.preview) || "New chat"}</span>
+                        </span>
+                        {flag === "ask" && <span className="unread-badge">1</span>}
+                      </span>
                     </span>
-                  </span>
-                </button>
+                  </button>
+                  <button
+                    type="button"
+                    className="session-delete"
+                    aria-label={`Delete chat "${session.title || "New chat"}"`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (window.confirm(`Delete "${session.title || "this chat"}"? This can't be undone.`)) {
+                        onDelete(session.id);
+                      }
+                    }}
+                  >
+                    <IconTrash />
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -1847,6 +1881,185 @@ function AssistantTurn({
   );
 }
 
+type WorkPhase = "on" | "done" | "off";
+
+function formatElapsed(ms: number) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+/** Last meaningful line the agent has narrated so far, trimmed for the working window. */
+function latestNarration(blocks: TurnBlock[]): string {
+  for (let i = blocks.length - 1; i >= 0; i -= 1) {
+    const block = blocks[i];
+    if (block.type !== "text" && block.type !== "note") continue;
+    const lines = block.text
+      .split(/\n+/)
+      .map((line) => line.replace(/[`*_#>]+/g, "").trim())
+      .filter(Boolean);
+    const last = lines[lines.length - 1];
+    if (!last) continue;
+    return last.length > 220 ? `…${last.slice(-220)}` : last;
+  }
+  return "";
+}
+
+/**
+ * Full-pane "agent is working" presentation: dims the chat 60%, floats a window that mirrors the
+ * live turn (status, steps with spinners/checks, latest narration), and exposes only a Stop button.
+ * Holds a short Done/Stopped beat before fading out so the finish reads as an event.
+ */
+function WorkingOverlay({
+  active,
+  agent,
+  status,
+  message,
+  error,
+  engineLabel,
+  modelLabel,
+  onStop,
+}: {
+  active: boolean;
+  agent: Agent;
+  status: string;
+  message?: ChatMessage;
+  error: string;
+  engineLabel: string;
+  modelLabel: string;
+  onStop: () => void;
+}) {
+  const [phase, setPhase] = useState<WorkPhase>(active ? "on" : "off");
+  const [seenActive, setSeenActive] = useState(active);
+  const [elapsed, setElapsed] = useState(0);
+  const [stopped, setStopped] = useState(false);
+  const windowRef = useRef<HTMLDivElement>(null);
+
+  // Adjust state during render when the turn starts or ends (React's sanctioned alternative to a setState effect).
+  if (active !== seenActive) {
+    setSeenActive(active);
+    if (active) {
+      setElapsed(0);
+      setStopped(false);
+      setPhase("on");
+    } else if (phase === "on") {
+      setPhase("done");
+    }
+  }
+
+  useEffect(() => {
+    if (phase === "on") {
+      windowRef.current?.focus({ preventScroll: true });
+      const at = Date.now();
+      const timer = window.setInterval(() => setElapsed(Date.now() - at), 1000);
+      return () => window.clearInterval(timer);
+    }
+    if (phase === "done") {
+      const timer = window.setTimeout(() => setPhase("off"), 950);
+      return () => window.clearTimeout(timer);
+    }
+    return undefined;
+  }, [phase]);
+
+  if (phase === "off") return null;
+
+  const live = phase === "on";
+  const blocks = message?.blocks ?? [];
+  const steps = blocks
+    .map((block, index) => ({ block, index }))
+    .filter(
+      (row): row is { block: Extract<TurnBlock, { type: "thinking" | "tool" }>; index: number } =>
+        row.block.type === "thinking" || row.block.type === "tool",
+    );
+  const isRunning = (row: (typeof steps)[number]) =>
+    live && (row.block.type === "tool" ? Boolean(row.block.running) : row.index === blocks.length - 1);
+  const doneCount = steps.filter((row) => !isRunning(row)).length;
+  const visible = steps.slice(-5);
+  const hidden = steps.length - visible.length;
+  const narration = latestNarration(blocks);
+  const label = avatarLabel(agent.short, agent.name);
+  const outcome = stopped ? "Stopped" : error ? "Ended with an error" : "Done";
+  const headline = live ? status || "Working…" : outcome;
+
+  return (
+    <div
+      className={["working-layer", phase].join(" ")}
+      role="dialog"
+      aria-modal="true"
+      aria-label={live ? `${agent.name} is working` : outcome}
+    >
+      <div className="working-window" ref={windowRef} tabIndex={-1}>
+        <div className="working-bar" aria-hidden="true">
+          <i />
+        </div>
+        <header className="working-head">
+          <span className={avatarClass(label, `sm ${agent.color}`)}>{label}</span>
+          <div>
+            <strong>{agent.name}</strong>
+            <span className="working-sub">
+              <i className="status-dot" />
+              {live ? "Working" : outcome} · {engineLabel} {modelLabel}
+            </span>
+          </div>
+          <time>{formatElapsed(elapsed)}</time>
+        </header>
+        <div className="working-status" role="status" aria-live="polite">
+          {live ? (
+            <i className="spin" />
+          ) : (
+            <span className="turn-icon">
+              <IconCheck tiny />
+            </span>
+          )}
+          <span>{headline}</span>
+        </div>
+        {steps.length > 0 && (
+          <div className="working-steps">
+            {hidden > 0 && (
+              <small>
+                {hidden} earlier {hidden === 1 ? "step" : "steps"} · {doneCount} done
+              </small>
+            )}
+            {visible.map((row) => {
+              const running = isRunning(row);
+              const key = row.block.type === "tool" ? row.block.id || `tool-${row.index}` : `think-${row.index}`;
+              const name = row.block.type === "tool" ? row.block.name : running ? "Thinking" : "Thought";
+              const detail = row.block.type === "tool" ? row.block.detail : "";
+              return (
+                <div key={key} className={running ? "working-step live" : "working-step"}>
+                  {running ? (
+                    <i className="spin" />
+                  ) : (
+                    <span className={row.block.type === "tool" ? "turn-icon" : "turn-icon think"}>
+                      <IconCheck tiny />
+                    </span>
+                  )}
+                  <strong>{name}</strong>
+                  {detail ? <span>{detail}</span> : null}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {narration ? <p className="working-narration">{narration}</p> : null}
+        <button
+          type="button"
+          className="working-stop"
+          disabled={!live}
+          onClick={() => {
+            setStopped(true);
+            onStop();
+          }}
+        >
+          <i />
+          Stop
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function MediaLightbox({ src, alt, onClose }: { src: string; alt?: string; onClose: () => void }) {
   return (
     <div className="media-lightbox" role="dialog" aria-modal="true" aria-label={alt || "Image"} onClick={onClose}>
@@ -2164,6 +2377,16 @@ function IconLive(props: IconProps) {
     <svg {...svgProps(props)}>
       <circle cx="12" cy="12" r="9" />
       <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+    </svg>
+  );
+}
+function IconTrash(props: IconProps) {
+  return (
+    <svg {...svgProps(props, 18)} strokeWidth={2}>
+      <path d="M3 6h18" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6M14 11v6" />
     </svg>
   );
 }

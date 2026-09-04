@@ -32,7 +32,6 @@ import { loadSecrets, publicSettings, saveSecrets, secret, secretFlags } from ".
 import {
   BUNDLED_MODELS,
   DATA_DIR,
-  DEFAULT_AGENT_ID,
   DEFAULT_PROPOSAL_LIVE_URL,
   DEFAULT_PROPOSAL_REPO,
   DIST_DIR,
@@ -99,7 +98,6 @@ import {
   contextPackFingerprint,
   enrichRestartPrompt,
   mergeTurns,
-  modelHasVision,
   needsAutoContinue,
   previewContextPack,
   turnMetrics,
@@ -116,26 +114,34 @@ const startedAt = Date.now();
 /** @type {{ step: string; error: string | null; ready: boolean }} */
 const boot = { step: "starting", error: null, ready: false };
 
-/** @type {RpcClient | undefined} */
-let client;
-/** @type {Promise<RpcClient> | undefined} */
-let booting;
+/**
+ * @typedef {{
+ *   key: string,
+ *   runtimeKey: string,
+ *   client: RpcClient | undefined,
+ *   booting: Promise<RpcClient> | undefined,
+ *   agentId: string,
+ *   modelId: string,
+ *   activeStudioSessionId: string | null,
+ *   resumeSessionFile: string | null,
+ *   forceNewPiSession: boolean,
+ *   lock: Promise<void>,
+ *   lastUsedAt: number,
+ * }} PiSlot
+ */
+/** @type {Map<string, PiSlot>} */
+const piPool = new Map();
+const MAX_PI_SLOTS = Number(process.env.PI_POOL_SIZE) || 3;
+const PI_SLOT_IDLE_MS = Number(process.env.PI_SLOT_IDLE_MS) || 1_800_000;
+/** @type {Promise<void>} */
+let poolReserveLock = Promise.resolve();
+/** @type {Map<string, Promise<void>>} */
+const agentLocks = new Map();
+
 /** @type {import("./models.mjs").CatalogEntry[] | null} */
 let modelCatalog = null;
 /** @type {string | null} */
-let activeModelId = null;
-/** @type {string | null} */
-let resumeSessionFile = null;
-/** @type {string | null} */
-let activeStudioSessionId = null;
-/** @type {string} */
-let activeAgentId = DEFAULT_AGENT_ID;
-/** @type {string} */
-let activeBundleKey = "";
-/** @type {boolean} */
-let forceNewPiSession = false;
-/** @type {Promise<void>} */
-let piLock = Promise.resolve();
+let defaultModelId = null;
 let turnsInFlight = 0;
 
 const MIME = {
@@ -281,12 +287,11 @@ async function snapshot() {
     fileCount: files.length,
     sessionCount: dbReady() ? await countSessions().catch(() => 0) : 0,
     catalog: dbReady() ? await catalogCounts().catch(() => null) : null,
-    activeAgentId,
-    activeModelId,
+    defaultModelId,
     modelsConfigured: modelCatalog?.filter((entry) => entry.available).length ?? 0,
     imagen: imagenPublic(),
     scrapling: await scraplingPublic().catch(() => null),
-    piClient: Boolean(client),
+    piPoolSize: piPool.size,
     env: envFlags(),
     secrets: secretFlags(),
     railway: railwayMeta(),
@@ -350,24 +355,23 @@ async function ensureCatalog() {
   if (modelCatalog) return modelCatalog;
   const resolved = await resolveModelCredentials();
   modelCatalog = resolved.models;
-  if (!activeModelId) {
-    activeModelId = (await getSetting("active_model_id").catch(() => null)) ?? resolved.defaultModelId;
+  if (!defaultModelId) {
+    defaultModelId = (await getSetting("active_model_id").catch(() => null)) ?? resolved.defaultModelId;
   }
   return modelCatalog;
 }
 
-async function agentBundleKey(agent) {
+async function agentBundleKey(agent, modelId) {
   const role = createHash("sha1").update(agent.rolePrompt || "").digest("hex").slice(0, 12);
   const pack = await contextPackFingerprint(agent);
-  const vision = (await modelHasVision(activeModelId)) ? "v" : "nv";
   const skills = (agent.skillIds || []).slice().sort().join(",");
   const mcp = (agent.mcpIds || []).slice().sort().join(",");
   const imagen = imagenConfigured() ? `${secret("imagen_model") || "default"}:${secret("imagen_api") || "auto"}` : "off";
-  return `${agent.id}:${skills}:${mcp}:${role}:${pack}:${vision}:${imagen}`;
+  return `${agent.id}:${skills}:${mcp}:${role}:${pack}:${modelId || "none"}:${imagen}`;
 }
 
 async function resolveAgentProfile(agentId) {
-  const id = agentId || activeAgentId || WEBSITE_AGENT_ID;
+  const id = agentId || WEBSITE_AGENT_ID;
   const agent = dbReady() ? await getAgent(id) : null;
   if (agent) return agent;
   const fallback = dbReady() ? await getAgent(WEBSITE_AGENT_ID) : null;
@@ -386,82 +390,200 @@ function attachFallback(profile) {
   return "Please use the attached files.";
 }
 
-async function getClient(profile) {
-  const agent = profile || (await resolveAgentProfile(activeAgentId));
-  const bundleKey = await agentBundleKey(agent);
-  if (client && activeAgentId === agent.id && activeBundleKey === bundleKey) {
-    const modelsJson = await writePiModels();
-    await materializeAgentRuntime(agent, agent.mcp ?? [], modelsJson, { modelId: activeModelId });
-    return client;
-  }
-  if (client) {
-    await client.stop().catch(() => {});
-    client = undefined;
-    booting = undefined;
-  }
-  if (!booting) {
-    booting = (async () => {
-      const resolved = await resolveModelCredentials();
-      modelCatalog = resolved.models;
-      activeModelId = activeModelId ?? resolved.defaultModelId;
-      const active = findModel(modelCatalog, activeModelId ?? "");
-      if (!active?.available) {
-        throw new Error("No model configured. Add API keys on the Settings page.");
-      }
-
-      const modelsJson = await writePiModels();
-      const runtimeDir = await materializeAgentRuntime(agent, agent.mcp ?? [], modelsJson, {
-        modelId: activeModelId,
-      });
-      const sessionFile = resumeSessionFile;
-      const args = buildPiArgs({
-        agent,
-        skills: agent.skills ?? [],
-        mcpCount: agent.mcp?.length ?? 0,
-        runtimeDir,
-        provider: active.provider,
-        model: active.model,
-        sessionFile,
-      });
-      logEvent(
-        "info",
-        `starting Pi agent=${agent.slug} skills=${agent.skills?.length ?? 0} mcp=${agent.mcp?.length ?? 0} subagents=${(agent.skills ?? []).some((row) => row.slug === "spawn-subagents") ? "on" : "off"} imagen=${imagenConfigured() ? "on" : "off"} ${active.provider}/${active.model}`,
-      );
-
-      const pi = new RpcClient({
-        cliPath: PI_CLI_PATH,
-        cwd: agentWorkspace(agent),
-        provider: active.provider,
-        model: active.model,
-        env: agentEnv(agent, {
-          PI_CODING_AGENT_DIR: runtimeDir,
-          PI_PACKAGE_DIR,
-        }),
-        args,
-      });
-      await pi.start();
-      client = pi;
-      activeAgentId = agent.id;
-      activeBundleKey = bundleKey;
-      logEvent("info", sessionFile ? `Pi client started session=${sessionFile}` : "Pi client started");
-      return pi;
-    })();
-  }
-  return booting;
-}
-
 /**
  * @template T
  * @param {() => Promise<T>} fn
  * @returns {Promise<T>}
  */
-function withPi(fn) {
-  const run = piLock.then(fn, fn);
-  piLock = run.then(
+function withPoolReserve(fn) {
+  const run = poolReserveLock.then(fn, fn);
+  poolReserveLock = run.then(
     () => undefined,
     () => undefined,
   );
   return run;
+}
+
+/**
+ * @param {string} agentId
+ * @param {() => Promise<T>} fn
+ * @template T
+ * @returns {Promise<T>}
+ */
+function withAgentLock(agentId, fn) {
+  const prev = agentLocks.get(agentId) ?? Promise.resolve();
+  const run = prev.then(fn, fn);
+  agentLocks.set(
+    agentId,
+    run.then(
+      () => undefined,
+      () => undefined,
+    ),
+  );
+  return run;
+}
+
+/**
+ * @param {PiSlot} slot
+ * @param {() => Promise<T>} fn
+ * @template T
+ * @returns {Promise<T>}
+ */
+function withSlotLock(slot, fn) {
+  const run = slot.lock.then(fn, fn);
+  slot.lock = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
+/**
+ * Stop a slot's client without racing an in-flight turn: the stop is chained
+ * onto the slot's own lock, so it runs after whatever prompt/turn currently
+ * holds it, never mid-flight. The slot is removed from the pool immediately
+ * so a new request for the same key gets a fresh slot rather than waiting.
+ * @param {PiSlot} slot
+ */
+function evictSlot(slot) {
+  piPool.delete(slot.key);
+  slot.lock = slot.lock.then(async () => {
+    if (slot.client) await slot.client.stop().catch(() => {});
+  });
+}
+
+function evictIfNeeded() {
+  const over = piPool.size - MAX_PI_SLOTS;
+  if (over <= 0) return;
+  const oldest = [...piPool.values()].sort((a, b) => a.lastUsedAt - b.lastUsedAt).slice(0, over);
+  for (const slot of oldest) evictSlot(slot);
+}
+
+function sweepIdleSlots() {
+  const cutoff = Date.now() - PI_SLOT_IDLE_MS;
+  for (const slot of piPool.values()) {
+    if (slot.client && !slot.booting && slot.lastUsedAt < cutoff) evictSlot(slot);
+  }
+}
+
+async function refreshSlotRuntime(slot, agent, modelId) {
+  const modelsJson = await writePiModels();
+  await materializeAgentRuntime(agent, agent.mcp ?? [], modelsJson, { modelId, runtimeKey: slot.runtimeKey });
+}
+
+/**
+ * @param {PiSlot} slot
+ */
+async function startSlotClient(slot, agent, modelId) {
+  const resolved = await resolveModelCredentials();
+  modelCatalog = resolved.models;
+  const active = findModel(modelCatalog, modelId);
+  if (!active?.available) {
+    throw new Error("No model configured. Add API keys on the Settings page.");
+  }
+
+  const modelsJson = await writePiModels();
+  const runtimeDir = await materializeAgentRuntime(agent, agent.mcp ?? [], modelsJson, {
+    modelId,
+    runtimeKey: slot.runtimeKey,
+  });
+  const sessionFile = slot.resumeSessionFile;
+  const args = buildPiArgs({
+    agent,
+    skills: agent.skills ?? [],
+    mcpCount: agent.mcp?.length ?? 0,
+    runtimeDir,
+    provider: active.provider,
+    model: active.model,
+    sessionFile,
+  });
+  logEvent(
+    "info",
+    `starting Pi agent=${agent.slug} skills=${agent.skills?.length ?? 0} mcp=${agent.mcp?.length ?? 0} subagents=${(agent.skills ?? []).some((row) => row.slug === "spawn-subagents") ? "on" : "off"} imagen=${imagenConfigured() ? "on" : "off"} ${active.provider}/${active.model} pool=${piPool.size}/${MAX_PI_SLOTS}`,
+  );
+
+  const pi = new RpcClient({
+    cliPath: PI_CLI_PATH,
+    cwd: agentWorkspace(agent),
+    provider: active.provider,
+    model: active.model,
+    env: agentEnv(agent, {
+      PI_CODING_AGENT_DIR: runtimeDir,
+      PI_PACKAGE_DIR,
+    }),
+    args,
+  });
+  await pi.start();
+  slot.client = pi;
+  slot.lastUsedAt = Date.now();
+  logEvent("info", sessionFile ? `Pi client started session=${sessionFile}` : "Pi client started");
+  return pi;
+}
+
+/**
+ * Stop and restart a slot's client in place (used when getState() fails on
+ * an otherwise-tracked slot), keeping the same pool key.
+ * @param {PiSlot} slot
+ */
+async function restartSlotClient(slot, agent, modelId) {
+  if (slot.client) await slot.client.stop().catch(() => {});
+  slot.client = undefined;
+  slot.booting = undefined;
+  if (!slot.booting) slot.booting = startSlotClient(slot, agent, modelId);
+  try {
+    return await slot.booting;
+  } finally {
+    slot.booting = undefined;
+  }
+}
+
+/**
+ * Get or start the pooled Pi process for this agent+model combo. Different
+ * agents/models never share a process (or a lock), so switching one never
+ * stalls another. The reservation lock only guards the cheap key lookup —
+ * `pi.start()` itself runs outside it, so a slow cold start on one agent
+ * never blocks another agent's slot reservation.
+ * @param {{id:string,slug:string,name:string,rolePrompt:string,skillIds?:string[],mcpIds?:string[],skills?:object[],mcp?:object[]}} agent
+ * @param {string} modelId
+ * @param {{ sessionFile?: string | null }} [opts]
+ * @returns {Promise<PiSlot>}
+ */
+async function getOrCreatePiSlot(agent, modelId, { sessionFile } = {}) {
+  const slot = await withPoolReserve(async () => {
+    const key = await agentBundleKey(agent, modelId);
+    let s = piPool.get(key);
+    if (!s) {
+      s = {
+        key,
+        runtimeKey: `${agent.id}-${createHash("sha1").update(key).digest("hex").slice(0, 10)}`,
+        client: undefined,
+        booting: undefined,
+        agentId: agent.id,
+        modelId,
+        activeStudioSessionId: null,
+        resumeSessionFile: sessionFile ?? null,
+        forceNewPiSession: false,
+        lock: Promise.resolve(),
+        lastUsedAt: 0,
+      };
+      piPool.set(key, s);
+    }
+    return s;
+  });
+  slot.lastUsedAt = Date.now();
+  if (slot.client) {
+    await refreshSlotRuntime(slot, agent, modelId);
+    evictIfNeeded();
+    return slot;
+  }
+  if (!slot.booting) slot.booting = startSlotClient(slot, agent, modelId);
+  try {
+    await slot.booting;
+  } finally {
+    slot.booting = undefined;
+  }
+  evictIfNeeded();
+  return slot;
 }
 
 /**
@@ -474,49 +596,44 @@ function titleFromMessage(text) {
 }
 
 /**
- * Bind this studio chat to its own Pi session so history/context stay isolated.
+ * Bind this studio chat to its slot's Pi session so history/context stay isolated.
+ * @param {PiSlot} slot
+ * @param {object} profile
  * @param {{ id: string; title: string; agentId?: string | null; piSessionId?: string | null; piSessionFile?: string | null }} session
  */
-async function ensurePiOnSession(session) {
-  const profile = await resolveAgentProfile(session.agentId);
+async function ensurePiOnSlot(slot, profile, session) {
   if (session.agentId && session.agentId !== profile.id) {
     await updateSession(session.id, { agentId: profile.id });
     session.agentId = profile.id;
   }
   if (!session.agentId) session.agentId = profile.id;
 
-  if (!client || activeAgentId !== profile.id) {
-    if (client) await resetPi();
-    resumeSessionFile = session.piSessionFile ?? null;
-  }
-
-  const pi = await getClient(profile);
+  let pi = slot.client;
   let state;
   try {
     state = await pi.getState();
   } catch (error) {
     logEvent("error", `Pi get_state failed: ${sanitizeError(error)}`);
-    await resetPi();
-    resumeSessionFile = session.piSessionFile ?? null;
-    const restarted = await getClient(profile);
-    state = await restarted.getState();
+    slot.resumeSessionFile = session.piSessionFile ?? null;
+    pi = await restartSlotClient(slot, profile, slot.modelId);
+    state = await pi.getState();
   }
 
   if (session.piSessionFile && state.sessionFile === session.piSessionFile) {
-    activeStudioSessionId = session.id;
-    resumeSessionFile = session.piSessionFile;
-    forceNewPiSession = false;
-    return client ?? pi;
+    slot.activeStudioSessionId = session.id;
+    slot.resumeSessionFile = session.piSessionFile;
+    slot.forceNewPiSession = false;
+    return pi;
   }
 
   if (session.piSessionFile) {
     try {
-      const switched = await (client ?? pi).switchSession(session.piSessionFile);
+      const switched = await pi.switchSession(session.piSessionFile);
       if (!switched?.cancelled) {
-        activeStudioSessionId = session.id;
-        resumeSessionFile = session.piSessionFile;
-        forceNewPiSession = false;
-        return client ?? pi;
+        slot.activeStudioSessionId = session.id;
+        slot.resumeSessionFile = session.piSessionFile;
+        slot.forceNewPiSession = false;
+        return pi;
       }
     } catch (error) {
       logEvent("warn", `Pi switch_session failed: ${sanitizeError(error)}`);
@@ -524,14 +641,13 @@ async function ensurePiOnSession(session) {
     logEvent("warn", `Pi session file missing, starting a new one for ${session.id}`);
   }
 
-  const agentClient = client ?? pi;
-  const needNew = Boolean(activeStudioSessionId || forceNewPiSession);
+  const needNew = Boolean(slot.activeStudioSessionId || slot.forceNewPiSession);
   if (needNew) {
-    const created = await agentClient.newSession();
+    const created = await pi.newSession();
     if (created?.cancelled) throw new Error("Could not start a new agent session.");
-    state = await agentClient.getState();
+    state = await pi.getState();
   }
-  forceNewPiSession = false;
+  slot.forceNewPiSession = false;
 
   const next = await updateSession(session.id, {
     piSessionId: state.sessionId,
@@ -541,13 +657,12 @@ async function ensurePiOnSession(session) {
   session.piSessionId = next?.piSessionId ?? state.sessionId;
   session.piSessionFile = next?.piSessionFile ?? state.sessionFile ?? null;
   session.agentId = next?.agentId ?? profile.id;
-  activeStudioSessionId = session.id;
-  activeAgentId = profile.id;
-  resumeSessionFile = session.piSessionFile ?? null;
+  slot.activeStudioSessionId = session.id;
+  slot.resumeSessionFile = session.piSessionFile ?? null;
   if (session.title && session.title !== "New chat") {
-    await agentClient.setSessionName(session.title).catch(() => {});
+    await pi.setSessionName(session.title).catch(() => {});
   }
-  return agentClient;
+  return pi;
 }
 
 function publicSession(session) {
@@ -649,19 +764,17 @@ function createTurnPersister(sessionId, modelId) {
   };
 }
 
-async function switchModel(modelId) {
+/**
+ * Set the default model for new sessions/turns. Cheap and lock-free — it
+ * never touches the pi process pool, so this always returns instantly
+ * regardless of how many turns are in flight elsewhere.
+ */
+async function setDefaultModel(modelId) {
   const catalog = await ensureCatalog();
   const entry = findModel(catalog, modelId);
   if (!entry) throw new Error(`Unknown model: ${modelId}`);
   if (!entry.available) throw new Error(`${entry.label} is missing its API key.`);
-  if (activeModelId === modelId && client) return entry;
-
-  if (client) {
-    await client.stop();
-    client = undefined;
-    booting = undefined;
-  }
-  activeModelId = modelId;
+  defaultModelId = modelId;
   await setSetting("active_model_id", modelId).catch(() => {});
   return entry;
 }
@@ -714,52 +827,61 @@ function waitUntilAgentSettled(pi, inactivityMs = 300_000) {
 }
 
 async function chat(message, modelId, session, onEvent, images) {
-  turnsInFlight += 1;
-  try {
-    if (modelId) await switchModel(modelId);
-    const pi = await ensurePiOnSession(session);
-    const turn = createTurn();
-    let assistantError = "";
-    const unsubscribe = pi.onEvent((event) => {
-      try {
-        const mapped = applyPiEvent(turn, event);
-        if (mapped) onEvent?.(mapped, turn);
-        if (event.type === "message_end" && event.message?.role === "assistant" && event.message?.errorMessage) {
-          assistantError = event.message.errorMessage;
-        }
-      } catch (error) {
-        logEvent("warn", `Pi event map failed: ${sanitizeError(error)}`);
-      }
-    });
+  await ensureCatalog();
+  const profile = await resolveAgentProfile(session.agentId);
+  const resolvedModelId = modelId || session.modelId || defaultModelId;
+  const entry = findModel(modelCatalog, resolvedModelId ?? "");
+  if (!entry) throw new Error(`Unknown model: ${resolvedModelId}`);
+  if (!entry.available) throw new Error(`${entry.label} is missing its API key.`);
 
-    const settled = waitUntilAgentSettled(pi);
+  const slot = await getOrCreatePiSlot(profile, resolvedModelId, { sessionFile: session.piSessionFile });
+  return withSlotLock(slot, async () => {
+    turnsInFlight += 1;
     try {
-      onEvent?.({ type: "status", text: "Working…" }, turn);
-      await pi.prompt(message, images?.length ? images : undefined);
-      await settled;
-      const text = (await pi.getLastAssistantText())?.trim() || turn.text.trim();
-      if (text) {
-        turn.text = text;
-        if (!turn.blocks.some((block) => block.type === "text")) {
-          turn.blocks.push({ type: "text", text });
+      const pi = await ensurePiOnSlot(slot, profile, session);
+      const turn = createTurn();
+      let assistantError = "";
+      const unsubscribe = pi.onEvent((event) => {
+        try {
+          const mapped = applyPiEvent(turn, event);
+          if (mapped) onEvent?.(mapped, turn);
+          if (event.type === "message_end" && event.message?.role === "assistant" && event.message?.errorMessage) {
+            assistantError = event.message.errorMessage;
+          }
+        } catch (error) {
+          logEvent("warn", `Pi event map failed: ${sanitizeError(error)}`);
         }
+      });
+
+      const settled = waitUntilAgentSettled(pi);
+      try {
+        onEvent?.({ type: "status", text: "Working…" }, turn);
+        await pi.prompt(message, images?.length ? images : undefined);
+        await settled;
+        const text = (await pi.getLastAssistantText())?.trim() || turn.text.trim();
+        if (text) {
+          turn.text = text;
+          if (!turn.blocks.some((block) => block.type === "text")) {
+            turn.blocks.push({ type: "text", text });
+          }
+        }
+        if (!text && assistantError) throw new Error(assistantError);
+        if (!text && !turn.blocks.length) throw new Error("No response from agent.");
+        return turn;
+      } catch (error) {
+        settled.cancel();
+        const msg = error instanceof Error ? error.message : "";
+        if (msg.includes("silent before finishing")) {
+          await pi.abort().catch(() => {});
+        }
+        throw error;
+      } finally {
+        unsubscribe();
       }
-      if (!text && assistantError) throw new Error(assistantError);
-      if (!text && !turn.blocks.length) throw new Error("No response from agent.");
-      return turn;
-    } catch (error) {
-      settled.cancel();
-      const msg = error instanceof Error ? error.message : "";
-      if (msg.includes("silent before finishing")) {
-        await pi.abort().catch(() => {});
-      }
-      throw error;
     } finally {
-      unsubscribe();
+      turnsInFlight = Math.max(0, turnsInFlight - 1);
     }
-  } finally {
-    turnsInFlight = Math.max(0, turnsInFlight - 1);
-  }
+  });
 }
 
 async function runManageTurn({ message, agentId, sessionId, modelId }) {
@@ -773,7 +895,7 @@ async function runManageTurn({ message, agentId, sessionId, modelId }) {
     if (!agent) throw new Error("Unknown agent");
     session = await createSession({
       title: titleFromMessage(trimmed),
-      modelId: typeof modelId === "string" ? modelId : activeModelId,
+      modelId: typeof modelId === "string" ? modelId : defaultModelId,
       agentId: agent.id,
     });
   }
@@ -783,7 +905,7 @@ async function runManageTurn({ message, agentId, sessionId, modelId }) {
     sessionId: session.id,
     role: "user",
     content: trimmed,
-    modelId: typeof modelId === "string" ? modelId : activeModelId,
+    modelId: typeof modelId === "string" ? modelId : defaultModelId,
   });
 
   const profile = await resolveAgentProfile(session.agentId);
@@ -795,12 +917,14 @@ async function runManageTurn({ message, agentId, sessionId, modelId }) {
           session,
           profile,
         })
-      : await withPi(() => chat(trimmed, typeof modelId === "string" ? modelId : undefined, session));
+      : await withAgentLock(session.agentId, () =>
+          chat(trimmed, typeof modelId === "string" ? modelId : undefined, session),
+        );
   await insertMessage({
     sessionId: session.id,
     role: "assistant",
     content: serializeTurn(turn),
-    modelId: session.engine === "agy" ? (modelId || session.modelId || "gemini-3.8-flash-high") : activeModelId,
+    modelId: session.engine === "agy" ? (modelId || session.modelId || "gemini-3.8-flash-high") : defaultModelId,
   });
 
   const tools = (turn.blocks || [])
@@ -870,15 +994,18 @@ async function serveStatic(res, urlPath) {
   }
 }
 
-async function resetPi() {
+/**
+ * Wipe every pooled slot for a given agent (or all slots if none given).
+ * Used for admin actions (settings/skills/mcp/agent changes) where every
+ * live process needs to pick up the change — deferred through each slot's
+ * own lock so an in-flight turn is never killed mid-prompt.
+ * @param {{ agentId?: string }} [opts]
+ */
+async function resetPiPool({ agentId } = {}) {
   modelCatalog = null;
-  activeStudioSessionId = null;
-  activeBundleKey = "";
-  forceNewPiSession = true;
-  if (client) {
-    await client.stop().catch(() => {});
-    client = undefined;
-    booting = undefined;
+  for (const slot of [...piPool.values()]) {
+    if (agentId && slot.agentId !== agentId) continue;
+    evictSlot(slot);
   }
 }
 
@@ -932,8 +1059,10 @@ async function bootServices() {
 
   boot.step = "metrics";
   try {
-    setPiAliveGetter(() => Boolean(client));
+    setPiAliveGetter(() => piPool.size > 0);
     startSampler();
+    const idleSweep = setInterval(sweepIdleSlots, 300_000);
+    idleSweep.unref?.();
     logEvent("info", "resource sampler every 15s, keep 24h");
   } catch (error) {
     logEvent("error", `resource sampler failed: ${sanitizeError(error)}`);
@@ -1112,7 +1241,7 @@ const server = createServer(async (req, res) => {
         json,
         readBody,
         sanitizeError,
-        resetPi,
+        resetPi: resetPiPool,
         runTurn: runManageTurn,
         snapshot,
       });
@@ -1229,7 +1358,7 @@ const server = createServer(async (req, res) => {
         await forgetBundleHash();
       }
       await writePiModels().catch((error) => logEvent("error", sanitizeError(error)));
-      await resetPi();
+      await resetPiPool();
       await initWorkspace().catch((error) => logEvent("error", `workspace reinit: ${sanitizeError(error)}`));
       await ensureCatalog();
       const host = await publishToHost({ force: true });
@@ -1254,8 +1383,8 @@ const server = createServer(async (req, res) => {
         boot,
         db: { connected: dbReady() },
         host: hostPublic(),
-        activeModelId,
-        piClient: Boolean(client),
+        defaultModelId,
+        piPoolSize: piPool.size,
       });
       return;
     }
@@ -1345,7 +1474,7 @@ const server = createServer(async (req, res) => {
           res,
           200,
           await previewContextPack(existing, {
-            modelId: typeof existing.modelId === "string" ? existing.modelId : activeModelId,
+            modelId: typeof existing.modelId === "string" ? existing.modelId : defaultModelId,
           }),
         );
         return;
@@ -1379,7 +1508,7 @@ const server = createServer(async (req, res) => {
         if (req.method === "PATCH") {
           const body = JSON.parse((await readBody(req)) || "{}");
           const agent = await updateAgent(existing.id, body);
-          if (activeAgentId === existing.id) await resetPi();
+          await resetPiPool({ agentId: existing.id });
           json(res, 200, { agent: publicAgent(agent, { includeRole: true }) });
           return;
         }
@@ -1390,7 +1519,7 @@ const server = createServer(async (req, res) => {
             json(res, 400, { error: sanitizeError(error) });
             return;
           }
-          if (activeAgentId === existing.id) await resetPi();
+          await resetPiPool({ agentId: existing.id });
           json(res, 200, { ok: true, id: existing.id });
           return;
         }
@@ -1430,7 +1559,7 @@ const server = createServer(async (req, res) => {
         }
         if (req.method === "DELETE") {
           await deleteSkill(existing.id);
-          if (client) await resetPi();
+          await resetPiPool();
           json(res, 200, { ok: true, id: existing.id });
           return;
         }
@@ -1472,13 +1601,13 @@ const server = createServer(async (req, res) => {
         if (req.method === "PATCH") {
           const body = JSON.parse((await readBody(req)) || "{}");
           const server = await updateMcpServer(existing.id, body);
-          if (client) await resetPi();
+          await resetPiPool();
           json(res, 200, { server: publicMcp(server, { secrets: true }) });
           return;
         }
         if (req.method === "DELETE") {
           await deleteMcpServer(existing.id);
-          if (client) await resetPi();
+          await resetPiPool();
           json(res, 200, { ok: true, id: existing.id });
           return;
         }
@@ -1526,7 +1655,7 @@ const server = createServer(async (req, res) => {
             ? body.modelId
             : requestedEngine === "agy"
               ? "gemini-3.8-flash-high"
-              : activeModelId,
+              : defaultModelId,
         agentId: agent.id,
         engine: requestedEngine,
         agyConversationId: typeof body.agyConversationId === "string" ? body.agyConversationId : undefined,
@@ -1572,8 +1701,12 @@ const server = createServer(async (req, res) => {
             return;
           }
           const updated = await updateSession(sessionId, patch);
-          if (patch.title && activeStudioSessionId === sessionId && client) {
-            await client.setSessionName(patch.title).catch(() => {});
+          if (patch.title) {
+            for (const slot of piPool.values()) {
+              if (slot.activeStudioSessionId === sessionId && slot.client) {
+                await slot.client.setSessionName(patch.title).catch(() => {});
+              }
+            }
           }
           json(res, 200, { session: publicSession(updated) });
           return;
@@ -1581,9 +1714,11 @@ const server = createServer(async (req, res) => {
 
         if (req.method === "DELETE") {
           await deleteSession(sessionId);
-          if (activeStudioSessionId === sessionId) {
-            activeStudioSessionId = null;
-            forceNewPiSession = true;
+          for (const slot of piPool.values()) {
+            if (slot.activeStudioSessionId === sessionId) {
+              slot.activeStudioSessionId = null;
+              slot.forceNewPiSession = true;
+            }
           }
           json(res, 200, { ok: true, id: sessionId });
           return;
@@ -1594,7 +1729,7 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && pathname === "/api/models") {
       const catalog = await ensureCatalog();
       json(res, 200, {
-        activeModelId,
+        activeModelId: defaultModelId,
         models: publicModels(catalog),
         agyModels: AGY_MODELS,
       });
@@ -1607,7 +1742,7 @@ const server = createServer(async (req, res) => {
         json(res, 400, { error: "modelId is required" });
         return;
       }
-      const entry = await withPi(() => switchModel(modelId));
+      const entry = await setDefaultModel(modelId);
       json(res, 200, {
         activeModelId: entry.id,
         activeModel: { id: entry.id, label: entry.label, provider: entry.provider, model: entry.model },
@@ -1653,7 +1788,7 @@ const server = createServer(async (req, res) => {
               ? modelId
               : requestedEngine === "agy"
                 ? "gemini-3.8-flash-high"
-                : activeModelId,
+                : defaultModelId,
           agentId: agent.id,
           engine: requestedEngine,
         });
@@ -1681,13 +1816,13 @@ const server = createServer(async (req, res) => {
         sessionId: session.id,
         role: "user",
         content: storedUser,
-        modelId: typeof modelId === "string" ? modelId : session.modelId || activeModelId,
+        modelId: typeof modelId === "string" ? modelId : session.modelId || defaultModelId,
       });
       if (session.title === "New chat") {
         const title = titleFromMessage(trimmed || packed.files[0]?.name || "New chat");
         const updated = await updateSession(session.id, {
           title,
-          modelId: session.engine === "agy" ? (modelId || session.modelId || "gemini-3.8-flash-high") : activeModelId,
+          modelId: session.engine === "agy" ? (modelId || session.modelId || "gemini-3.8-flash-high") : defaultModelId,
         });
         if (updated) session = updated;
       }
@@ -1705,7 +1840,7 @@ const server = createServer(async (req, res) => {
 
       const persister = createTurnPersister(
         session.id,
-        session.engine === "agy" ? (modelId || session.modelId || "gemini-3.8-flash-high") : activeModelId,
+        session.engine === "agy" ? (modelId || session.modelId || "gemini-3.8-flash-high") : defaultModelId,
       );
       /** @type {ReturnType<typeof createTurn>} */
       let lastTurn = createTurn();
@@ -1729,77 +1864,84 @@ const server = createServer(async (req, res) => {
                 onEvent,
                 images,
               })
-            : withPi(() =>
-                chat(text, typeof modelId === "string" ? modelId : undefined, session, onEvent, images),
-              );
+            : chat(text, typeof modelId === "string" ? modelId : undefined, session, onEvent, images);
 
-        let turn = await runOnce(chatPrompt, packed.images);
-        lastTurn = turn;
-        let autoContinues = 0;
-        while (autoContinues < 2 && needsAutoContinue(turn)) {
-          autoContinues += 1;
-          turn.blocks.push({ type: "note", text: "Continuing…" });
+        // Same-agent turns (and the publish/journal work below, which shares
+        // the agent's git workspace) serialize per agent; different agents
+        // run fully concurrently — see withAgentLock.
+        await withAgentLock(profile.id, async () => {
+          let turn = await runOnce(chatPrompt, packed.images);
           lastTurn = turn;
-          if (!res.writableEnded) writeSse(res, { type: "note", text: "Continuing…" });
-          persister.schedule(turn, true);
-          const next = await runOnce(AUTO_CONTINUE_PROMPT);
-          turn = mergeTurns(turn, next);
-          lastTurn = turn;
-        }
-
-        let host = null;
-        const websiteChat = !session.agentId || session.agentId === WEBSITE_AGENT_ID;
-        if (websiteChat) {
-          try {
-            host = await publishToHost();
-          } catch (error) {
-            logEvent("error", `ee-html publish failed: ${sanitizeError(error)}`);
-            host = { ...hostPublic(), lastError: sanitizeError(error) };
+          let autoContinues = 0;
+          while (autoContinues < 2 && needsAutoContinue(turn)) {
+            autoContinues += 1;
+            turn.blocks.push({ type: "note", text: "Continuing…" });
+            lastTurn = turn;
+            if (!res.writableEnded) writeSse(res, { type: "note", text: "Continuing…" });
+            persister.schedule(turn, true);
+            const next = await runOnce(AUTO_CONTINUE_PROMPT);
+            turn = mergeTurns(turn, next);
+            lastTurn = turn;
           }
-        } else if (isProposalAgent(profile)) {
-          host = await publishProposal(profile);
-        }
-        const hostNote = hostStatusNote(host, { proposal: isProposalAgent(profile) });
-        if (hostNote) {
-          turn.blocks.push({ type: "note", text: hostNote });
-          lastTurn = turn;
-          if (!res.writableEnded) {
-            writeSse(res, { type: "note", text: hostNote });
-            if (host?.lastError) writeSse(res, { type: "error", error: host.lastError });
-          }
-        }
-        await appendStateJournal(profile, {
-          sessionId: session.id,
-          text: turn.text,
-          host,
-          startedAt: turnStartedAt,
-        }).catch((error) => logEvent("warn", `STATE.md journal failed: ${sanitizeError(error)}`));
-        logEvent("info", "turn metrics", turnMetrics(turn, { autoContinues }));
-        await persister.finish(turn, false);
-        if (session.title && session.title !== "New chat" && client && session.engine !== "agy") {
-          await client.setSessionName(session.title).catch(() => {});
-        }
 
-        const active =
-          session.engine === "agy"
-            ? AGY_MODELS.find((m) => m.id === (modelId || session.modelId)) || AGY_MODELS[0]
-            : activeModelId
-              ? findModel(modelCatalog ?? [], activeModelId)
-              : null;
-        if (!res.writableEnded) {
-          writeSse(res, {
-            type: "done",
-            reply: turn.text,
-            blocks: JSON.parse(serializeTurn(turn)).blocks,
+          let host = null;
+          const websiteChat = !session.agentId || session.agentId === WEBSITE_AGENT_ID;
+          if (websiteChat) {
+            try {
+              host = await publishToHost();
+            } catch (error) {
+              logEvent("error", `ee-html publish failed: ${sanitizeError(error)}`);
+              host = { ...hostPublic(), lastError: sanitizeError(error) };
+            }
+          } else if (isProposalAgent(profile)) {
+            host = await publishProposal(profile);
+          }
+          const hostNote = hostStatusNote(host, { proposal: isProposalAgent(profile) });
+          if (hostNote) {
+            turn.blocks.push({ type: "note", text: hostNote });
+            lastTurn = turn;
+            if (!res.writableEnded) {
+              writeSse(res, { type: "note", text: hostNote });
+              if (host?.lastError) writeSse(res, { type: "error", error: host.lastError });
+            }
+          }
+          await appendStateJournal(profile, {
             sessionId: session.id,
-            session: publicSession({ ...session, preview: turn.text || storedUser }),
-            activeModelId: active?.id ?? activeModelId,
-            activeModel: active
-              ? { id: active.id, label: active.label, provider: active.provider, model: active.model }
-              : null,
-          });
-        }
-        if (host && !res.writableEnded) writeSse(res, { type: "host", host });
+            text: turn.text,
+            host,
+            startedAt: turnStartedAt,
+          }).catch((error) => logEvent("warn", `STATE.md journal failed: ${sanitizeError(error)}`));
+          logEvent("info", "turn metrics", turnMetrics(turn, { autoContinues }));
+          await persister.finish(turn, false);
+          if (session.title && session.title !== "New chat" && session.engine !== "agy") {
+            for (const slot of piPool.values()) {
+              if (slot.activeStudioSessionId === session.id && slot.client) {
+                await slot.client.setSessionName(session.title).catch(() => {});
+              }
+            }
+          }
+
+          const active =
+            session.engine === "agy"
+              ? AGY_MODELS.find((m) => m.id === (modelId || session.modelId)) || AGY_MODELS[0]
+              : defaultModelId
+                ? findModel(modelCatalog ?? [], defaultModelId)
+                : null;
+          if (!res.writableEnded) {
+            writeSse(res, {
+              type: "done",
+              reply: turn.text,
+              blocks: JSON.parse(serializeTurn(turn)).blocks,
+              sessionId: session.id,
+              session: publicSession({ ...session, preview: turn.text || storedUser }),
+              activeModelId: active?.id ?? defaultModelId,
+              activeModel: active
+                ? { id: active.id, label: active.label, provider: active.provider, model: active.model }
+                : null,
+            });
+          }
+          if (host && !res.writableEnded) writeSse(res, { type: "host", host });
+        });
       } catch (error) {
         await persister.finish(lastTurn, false).catch(() => {});
         logEvent("error", sanitizeError(error));
@@ -1842,7 +1984,7 @@ server.listen(PORT, HOST, () => {
 async function shutdown() {
   logEvent("info", turnsInFlight ? `shutdown during ${turnsInFlight} in-flight turn(s)` : "shutdown");
   stopSampler();
-  if (client) await client.stop().catch(() => {});
+  await Promise.allSettled([...piPool.values()].map((slot) => slot.client?.stop().catch(() => {})));
   await closeBrowsers().catch(() => {});
   await closeDb().catch(() => {});
   process.exit(0);
