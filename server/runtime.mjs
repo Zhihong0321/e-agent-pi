@@ -5,7 +5,15 @@ import { hostSystemPrompt } from "./ee-html.mjs";
 import { proposalSystemPrompt } from "./github.mjs";
 import { loadContextPack } from "./context-pack.mjs";
 import { interpolatePiModels } from "./models.mjs";
-import { IMAGEN_SKILL_DIR, RUNTIME_DIR, SPAWN_SUBAGENTS_SLUG, STORAGE, SUBAGENTS_EXTENSION, isProposalAgent } from "./paths.mjs";
+import {
+  IMAGEN_SKILL_DIR,
+  MCP_ADAPTER_EXTENSION,
+  RUNTIME_DIR,
+  SPAWN_SUBAGENTS_SLUG,
+  STORAGE,
+  SUBAGENTS_EXTENSION,
+  isProposalAgent,
+} from "./paths.mjs";
 
 /**
  * @param {{ slug?: string; dirPath?: string }[] | undefined} skills
@@ -59,7 +67,7 @@ export async function materializeAgentRuntime(agent, mcpServers, modelsJson, { m
     path.join(dir, "settings.json"),
     JSON.stringify(
       {
-        packages: mcpServers.length ? ["npm:pi-mcp-adapter"] : [],
+        packages: [],
         enableSkillCommands: true,
       },
       null,
@@ -101,7 +109,7 @@ export function buildPiArgs(opts) {
   for (const skill of skills) {
     if (skill.dirPath) args.push("--skill", skill.dirPath);
   }
-  if (opts.mcpCount) args.push("--extension", "npm:pi-mcp-adapter");
+  if (opts.mcpCount) args.push("--extension", MCP_ADAPTER_EXTENSION);
   if (agentHasSubagents(opts.skills)) args.push("--extension", SUBAGENTS_EXTENSION);
   if (opts.sessionFile) args.push("--session", opts.sessionFile);
   return args;

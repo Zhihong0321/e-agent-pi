@@ -568,6 +568,9 @@ export async function syncGitWorkspace(opts) {
         await git(["commit", "-m", opts.message || "Proposal Agent: update"], dir);
       }
     }
+    if ((await commitsAhead(dir, config.branch)) < 1) {
+      return getGitWorkspaceStatus({ dir, repo: config.repo, branch: config.branch, pushed: false });
+    }
     try {
       await git(["fetch", "origin", config.branch], dir);
     } catch {

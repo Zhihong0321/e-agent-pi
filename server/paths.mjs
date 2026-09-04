@@ -103,4 +103,5 @@ export const PDF_CLI = path.join(ROOT, "server", "pdf-cli.mjs");
 export const PACKAGE_SHEET_CLI = path.join(ROOT, "server", "package-sheet-cli.mjs");
 export const IMAGEN_SKILL_DIR = path.join(ROOT, "agent", "imagen");
 export const SUBAGENTS_EXTENSION = path.join(ROOT, "agent", "extensions", "subagents.ts");
+export const MCP_ADAPTER_EXTENSION = path.join(ROOT, "node_modules", "pi-mcp-adapter");
 export const SPAWN_SUBAGENTS_SLUG = "spawn-subagents";
