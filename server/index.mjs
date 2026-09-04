@@ -45,6 +45,8 @@ import {
   PACKAGE_AGENT_ID,
   PROPOSAL_AGENT_ID,
   SETTINGS_AGENT_ID,
+  AFA_AGENT_ID,
+  SALES_AGENT_ID,
   RUNTIME_DIR,
   SKILLS_DIR,
   STORAGE,
@@ -547,10 +549,12 @@ async function startSlotClient(slot, agent, modelId) {
     `starting Pi agent=${agent.slug} skills=${agent.skills?.length ?? 0} mcp=${agent.mcp?.length ?? 0} subagents=${(agent.skills ?? []).some((row) => row.slug === "spawn-subagents") ? "on" : "off"} imagen=${imagenConfigured() ? "on" : "off"} ${active.provider}/${active.model} pool=${piPool.size}/${MAX_PI_SLOTS}`,
   );
 
+  const workspace = agentWorkspace(agent);
+  await mkdir(workspace, { recursive: true });
   const beforeKids = new Set(await childrenOf(process.pid).catch(() => []));
   const pi = new RpcClient({
     cliPath: PI_CLI_PATH,
-    cwd: agentWorkspace(agent),
+    cwd: workspace,
     provider: active.provider,
     model: active.model,
     env: agentEnv(agent, {
@@ -1084,6 +1088,8 @@ async function prepareDirs() {
   await mkdir(agentWorkspace({ id: NEWPAGES_AGENT_ID, slug: "newpages" }), { recursive: true });
   await mkdir(agentWorkspace({ id: PACKAGE_AGENT_ID, slug: "package" }), { recursive: true });
   await mkdir(agentWorkspace({ id: SETTINGS_AGENT_ID, slug: "settings" }), { recursive: true });
+  await mkdir(agentWorkspace({ id: AFA_AGENT_ID, slug: "afa-rate" }), { recursive: true });
+  await mkdir(agentWorkspace({ id: SALES_AGENT_ID, slug: "sales" }), { recursive: true });
   await mkdir(STORAGE, { recursive: true });
   await mkdir(PI_AGENT_DIR, { recursive: true });
   await mkdir(LIBRARY_DIR, { recursive: true });
