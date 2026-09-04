@@ -5,6 +5,8 @@ const KEYS = [
   "cavoti_base_url",
   "kimi_api_key",
   "kimi_base_url",
+  "glm53_api_key",
+  "glm53_base_url",
   "imagen_api_key",
   "imagen_base_url",
   "imagen_model",
@@ -52,6 +54,7 @@ export async function saveSecrets(patch) {
   const secretFields = new Set([
     "cavoti_api_key",
     "kimi_api_key",
+    "glm53_api_key",
     "imagen_api_key",
     "github_token",
     "pg_proxy_token",
@@ -73,6 +76,8 @@ export function publicSettings() {
     cavotiBaseUrl: secret("cavoti_base_url") || "https://cavoti.com/v1",
     kimiApiKeySet: Boolean(secret("kimi_api_key")),
     kimiBaseUrl: secret("kimi_base_url") || "https://api2.cmkey.cn/v1",
+    glm53ApiKeySet: Boolean(secret("glm53_api_key")),
+    glm53BaseUrl: secret("glm53_base_url") || "https://vectide.cn/v1",
     imagenApiKeySet: Boolean(secret("imagen_api_key")),
     imagenBaseUrl: secret("imagen_base_url") || "https://generativelanguage.googleapis.com/v1beta",
     imagenModel: secret("imagen_model") || "gemini-3.1-flash-image",
@@ -94,6 +99,7 @@ export function secretFlags() {
   return {
     cavotiApiKey: Boolean(secret("cavoti_api_key")),
     kimiApiKey: Boolean(secret("kimi_api_key")),
+    glm53ApiKey: Boolean(secret("glm53_api_key")),
     imagenApiKey: Boolean(secret("imagen_api_key")),
     githubToken: Boolean(secret("github_token")),
     githubRepo: Boolean(secret("github_repo")),

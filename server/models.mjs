@@ -9,6 +9,7 @@ const CATALOG_FILE = path.join(__dirname, "..", "agent", "model-catalog.json");
 const DEFAULT_BASE_URL = {
   CAVOTI: "https://cavoti.com/v1",
   KIMI: "https://api2.cmkey.cn/v1",
+  GLM53: "https://vectide.cn/v1",
 };
 
 /** @typedef {{ id: string; label: string; shortLabel: string; provider: string; model: string; vaultCredential?: string; envPrefix: string; vision?: boolean; available?: boolean }} CatalogEntry */
@@ -69,7 +70,9 @@ export function interpolatePiModels(modelsJson) {
   const data = JSON.parse(modelsJson);
   const cavoti = secret("cavoti_api_key");
   const kimi = secret("kimi_api_key");
+  const glm53 = secret("glm53_api_key");
   if (cavoti && data.providers?.cavoti) data.providers.cavoti.apiKey = cavoti;
   if (kimi && data.providers?.["kimi-k3"]) data.providers["kimi-k3"].apiKey = kimi;
+  if (glm53 && data.providers?.glm53) data.providers.glm53.apiKey = glm53;
   return JSON.stringify(data, null, 2);
 }

@@ -887,8 +887,10 @@ async function writePiModels() {
   const raw = JSON.parse(await readFile(BUNDLED_MODELS, "utf8"));
   const cavoti = secret("cavoti_base_url");
   const kimi = secret("kimi_base_url");
+  const glm53 = secret("glm53_base_url");
   if (cavoti) raw.providers.cavoti.baseUrl = cavoti;
   if (kimi) raw.providers["kimi-k3"].baseUrl = kimi;
+  if (glm53) raw.providers.glm53.baseUrl = glm53;
   const text = JSON.stringify(raw, null, 2);
   await writeFile(path.join(PI_AGENT_DIR, "models.json"), text);
   return text;

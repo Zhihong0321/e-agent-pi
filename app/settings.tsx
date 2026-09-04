@@ -5,6 +5,8 @@ type Settings = {
   cavotiBaseUrl: string;
   kimiApiKeySet: boolean;
   kimiBaseUrl: string;
+  glm53ApiKeySet: boolean;
+  glm53BaseUrl: string;
   imagenApiKeySet: boolean;
   imagenBaseUrl: string;
   imagenModel: string;
@@ -130,6 +132,8 @@ export default function SettingsPage() {
     cavotiBaseUrl: "",
     kimiApiKey: "",
     kimiBaseUrl: "",
+    glm53ApiKey: "",
+    glm53BaseUrl: "",
     imagenApiKey: "",
     imagenBaseUrl: "",
     imagenModel: "",
@@ -174,6 +178,7 @@ export default function SettingsPage() {
       ...prev,
       cavotiBaseUrl: data.cavotiBaseUrl,
       kimiBaseUrl: data.kimiBaseUrl,
+      glm53BaseUrl: data.glm53BaseUrl,
       imagenBaseUrl: data.imagenBaseUrl,
       imagenModel: data.imagenModel,
       imagenApi: data.imagenApi || "auto",
@@ -284,6 +289,8 @@ export default function SettingsPage() {
           cavoti_base_url: form.cavotiBaseUrl,
           kimi_api_key: form.kimiApiKey,
           kimi_base_url: form.kimiBaseUrl,
+          glm53_api_key: form.glm53ApiKey,
+          glm53_base_url: form.glm53BaseUrl,
           imagen_api_key: form.imagenApiKey,
           imagen_base_url: form.imagenBaseUrl,
           imagen_model: form.imagenModel,
@@ -300,7 +307,7 @@ export default function SettingsPage() {
         }),
       });
       setSettings(data);
-      setForm((prev) => ({ ...prev, cavotiApiKey: "", kimiApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", settingsPassword: "" }));
+      setForm((prev) => ({ ...prev, cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", settingsPassword: "" }));
       if (data.proposal?.lastError) {
         setError(data.proposal.lastError);
         setSaved("Saved keys, but GitHub rejected the proposal push.");
@@ -615,6 +622,24 @@ export default function SettingsPage() {
                 <input
                   value={form.kimiBaseUrl}
                   onChange={(event) => setForm({ ...form, kimiBaseUrl: event.target.value })}
+                />
+              </label>
+
+              <h2>GLM 5.3</h2>
+              <label>
+                API key {settings?.glm53ApiKeySet ? <em>saved</em> : <em>missing</em>}
+                <input
+                  type="password"
+                  value={form.glm53ApiKey}
+                  onChange={(event) => setForm({ ...form, glm53ApiKey: event.target.value })}
+                  placeholder={settings?.glm53ApiKeySet ? "••••••••  (unchanged)" : "Paste key"}
+                />
+              </label>
+              <label>
+                Base URL
+                <input
+                  value={form.glm53BaseUrl}
+                  onChange={(event) => setForm({ ...form, glm53BaseUrl: event.target.value })}
                 />
               </label>
 

@@ -28,5 +28,15 @@
     "vaultCredential": "KIMI_K3_TOKEN_PLAN",
     "envPrefix": "KIMI",
     "vision": false
+  },
+  {
+    "id": "glm-5.3",
+    "label": "GLM 5.3",
+    "shortLabel": "GLM5.3",
+    "provider": "glm53",
+    "model": "glm-5.3",
+    "vaultCredential": "GLM5.3_TOKEN_PLAN",
+    "envPrefix": "GLM53",
+    "vision": false
   }
 ]
