@@ -18,7 +18,7 @@
           "maxTokens": 32768
         },
         {
-          "id": "gemini-3.8-flash-high",
+          "id": "gemini-3.8-flash",
           "name": "Gemini 3.8 Flash High (Cavoti)",
           "input": ["text", "image"],
           "contextWindow": 1000000,

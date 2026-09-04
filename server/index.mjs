@@ -26,7 +26,7 @@ import { fileMime, listWorkspaceFiles, resolveWorkspaceFile } from "./files.mjs"
 import { getGitStatus, getGitWorkspaceStatus, initGitWorkspace, initWorkspace, syncGitWorkspace } from "./github.mjs";
 import { forgetBundleHash, hostConfigured, hostPublic, publishWorkspace } from "./ee-html.mjs";
 import { imagenConfigured, imagenPublic } from "./imagen.mjs";
-import { findModel, resolveModelCredentials } from "./models.mjs";
+import { findModel, normalizeCavotiBaseUrl, resolveModelCredentials } from "./models.mjs";
 import { hasApiAuth, hasSession, sessionCookie, sessionToken, checkPassword } from "./auth.mjs";
 import { loadSecrets, publicSettings, saveSecrets, secret, secretFlags } from "./secrets.mjs";
 import {
@@ -1015,7 +1015,7 @@ async function writePiModels() {
   const cavoti = secret("cavoti_base_url");
   const kimi = secret("kimi_base_url");
   const glm53 = secret("glm53_base_url");
-  if (cavoti) raw.providers.cavoti.baseUrl = cavoti;
+  if (cavoti) raw.providers.cavoti.baseUrl = normalizeCavotiBaseUrl(cavoti);
   if (kimi) raw.providers["kimi-k3"].baseUrl = kimi;
   if (glm53) raw.providers.glm53.baseUrl = glm53;
   const text = JSON.stringify(raw, null, 2);

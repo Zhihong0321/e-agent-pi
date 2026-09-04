@@ -12,6 +12,20 @@ const DEFAULT_BASE_URL = {
   GLM53: "https://vectide.cn/v1",
 };
 
+/** Vault stores origin (`https://cavoti.com`); Pi needs the OpenAI `/v1` path. */
+export function normalizeCavotiBaseUrl(value) {
+  const trimmed = String(value || "").trim().replace(/\/+$/, "");
+  if (
+    !trimmed ||
+    trimmed === "https://cavoti.com" ||
+    trimmed === "https://api.cavoti.com" ||
+    trimmed === "https://api.cavoti.com/v1"
+  ) {
+    return DEFAULT_BASE_URL.CAVOTI;
+  }
+  return trimmed;
+}
+
 /** @typedef {{ id: string; label: string; shortLabel: string; provider: string; model: string; vaultCredential?: string; envPrefix: string; vision?: boolean; available?: boolean }} CatalogEntry */
 
 /** @type {CatalogEntry[] | null} */
@@ -36,10 +50,11 @@ export async function resolveModelCredentials() {
 
   for (const entry of catalog) {
     const apiKey = secret(`${entry.envPrefix.toLowerCase()}_api_key`);
-    const baseUrl =
+    const rawBase =
       secret(`${entry.envPrefix.toLowerCase()}_base_url`) ||
       DEFAULT_BASE_URL[entry.envPrefix] ||
       "";
+    const baseUrl = entry.envPrefix === "CAVOTI" ? normalizeCavotiBaseUrl(rawBase) : rawBase;
 
     if (apiKey) {
       env[`${entry.envPrefix}_API_KEY`] = apiKey;
@@ -71,7 +86,10 @@ export function interpolatePiModels(modelsJson) {
   const cavoti = secret("cavoti_api_key");
   const kimi = secret("kimi_api_key");
   const glm53 = secret("glm53_api_key");
-  if (cavoti && data.providers?.cavoti) data.providers.cavoti.apiKey = cavoti;
+  if (cavoti && data.providers?.cavoti) {
+    data.providers.cavoti.apiKey = cavoti;
+    data.providers.cavoti.baseUrl = normalizeCavotiBaseUrl(data.providers.cavoti.baseUrl);
+  }
   if (kimi && data.providers?.["kimi-k3"]) data.providers["kimi-k3"].apiKey = kimi;
   if (glm53 && data.providers?.glm53) data.providers.glm53.apiKey = glm53;
   return JSON.stringify(data, null, 2);

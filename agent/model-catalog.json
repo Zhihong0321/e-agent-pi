@@ -14,7 +14,7 @@
     "label": "Gemini 3.8 Flash (High) - Cavoti",
     "shortLabel": "Gemini 3.8F",
     "provider": "cavoti",
-    "model": "gemini-3.8-flash-high",
+    "model": "gemini-3.8-flash",
     "vaultCredential": "CAVOTI_-_MANY_AI_API_ROUTER",
     "envPrefix": "CAVOTI",
     "vision": true
