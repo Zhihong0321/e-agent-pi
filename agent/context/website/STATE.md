@@ -4,14 +4,12 @@ Host-maintained journal. Newest first. Keep ~10 entries.
 
 ## Open issues
 
-1. **Fonts do not load on the live site** until the next host deploy (heal rewrites
-   `../assets/fonts/` → `assets/fonts/` on boot, then ee-html publish).
+(none — fonts load from `assets/fonts/` after the 2026-09-04 heal + publish)
 
 ## Recent changes
 
-- 2026-09-04 — boot heal drops unused `assets/certs/profile-2025.pdf`, `all-certs.pdf`,
-  and `assets/solar-panel*.png` from the volume; zip also skips those names. Cert originals
-  stay on the PR Center. Register copy already points there.
+- 2026-09-04 — live publish: font paths healed (`assets/fonts/`, `font/woff2`), placeholder
+  phone removed, unused `profile-2025.pdf` / `all-certs.pdf` / `solar-panel*.png` dropped.
 
 - 2026-09-04 — PR Center is identity source of truth: SSM `202301029164 (1523087-A)`,
   `pr@eternalgy.me`, no phone, no street address. Host heal removes the `012-345 6789`

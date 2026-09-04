@@ -28,10 +28,9 @@ When: "add a photo/hero image of …".
 Verify: `ls -l assets/<name>.png`; `grep -n "<name>.png" index.html`.
 Never: `/assets/...` absolute paths; images over ~2 MB without mentioning it (they ship in the bundle).
 
-### Fix the font paths (known open bug, see STATE.md)
-Edit: in styles.css :1-240 replace `url("../assets/fonts/` with `url("assets/fonts/` (30 occurrences).
-Verify: `grep -c '../assets/fonts' styles.css` → 0.
-Done when: live page renders Saira/Archivo (check one font URL: `https://ee-html.up.railway.app/app/e-agent-site/assets/fonts/Archivo-400-n-0000.woff2` returns `font/woff2`).
+### Fonts
+Host boot rewrites `url("../assets/fonts/` → `url("assets/fonts/` in styles.css if the old
+path reappears. Live check: `https://ee-html.up.railway.app/app/e-agent-site/assets/fonts/Archivo-400-n-0102.woff2` returns `font/woff2`.
 
 ### Add a section
 Read: an existing section of the same shape (:310 capability for rows, :484 field for cards) and styles.css block for it.

@@ -38,7 +38,7 @@ Snapshot 2026-09-04 from the live workspace. Line numbers drift after edits; sec
 
 | Line | Block |
 |-----:|-------|
-| 1-240 | 30 `@font-face` rules (Archivo, Saira, Spline Sans Mono) — **URLs are `../assets/fonts/…`, which resolve to `/app/assets/…` on the live host and 404. See STATE.md.** |
+| 1-240 | 30 `@font-face` rules (Archivo, Saira, Spline Sans Mono) — URLs are `assets/fonts/…` (healed on boot) |
 | 245 | `:root` tokens (colors, hairlines, type, spacing) |
 | 331 | header / title block · 383 links & buttons · 418 stamps & tags · 449 sheet frames |
 | 468 | hero · 523 metrics/instruments · 557 section heads · 563 capability rows |
