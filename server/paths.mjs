@@ -21,6 +21,7 @@ export const PROPOSAL_ROLE_FILE = path.join(ROOT, "agent", "roles", "proposal.md
 export const NEWPAGES_ROLE_FILE = path.join(ROOT, "agent", "roles", "newpages.md");
 export const PACKAGE_ROLE_FILE = path.join(ROOT, "agent", "roles", "package.md");
 export const AFA_ROLE_FILE = path.join(ROOT, "agent", "roles", "afa-rate.md");
+export const SALES_ROLE_FILE = path.join(ROOT, "agent", "roles", "sales.md");
 export const BUNDLED_SKILLS = path.join(ROOT, "agent", "skills");
 export const DEFAULT_AGENT_ID = "website";
 export const OPS_AGENT_ID = "ops";
@@ -29,6 +30,7 @@ export const PROPOSAL_AGENT_ID = "proposal";
 export const NEWPAGES_AGENT_ID = "newpages";
 export const PACKAGE_AGENT_ID = "package";
 export const AFA_AGENT_ID = "afa-rate";
+export const SALES_AGENT_ID = "sales";
 export const DEFAULT_PROPOSAL_REPO = "Zhihong0321/ee-proposal";
 export const DEFAULT_PROPOSAL_LIVE_URL = "https://ee-proposal-production.up.railway.app/shell.html#proposal";
 export const DEFAULT_NEWPAGES_LIVE_URL = "https://merchant.newpages.com.my";
@@ -65,6 +67,9 @@ export function agentWorkspace(agent) {
   if (id === AFA_AGENT_ID || slug === "afa-rate") {
     return path.join(WORKSPACES_DIR, "afa-rate");
   }
+  if (id === SALES_AGENT_ID || slug === "sales") {
+    return path.join(WORKSPACES_DIR, "sales");
+  }
   if (isWebsiteAgent(agent)) return WORKSPACE;
   const folder = isSettingsAgent(agent) ? "settings" : slug || id || "scratch";
   return path.join(WORKSPACES_DIR, folder);
@@ -92,6 +97,12 @@ export function isAfaAgent(agent) {
   const id = typeof agent === "string" ? agent : agent?.id || "";
   const slug = typeof agent === "string" ? agent : agent?.slug || "";
   return id === AFA_AGENT_ID || slug === "afa-rate";
+}
+
+export function isSalesAgent(agent) {
+  const id = typeof agent === "string" ? agent : agent?.id || "";
+  const slug = typeof agent === "string" ? agent : agent?.slug || "";
+  return id === SALES_AGENT_ID || slug === "sales";
 }
 
 export const DIST_DIR = path.join(ROOT, "dist");

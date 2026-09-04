@@ -25,6 +25,8 @@ const KEYS = [
   "settings_password",
   "afa_base_url",
   "afa_passkey",
+  "sales_pg_proxy_token",
+  "sales_pg_proxy_expires_at",
 ];
 
 export const DEFAULT_PASSWORD = "eternalgy2026";
@@ -63,6 +65,7 @@ export async function saveSecrets(patch) {
     "ee_html_api_key",
     "settings_password",
     "afa_passkey",
+    "sales_pg_proxy_token",
   ]);
   for (const key of KEYS) {
     if (!(key in patch) || patch[key] === undefined) continue;
@@ -97,6 +100,8 @@ export function publicSettings() {
     eeHtmlLastError: secret("ee_html_last_error") || "",
     afaBaseUrl: secret("afa_base_url") || "",
     afaPasskeySet: Boolean(secret("afa_passkey")),
+    salesPgProxyTokenSet: Boolean(secret("sales_pg_proxy_token")),
+    salesPgProxyExpiresAt: secret("sales_pg_proxy_expires_at") || "",
   };
 }
 
@@ -111,6 +116,7 @@ export function secretFlags() {
     pgProxyToken: Boolean(secret("pg_proxy_token")),
     eeHtmlApiKey: Boolean(secret("ee_html_api_key") || process.env.EE_HTML_API_KEY),
     afaPasskey: Boolean(secret("afa_passkey")),
+    salesPgProxyToken: Boolean(secret("sales_pg_proxy_token")),
   };
 }
 

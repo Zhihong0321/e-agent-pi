@@ -10,6 +10,7 @@ import {
   SITES_CLI,
   isAfaAgent,
   isPackageAgent,
+  isSalesAgent,
 } from "./paths.mjs";
 import { secret } from "./secrets.mjs";
 
@@ -80,6 +81,13 @@ export function agentEnv(agent, extra = {}, from = process.env) {
     const baseUrl = secret("afa_base_url");
     if (passkey) env.AFA_PASSKEY = passkey;
     if (baseUrl) env.AFA_BASE_URL = baseUrl;
+  }
+
+  if (isSalesAgent(agent)) {
+    const token = secret("sales_pg_proxy_token");
+    if (token) env.SALES_PG_PROXY_TOKEN = token;
+    const expiresAt = secret("sales_pg_proxy_expires_at");
+    if (expiresAt) env.SALES_PG_PROXY_EXPIRES_AT = expiresAt;
   }
 
   for (const [key, value] of Object.entries(extra)) {

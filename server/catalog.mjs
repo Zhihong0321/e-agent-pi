@@ -18,6 +18,8 @@ import {
   PROPOSAL_AGENT_ID,
   PROPOSAL_ROLE_FILE,
   ROLE_FILE,
+  SALES_AGENT_ID,
+  SALES_ROLE_FILE,
   SETTINGS_ROLE_FILE,
   SKILLS_DIR,
   agentWorkspace,
@@ -390,7 +392,11 @@ export async function attachAgentResources(agentRef, { skills = [], mcp = [], de
         agent.slug === "newpages-site-manager" ||
         agent.id === PACKAGE_AGENT_ID ||
         agent.slug === "package" ||
-        agent.slug === "package-updater")
+        agent.slug === "package-updater" ||
+        agent.id === AFA_AGENT_ID ||
+        agent.slug === "afa-rate" ||
+        agent.id === SALES_AGENT_ID ||
+        agent.slug === "sales")
     ) {
       throw new Error("manage-host-settings stays on Settings Agent only.");
     }
@@ -437,6 +443,9 @@ export async function deleteAgent(id) {
   }
   if (agent.id === AFA_AGENT_ID || agent.slug === "afa-rate") {
     throw new Error("The AFA Rate Updater cannot be deleted.");
+  }
+  if (agent.id === SALES_AGENT_ID || agent.slug === "sales") {
+    throw new Error("The Sales Analyst cannot be deleted.");
   }
   await getPool().query(`UPDATE sessions SET agent_id = $1 WHERE agent_id = $2`, [WEBSITE_AGENT_ID, agent.id]);
   await getPool().query(`DELETE FROM agents WHERE id = $1`, [agent.id]);
@@ -793,6 +802,18 @@ export async function seedAgentCatalog() {
     description: "One job: POST the monthly AFA rate to the live website's API.",
     color: "blue",
     rolePrompt: afaRole,
+  });
+
+  const salesRole = await readFile(SALES_ROLE_FILE, "utf8").catch(() => "You are Sales Analyst.");
+  await seedSystemAgent({
+    id: SALES_AGENT_ID,
+    slug: "sales",
+    name: "Sales Analyst",
+    short: "SLS",
+    headline: "Answers sales, payment, and outstanding questions",
+    description: "Read-only: queries invoice/payment/submitted_payment in prod_main to answer sales questions.",
+    color: "teal",
+    rolePrompt: salesRole,
   });
 
   const manageRow = await getPool().query(`SELECT id FROM skills WHERE slug = 'manage-host-settings'`);

@@ -23,6 +23,8 @@ type Settings = {
   eeHtmlLastError: string;
   afaBaseUrl: string;
   afaPasskeySet: boolean;
+  salesPgProxyTokenSet: boolean;
+  salesPgProxyExpiresAt: string;
 };
 
 type Tab = "keys" | "agents" | "sites" | "skills" | "mcp" | "usage";
@@ -151,6 +153,8 @@ export default function SettingsPage() {
     settingsPassword: "",
     afaBaseUrl: "",
     afaPasskey: "",
+    salesPgProxyToken: "",
+    salesPgProxyExpiresAt: "",
   });
   const [agents, setAgents] = useState<AgentItem[]>([]);
   const [skills, setSkills] = useState<SkillItem[]>([]);
@@ -192,6 +196,7 @@ export default function SettingsPage() {
       eeHtmlSlug: data.eeHtmlSlug,
       eeHtmlName: data.eeHtmlName,
       afaBaseUrl: data.afaBaseUrl,
+      salesPgProxyExpiresAt: data.salesPgProxyExpiresAt,
     }));
   };
 
@@ -311,10 +316,12 @@ export default function SettingsPage() {
           settings_password: form.settingsPassword,
           afa_base_url: form.afaBaseUrl,
           afa_passkey: form.afaPasskey,
+          sales_pg_proxy_token: form.salesPgProxyToken,
+          sales_pg_proxy_expires_at: form.salesPgProxyExpiresAt,
         }),
       });
       setSettings(data);
-      setForm((prev) => ({ ...prev, cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", settingsPassword: "", afaPasskey: "" }));
+      setForm((prev) => ({ ...prev, cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", settingsPassword: "", afaPasskey: "", salesPgProxyToken: "" }));
       if (data.proposal?.lastError) {
         setError(data.proposal.lastError);
         setSaved("Saved keys, but GitHub rejected the proposal push.");
@@ -755,6 +762,32 @@ export default function SettingsPage() {
                   value={form.pgProxyToken}
                   onChange={(event) => setForm({ ...form, pgProxyToken: event.target.value })}
                   placeholder={settings?.pgProxyTokenSet ? "••••••••  (unchanged)" : "eyJ…"}
+                />
+              </label>
+
+              <h2>Sales DB access</h2>
+              <p>
+                Sales Analyst uses this <strong>read-only</strong> pg-proxy token to query <code>invoice</code>,{" "}
+                <code>payment</code>, and <code>submitted_payment</code> on <code>prod_main</code>. Paste the JWT only
+                (no <code>Bearer</code> prefix). Leave blank to keep the saved value. This is a separate,
+                lower-privilege token from the Postgres proxy one above — do not reuse Package Updater's token here.
+              </p>
+              <label>
+                Token {settings?.salesPgProxyTokenSet ? <em>saved</em> : <em>missing</em>}
+                <input
+                  type="password"
+                  value={form.salesPgProxyToken}
+                  onChange={(event) => setForm({ ...form, salesPgProxyToken: event.target.value })}
+                  placeholder={settings?.salesPgProxyTokenSet ? "••••••••  (unchanged)" : "eyJ…"}
+                />
+              </label>
+              <label>
+                Expires at <em>(informational, for the agent to warn you)</em>
+                <input
+                  type="text"
+                  value={form.salesPgProxyExpiresAt}
+                  onChange={(event) => setForm({ ...form, salesPgProxyExpiresAt: event.target.value })}
+                  placeholder="2026-10-15T23:07:41.692Z"
                 />
               </label>
 
