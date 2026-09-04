@@ -1915,6 +1915,17 @@ function AssistantTurn({
 
 type WorkPhase = "on" | "done" | "off";
 
+/**
+ * How long the dark "Eter Agent CLI initializing…" beat holds before the window morphs to the light
+ * theme. The engine needs 3-5s to produce a first token; this covers the front of that wait with
+ * something deliberate instead of an empty card. Keep in sync with the boot timings in globals.css.
+ */
+const BOOT_MS = 2020;
+
+function prefersReducedMotion() {
+  return typeof window !== "undefined" && Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+}
+
 function formatElapsed(ms: number) {
   const total = Math.max(0, Math.floor(ms / 1000));
   const minutes = Math.floor(total / 60);
@@ -1954,6 +1965,8 @@ function WorkingOverlay({
   const [seenActive, setSeenActive] = useState(active);
   const [elapsed, setElapsed] = useState(0);
   const [stopped, setStopped] = useState(false);
+  // Only a turn that starts while we are watching boots; reopening a chat mid-turn shows the live window at once.
+  const [boot, setBoot] = useState(false);
   const windowRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
 
@@ -1963,11 +1976,19 @@ function WorkingOverlay({
     if (active) {
       setElapsed(0);
       setStopped(false);
+      setBoot(!prefersReducedMotion());
       setPhase("on");
-    } else if (phase === "on") {
-      setPhase("done");
+    } else {
+      setBoot(false);
+      if (phase === "on") setPhase("done");
     }
   }
+
+  useEffect(() => {
+    if (!boot) return undefined;
+    const timer = window.setTimeout(() => setBoot(false), BOOT_MS);
+    return () => window.clearTimeout(timer);
+  }, [boot]);
 
   useEffect(() => {
     if (phase === "on") {
@@ -2018,9 +2039,40 @@ function WorkingOverlay({
       className={["working-layer", phase].join(" ")}
       role="dialog"
       aria-modal="true"
-      aria-label={live ? `${agent.name} is working` : outcome}
+      aria-label={boot ? `Starting ${agent.name}` : live ? `${agent.name} is working` : outcome}
     >
-      <div className="working-window" ref={windowRef} tabIndex={-1}>
+      <div
+        className={boot ? "working-window booting" : "working-window"}
+        ref={windowRef}
+        tabIndex={-1}
+      >
+        {boot && (
+          <div className="working-boot">
+            <span className="working-boot-aurora" aria-hidden="true" />
+            <span className="working-boot-scan" aria-hidden="true" />
+            <span className="working-boot-mark" aria-hidden="true">
+              <i className="working-boot-ring" />
+              <span className={avatarClass(label, `sm ${agent.color}`)}>{label}</span>
+            </span>
+            <p className="working-boot-title">Eter Agent CLI</p>
+            <p className="working-boot-sub">
+              initializing
+              <i />
+              <i />
+              <i />
+            </p>
+            <ul className="working-boot-log" aria-hidden="true">
+              <li>linking runtime</li>
+              <li>mounting toolbox</li>
+              <li>
+                waking {engineLabel} {modelLabel}
+              </li>
+            </ul>
+            <span className="working-boot-rail" aria-hidden="true">
+              <i />
+            </span>
+          </div>
+        )}
         <div className="working-bar" aria-hidden="true">
           <i />
         </div>
