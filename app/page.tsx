@@ -9,6 +9,7 @@ import {
   workspaceMediaUrl,
   type ChatPart,
 } from "./chat-markdown";
+import { setTurnBusy } from "../src/sw-refresh";
 
 type Tab = "chats" | "agents" | "live" | "files";
 type View = Tab | "chat";
@@ -398,6 +399,8 @@ export default function Home() {
   const [sessionId, setSessionId] = useState("");
   const [loading, setLoading] = useState(false);
   const [inboxReady, setInboxReady] = useState(false);
+  // A new build waits for the turn to finish before it reloads the page out from under the reader.
+  setTurnBusy(loading);
   const [error, setError] = useState("");
   const [models, setModels] = useState<ModelOption[]>([]);
   const [agyModels, setAgyModels] = useState<ModelOption[]>([]);

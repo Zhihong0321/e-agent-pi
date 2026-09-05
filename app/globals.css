@@ -961,6 +961,26 @@ a.file-row { color: inherit; text-decoration: none; }
   border-radius: 12px;
   background: #fff;
 }
+/* A clipped report fades into its toggle so the cut edge reads as "more below", not as the end. */
+.chat-report { position: relative; display: grid; }
+.chat-report.clipped .chat-report-frame {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 56px), transparent);
+  mask-image: linear-gradient(180deg, #000 calc(100% - 56px), transparent);
+}
+.chat-report-toggle {
+  justify-self: stretch;
+  margin-top: 4px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: var(--field);
+  color: var(--green);
+  font-size: 12.5px;
+  font-weight: 700;
+  transition: background 0.15s;
+}
+.chat-report-toggle:hover { background: var(--press); }
 .chat-copy {
   display: grid;
   gap: 8px;

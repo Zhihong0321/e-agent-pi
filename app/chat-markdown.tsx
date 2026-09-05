@@ -392,10 +392,17 @@ const REPORT_RESIZE_SCRIPT = `<script>(function(){
   else setInterval(post, 500);
 })();</script>`;
 
-/** Renders an agent-supplied HTML report (fenced \`\`\`html block) in a sandboxed, auto-height iframe. */
+const COLLAPSED_REPORT_PX = 420;
+
+/**
+ * Renders an agent-supplied HTML report (fenced \`\`\`html block) in a sandboxed, auto-height iframe.
+ * A full pipeline report measures several thousand pixels, which buries the rest of the thread, so
+ * anything past COLLAPSED_REPORT_PX is folded behind a control until the reader asks for it.
+ */
 function HtmlReportFrame({ html, k }: { html: string; k: string }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(60);
+  const [open, setOpen] = useState(false);
   useEffect(() => {
     function onMessage(event: MessageEvent) {
       if (ref.current && event.source === ref.current.contentWindow && event.data?.type === "chat-report-height") {
@@ -405,16 +412,25 @@ function HtmlReportFrame({ html, k }: { html: string; k: string }) {
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, []);
+  const tall = height > COLLAPSED_REPORT_PX;
+  const shown = tall && !open ? COLLAPSED_REPORT_PX : height;
   return (
-    <iframe
-      key={k}
-      ref={ref}
-      className="chat-report-frame"
-      style={{ height }}
-      srcDoc={html + REPORT_RESIZE_SCRIPT}
-      sandbox="allow-scripts"
-      title="Report"
-    />
+    <div className={tall && !open ? "chat-report clipped" : "chat-report"}>
+      <iframe
+        key={k}
+        ref={ref}
+        className="chat-report-frame"
+        style={{ height: shown }}
+        srcDoc={html + REPORT_RESIZE_SCRIPT}
+        sandbox="allow-scripts"
+        title="Report"
+      />
+      {tall && (
+        <button type="button" className="chat-report-toggle" onClick={() => setOpen((prev) => !prev)}>
+          {open ? "Collapse report" : `Show full report · ${Math.round(height / 100) / 10}k px`}
+        </button>
+      )}
+    </div>
   );
 }
 

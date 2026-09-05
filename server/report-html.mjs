@@ -91,9 +91,11 @@ const BASE_STYLE = `
   .report-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #687a73; margin: 0 0 2px; }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
   .note { padding: 8px 10px; border-radius: 10px; font-size: 12.5px; }
-  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
-  .stat { background: #f1f4f2; border: 1px solid #e7edea; border-radius: 10px; padding: 8px 10px; }
-  .stat-value { font-size: 17px; font-weight: 700; color: #16352a; }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+  .stat { background: #f1f4f2; border: 1px solid #e7edea; border-radius: 10px; padding: 8px 10px; min-width: 0; }
+  /* Money runs long (RM 42,843,578.96); let it wrap and shrink rather than run off a phone. */
+  .stat-value { font-size: 17px; font-weight: 700; color: #16352a; overflow-wrap: anywhere; }
+  @media (max-width: 380px) { .stat-value { font-size: 15px; } }
   .stat-label { font-size: 11px; color: #687a73; margin-top: 1px; }
   .section h2 { font-size: 12.5px; font-weight: 700; color: #16352a; margin: 0 0 6px; }
   .table-wrap { width: 100%; }
