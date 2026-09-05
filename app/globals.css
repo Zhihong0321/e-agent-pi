@@ -1849,6 +1849,12 @@ a.file-row { color: inherit; text-decoration: none; }
 .usage-log table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .usage-log th, .usage-log td { padding: 7px 8px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
 .usage-log th { position: sticky; top: 0; background: var(--field); color: var(--muted); font-size: 10px; letter-spacing: 0.4px; text-transform: uppercase; }
+.settings-card.models-card { max-width: 760px; }
+.models-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 4px; }
+.models-table th, .models-table td { padding: 8px; text-align: left; border-bottom: 1px solid var(--line); }
+.models-table th { color: var(--muted); font-size: 10px; letter-spacing: 0.4px; text-transform: uppercase; }
+.models-table em { font-style: normal; }
+.models-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .usage-hint { margin: 4px 18px 12px; color: var(--muted); font-size: 11px; line-height: 1.45; }
 .usage-hint a { color: var(--green); font-weight: 700; }
 

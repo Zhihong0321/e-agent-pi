@@ -79,6 +79,53 @@ export function findModel(models, modelId) {
 }
 
 /**
+ * Round-trip a single catalog entry against its real provider endpoint: one
+ * minimal chat completion, timed end to end. Used by the settings page to
+ * measure which model is actually fastest right now (varies with provider
+ * load), not just which one the catalog lists first.
+ * @param {CatalogEntry} entry
+ * @param {Record<string, string>} env
+ * @returns {Promise<{ id: string; ok: boolean; latencyMs: number; error?: string }>}
+ */
+export async function testModelRoundTrip(entry, env) {
+  const apiKey = env[`${entry.envPrefix}_API_KEY`];
+  const baseUrl = env[`${entry.envPrefix}_BASE_URL`];
+  if (!apiKey || !baseUrl) {
+    return { id: entry.id, ok: false, latencyMs: 0, error: "Missing API key" };
+  }
+  const url = `${String(baseUrl).replace(/\/+$/, "")}/chat/completions`;
+  const started = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: entry.model,
+        messages: [{ role: "user", content: "ping" }],
+        max_tokens: 8,
+        stream: false,
+      }),
+      signal: controller.signal,
+    });
+    const latencyMs = Date.now() - started;
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return { id: entry.id, ok: false, latencyMs, error: `HTTP ${res.status}${text ? `: ${text.slice(0, 200)}` : ""}` };
+    }
+    await res.json().catch(() => null);
+    return { id: entry.id, ok: true, latencyMs };
+  } catch (error) {
+    const latencyMs = Date.now() - started;
+    const message = error instanceof Error ? (error.name === "AbortError" ? "Timed out after 20s" : error.message) : String(error);
+    return { id: entry.id, ok: false, latencyMs, error: message };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
  * Write real API keys into a models.json document so Pi does not need them in env.
  * @param {string} modelsJson
  */

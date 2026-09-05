@@ -29,8 +29,8 @@ type Settings = {
   salesPgProxyExpiresAt: string;
 };
 
-type Tab = "keys" | "agents" | "sites" | "skills" | "mcp" | "usage";
-const TABS: Tab[] = ["keys", "agents", "sites", "skills", "mcp", "usage"];
+type Tab = "keys" | "models" | "agents" | "sites" | "skills" | "mcp" | "usage";
+const TABS: Tab[] = ["keys", "models", "agents", "sites", "skills", "mcp", "usage"];
 
 function readTab(): Tab {
   if (typeof window === "undefined") return "keys";
@@ -51,6 +51,21 @@ type SiteItem = {
   passwordSet: boolean;
   lastLoginAt?: string | null;
   lastError?: string | null;
+};
+type ModelItem = {
+  id: string;
+  label: string;
+  shortLabel: string;
+  provider: string;
+  model: string;
+  available: boolean;
+};
+type ModelTestResult = {
+  id: string;
+  label: string;
+  ok: boolean;
+  latencyMs: number;
+  error?: string;
 };
 type McpItem = {
   id: string;
@@ -160,6 +175,10 @@ export default function SettingsPage() {
     salesPgProxyToken: "",
     salesPgProxyExpiresAt: "",
   });
+  const [models, setModels] = useState<ModelItem[]>([]);
+  const [activeModelId, setActiveModelId] = useState<string>("");
+  const [modelTestResults, setModelTestResults] = useState<Record<string, ModelTestResult>>({});
+  const [modelTestBusy, setModelTestBusy] = useState<string>("");
   const [agents, setAgents] = useState<AgentItem[]>([]);
   const [skills, setSkills] = useState<SkillItem[]>([]);
   const [mcp, setMcp] = useState<McpItem[]>([]);
@@ -216,6 +235,12 @@ export default function SettingsPage() {
     setMcp(mcpData.servers ?? []);
   };
 
+  const loadModels = async () => {
+    const data = await authedJson<{ models: ModelItem[]; activeModelId?: string }>("/api/models");
+    setModels(data.models ?? []);
+    setActiveModelId(data.activeModelId ?? "");
+  };
+
   const load = async () => {
     const me = await fetch("/api/auth/me", { credentials: "include" });
     const meData = (await me.json()) as { ok?: boolean };
@@ -226,6 +251,7 @@ export default function SettingsPage() {
     setAuthed(true);
     await loadKeys();
     await loadCatalog();
+    await loadModels();
     await loadSites();
   };
 
@@ -563,13 +589,51 @@ export default function SettingsPage() {
 
   const toggleId = (list: string[], id: string) => (list.includes(id) ? list.filter((item) => item !== id) : [...list, id]);
 
+  const setModelDefault = async (modelId: string) => {
+    setError("");
+    try {
+      const data = await authedJson<{ activeModelId: string }>("/api/model", {
+        method: "POST",
+        body: JSON.stringify({ modelId }),
+      });
+      setActiveModelId(data.activeModelId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not set default model");
+    }
+  };
+
+  const runModelTest = async (modelId?: string) => {
+    setError("");
+    setModelTestBusy(modelId || "all");
+    try {
+      const data = await authedJson<{ results: ModelTestResult[]; fastestId: string | null }>("/api/models/test", {
+        method: "POST",
+        body: JSON.stringify(modelId ? { modelId } : {}),
+      });
+      setModelTestResults((prev) => {
+        const next = { ...prev };
+        for (const result of data.results) next[result.id] = result;
+        return next;
+      });
+      if (!modelId && data.fastestId) {
+        await setModelDefault(data.fastestId);
+        const fastest = data.results.find((r) => r.id === data.fastestId);
+        setSaved(`Fastest model: ${fastest?.label ?? data.fastestId} (${fastest?.latencyMs ?? "?"}ms). Set as default.`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Round-trip test failed");
+    } finally {
+      setModelTestBusy("");
+    }
+  };
+
   return (
     <main className="settings-page">
       <header>
         <div className="settings-brand">
           <img className="brand-logo" src="/logo-black.png" alt="" width={36} height={36} />
           <div>
-            <small>Keys · Agents · Sites · Skills · MCP · Usage</small>
+            <small>Keys · Models · Agents · Sites · Skills · MCP · Usage</small>
             <h1>Settings</h1>
           </div>
         </div>
@@ -893,6 +957,77 @@ export default function SettingsPage() {
               <button type="button" onClick={() => void saveKeys()} disabled={busy}>
                 Save to Postgres
               </button>
+            </section>
+          )}
+
+          {tab === "models" && (
+            <section className="settings-card models-card">
+              <p>
+                Every agent here runs simple, low-complexity turns — speed matters more than raw capability.
+                Round-trip each model with a tiny real request, then use the fastest one as the default for
+                new chats. This only tests the Pi model catalog below; AGY is a separate engine and is not
+                covered by this test.
+              </p>
+              <button type="button" onClick={() => void runModelTest()} disabled={modelTestBusy !== ""}>
+                {modelTestBusy === "all" ? "Testing all…" : "Test all & use fastest"}
+              </button>
+
+              <table className="models-table">
+                <thead>
+                  <tr>
+                    <th>Model</th>
+                    <th>Provider</th>
+                    <th>Status</th>
+                    <th>Round trip</th>
+                    <th>Default</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {models.map((model) => {
+                    const result = modelTestResults[model.id];
+                    const isDefault = model.id === activeModelId;
+                    const isBusy = modelTestBusy === model.id || modelTestBusy === "all";
+                    return (
+                      <tr key={model.id}>
+                        <td>{model.label}</td>
+                        <td>{model.provider}</td>
+                        <td>
+                          {!model.available ? (
+                            <em>no API key</em>
+                          ) : !result ? (
+                            <span>not tested</span>
+                          ) : result.ok ? (
+                            <em>ok</em>
+                          ) : (
+                            <em title={result.error}>failed{result.error ? `: ${result.error}` : ""}</em>
+                          )}
+                        </td>
+                        <td>{result?.ok ? `${result.latencyMs}ms` : "—"}</td>
+                        <td>{isDefault ? <em>current default</em> : null}</td>
+                        <td className="models-actions">
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() => void runModelTest(model.id)}
+                            disabled={isBusy || !model.available}
+                          >
+                            {modelTestBusy === model.id ? "Testing…" : "Test"}
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() => void setModelDefault(model.id)}
+                            disabled={isDefault || !model.available}
+                          >
+                            Use as default
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </section>
           )}
 

@@ -29,7 +29,7 @@ import { fileMime, listWorkspaceFiles, resolveWorkspaceFile, workspaceFingerprin
 import { getGitStatus, getGitWorkspaceStatus, initGitWorkspace, initWorkspace, syncGitWorkspace } from "./github.mjs";
 import { forgetBundleHash, hostConfigured, hostPublic, publishWorkspace } from "./ee-html.mjs";
 import { imagenConfigured, imagenPublic } from "./imagen.mjs";
-import { findModel, normalizeCavotiBaseUrl, resolveModelCredentials } from "./models.mjs";
+import { findModel, normalizeCavotiBaseUrl, resolveModelCredentials, testModelRoundTrip } from "./models.mjs";
 import { hasApiAuth, hasSession, hasStockAuth, sessionCookie, sessionToken, checkPassword } from "./auth.mjs";
 import { loadSecrets, publicSettings, rememberSecret, saveSecrets, secret, secretFlags } from "./secrets.mjs";
 import {
@@ -2243,6 +2243,29 @@ const server = createServer(async (req, res) => {
         models: publicModels(catalog),
         agyModels: AGY_MODELS,
       });
+      return;
+    }
+
+    if (req.method === "POST" && pathname === "/api/models/test") {
+      const { modelId } = JSON.parse((await readBody(req)) || "{}");
+      const { models, env } = await resolveModelCredentials();
+      const targets =
+        typeof modelId === "string" && modelId ? models.filter((entry) => entry.id === modelId) : models;
+      if (typeof modelId === "string" && modelId && targets.length === 0) {
+        json(res, 404, { error: "Unknown model" });
+        return;
+      }
+      const results = await Promise.all(
+        targets.map(async (entry) => {
+          if (!entry.available) {
+            return { id: entry.id, label: entry.label, ok: false, latencyMs: 0, error: "Missing API key" };
+          }
+          const result = await testModelRoundTrip(entry, env);
+          return { ...result, label: entry.label };
+        }),
+      );
+      const fastest = results.filter((r) => r.ok).sort((a, b) => a.latencyMs - b.latencyMs)[0] ?? null;
+      json(res, 200, { results, fastestId: fastest?.id ?? null });
       return;
     }
 
