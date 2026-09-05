@@ -217,7 +217,7 @@ export async function queryInvoiceStatus(ref) {
 }
 
 /** Forward-looking demand pipeline: which models the committed order book needs, by confidence tier. */
-export async function queryPredictStockOut({ tier = "all" } = {}) {
+export async function queryDemandPipeline({ tier = "all" } = {}) {
   const rows = await paidInvoices();
   const classified = rows
     .filter((r) => Number(r.paid_amount) > 0)
@@ -279,6 +279,34 @@ async function stockApiGet(pathname) {
   const body = await res.json().catch(() => null);
   if (!res.ok) throw new Error(body?.error || `stock API failed (HTTP ${res.status})`);
   return body;
+}
+
+async function stockApiPost(pathname, payload) {
+  const base = process.env.STOCK_API_URL;
+  const token = process.env.STOCK_API_TOKEN;
+  if (!base || !token) throw new Error("STOCK_API_URL/STOCK_API_TOKEN not set for this agent runtime.");
+  const res = await fetch(`${base}${pathname}`, {
+    method: "POST",
+    headers: { "x-api-key": token, "Content-Type": "application/json" },
+    body: JSON.stringify(payload || {}),
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.error || `stock API failed (HTTP ${res.status})`);
+  return body;
+}
+
+/** Records a whole stock-take at once. Rows are `{ modelName, qty, unit? }`. */
+export async function recordStockCounts({ rows, updatedBy, reason } = {}) {
+  return stockApiPost("/api/stock/bulk", { rows, updatedBy, reason });
+}
+
+/** Creates a zero-qty row for every catalogued product that has none, so the table can be reported on. */
+export async function seedStockFromCatalog() {
+  const catalog = await getCatalog();
+  const models = [...catalog.products.values()].map((p) => p?.name).filter(Boolean);
+  const unique = [...new Set(models)].sort();
+  if (!unique.length) throw new Error("Catalog has no product names to seed from.");
+  return { ...(await stockApiPost("/api/stock/seed", { models: unique, updatedBy: "catalog seed" })), catalogModels: unique.length };
 }
 
 export async function queryStockLevels() {

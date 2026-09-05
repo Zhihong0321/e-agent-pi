@@ -32,7 +32,15 @@ import { imagenConfigured, imagenPublic } from "./imagen.mjs";
 import { findModel, normalizeCavotiBaseUrl, resolveModelCredentials } from "./models.mjs";
 import { hasApiAuth, hasSession, hasStockAuth, sessionCookie, sessionToken, checkPassword } from "./auth.mjs";
 import { loadSecrets, publicSettings, rememberSecret, saveSecrets, secret, secretFlags } from "./secrets.mjs";
-import { adjustStockItem, ensureStockSchema, listStockItems, listStockMovements, setStockItem } from "./stock.mjs";
+import {
+  adjustStockItem,
+  ensureStockSchema,
+  listStockItems,
+  listStockMovements,
+  seedStockItems,
+  setStockItem,
+  setStockItems,
+} from "./stock.mjs";
 import {
   BUNDLED_MODELS,
   DATA_DIR,
@@ -1805,6 +1813,16 @@ const server = createServer(async (req, res) => {
         if (req.method === "POST" && pathname === "/api/stock") {
           const body = JSON.parse((await readBody(req)) || "{}");
           json(res, 200, { item: await setStockItem(body) });
+          return;
+        }
+        if (req.method === "POST" && pathname === "/api/stock/bulk") {
+          const body = JSON.parse((await readBody(req)) || "{}");
+          json(res, 200, await setStockItems(body));
+          return;
+        }
+        if (req.method === "POST" && pathname === "/api/stock/seed") {
+          const body = JSON.parse((await readBody(req)) || "{}");
+          json(res, 200, await seedStockItems(body));
           return;
         }
         if (req.method === "POST" && pathname === "/api/stock/adjust") {

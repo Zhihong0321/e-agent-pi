@@ -13,6 +13,6 @@
     "isolatedModules": true,
     "jsx": "react-jsx"
   },
-  "include": ["src", "app"],
+  "include": ["src", "app", "shared"],
   "exclude": ["node_modules", "legacy_archive"]
 }

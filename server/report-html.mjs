@@ -1,6 +1,8 @@
 // Small, dependency-free HTML report builder. Every Sales MCP tool renders its
 // answer through this module so every report looks the same and none of it
-// depends on the calling agent formatting anything.
+// depends on the calling agent formatting anything. Reports carry markup only —
+// the stylesheet lives in shared/report-style.mjs and is injected by the studio,
+// so the agent never has to relay it.
 
 export function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (ch) => (
@@ -75,75 +77,15 @@ export function section(title, bodyHtml) {
   return `<section class="section">${title ? `<h2>${escapeHtml(title)}</h2>` : ""}${bodyHtml}</section>`;
 }
 
-const BASE_STYLE = `
-  * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    color: #10211b;
-    font-size: 14px;
-    line-height: 1.4;
-    padding: 12px 14px 14px;
-  }
-  .report { display: grid; gap: 12px; }
-  .report-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-  .report-head h1 { font-size: 15px; margin: 0; font-weight: 700; color: #16352a; }
-  .report-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #687a73; margin: 0 0 2px; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
-  .note { padding: 8px 10px; border-radius: 10px; font-size: 12.5px; }
-  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
-  .stat { background: #f1f4f2; border: 1px solid #e7edea; border-radius: 10px; padding: 8px 10px; min-width: 0; }
-  /* Money runs long (RM 42,843,578.96); let it wrap and shrink rather than run off a phone. */
-  .stat-value { font-size: 17px; font-weight: 700; color: #16352a; overflow-wrap: anywhere; }
-  @media (max-width: 380px) { .stat-value { font-size: 15px; } }
-  .stat-label { font-size: 11px; color: #687a73; margin-top: 1px; }
-  .section h2 { font-size: 12.5px; font-weight: 700; color: #16352a; margin: 0 0 6px; }
-  .table-wrap { width: 100%; }
-  table { width: 100%; border-collapse: collapse; }
-  thead { display: none; }
-  tbody tr {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 2px 8px;
-    padding: 7px 0;
-    border-bottom: 1px solid #e7edea;
-  }
-  tbody tr:last-child { border-bottom: none; }
-  td { display: block; padding: 0; border: 0; }
-  td[data-label]::before {
-    content: attr(data-label);
-    display: block;
-    font-size: 10.5px;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    color: #8a978f;
-  }
-  td:first-child { grid-column: 1 / 2; }
-  .empty { color: #8a978f; font-size: 12.5px; font-style: italic; }
-  @media (min-width: 460px) {
-    thead { display: table-header-group; }
-    thead th {
-      text-align: left;
-      font-size: 10.5px;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-      color: #8a978f;
-      padding: 0 8px 6px 0;
-      font-weight: 600;
-    }
-    tbody tr { display: table-row; padding: 0; }
-    td { display: table-cell; padding: 6px 8px 6px 0; vertical-align: top; }
-    td[data-label]::before { content: none; }
-  }
-`;
+
 
 /**
- * Wraps report content into a self-contained HTML fragment (style + markup).
- * The chat frontend drops this straight into a sandboxed iframe.
+ * Wraps report content into an HTML fragment. Markup only — the chat frontend drops this into a
+ * sandboxed iframe and supplies REPORT_CSS itself.
  * @param {{ title: string; eyebrow?: string; badge?: string; body: string }} opts
  */
 export function reportPage({ title, eyebrow, badgeHtml, body }) {
-  return `<style>${BASE_STYLE}</style><div class="report"><div class="report-head"><div>${
+  return `<div class="report"><div class="report-head"><div>${
     eyebrow ? `<p class="report-eyebrow">${escapeHtml(eyebrow)}</p>` : ""
   }<h1>${escapeHtml(title)}</h1></div>${badgeHtml || ""}</div>${body}</div>`;
 }

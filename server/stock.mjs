@@ -81,6 +81,59 @@ export async function setStockItem({ productKey, modelName, qty, unit, notes, up
 }
 
 /**
+ * Records many counts in one call. A stock-take arrives as a whole list, and asking the operator to
+ * dictate models one at a time through chat is why the table stayed empty; this takes the list.
+ * Rows are applied in order and each one is logged as its own movement, so history stays intact.
+ * @param {{ rows: Array<{ productKey?: string; modelName?: string; qty: number|string; unit?: string }>; updatedBy?: string; reason?: string }} input
+ * @returns {Promise<{ items: unknown[]; failed: Array<{ modelName?: string; error: string }> }>}
+ */
+export async function setStockItems({ rows, updatedBy, reason } = {}) {
+  if (!Array.isArray(rows) || !rows.length) throw new Error("rows must be a non-empty array");
+  const items = [];
+  const failed = [];
+  for (const row of rows) {
+    try {
+      items.push(await setStockItem({ ...row, updatedBy, reason: row.reason || reason || "bulk set" }));
+    } catch (error) {
+      failed.push({ modelName: row?.modelName || row?.productKey, error: String(error?.message || error) });
+    }
+  }
+  return { items, failed };
+}
+
+/**
+ * Creates a zero-qty row for every model that has none yet, leaving existing counts untouched.
+ * An empty table cannot be reported on at all; a table of known models at qty 0 can, and it shows
+ * the operator exactly which counts are still missing.
+ * @param {{ models: Array<string|{ modelName: string; unit?: string }>; updatedBy?: string }} input
+ * @returns {Promise<{ created: string[]; skipped: number }>}
+ */
+export async function seedStockItems({ models, updatedBy } = {}) {
+  if (!Array.isArray(models) || !models.length) throw new Error("models must be a non-empty array");
+  const existing = new Set((await listStockItems()).map((row) => row.productKey));
+  const created = [];
+  let skipped = 0;
+  for (const entry of models) {
+    const modelName = typeof entry === "string" ? entry : entry?.modelName;
+    if (!modelName) continue;
+    if (existing.has(slugifyKey(modelName))) {
+      skipped += 1;
+      continue;
+    }
+    await setStockItem({
+      modelName,
+      qty: 0,
+      unit: typeof entry === "object" ? entry.unit : undefined,
+      updatedBy,
+      reason: "seeded from catalog — count not taken yet",
+    });
+    existing.add(slugifyKey(modelName));
+    created.push(modelName);
+  }
+  return { created, skipped };
+}
+
+/**
  * Relative adjustment (restock +N, correction/wastage -N). Creates the item if modelName is given.
  * @param {{ productKey?: string; modelName?: string; delta: number|string; reason?: string; updatedBy?: string }} input
  */

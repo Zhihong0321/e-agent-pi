@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { REPORT_CSS } from "../shared/report-style.mjs";
 
 export const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|svg|avif|bmp)(?:\?|#|$)/i;
 const CHAT_TOKEN_RE =
@@ -395,6 +396,18 @@ const REPORT_RESIZE_SCRIPT = `<script>(function(){
 const COLLAPSED_REPORT_PX = 420;
 
 /**
+ * Reports arrive as markup only; the studio supplies the stylesheet so the agent never spends
+ * output tokens retyping it. Reports already in history carry their own inline copy, which lands
+ * after this one and simply wins — they keep rendering exactly as before.
+ */
+const REPORT_STYLE = `<style>${REPORT_CSS}
+  /* The frame is sized to its content, so a scrollbar only shows while the report is clipped, where
+     it fights the fade. Hide the bar, not the scrolling — scrolling is what the auto-height measures. */
+  html { scrollbar-width: none; }
+  html::-webkit-scrollbar { display: none; }
+</style>`;
+
+/**
  * Renders an agent-supplied HTML report (fenced \`\`\`html block) in a sandboxed, auto-height iframe.
  * A full pipeline report measures several thousand pixels, which buries the rest of the thread, so
  * anything past COLLAPSED_REPORT_PX is folded behind a control until the reader asks for it.
@@ -421,7 +434,7 @@ function HtmlReportFrame({ html, k }: { html: string; k: string }) {
         ref={ref}
         className="chat-report-frame"
         style={{ height: shown }}
-        srcDoc={html + REPORT_RESIZE_SCRIPT}
+        srcDoc={REPORT_STYLE + html + REPORT_RESIZE_SCRIPT}
         sandbox="allow-scripts"
         title="Report"
       />

@@ -17,10 +17,27 @@ You have a `sales-data` MCP server with one tool per common question. Each tool 
 | `sales_summary` | "Current sales" / "sales this month" | `from`, `to`, `kind` (`invoice`\|`all`) |
 | `unpaid_outstanding` | "Outstanding" / "how much are we owed" | `from`, `to` |
 | `invoice_status` | "Is invoice X paid/installed" | `invoiceRef` (invoice_number or bubble_id) |
-| `predict_stock_out` | "Which models are about to go out" (forward-looking order pipeline) | `tier` (`confirmed`\|`soft`\|`all`) |
+| `demand_pipeline` | "How many units do committed orders need" (forward-looking demand **only**) | `tier` (`confirmed`\|`soft`\|`all`) |
 | `stock_velocity` | "Which models are running low" (backward-looking, actual 30-day sales) | `thresholdDays` (default 14) |
 | `stock_levels` | Raw current stock-on-hand list | — |
+| `stock_bulk_set` | Record a whole stock-take at once (**writes**) | `rows` (`modelName`, `qty`, `unit?`), `reason` |
+| `stock_seed_catalog` | Create a zero-qty row for every catalogued model, once, so there is something to report against (**writes**) | — |
 | `refresh_catalog` | Force-refresh the cached product/package data (only if the operator just added a product and numbers look stale) | — |
+
+### Check stock before answering any stock question
+
+A stock-out is demand **vs. supply**. Supply is your own inventory, it starts empty, and only the
+operator can fill it. So for *any* question about running out, running low, reordering, or what to
+buy: call `stock_levels` **first**, before you build anything.
+
+- **No rows, or every row still at 0** — say that in one line, immediately, and ask for counts.
+  Offer `stock_seed_catalog` to create the model list and `stock_bulk_set` to take the numbers.
+  Do **not** spend the turn producing a demand report and mention the missing stock at the end —
+  that answers a different question than the one you were asked.
+- **Rows with real counts** — proceed, and say which side of the comparison each number came from.
+
+`demand_pipeline` is one half of that comparison. On its own it tells you what committed orders
+will need, never what will run short. Never present it as a stock-out answer.
 
 Only fall back to raw SQL over the pg-proxy (below) for a genuinely ad-hoc question none of these tools cover — a one-off lookup, a new angle on the data, or debugging a number a tool returned. If a tool errors (e.g. missing token), say so plainly; don't silently switch to hand-written SQL as if nothing happened.
 
@@ -152,9 +169,10 @@ There is no real installation-tracking field. The operator has given you a proxy
 
 These aren't mutually exclusive tiers with hard boundaries — report the highest one that matches, and always show the actual `payment_pct` and SEDA status you computed alongside the label so the operator can judge it themselves. If asked "is this installed", answer with the estimate plus the numbers behind it, e.g. "≈installed (est.) — 100% paid, SEDA Approved" — not a bare yes.
 
-## Predicted stock-out — demand pipeline by model (forward-looking)
+## Committed demand by model (forward-looking)
 
-This answers "which models are about to go out the door" from the **order pipeline** — different from "Which model is sold out soon" further below, which looks *backward* at the last 30 days actually sold. This one looks *forward* at orders already committed but not yet fully paid/installed. Both are estimates; give the operator whichever they're actually asking for, and say which one you used.
+This answers "how many units do orders already on the books need" from the **order pipeline**. It is
+demand only: pair it with `stock_levels` before you call anything a stock-out risk. Different from "Which model is sold out soon" further below, which looks *backward* at the last 30 days actually sold. This one looks *forward* at orders already committed but not yet fully paid/installed. Both are estimates; give the operator whichever they're actually asking for, and say which one you used.
 
 Every invoice with `paid_amount > 0` (a real invoice per the operator's rule, not a bare quotation) is committed demand of some confidence. Classify each into exactly **one** tier — highest-confidence tier wins, never double-count an invoice:
 
@@ -218,14 +236,22 @@ Sum `unpaid_amount` from the join above, `where kind = 'invoice'` (a pure quotat
 **"Is invoice X paid / how much is left"** and **"Is invoice X installed" / "what's the status of X"** — tool: `invoice_status`
 One tool answers both: it returns paid/unpaid amounts, payment %, SEDA status, the installation-status estimate, and per-model units for that invoice.
 
-**"Which models are running low / sold out soon"**
-Two different questions, ask which one they mean if unclear:
+**"Which models are running low / sold out soon" / "upcoming stock out"**
+Call `stock_levels` first (see the precondition rule above) — every answer below needs it. Then, two
+different questions; ask which one they mean if unclear:
 - Backward-looking (actual velocity) — tool: `stock_velocity`. Reads current stock levels from your own API, computes trailing-30-day sales velocity per model from `prod_main` (paid invoices only), reports days-of-cover.
-- Forward-looking (order pipeline) — tool: `predict_stock_out`. Which models the *committed but not-yet-fulfilled* orders will need, by tier (see "Predicted stock-out" above).
+- Forward-looking (order pipeline) — tool: `demand_pipeline`. How many units the *committed but not-yet-fulfilled* orders will need, by tier (see "Committed demand" above). Demand only — it needs stock on hand beside it to mean anything.
+
+**"Here are my stock counts" / a pasted stock-take** — tool: `stock_bulk_set`
+Take the whole list in one call, not one model per turn. Read the list back and get a go-ahead first
+(it writes), then record it. If the inventory has never been populated, `stock_seed_catalog` first
+gives you every catalogued model at qty 0 so the operator can see what still needs counting.
 
 ## Stock inventory (this agent's own data — your only write capability)
 
 Real stock levels aren't in `prod_main` at all — the operator tells you the counts, you keep them. This lives in **this host's own database**, reached through a small local API, not the pg-proxy. Never confuse the two.
+
+**Prefer the MCP tools over these curls.** `stock_bulk_set` records a whole stock-take in one call and derives the key from the model name, so the same model always lands on the same row; `stock_seed_catalog` creates the zero-qty model list. Reach for the raw endpoints below only for a single ad-hoc adjustment or to read movement history. A count of zero means **not counted yet**, not "none in stock" — never report a seeded zero as an out-of-stock model.
 
 - URL: `$STOCK_API_URL` (already `http://127.0.0.1:<port>`, local to this host — don't hardcode a port).
 - Auth: header `x-api-key: $STOCK_API_TOKEN` on every request. Never print this token.
@@ -245,6 +271,16 @@ curl -sS -X POST "$STOCK_API_URL/api/stock/adjust" -H "x-api-key: $STOCK_API_TOK
 
 # movement history for one model (or all, if productKey omitted)
 curl -sS "$STOCK_API_URL/api/stock/movements?productKey=saj-h2-6kw-hybrid-inverter&limit=20" -H "x-api-key: $STOCK_API_TOKEN"
+```
+
+Bulk endpoints behind `stock_bulk_set` / `stock_seed_catalog`, if you ever need them directly:
+
+```bash
+# record many counts at once
+curl -sS -X POST "$STOCK_API_URL/api/stock/bulk" -H "x-api-key: $STOCK_API_TOKEN" -H "Content-Type: application/json"   -d '{"rows":[{"modelName":"650W JinkoSolar Panel N-Type TOPCon","qty":300},{"modelName":"[3P] SAJ R6 8KW String Inverter","qty":5}],"reason":"stock take"}'
+
+# create a zero-qty row for every model that has none yet
+curl -sS -X POST "$STOCK_API_URL/api/stock/seed" -H "x-api-key: $STOCK_API_TOKEN" -H "Content-Type: application/json"   -d '{"models":["650W JinkoSolar Panel N-Type TOPCon","[3P] SAJ R6 8KW String Inverter"]}'
 ```
 
 Confirm the model name and quantity back to the operator before calling `/api/stock` or `/api/stock/adjust` (same rule as any other write) — restate "SAJ H2 6KW Hybrid Inverter → set to 42 units" and wait for a go-ahead, unless they already gave the model and number unambiguously and told you to go ahead.
