@@ -1835,7 +1835,7 @@ a.file-row { color: inherit; text-decoration: none; }
   background: rgba(6, 18, 14, 0.6);
   -webkit-backdrop-filter: blur(3px);
   backdrop-filter: blur(3px);
-  animation: workingFade 0.25s ease-out both;
+  animation: workingFade 0.34s ease-out both;
 }
 .working-layer.done {
   pointer-events: none;
@@ -1861,7 +1861,7 @@ a.file-row { color: inherit; text-decoration: none; }
     inset 0 0 0 1px rgba(255, 255, 255, 0.7);
   overflow: hidden;
   outline: none;
-  animation: workingPop 0.52s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: workingPop 0.78s cubic-bezier(0.32, 0.72, 0, 1) both;
 }
 .working-layer.done .working-window { animation: workingSink 0.3s ease-in 0.62s both; }
 .working-window > * { flex: none; }
@@ -1984,9 +1984,10 @@ a.file-row { color: inherit; text-decoration: none; }
 }
 @keyframes workingFade { from { opacity: 0; } }
 @keyframes workingFadeOut { to { opacity: 0; } }
+/* A real flight, not a pop: the card starts low in the pane and rides up with a small settle, so the
+   travel stays legible instead of collapsing into the first two frames of an expo-out curve. */
 @keyframes workingPop {
-  from { opacity: 0; transform: translateY(58px) scale(0.93); }
-  60% { opacity: 1; }
+  from { opacity: 0; transform: translateY(230px) scale(0.9); }
 }
 @keyframes workingSink { to { opacity: 0; transform: translateY(8px) scale(0.98); } }
 @media (prefers-reduced-motion: reduce) {
@@ -2026,12 +2027,12 @@ a.file-row { color: inherit; text-decoration: none; }
 
 /* ---- Boot beat: the window flies in dark, runs a CLI init, then morphs to the light theme ----
    One 2.02s timeline, all of it in CSS so nothing re-renders mid-animation:
-     0.00-0.52  the card (with this layer on top) flies up from below
-     0.30-1.30  mark, wordmark and log lines stagger in over a filling rail
-     1.56-2.00  this layer blurs away, revealing the real light-theme window beneath it       */
+     0.00-0.78  the card (with this layer on top) flies up from low in the pane
+     0.44-1.76  mark, wordmark and log lines stagger in over a filling rail
+     1.94-2.42  this layer blurs away, revealing the real light-theme window beneath it       */
 .working-window.booting { min-height: 272px; }
 .working-window.booting > *:not(.working-boot) {
-  animation: bootContentIn 0.44s cubic-bezier(0.16, 1, 0.3, 1) 1.56s both;
+  animation: bootContentIn 0.48s cubic-bezier(0.16, 1, 0.3, 1) 1.94s both;
 }
 .working-boot {
   position: absolute;
@@ -2046,7 +2047,7 @@ a.file-row { color: inherit; text-decoration: none; }
   background: radial-gradient(120% 80% at 50% 0%, #123028 0%, #0a1a15 46%, #050d0b 100%);
   color: #eafff6;
   overflow: hidden;
-  animation: bootLayerOut 0.44s cubic-bezier(0.4, 0, 1, 1) 1.56s both;
+  animation: bootLayerOut 0.48s cubic-bezier(0.4, 0, 1, 1) 1.94s both;
 }
 /* Slow teal wash so the black is never flat. */
 .working-boot-aurora {
@@ -2067,7 +2068,7 @@ a.file-row { color: inherit; text-decoration: none; }
   right: 0;
   height: 100%;
   background: linear-gradient(180deg, transparent 42%, rgba(160, 255, 224, 0.16) 50%, transparent 58%);
-  animation: bootScan 1.5s cubic-bezier(0.4, 0, 0.2, 1) 0.28s 1 both;
+  animation: bootScan 1.6s cubic-bezier(0.4, 0, 0.2, 1) 0.46s 1 both;
 }
 .working-boot-mark {
   position: relative;
@@ -2076,7 +2077,7 @@ a.file-row { color: inherit; text-decoration: none; }
   place-items: center;
   width: 62px;
   height: 62px;
-  animation: bootRise 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.26s both;
+  animation: bootRise 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.44s both;
 }
 .working-boot-mark .avatar {
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.18);
@@ -2097,7 +2098,7 @@ a.file-row { color: inherit; text-decoration: none; }
   font-size: 17px;
   font-weight: 700;
   letter-spacing: 0.2px;
-  animation: bootRise 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.4s both;
+  animation: bootRise 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.58s both;
 }
 .working-boot-sub {
   position: relative;
@@ -2110,7 +2111,7 @@ a.file-row { color: inherit; text-decoration: none; }
   font-size: 12.5px;
   letter-spacing: 0.2px;
   color: #6ee7b7;
-  animation: bootRise 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.52s both;
+  animation: bootRise 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both;
 }
 .working-boot-sub i {
   width: 3px;
@@ -2154,9 +2155,9 @@ a.file-row { color: inherit; text-decoration: none; }
   background: #34d399;
   box-shadow: 0 0 8px rgba(52, 211, 153, 0.9);
 }
-.working-boot-log li:nth-child(1) { animation-delay: 0.68s; }
-.working-boot-log li:nth-child(2) { animation-delay: 0.88s; }
-.working-boot-log li:nth-child(3) { animation-delay: 1.08s; }
+.working-boot-log li:nth-child(1) { animation-delay: 0.9s; }
+.working-boot-log li:nth-child(2) { animation-delay: 1.12s; }
+.working-boot-log li:nth-child(3) { animation-delay: 1.34s; }
 .working-boot-rail {
   position: relative;
   z-index: 1;
@@ -2173,7 +2174,7 @@ a.file-row { color: inherit; text-decoration: none; }
   border-radius: 2px;
   background: linear-gradient(90deg, #34d399, #22d3ee);
   box-shadow: 0 0 10px rgba(52, 211, 153, 0.7);
-  animation: bootFill 1.36s cubic-bezier(0.3, 0.6, 0.3, 1) 0.3s both;
+  animation: bootFill 1.42s cubic-bezier(0.3, 0.6, 0.3, 1) 0.48s both;
 }
 @keyframes bootLayerOut {
   to { opacity: 0; filter: blur(9px); transform: scale(1.05); }
@@ -2198,3 +2199,18 @@ a.file-row { color: inherit; text-decoration: none; }
   to { transform: translate3d(6%, 3%, 0) scale(1.12); opacity: 0.85; }
 }
 @keyframes bootScan { to { transform: translateY(200%); } }
+/* Reduced motion keeps the beat — it covers real latency rather than decorating — but drops the
+   travel, the spin and the sweep. Placed after the rules above so it wins on equal specificity. */
+@media (prefers-reduced-motion: reduce) {
+  .working-boot-mark,
+  .working-boot-title,
+  .working-boot-sub,
+  .working-boot-log li,
+  .working-window.booting > *:not(.working-boot) { animation-name: bootFade; }
+  .working-boot { animation-name: bootFade; animation-direction: reverse; }
+  .working-boot-ring,
+  .working-boot-aurora,
+  .working-boot-sub i { animation: none; }
+  .working-boot-scan { display: none; }
+}
+@keyframes bootFade { from { opacity: 0; } }

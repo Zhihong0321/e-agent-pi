@@ -1918,13 +1918,10 @@ type WorkPhase = "on" | "done" | "off";
 /**
  * How long the dark "Eter Agent CLI initializing…" beat holds before the window morphs to the light
  * theme. The engine needs 3-5s to produce a first token; this covers the front of that wait with
- * something deliberate instead of an empty card. Keep in sync with the boot timings in globals.css.
+ * something deliberate instead of an empty card. Nothing cancels it early — a full beat is the point.
+ * Keep in sync with the boot timings in globals.css.
  */
-const BOOT_MS = 2020;
-
-function prefersReducedMotion() {
-  return typeof window !== "undefined" && Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
-}
+const BOOT_MS = 2440;
 
 function formatElapsed(ms: number) {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -1976,14 +1973,14 @@ function WorkingOverlay({
     if (active) {
       setElapsed(0);
       setStopped(false);
-      setBoot(!prefersReducedMotion());
+      setBoot(true);
       setPhase("on");
-    } else {
-      setBoot(false);
-      if (phase === "on") setPhase("done");
+    } else if (phase === "on") {
+      setPhase("done");
     }
   }
 
+  // The boot timer owns the beat: a flickering `active` re-affirms the same `true` and React bails out.
   useEffect(() => {
     if (!boot) return undefined;
     const timer = window.setTimeout(() => setBoot(false), BOOT_MS);
@@ -1991,18 +1988,19 @@ function WorkingOverlay({
   }, [boot]);
 
   useEffect(() => {
-    if (phase === "on") {
-      windowRef.current?.focus({ preventScroll: true });
-      const at = Date.now();
-      const timer = window.setInterval(() => setElapsed(Date.now() - at), 1000);
-      return () => window.clearInterval(timer);
-    }
-    if (phase === "done") {
-      const timer = window.setTimeout(() => setPhase("off"), 950);
-      return () => window.clearTimeout(timer);
-    }
-    return undefined;
+    if (phase !== "on") return undefined;
+    windowRef.current?.focus({ preventScroll: true });
+    const at = Date.now();
+    const timer = window.setInterval(() => setElapsed(Date.now() - at), 1000);
+    return () => window.clearInterval(timer);
   }, [phase]);
+
+  // A turn that fails inside the boot beat still gets its outcome shown: hold the fade until boot ends.
+  useEffect(() => {
+    if (phase !== "done" || boot) return undefined;
+    const timer = window.setTimeout(() => setPhase("off"), 950);
+    return () => window.clearTimeout(timer);
+  }, [phase, boot]);
 
   const blocks = message?.blocks ?? [];
   const workBlocks = blocks.filter((block) => block.type === "thinking" || block.type === "tool");
