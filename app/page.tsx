@@ -23,6 +23,7 @@ type BeforeInstallPromptEvent = Event & {
 const SESSION_KEY = "e-agent-active-session";
 const AGENT_KEY = "e-agent-active-agent";
 const FULLSCREEN_KEY = "e-agent-fullscreen";
+const AI_REPLY_DARK_KEY = "e-agent-ai-reply-dark";
 
 function prefersStandalone() {
   return (
@@ -36,6 +37,14 @@ function readFullPreference() {
   if (prefersStandalone()) return true;
   try {
     return window.localStorage.getItem(FULLSCREEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function readAiReplyDarkPreference() {
+  try {
+    return window.localStorage.getItem(AI_REPLY_DARK_KEY) === "1";
   } catch {
     return false;
   }
@@ -395,6 +404,7 @@ export default function Home() {
   const [view, setView] = useState<View>("agents");
   const [tab, setTab] = useState<Tab>("agents");
   const [full] = useState(readFullPreference);
+  const [aiReplyDark] = useState(readAiReplyDarkPreference);
   const [message, setMessage] = useState("");
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -969,7 +979,7 @@ export default function Home() {
     .join(" ");
 
   return (
-    <main className={["stage", full ? "full" : ""].filter(Boolean).join(" ")}>
+    <main className={["stage", full ? "full" : "", aiReplyDark ? "ai-reply-dark" : ""].filter(Boolean).join(" ")}>
       <section className={phoneClass} aria-label="Website studio chat">
         <div className="siri-glow" aria-hidden="true">
           <span className="siri-glow-bloom">

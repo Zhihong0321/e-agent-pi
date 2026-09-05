@@ -31,8 +31,10 @@ type Settings = {
   salesPgProxyExpiresAt: string;
 };
 
-type Tab = "keys" | "models" | "agents" | "sites" | "skills" | "mcp" | "usage";
-const TABS: Tab[] = ["keys", "models", "agents", "sites", "skills", "mcp", "usage"];
+type Tab = "keys" | "models" | "agents" | "sites" | "skills" | "mcp" | "display" | "usage";
+const TABS: Tab[] = ["keys", "models", "agents", "sites", "skills", "mcp", "display", "usage"];
+
+const AI_REPLY_DARK_KEY = "e-agent-ai-reply-dark";
 
 function readTab(): Tab {
   if (typeof window === "undefined") return "keys";
@@ -149,6 +151,13 @@ export default function SettingsPage() {
   const [authed, setAuthed] = useState(false);
   const [password, setPassword] = useState("");
   const [tab, setTab] = useState<Tab>(readTab);
+  const [aiReplyDark, setAiReplyDark] = useState(() => {
+    try {
+      return window.localStorage.getItem(AI_REPLY_DARK_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
   const [settings, setSettings] = useState<Settings | null>(null);
   const [form, setForm] = useState({
     cavotiApiKey: "",
@@ -640,7 +649,7 @@ export default function SettingsPage() {
         <div className="settings-brand">
           <img className="brand-logo" src="/logo-black.png" alt="" width={36} height={36} />
           <div>
-            <small>Keys · Models · Agents · Sites · Skills · MCP · Usage</small>
+            <small>Keys · Models · Agents · Sites · Skills · MCP · Display · Usage</small>
             <h1>Settings</h1>
           </div>
         </div>
@@ -1431,6 +1440,33 @@ export default function SettingsPage() {
                     New MCP
                   </button>
                 ) : null}
+              </div>
+            </section>
+          )}
+
+          {tab === "display" && (
+            <section className="settings-card">
+              <p>Local display preferences for this browser. Nothing on this tab is saved to the server.</p>
+              <div className="check-grid">
+                <label className="check-row">
+                  <input
+                    type="checkbox"
+                    checked={aiReplyDark}
+                    onChange={(event) => {
+                      const next = event.target.checked;
+                      setAiReplyDark(next);
+                      try {
+                        window.localStorage.setItem(AI_REPLY_DARK_KEY, next ? "1" : "0");
+                      } catch {
+                        // localStorage unavailable; preference just won't persist
+                      }
+                    }}
+                  />
+                  <span>
+                    <strong>Dark theme for AI replies</strong>
+                    <small>Assistant messages render on a dark background in Fira Mono instead of the default look.</small>
+                  </span>
+                </label>
               </div>
             </section>
           )}
