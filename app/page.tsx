@@ -1821,6 +1821,11 @@ function AgentConversation({
           Task completed
         </div>
       )}
+      {siriSignal === "ask" && last?.role === "assistant" && !last.streaming && (
+        <div className="open-question" role="status">
+          Open question to user
+        </div>
+      )}
       <div ref={bottomRef} />
     </div>
   );
@@ -2331,9 +2336,26 @@ function promptsFor(agent?: Agent) {
       "Check if a page has changed since yesterday",
     ];
   }
+  if (agent?.slug === "sales") {
+    return [
+      "How much have we collected this month?",
+      "How much is still outstanding?",
+      "Which models are running low on stock?",
+    ];
+  }
+  if (!agent || agent.slug === "website") {
+    return [
+      "Update the hero headline to \"Build faster with Pi\"",
+      "Add a WhatsApp contact button to the footer",
+      "What files are in the workspace?",
+    ];
+  }
+  // Any other agent (system or custom) without a curated list above: build
+  // prompts from its own role data instead of borrowing Website Dev Agent's.
+  const toolNames = [...(agent.skills ?? []), ...(agent.mcp ?? [])].map((row) => row.name).filter(Boolean);
   return [
-    "Update the hero headline to \"Build faster with Pi\"",
-    "Add a WhatsApp contact button to the footer",
+    agent.description ? `Help me with: ${agent.description}` : `What can you help me with as ${agent.name}?`,
+    toolNames.length ? `What can you do with ${toolNames[0]}?` : "What tools do you have access to?",
     "What files are in the workspace?",
   ];
 }

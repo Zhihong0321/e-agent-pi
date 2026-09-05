@@ -67,9 +67,6 @@ a:hover { color: var(--green-dark); }
 .phone.siri-working {
   box-shadow: 0 30px 80px rgba(36, 59, 50, 0.32), 0 0 0 1px rgba(16, 33, 27, 0.06), 0 0 28px #22d3ee88, 0 0 72px #34d39966;
 }
-.phone.siri-ask {
-  box-shadow: 0 30px 80px rgba(36, 59, 50, 0.32), 0 0 0 1px rgba(16, 33, 27, 0.06), 0 0 28px #f59e0b88, 0 0 72px #fb923c66;
-}
 
 .siri-live {
   position: absolute;
@@ -88,8 +85,7 @@ a:hover { color: var(--green-dark); }
   opacity: 0;
   transition: opacity 0.45s;
 }
-.phone.siri-working .siri-glow,
-.phone.siri-ask .siri-glow { opacity: 1; }
+.phone.siri-working .siri-glow { opacity: 1; }
 .siri-glow::after {
   content: "";
   position: absolute;
@@ -104,13 +100,6 @@ a:hover { color: var(--green-dark); }
     linear-gradient(to left, rgb(34 211 238 / 0.5), rgb(52 211 153 / 0.16) 20px, transparent 58px),
     linear-gradient(to bottom, rgb(34 211 238 / 0.46), rgb(52 211 153 / 0.14) 20px, transparent 58px),
     linear-gradient(to top, rgb(34 211 238 / 0.46), rgb(52 211 153 / 0.14) 20px, transparent 58px);
-}
-.phone.siri-ask .siri-glow::after {
-  background:
-    linear-gradient(to right, rgb(251 146 60 / 0.55), rgb(251 191 36 / 0.18) 20px, transparent 58px),
-    linear-gradient(to left, rgb(251 146 60 / 0.55), rgb(251 191 36 / 0.18) 20px, transparent 58px),
-    linear-gradient(to bottom, rgb(251 146 60 / 0.5), rgb(251 191 36 / 0.16) 20px, transparent 58px),
-    linear-gradient(to top, rgb(251 146 60 / 0.5), rgb(251 191 36 / 0.16) 20px, transparent 58px);
 }
 .siri-glow-bloom,
 .siri-glow-rim {
@@ -153,10 +142,6 @@ a:hover { color: var(--green-dark); }
 .phone.siri-working .siri-glow-bloom i,
 .phone.siri-working .siri-glow-rim i {
   background: conic-gradient(from 20deg, #22d3ee, #4ade80, #38bdf8, #2dd4bf, #60a5fa, #34d399, #22d3ee);
-}
-.phone.siri-ask .siri-glow-bloom i,
-.phone.siri-ask .siri-glow-rim i {
-  background: conic-gradient(from 20deg, #fbbf24, #fb923c, #facc15, #f97316, #fde047, #f59e0b, #fbbf24);
 }
 
 .inbox,
@@ -745,7 +730,7 @@ a.file-row { color: inherit; text-decoration: none; }
 
 .chat-head {
   position: relative;
-  padding: 48px 8px 8px 4px;
+  padding: 20px 8px 8px 4px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -853,6 +838,27 @@ a.file-row { color: inherit; text-decoration: none; }
   color: #63766f;
   font-size: 12px;
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.06);
+}
+.open-question {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 6px;
+  color: #b45309;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.open-question::before,
+.open-question::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #f59e0b;
+  opacity: 0.6;
 }
 
 .task-complete-pill {
@@ -1684,7 +1690,7 @@ a.file-row { color: inherit; text-decoration: none; }
   box-shadow: none;
 }
 .stage.full .inbox-head { padding-top: max(20px, env(safe-area-inset-top)); }
-.stage.full .chat-head { padding-top: max(48px, env(safe-area-inset-top)); }
+.stage.full .chat-head { padding-top: max(20px, env(safe-area-inset-top)); }
 .stage.full .bottom-nav { padding-bottom: max(22px, env(safe-area-inset-bottom)); }
 .stage.full .composer { padding-bottom: max(26px, env(safe-area-inset-bottom)); }
 .stage.full .phone.siri-working,
@@ -1700,7 +1706,7 @@ a.file-row { color: inherit; text-decoration: none; }
     box-shadow: none;
   }
   .inbox-head { padding-top: max(20px, env(safe-area-inset-top)); }
-  .chat-head { padding-top: max(48px, env(safe-area-inset-top)); }
+  .chat-head { padding-top: max(20px, env(safe-area-inset-top)); }
   .bottom-nav { padding-bottom: max(22px, env(safe-area-inset-bottom)); }
   .composer { padding-bottom: max(26px, env(safe-area-inset-bottom)); }
   .phone.siri-working,
