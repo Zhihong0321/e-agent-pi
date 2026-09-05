@@ -63,6 +63,39 @@
           "maxTokens": 32768
         }
       ]
+    },
+    "opencode-go": {
+      "baseUrl": "https://opencode.ai/zen/go/v1",
+      "api": "openai-completions",
+      "apiKey": "$OPENCODE_GO_API_KEY",
+      "authHeader": true,
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false
+      },
+      "models": [
+        {
+          "id": "glm-5.3-flash",
+          "name": "GLM 5.3 Flash (OpenCode GO)",
+          "input": ["text", "image"],
+          "contextWindow": 200000,
+          "maxTokens": 32768
+        },
+        {
+          "id": "qwen3.8-flash",
+          "name": "Qwen 3.8 Flash (OpenCode GO)",
+          "input": ["text", "image"],
+          "contextWindow": 200000,
+          "maxTokens": 32768
+        },
+        {
+          "id": "deepseek-v4-flash-vision-exp",
+          "name": "DeepSeek V4 Flash Vision (OpenCode GO)",
+          "input": ["text", "image"],
+          "contextWindow": 200000,
+          "maxTokens": 32768
+        }
+      ]
     }
   }
 }

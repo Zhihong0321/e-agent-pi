@@ -7,6 +7,8 @@ type Settings = {
   kimiBaseUrl: string;
   glm53ApiKeySet: boolean;
   glm53BaseUrl: string;
+  opencodeGoApiKeySet: boolean;
+  opencodeGoBaseUrl: string;
   imagenApiKeySet: boolean;
   imagenBaseUrl: string;
   imagenModel: string;
@@ -138,6 +140,8 @@ export default function SettingsPage() {
     kimiBaseUrl: "",
     glm53ApiKey: "",
     glm53BaseUrl: "",
+    opencodeGoApiKey: "",
+    opencodeGoBaseUrl: "",
     imagenApiKey: "",
     imagenBaseUrl: "",
     imagenModel: "",
@@ -187,6 +191,7 @@ export default function SettingsPage() {
       cavotiBaseUrl: data.cavotiBaseUrl,
       kimiBaseUrl: data.kimiBaseUrl,
       glm53BaseUrl: data.glm53BaseUrl,
+      opencodeGoBaseUrl: data.opencodeGoBaseUrl,
       imagenBaseUrl: data.imagenBaseUrl,
       imagenModel: data.imagenModel,
       imagenApi: data.imagenApi || "auto",
@@ -301,6 +306,8 @@ export default function SettingsPage() {
           kimi_base_url: form.kimiBaseUrl,
           glm53_api_key: form.glm53ApiKey,
           glm53_base_url: form.glm53BaseUrl,
+          opencode_go_api_key: form.opencodeGoApiKey,
+          opencode_go_base_url: form.opencodeGoBaseUrl,
           imagen_api_key: form.imagenApiKey,
           imagen_base_url: form.imagenBaseUrl,
           imagen_model: form.imagenModel,
@@ -321,7 +328,7 @@ export default function SettingsPage() {
         }),
       });
       setSettings(data);
-      setForm((prev) => ({ ...prev, cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", settingsPassword: "", afaPasskey: "", salesPgProxyToken: "" }));
+      setForm((prev) => ({ ...prev, cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", opencodeGoApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", settingsPassword: "", afaPasskey: "", salesPgProxyToken: "" }));
       if (data.proposal?.lastError) {
         setError(data.proposal.lastError);
         setSaved("Saved keys, but GitHub rejected the proposal push.");
@@ -654,6 +661,28 @@ export default function SettingsPage() {
                 <input
                   value={form.glm53BaseUrl}
                   onChange={(event) => setForm({ ...form, glm53BaseUrl: event.target.value })}
+                />
+              </label>
+
+              <h2>OpenCode GO</h2>
+              <p>
+                One key unlocks GLM 5.3 Flash, Qwen 3.8 Flash and DeepSeek V4 Flash Vision. Quota-based plan; the
+                base URL must keep the <code>/go/</code> segment.
+              </p>
+              <label>
+                API key {settings?.opencodeGoApiKeySet ? <em>saved</em> : <em>missing</em>}
+                <input
+                  type="password"
+                  value={form.opencodeGoApiKey}
+                  onChange={(event) => setForm({ ...form, opencodeGoApiKey: event.target.value })}
+                  placeholder={settings?.opencodeGoApiKeySet ? "••••••••  (unchanged)" : "Paste key"}
+                />
+              </label>
+              <label>
+                Base URL
+                <input
+                  value={form.opencodeGoBaseUrl}
+                  onChange={(event) => setForm({ ...form, opencodeGoBaseUrl: event.target.value })}
                 />
               </label>
 

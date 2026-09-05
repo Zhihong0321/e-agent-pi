@@ -10,6 +10,7 @@ const DEFAULT_BASE_URL = {
   CAVOTI: "https://cavoti.com/v1",
   KIMI: "https://api2.cmkey.cn/v1",
   GLM53: "https://vectide.cn/v1",
+  OPENCODE_GO: "https://opencode.ai/zen/go/v1",
 };
 
 /** Vault stores origin (`https://cavoti.com`); Pi needs the OpenAI `/v1` path. */
@@ -86,11 +87,13 @@ export function interpolatePiModels(modelsJson) {
   const cavoti = secret("cavoti_api_key");
   const kimi = secret("kimi_api_key");
   const glm53 = secret("glm53_api_key");
+  const opencodeGo = secret("opencode_go_api_key");
   if (cavoti && data.providers?.cavoti) {
     data.providers.cavoti.apiKey = cavoti;
     data.providers.cavoti.baseUrl = normalizeCavotiBaseUrl(data.providers.cavoti.baseUrl);
   }
   if (kimi && data.providers?.["kimi-k3"]) data.providers["kimi-k3"].apiKey = kimi;
   if (glm53 && data.providers?.glm53) data.providers.glm53.apiKey = glm53;
+  if (opencodeGo && data.providers?.["opencode-go"]) data.providers["opencode-go"].apiKey = opencodeGo;
   return JSON.stringify(data, null, 2);
 }

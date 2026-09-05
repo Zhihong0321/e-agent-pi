@@ -1422,9 +1422,11 @@ async function buildPiModelsJson() {
   const cavoti = secret("cavoti_base_url");
   const kimi = secret("kimi_base_url");
   const glm53 = secret("glm53_base_url");
+  const opencodeGo = secret("opencode_go_base_url");
   if (cavoti) raw.providers.cavoti.baseUrl = normalizeCavotiBaseUrl(cavoti);
   if (kimi) raw.providers["kimi-k3"].baseUrl = kimi;
   if (glm53) raw.providers.glm53.baseUrl = glm53;
+  if (opencodeGo) raw.providers["opencode-go"].baseUrl = opencodeGo;
   return JSON.stringify(raw, null, 2);
 }
 
