@@ -96,6 +96,25 @@
           "maxTokens": 32768
         }
       ]
+    },
+    "hive-ai": {
+      "baseUrl": "https://api.thehive.ai/api/v3",
+      "api": "openai-completions",
+      "apiKey": "$HIVE_AI_API_KEY",
+      "authHeader": true,
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false
+      },
+      "models": [
+        {
+          "id": "zai-org/glm-5.3-flash",
+          "name": "GLM 5.3 Flash (Hive AI)",
+          "input": ["text", "image", "video"],
+          "contextWindow": 1000000,
+          "maxTokens": 32768
+        }
+      ]
     }
   }
 }

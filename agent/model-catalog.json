@@ -68,5 +68,16 @@
     "vaultCredential": "OPENCODE_GO_TOKEN_PLAN",
     "envPrefix": "OPENCODE_GO",
     "vision": true
+  },
+  {
+    "id": "glm-5.3-flash-hive",
+    "label": "GLM 5.3 Flash (Hive AI)",
+    "shortLabel": "GLM5.3F-Hive",
+    "provider": "hive-ai",
+    "model": "zai-org/glm-5.3-flash",
+    "vaultCredential": "HIVE_AI",
+    "envPrefix": "HIVE_AI",
+    "vision": true,
+    "requiresStream": true
   }
 ]

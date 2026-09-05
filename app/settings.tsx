@@ -9,6 +9,8 @@ type Settings = {
   glm53BaseUrl: string;
   opencodeGoApiKeySet: boolean;
   opencodeGoBaseUrl: string;
+  hiveAiApiKeySet: boolean;
+  hiveAiBaseUrl: string;
   imagenApiKeySet: boolean;
   imagenBaseUrl: string;
   imagenModel: string;
@@ -157,6 +159,8 @@ export default function SettingsPage() {
     glm53BaseUrl: "",
     opencodeGoApiKey: "",
     opencodeGoBaseUrl: "",
+    hiveAiApiKey: "",
+    hiveAiBaseUrl: "",
     imagenApiKey: "",
     imagenBaseUrl: "",
     imagenModel: "",
@@ -211,6 +215,7 @@ export default function SettingsPage() {
       kimiBaseUrl: data.kimiBaseUrl,
       glm53BaseUrl: data.glm53BaseUrl,
       opencodeGoBaseUrl: data.opencodeGoBaseUrl,
+      hiveAiBaseUrl: data.hiveAiBaseUrl,
       imagenBaseUrl: data.imagenBaseUrl,
       imagenModel: data.imagenModel,
       imagenApi: data.imagenApi || "auto",
@@ -334,6 +339,8 @@ export default function SettingsPage() {
           glm53_base_url: form.glm53BaseUrl,
           opencode_go_api_key: form.opencodeGoApiKey,
           opencode_go_base_url: form.opencodeGoBaseUrl,
+          hive_ai_api_key: form.hiveAiApiKey,
+          hive_ai_base_url: form.hiveAiBaseUrl,
           imagen_api_key: form.imagenApiKey,
           imagen_base_url: form.imagenBaseUrl,
           imagen_model: form.imagenModel,
@@ -354,7 +361,7 @@ export default function SettingsPage() {
         }),
       });
       setSettings(data);
-      setForm((prev) => ({ ...prev, cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", opencodeGoApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", settingsPassword: "", afaPasskey: "", salesPgProxyToken: "" }));
+      setForm((prev) => ({ ...prev, cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", opencodeGoApiKey: "", hiveAiApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", settingsPassword: "", afaPasskey: "", salesPgProxyToken: "" }));
       if (data.proposal?.lastError) {
         setError(data.proposal.lastError);
         setSaved("Saved keys, but GitHub rejected the proposal push.");
@@ -747,6 +754,29 @@ export default function SettingsPage() {
                 <input
                   value={form.opencodeGoBaseUrl}
                   onChange={(event) => setForm({ ...form, opencodeGoBaseUrl: event.target.value })}
+                />
+              </label>
+
+              <h2>Hive AI</h2>
+              <p>
+                GLM 5.3 Flash via Hive&apos;s v3 OpenAI-compatible LLM proxy — currently the only model on this
+                endpoint. Streaming-only: the server always sends <code>stream: true</code> for this model, which the
+                proxy requires.
+              </p>
+              <label>
+                API key {settings?.hiveAiApiKeySet ? <em>saved</em> : <em>missing</em>}
+                <input
+                  type="password"
+                  value={form.hiveAiApiKey}
+                  onChange={(event) => setForm({ ...form, hiveAiApiKey: event.target.value })}
+                  placeholder={settings?.hiveAiApiKeySet ? "••••••••  (unchanged)" : "Paste key"}
+                />
+              </label>
+              <label>
+                Base URL
+                <input
+                  value={form.hiveAiBaseUrl}
+                  onChange={(event) => setForm({ ...form, hiveAiBaseUrl: event.target.value })}
                 />
               </label>
 

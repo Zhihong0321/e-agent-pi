@@ -11,6 +11,7 @@ const DEFAULT_BASE_URL = {
   KIMI: "https://api2.cmkey.cn/v1",
   GLM53: "https://vectide.cn/v1",
   OPENCODE_GO: "https://opencode.ai/zen/go/v1",
+  HIVE_AI: "https://api.thehive.ai/api/v3",
 };
 
 /** Vault stores origin (`https://cavoti.com`); Pi needs the OpenAI `/v1` path. */
@@ -27,7 +28,7 @@ export function normalizeCavotiBaseUrl(value) {
   return trimmed;
 }
 
-/** @typedef {{ id: string; label: string; shortLabel: string; provider: string; model: string; vaultCredential?: string; envPrefix: string; vision?: boolean; available?: boolean }} CatalogEntry */
+/** @typedef {{ id: string; label: string; shortLabel: string; provider: string; model: string; vaultCredential?: string; envPrefix: string; vision?: boolean; available?: boolean; requiresStream?: boolean }} CatalogEntry */
 
 /** @type {CatalogEntry[] | null} */
 let catalogCache = null;
@@ -98,14 +99,16 @@ export async function testModelRoundTrip(entry, env) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
   try {
+    const headers = { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` };
+    if (entry.requiresStream) headers.Accept = "text/event-stream";
     const res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      headers,
       body: JSON.stringify({
         model: entry.model,
         messages: [{ role: "user", content: "ping" }],
         max_tokens: 8,
-        stream: false,
+        stream: Boolean(entry.requiresStream),
       }),
       signal: controller.signal,
     });
@@ -114,7 +117,9 @@ export async function testModelRoundTrip(entry, env) {
       const text = await res.text().catch(() => "");
       return { id: entry.id, ok: false, latencyMs, error: `HTTP ${res.status}${text ? `: ${text.slice(0, 200)}` : ""}` };
     }
-    await res.json().catch(() => null);
+    // Streaming models (e.g. Hive AI) return SSE, not a single JSON body.
+    if (entry.requiresStream) await res.text().catch(() => null);
+    else await res.json().catch(() => null);
     return { id: entry.id, ok: true, latencyMs };
   } catch (error) {
     const latencyMs = Date.now() - started;
@@ -135,6 +140,7 @@ export function interpolatePiModels(modelsJson) {
   const kimi = secret("kimi_api_key");
   const glm53 = secret("glm53_api_key");
   const opencodeGo = secret("opencode_go_api_key");
+  const hiveAi = secret("hive_ai_api_key");
   if (cavoti && data.providers?.cavoti) {
     data.providers.cavoti.apiKey = cavoti;
     data.providers.cavoti.baseUrl = normalizeCavotiBaseUrl(data.providers.cavoti.baseUrl);
@@ -142,5 +148,6 @@ export function interpolatePiModels(modelsJson) {
   if (kimi && data.providers?.["kimi-k3"]) data.providers["kimi-k3"].apiKey = kimi;
   if (glm53 && data.providers?.glm53) data.providers.glm53.apiKey = glm53;
   if (opencodeGo && data.providers?.["opencode-go"]) data.providers["opencode-go"].apiKey = opencodeGo;
+  if (hiveAi && data.providers?.["hive-ai"]) data.providers["hive-ai"].apiKey = hiveAi;
   return JSON.stringify(data, null, 2);
 }
