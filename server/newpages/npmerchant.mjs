@@ -1,57 +1,13 @@
 import fs from "node:fs";
-const NP_MERCHANT_HOST = "merchant.newpages.com.my";
-const MERCHANT_ORIGIN = `https://${NP_MERCHANT_HOST}`;
-const API_ORIGIN = "https://server.newpages.com.my";
+import { API_ORIGIN, apiPost, buttonByText, fillEditor, MERCHANT_ORIGIN, multipartText, NP_MERCHANT_HOST, npReady, readCreds, stamp } from "./np-shared.mjs";
+
+export { npReady };
+
 const MANAGE_NEWS_URL = `${MERCHANT_ORIGIN}/manage/news`;
 const ADD_NEWS_URL = `${MERCHANT_ORIGIN}/manage/news/add`;
-async function readCreds(page) {
-  if (!page.url().startsWith(MERCHANT_ORIGIN)) {
-    await page.goto(MANAGE_NEWS_URL, { waitUntil: "domcontentloaded", timeout: 6e4 });
-  }
-  const creds = await page.evaluate(() => ({
-    token: localStorage.getItem("token") ?? "",
-    companyId: localStorage.getItem("company_id") ?? "",
-    companyName: localStorage.getItem("company_name") ?? "",
-    npCompanyId: localStorage.getItem("np_company_id") ?? ""
-  }));
-  if (!creds.token || !creds.companyId) {
-    throw new Error(
-      `Not signed in to ${NP_MERCHANT_HOST} — no token in localStorage. Save the merchant username/password on Settings → Sites and run: node "$CLOUD_PI_SITES" login newpages`,
-    );
-  }
-  return creds;
-}
-async function npReady(browser) {
-  return browser.runIsolated(async (_ctx, page) => {
-    try {
-      const c = await readCreds(page);
-      return { ready: true, companyName: c.companyName, detail: `signed in as ${c.companyName} (company_id=${c.companyId})` };
-    } catch (err) {
-      return { ready: false, detail: err instanceof Error ? err.message : String(err) };
-    }
-  });
-}
-async function apiPost(ctx, creds, path, fields = {}) {
-  const res = await ctx.request.post(`${API_ORIGIN}/${path}`, {
-    form: { token: creds.token, company_id: creds.companyId, ...fields },
-    timeout: 3e4
-  });
-  if (!res.ok()) throw new Error(`${path} returned HTTP ${res.status()}`);
-  const body = await res.json();
-  if (body.error === void 0) throw new Error(`${path} returned an unrecognised body: ${JSON.stringify(body).slice(0, 200)}`);
-  if (String(body.error) !== "0") {
-    const detail = Array.isArray(body.data) ? body.data.join("; ") : JSON.stringify(body.data ?? {}).slice(0, 200);
-    throw new Error(`${path} refused the request: ${detail}`);
-  }
-  return body.data;
-}
-const stamp = (v) => {
-  const n = Number(v);
-  return Number.isFinite(n) && n > 0 ? new Date(n * 1e3).toISOString() : "";
-};
 async function npNewsList(browser) {
   return browser.runIsolated(async (ctx, page) => {
-    const creds = await readCreds(page);
+    const creds = await readCreds(page, MANAGE_NEWS_URL);
     const data = await apiPost(ctx, creds, "newses");
     return {
       total: Number(data.total ?? 0),
@@ -70,7 +26,7 @@ async function npNewsList(browser) {
 }
 async function npNewsCategories(browser) {
   return browser.runIsolated(async (ctx, page) => {
-    const creds = await readCreds(page);
+    const creds = await readCreds(page, MANAGE_NEWS_URL);
     const data = await apiPost(ctx, creds, "news/categories");
     return data.allNewsCategory ?? [];
   });
@@ -83,27 +39,6 @@ const EDITOR_FRAMES = [
 const TITLE_INPUTS = ["#for-item-name", "#for-item-name-cn", "#for-item-name-bm"];
 const LANGUAGE_TABS = [/English/i, /Chinese/i, /Melayu/i];
 const TAB = 'a[role="tab"]';
-const buttonByText = (page, text) => page.locator("button:visible").filter({ hasText: text });
-function multipartText(payload) {
-  const out = {};
-  const boundary = payload.match(/^(--[^\r\n]+)\r?\n/)?.[1];
-  if (!boundary) return out;
-  for (const part of payload.split(boundary)) {
-    const split = part.indexOf("\r\n\r\n");
-    if (split < 0) continue;
-    const headers = part.slice(0, split);
-    if (/filename=/i.test(headers)) continue;
-    const name = headers.match(/name="([^"]+)"/)?.[1];
-    if (!name) continue;
-    out[name] = part.slice(split + 4).replace(/\r?\n--?$/, "").slice(0, 200);
-  }
-  return out;
-}
-async function fillEditor(page, frameSel, text) {
-  const body = page.frameLocator(frameSel).locator("body");
-  await body.click({ timeout: 15e3 });
-  await page.keyboard.insertText(text);
-}
 async function readBackForm(page) {
   return page.evaluate(() => {
     const val = (sel) => document.querySelector(sel)?.value ?? "";
@@ -138,7 +73,7 @@ async function npNewsCreate(browser, input) {
     if (!fs.existsSync(p)) throw new Error(`sub image not found: ${p}`);
   }
   const drive = async (ctx, page) => {
-    await readCreds(page);
+    await readCreds(page, MANAGE_NEWS_URL);
     await page.goto(ADD_NEWS_URL, { waitUntil: "domcontentloaded", timeout: 9e4 });
     await page.waitForSelector(TITLE_INPUTS[0], { timeout: 6e4 });
     await page.setInputFiles("#image-input", input.imagePath);
@@ -210,7 +145,7 @@ async function npNewsCreate(browser, input) {
       bytes: payload.length
     } : null;
     await page.waitForTimeout(3e3);
-    const creds = await readCreds(page);
+    const creds = await readCreds(page, MANAGE_NEWS_URL);
     const listed = await apiPost(ctx, creds, "newses").catch(() => ({ news: [] }));
     const match = (listed.news ?? []).find((n) => n.name === input.title);
     return {
@@ -227,7 +162,7 @@ async function npNewsCreate(browser, input) {
 async function npNewsDelete(browser, id) {
   if (!/^\d+$/.test(id)) throw new Error(`news id must be numeric, got "${id}"`);
   return browser.runIsolated(async (ctx, page) => {
-    const creds = await readCreds(page);
+    const creds = await readCreds(page, MANAGE_NEWS_URL);
     const before = await apiPost(ctx, creds, "newses");
     const row = (before.news ?? []).find((n) => n.id === id);
     if (!row) {
@@ -264,6 +199,5 @@ export {
   npNewsCategories,
   npNewsCreate,
   npNewsDelete,
-  npNewsList,
-  npReady
+  npNewsList
 };

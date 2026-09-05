@@ -9,6 +9,15 @@ import {
   npNewsList,
   npReady,
 } from "./newpages/npmerchant.mjs";
+import {
+  npServicesCategories,
+  npServicesCreate,
+  npServicesDetail,
+  npServicesEdit,
+  npServicesList,
+  npServicesSetVisibility,
+  npServicesTags,
+} from "./newpages/npservices.mjs";
 
 const SITE_SLUG = NEWPAGES_SITE_SLUG;
 const MERCHANT_ORIGIN = `https://${NP_MERCHANT_HOST}`;
@@ -227,4 +236,39 @@ export async function newpagesCreate(input) {
 export async function newpagesDelete(id) {
   await ensureNewpagesLogin();
   return npNewsDelete(manager(), String(id));
+}
+
+export async function newpagesServices(options) {
+  await ensureNewpagesLogin();
+  return npServicesList(manager(), options);
+}
+
+export async function newpagesServiceCategories() {
+  await ensureNewpagesLogin();
+  return npServicesCategories(manager());
+}
+
+export async function newpagesServiceTags() {
+  await ensureNewpagesLogin();
+  return npServicesTags(manager());
+}
+
+export async function newpagesServiceDetail(id) {
+  await ensureNewpagesLogin();
+  return npServicesDetail(manager(), id);
+}
+
+export async function newpagesServiceCreate(input) {
+  await ensureNewpagesLogin();
+  return npServicesCreate(manager(), input);
+}
+
+export async function newpagesServiceEdit(id, input) {
+  await ensureNewpagesLogin();
+  return npServicesEdit(manager(), id, input);
+}
+
+export async function newpagesServiceSetVisibility(id, visible) {
+  await ensureNewpagesLogin();
+  return npServicesSetVisibility(manager(), id, visible);
 }

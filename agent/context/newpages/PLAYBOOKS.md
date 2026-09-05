@@ -48,6 +48,46 @@ Never delete by row position or by title match alone.
 `--title-cn/--body-cn` (中文) and `--title-bm/--body-bm` (Malay) exist on `np create`.
 Use them when the operator supplies those texts; do not machine-translate unless asked.
 
+### 5. "List the services" / "what's on Manage Services?"
+
+```bash
+node "$CLOUD_PI_SITES" np services
+```
+Reply as a table: `id | title | visible | sort`.
+
+### 6. "Add a service page"
+
+1. Copy the header image into the workspace with a stable name, same as news.
+2. `np services categories` and `np services tags` — match by exact name; a tag that
+   isn't in the list cannot be invented, ask the operator to pick an existing one or
+   skip tags.
+3. Dry run:
+   ```bash
+   node "$CLOUD_PI_SITES" np services create --title "…" --body "…" --image "$PWD/photo.jpg" --category "Residential Installation" --tags "Solar Installation,Green Energy Malaysia" --dry-run
+   ```
+   Show the operator the JSON echo (title, body, category, tagChips).
+4. Only when they clearly say publish/go live: same command without `--dry-run`.
+5. Read `id` from the JSON and reply with it.
+
+### 7. "Update the X service page"
+
+1. `np services` → find the numeric id by title.
+2. `np services get <id>` to see current title/body/category/tags before changing anything.
+3. Dry run the edit with only the fields that are changing:
+   ```bash
+   node "$CLOUD_PI_SITES" np services edit <id> --body "…" --dry-run
+   ```
+4. Only when confirmed: same command without `--dry-run`.
+5. Tag edits are add-only right now — new tags are appended, existing ones cannot be
+   removed by this automation. Say so if the operator asks to remove a tag.
+
+### 8. "Hide / unhide the X service"
+
+1. `np services` → find the numeric id by title, confirm current `visible` state.
+2. Ask for confirmation quoting id + title + the direction (hide or show) — showing a
+   hidden service makes it public immediately, no dry-run exists for this action.
+3. `node "$CLOUD_PI_SITES" np services hide <id>` or `... show <id>` → read `toggled: true`.
+
 ### Out of scope → redirect in one line
 
 HTML/CSS → Website Dev Agent. Proposal copy → Proposal Agent. Package prices → Package Updater.

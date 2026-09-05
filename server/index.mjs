@@ -102,6 +102,13 @@ import {
   newpagesCreate,
   newpagesDelete,
   newpagesNews,
+  newpagesServiceCategories,
+  newpagesServiceCreate,
+  newpagesServiceDetail,
+  newpagesServiceEdit,
+  newpagesServices,
+  newpagesServiceSetVisibility,
+  newpagesServiceTags,
   newpagesStatus,
 } from "./newpages.mjs";
 import { newpagesHealth } from "./newpages-health.mjs";
@@ -1792,6 +1799,39 @@ const server = createServer(async (req, res) => {
         const del = pathname.match(/^\/api\/np\/news\/(\d+)$/);
         if (req.method === "DELETE" && del) {
           json(res, 200, await newpagesDelete(del[1]));
+          return;
+        }
+        if (req.method === "GET" && pathname === "/api/np/services") {
+          json(res, 200, await newpagesServices());
+          return;
+        }
+        if (req.method === "GET" && pathname === "/api/np/services/categories") {
+          json(res, 200, { categories: await newpagesServiceCategories() });
+          return;
+        }
+        if (req.method === "GET" && pathname === "/api/np/services/tags") {
+          json(res, 200, await newpagesServiceTags());
+          return;
+        }
+        if (req.method === "POST" && pathname === "/api/np/services") {
+          const body = JSON.parse((await readBody(req)) || "{}");
+          json(res, 200, await newpagesServiceCreate(body));
+          return;
+        }
+        const svcDetail = pathname.match(/^\/api\/np\/services\/(\d+)$/);
+        if (req.method === "GET" && svcDetail) {
+          json(res, 200, await newpagesServiceDetail(svcDetail[1]));
+          return;
+        }
+        if (req.method === "PATCH" && svcDetail) {
+          const body = JSON.parse((await readBody(req)) || "{}");
+          json(res, 200, await newpagesServiceEdit(svcDetail[1], body));
+          return;
+        }
+        const svcVisible = pathname.match(/^\/api\/np\/services\/(\d+)\/visible$/);
+        if (req.method === "POST" && svcVisible) {
+          const body = JSON.parse((await readBody(req)) || "{}");
+          json(res, 200, await newpagesServiceSetVisibility(svcVisible[1], Boolean(body.visible)));
           return;
         }
       } catch (error) {

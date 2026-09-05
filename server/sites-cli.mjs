@@ -9,6 +9,13 @@ import {
   newpagesCreate,
   newpagesDelete,
   newpagesNews,
+  newpagesServiceCategories,
+  newpagesServiceCreate,
+  newpagesServiceDetail,
+  newpagesServiceEdit,
+  newpagesServices,
+  newpagesServiceSetVisibility,
+  newpagesServiceTags,
   newpagesStatus,
 } from "./newpages.mjs";
 
@@ -22,6 +29,15 @@ const USAGE = `Host site-browser CLI. Prints JSON.
   node $CLOUD_PI_SITES np categories
   node $CLOUD_PI_SITES np create --title "..." --body "..." --image /path/to.jpg [--category Roadshow] [--dry-run]
   node $CLOUD_PI_SITES np delete <newsId>
+
+  node $CLOUD_PI_SITES np services
+  node $CLOUD_PI_SITES np services categories
+  node $CLOUD_PI_SITES np services tags
+  node $CLOUD_PI_SITES np services get <serviceId>
+  node $CLOUD_PI_SITES np services create --title "..." --body "..." --image /path/to.jpg [--category X] [--tags "a,b,c"] [--dry-run]
+  node $CLOUD_PI_SITES np services edit <serviceId> [--title "..."] [--body "..."] [--image /path.jpg] [--category X] [--tags "a,b,c"] [--dry-run]
+  node $CLOUD_PI_SITES np services show <serviceId>
+  node $CLOUD_PI_SITES np services hide <serviceId>
 `;
 
 function parseArgv(argv) {
@@ -112,6 +128,56 @@ async function main() {
       if (!id) throw new Error("news id required");
       process.stdout.write(`${JSON.stringify(await newpagesDelete(id))}\n`);
       return;
+    }
+    if (action === "services") {
+      const sub = opts._[2];
+      const serviceInput = () => ({
+        title: flag(opts, "title") || undefined,
+        body: flag(opts, "body") || undefined,
+        titleCN: flag(opts, "title-cn") || undefined,
+        bodyCN: flag(opts, "body-cn") || undefined,
+        titleBM: flag(opts, "title-bm") || undefined,
+        bodyBM: flag(opts, "body-bm") || undefined,
+        imagePath: flag(opts, "image") || flag(opts, "imagePath") || undefined,
+        category: flag(opts, "category") || undefined,
+        tags: flag(opts, "tags") ? flag(opts, "tags").split(",").map((t) => t.trim()).filter(Boolean) : undefined,
+        dryRun: Boolean(opts["dry-run"] || opts.dryRun),
+      });
+      if (!sub) {
+        process.stdout.write(`${JSON.stringify(await newpagesServices())}\n`);
+        return;
+      }
+      if (sub === "categories") {
+        process.stdout.write(`${JSON.stringify({ categories: await newpagesServiceCategories() })}\n`);
+        return;
+      }
+      if (sub === "tags") {
+        process.stdout.write(`${JSON.stringify(await newpagesServiceTags())}\n`);
+        return;
+      }
+      if (sub === "get") {
+        const id = opts._[3];
+        if (!id) throw new Error("service id required");
+        process.stdout.write(`${JSON.stringify(await newpagesServiceDetail(id))}\n`);
+        return;
+      }
+      if (sub === "create") {
+        process.stdout.write(`${JSON.stringify(await newpagesServiceCreate(serviceInput()))}\n`);
+        return;
+      }
+      if (sub === "edit") {
+        const id = opts._[3];
+        if (!id) throw new Error("service id required");
+        process.stdout.write(`${JSON.stringify(await newpagesServiceEdit(id, serviceInput()))}\n`);
+        return;
+      }
+      if (sub === "show" || sub === "hide") {
+        const id = opts._[3];
+        if (!id) throw new Error("service id required");
+        process.stdout.write(`${JSON.stringify(await newpagesServiceSetVisibility(id, sub === "show"))}\n`);
+        return;
+      }
+      throw new Error(`Unknown np services action: ${sub}. ${USAGE}`);
     }
   }
 
