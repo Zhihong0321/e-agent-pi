@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { imagenConfigured, imagenSystemPrompt } from "./imagen.mjs";
+import { replyStyleSystemPrompt } from "./reply-style.mjs";
 import { hostSystemPrompt } from "./ee-html.mjs";
 import { proposalSystemPrompt } from "./github.mjs";
 import { loadContextPack } from "./context-pack.mjs";
@@ -49,7 +50,7 @@ export async function materializeAgentRuntime(agent, mcpServers, modelsJson, { m
   const dir = path.join(RUNTIME_DIR, runtimeKey || agent.id);
   await mkdir(dir, { recursive: true });
   const role = String(agent.rolePrompt || "").trim();
-  const extras = [imagenSystemPrompt()];
+  const extras = [replyStyleSystemPrompt(), imagenSystemPrompt()];
   if (agent.id === "website" || agent.slug === "website") extras.push(hostSystemPrompt());
   if (isProposalAgent(agent)) extras.push(proposalSystemPrompt(agent));
   const pack = await loadContextPack(agent, { modelId });

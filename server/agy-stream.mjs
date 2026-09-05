@@ -9,6 +9,7 @@ import { loadContextPack } from "./context-pack.mjs";
 import { agentEnv } from "./agent-env.mjs";
 import { agentWorkspace, isProposalAgent, IMAGEN_SKILL_DIR, SKILLS_DIR } from "./paths.mjs";
 import { imagenConfigured, imagenSystemPrompt } from "./imagen.mjs";
+import { replyStyleSystemPrompt } from "./reply-style.mjs";
 import { hostSystemPrompt } from "./ee-html.mjs";
 import { proposalSystemPrompt } from "./github.mjs";
 import { logEvent } from "./debug.mjs";
@@ -112,7 +113,7 @@ export async function materializeAgyWorkspace(agent, { skills = [], modelId } = 
 
   // 1. Build unified role prompt, host fragments, and the context pack
   const role = String(agent.rolePrompt || "").trim();
-  const extras = [imagenSystemPrompt()];
+  const extras = [replyStyleSystemPrompt(), imagenSystemPrompt()];
   if (agent.id === "website" || agent.slug === "website") extras.push(hostSystemPrompt());
   if (isProposalAgent(agent)) extras.push(proposalSystemPrompt(agent));
   const pack = await loadContextPack(agent, { modelId });
