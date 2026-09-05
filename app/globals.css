@@ -1863,11 +1863,21 @@ a.file-row { color: inherit; text-decoration: none; }
   background: rgba(6, 18, 14, 0.6);
   -webkit-backdrop-filter: blur(3px);
   backdrop-filter: blur(3px);
-  animation: workingFade 0.34s ease-out both;
+  will-change: opacity;
+  animation: workingFade 0.4s ease-out both;
 }
+/* The window's first paint is the expensive one (backdrop blur, an 80px shadow, the boot gradients)
+   and the animation clock does not wait for it: measured, the card jumped from its start pose to two
+   thirds of the way in a single ~150ms frame, so the flight read as a fade. `pre` holds everything
+   invisible while that frame rasterizes; WorkingOverlay drops the class one painted frame later and the
+   flight starts with all of its frames intact. */
+.working-layer.pre,
+.working-layer.pre .working-window { animation: none; }
+.working-layer.pre { opacity: 0; }
+.working-layer.pre .working-window { opacity: 0; transform: translateY(300px) scale(0.94); }
 .working-layer.done {
   pointer-events: none;
-  animation: workingFadeOut 0.3s ease-in 0.62s both;
+  animation: workingFadeOut 0.46s cubic-bezier(0.4, 0, 0.6, 1) 0.78s both;
 }
 .working-window {
   position: relative;
@@ -1889,9 +1899,12 @@ a.file-row { color: inherit; text-decoration: none; }
     inset 0 0 0 1px rgba(255, 255, 255, 0.7);
   overflow: hidden;
   outline: none;
-  animation: workingPop 0.78s cubic-bezier(0.32, 0.72, 0, 1) both;
+  will-change: transform, opacity;
+  animation: workingFly 0.72s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-.working-layer.done .working-window { animation: workingSink 0.3s ease-in 0.62s both; }
+/* Exit: a 0.72s Done beat, then the card sinks and the mask lifts just behind it (WorkingOverlay
+   unmounts at 1.26s; keep the two in step). */
+.working-layer.done .working-window { animation: workingSink 0.42s cubic-bezier(0.4, 0, 0.6, 1) 0.72s both; }
 .working-window > * { flex: none; }
 .working-bar {
   height: 3px;
@@ -1976,6 +1989,9 @@ a.file-row { color: inherit; text-decoration: none; }
   grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   border-radius: 12px;
+  /* The transcript only mounts after the boot beat (or when the first block lands), so it unfolds
+     rather than snapping the card to a new height. */
+  animation: workingBodyIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .working-body .turn-stack { background: var(--field); grid-template-columns: minmax(0, 1fr); }
 .working-body .turn-stack > div { min-width: 0; }
@@ -2012,15 +2028,21 @@ a.file-row { color: inherit; text-decoration: none; }
 }
 @keyframes workingFade { from { opacity: 0; } }
 @keyframes workingFadeOut { to { opacity: 0; } }
-/* A real flight, not a pop: the card starts low in the pane and rides up with a small settle, so the
-   travel stays legible instead of collapsing into the first two frames of an expo-out curve. */
-@keyframes workingPop {
-  from { opacity: 0; transform: translateY(230px) scale(0.9); }
+/* The flight: transform and opacity only, so once the layer is rasterized the compositor owns every
+   frame. The card is solid by 30% of the way so the travel is seen as travel, not as a fade. */
+@keyframes workingFly {
+  from { opacity: 0; transform: translateY(300px) scale(0.94); }
+  30% { opacity: 1; }
 }
-@keyframes workingSink { to { opacity: 0; transform: translateY(8px) scale(0.98); } }
+@keyframes workingSink { to { opacity: 0; transform: translateY(24px) scale(0.97); } }
+@keyframes workingBodyIn {
+  from { opacity: 0; max-height: 0; transform: translateY(6px); }
+  to { max-height: 60vh; }
+}
 @media (prefers-reduced-motion: reduce) {
   .working-layer,
   .working-window { animation-duration: 0.01s; }
+  .working-body { animation: none; }
 }
 .working-actions {
   min-width: 0;

@@ -1921,10 +1921,14 @@ type WorkPhase = "on" | "done" | "off";
 /**
  * How long the dark "Eter Agent CLI initializing…" beat holds before the window morphs to the light
  * theme. The engine needs 3-5s to produce a first token; this covers the front of that wait with
- * something deliberate instead of an empty card. Nothing cancels it early — a full beat is the point.
+ * something deliberate instead of an empty card. It is also the hard floor for the whole presentation:
+ * a turn that ends (or errors) inside the beat keeps the live window until the beat completes, and the
+ * streamed transcript is not mounted beneath it. Nothing cancels it early — a full beat is the point.
  * Keep in sync with the boot timings in globals.css.
  */
 const BOOT_MS = 2440;
+/** Done beat (0.72s) plus the sink/fade exit; matches `.working-layer.done` in globals.css. */
+const EXIT_MS = 1260;
 
 function formatElapsed(ms: number) {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -1967,6 +1971,8 @@ function WorkingOverlay({
   const [stopped, setStopped] = useState(false);
   // Only a turn that starts while we are watching boots; reopening a chat mid-turn shows the live window at once.
   const [boot, setBoot] = useState(false);
+  // False until the window has painted once; the flight starts on the frame after (see `.working-layer.pre`).
+  const [entered, setEntered] = useState(false);
   const windowRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
 
@@ -1977,6 +1983,7 @@ function WorkingOverlay({
       setElapsed(0);
       setStopped(false);
       setBoot(true);
+      setEntered(false);
       setPhase("on");
     } else if (phase === "on") {
       setPhase("done");
@@ -1990,6 +1997,20 @@ function WorkingOverlay({
     return () => window.clearTimeout(timer);
   }, [boot]);
 
+  // Stage the entrance: let the expensive first frame paint at rest, then start the flight two frames
+  // later so a slow rasterization cannot eat the travel (it did — see `.working-layer.pre` in globals.css).
+  useEffect(() => {
+    if (phase !== "on" || entered) return undefined;
+    let inner = 0;
+    const outer = window.requestAnimationFrame(() => {
+      inner = window.requestAnimationFrame(() => setEntered(true));
+    });
+    return () => {
+      window.cancelAnimationFrame(outer);
+      window.cancelAnimationFrame(inner);
+    };
+  }, [phase, entered]);
+
   useEffect(() => {
     if (phase !== "on") return undefined;
     windowRef.current?.focus({ preventScroll: true });
@@ -1998,10 +2019,10 @@ function WorkingOverlay({
     return () => window.clearInterval(timer);
   }, [phase]);
 
-  // A turn that fails inside the boot beat still gets its outcome shown: hold the fade until boot ends.
+  // A turn that ends inside the boot beat still gets its outcome shown: the exit clock starts when boot ends.
   useEffect(() => {
     if (phase !== "done" || boot) return undefined;
-    const timer = window.setTimeout(() => setPhase("off"), 950);
+    const timer = window.setTimeout(() => setPhase("off"), EXIT_MS);
     return () => window.clearTimeout(timer);
   }, [phase, boot]);
 
@@ -2027,7 +2048,12 @@ function WorkingOverlay({
 
   if (phase === "off") return null;
 
-  const live = phase === "on";
+  // The boot beat is the floor: a turn that finished inside it is still presented as live until it ends.
+  const shownPhase: WorkPhase = boot && phase === "done" ? "on" : phase;
+  const live = shownPhase === "on";
+  // The transcript stays out of the tree during boot: it is hidden under the boot layer anyway, and
+  // rendering streamed blocks mid-animation would jank the beat and stretch the card beneath it.
+  const showBody = !boot && (workBlocks.length > 0 || Boolean(text));
   const label = avatarLabel(agent.short, agent.name);
   const outcome = stopped ? "Stopped" : error ? "Ended with an error" : "Done";
   const silent = live && !blocks.length;
@@ -2037,7 +2063,7 @@ function WorkingOverlay({
 
   return (
     <div
-      className={["working-layer", phase].join(" ")}
+      className={["working-layer", shownPhase, entered ? "" : "pre"].filter(Boolean).join(" ")}
       role="dialog"
       aria-modal="true"
       aria-label={boot ? `Starting ${agent.name}` : live ? `${agent.name} is working` : outcome}
@@ -2099,7 +2125,7 @@ function WorkingOverlay({
           )}
           <span>{headline}</span>
         </div>
-        {(workBlocks.length > 0 || text) && (
+        {showBody && (
           <div className="working-body" ref={bodyRef}>
             {workBlocks.length > 0 && (
               <TurnBlocks blocks={workBlocks} streaming={live} agentId={agent.id} onOpen={onOpenMedia} />
