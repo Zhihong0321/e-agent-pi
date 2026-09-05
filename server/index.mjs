@@ -84,6 +84,7 @@ import {
 } from "./catalog.mjs";
 import { ensureImpeccableForWebsite } from "./impeccable.mjs";
 import { ensureScraplingForWebsite, scraplingPublic } from "./scrapling.mjs";
+import { ensureSalesMcp } from "./sales-mcp.mjs";
 import { closeBrowsers } from "./browser.mjs";
 import { ensureSitesSchema, getSite, listSites, upsertSite, deleteSite } from "./sites.mjs";
 import {
@@ -1213,6 +1214,16 @@ async function bootServices() {
     }
   } catch (error) {
     logEvent("error", `scrapling install failed: ${sanitizeError(error)}`);
+  }
+
+  boot.step = "sales-mcp";
+  try {
+    if (dbReady()) {
+      await ensureSalesMcp();
+      logEvent("info", "sales-data mcp registered and attached to sales agent");
+    }
+  } catch (error) {
+    logEvent("error", `sales-data mcp failed: ${sanitizeError(error)}`);
   }
 
   boot.step = "sites";

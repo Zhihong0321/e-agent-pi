@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 export const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|svg|avif|bmp)(?:\?|#|$)/i;
 const CHAT_TOKEN_RE =
@@ -384,6 +384,40 @@ function TableView({
   );
 }
 
+const REPORT_RESIZE_SCRIPT = `<script>(function(){
+  function post(){ parent.postMessage({ type: "chat-report-height", height: document.documentElement.scrollHeight }, "*"); }
+  post();
+  window.addEventListener("load", post);
+  if (window.ResizeObserver) new ResizeObserver(post).observe(document.body);
+  else setInterval(post, 500);
+})();</script>`;
+
+/** Renders an agent-supplied HTML report (fenced \`\`\`html block) in a sandboxed, auto-height iframe. */
+function HtmlReportFrame({ html, k }: { html: string; k: string }) {
+  const ref = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState(60);
+  useEffect(() => {
+    function onMessage(event: MessageEvent) {
+      if (ref.current && event.source === ref.current.contentWindow && event.data?.type === "chat-report-height") {
+        setHeight(Math.max(40, Number(event.data.height) || 60));
+      }
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+  return (
+    <iframe
+      key={k}
+      ref={ref}
+      className="chat-report-frame"
+      style={{ height }}
+      srcDoc={html + REPORT_RESIZE_SCRIPT}
+      sandbox="allow-scripts"
+      title="Report"
+    />
+  );
+}
+
 export function ChatCopy({
   text,
   agentId,
@@ -423,6 +457,9 @@ export function ChatCopy({
           return <TableView key={key} headers={block.headers} rows={block.rows} ctx={ctx} k={key} />;
         }
         if (block.type === "code") {
+          if (/^(html|report)$/i.test(block.lang.trim())) {
+            return <HtmlReportFrame key={key} k={key} html={block.text} />;
+          }
           return (
             <pre key={key} className="chat-pre">
               <code>{block.text}</code>
