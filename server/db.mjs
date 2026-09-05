@@ -196,6 +196,18 @@ export async function listSessions(agentId) {
   return result.rows;
 }
 
+/** Agent + model of the most recently touched Pi session, for boot pre-warm when no explicit record exists. */
+export async function lastPiSession() {
+  const result = await getPool().query(
+    `SELECT agent_id AS "agentId", model_id AS "modelId"
+     FROM sessions
+     WHERE COALESCE(engine, 'pi') = 'pi' AND agent_id IS NOT NULL
+     ORDER BY updated_at DESC
+     LIMIT 1`,
+  );
+  return result.rows[0] ?? null;
+}
+
 export async function countSessions() {
   const result = await getPool().query(`SELECT COUNT(*)::int AS n FROM sessions`);
   return result.rows[0]?.n ?? 0;

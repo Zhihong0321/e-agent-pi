@@ -14,6 +14,7 @@ import {
   getSession,
   getSetting,
   insertMessage,
+  lastPiSession,
   listMessages,
   listSessions,
   setSetting,
@@ -738,7 +739,10 @@ async function prewarmSlot(agentRef, modelId, reason) {
     }
     await ensureCatalog();
     const wanted = modelId || defaultModelId || "";
-    const model = findModel(modelCatalog ?? [], wanted);
+    let model = findModel(modelCatalog ?? [], wanted);
+    if (!model?.available && defaultModelId && defaultModelId !== wanted) {
+      model = findModel(modelCatalog ?? [], defaultModelId);
+    }
     if (!model?.available) {
       logEvent("warn", `prewarm skipped (${reason}): model ${wanted || "none"} unavailable for agent=${agent.slug}`);
       return false;
@@ -772,11 +776,20 @@ async function prewarmOnBoot() {
   try {
     const raw = await getSetting(PI_LAST_SLOT_SETTING);
     const last = raw ? JSON.parse(raw) : null;
-    if (last?.agentId) targets.unshift({ ref: last.agentId, modelId: last.modelId || null, reason: "last used" });
-  } catch {
-    // no record yet
+    if (last?.agentId) {
+      targets.unshift({ ref: last.agentId, modelId: last.modelId || null, reason: "last used" });
+    } else {
+      // No record yet (first boot on this code): fall back to the newest Pi chat.
+      const recent = await lastPiSession().catch(() => null);
+      if (recent?.agentId) targets.unshift({ ref: recent.agentId, modelId: recent.modelId || null, reason: "latest session" });
+    }
+  } catch (error) {
+    logEvent("warn", `prewarm lookup failed: ${sanitizeError(error)}`);
   }
-  if (!targets.length) return;
+  if (!targets.length) {
+    logEvent("info", "prewarm: nothing to warm yet (no Pi session on record, PI_PREWARM_AGENTS empty)");
+    return;
+  }
   const seen = new Set();
   for (const target of targets.slice(0, PI_KEEP_WARM)) {
     if (seen.has(target.ref)) continue;
