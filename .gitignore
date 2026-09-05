@@ -52,3 +52,13 @@ yarn-error.log*
 *.zip
 new-template/
 
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
+
+# WhatsApp sidecar: local runtime state and build output. whatsapp.db holds
+# live whatsmeow session keys — never commit it, this repo is public.
+/sidecar/data/
+/sidecar/*.log
+/sidecar/*.pid
+/sidecar/*.exe
