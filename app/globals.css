@@ -839,26 +839,16 @@ a.file-row { color: inherit; text-decoration: none; }
   font-size: 12px;
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.06);
 }
-.open-question {
-  align-self: stretch;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 10px 0 6px;
-  color: #b45309;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  white-space: nowrap;
+.bubble-agent.asking {
+  border: 1.5px solid #f5a524;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.14), 0 1px 1px rgba(0, 0, 0, 0.08);
 }
-.open-question::before,
-.open-question::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: #f59e0b;
-  opacity: 0.6;
+.asking-label {
+  color: #b45309;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .task-complete-pill {
@@ -1221,6 +1211,7 @@ a.file-row { color: inherit; text-decoration: none; }
   color: #6b8078;
 }
 .bubble-agent .meta-row { margin-top: -4px; color: var(--dim); }
+.meta-row.asking-row { justify-content: space-between; }
 
 .typing { display: flex; gap: 4px; padding: 6px 2px; }
 .typing i {
@@ -2085,6 +2076,38 @@ a.file-row { color: inherit; text-decoration: none; }
   font-size: 11.5px;
   line-height: 1.4;
   color: var(--dim);
+}
+/* Connection readout: whose wait is this? Green means the pipe is fine and the agent is the slow party. */
+.working-net {
+  margin: -4px 0 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--field);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  animation: workingNetIn 0.3s ease-out both;
+}
+.working-net i {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: var(--green);
+}
+.working-net.network { background: #fff7e6; color: #92400e; }
+.working-net.network i { background: #f59e0b; }
+.working-net.host,
+.working-net.offline { background: #fef2f2; color: #991b1b; }
+.working-net.host i,
+.working-net.offline i { background: #dc2626; }
+@keyframes workingNetIn { from { opacity: 0; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) {
+  .working-net { animation: none; }
 }
 
 /* ---- Boot beat: the window flies in dark, runs a CLI init, then morphs to the light theme ----

@@ -360,7 +360,8 @@ function userVisibleContent(text: string, files: PendingFile[]) {
   return bits.join("\n\n");
 }
 
-async function readSse(res: Response, onEvent: (event: StreamEvent) => void) {
+/** `onPulse` fires on every chunk the socket delivers, heartbeat comments included; it is the liveness signal for the connection readout. */
+async function readSse(res: Response, onEvent: (event: StreamEvent) => void, onPulse?: () => void) {
   const ctype = res.headers.get("content-type") || "";
   if (!ctype.includes("text/event-stream")) {
     const data = (await res.json()) as { error?: string };
@@ -373,6 +374,7 @@ async function readSse(res: Response, onEvent: (event: StreamEvent) => void) {
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
+    onPulse?.();
     buf += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
     let sep = buf.indexOf("\n\n");
     while (sep !== -1) {
@@ -415,6 +417,8 @@ export default function Home() {
   const [media, setMedia] = useState<{ src: string; alt?: string } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const [liveStatus, setLiveStatus] = useState("");
+  // When the turn's socket last delivered anything (data or a heartbeat); read by WorkingOverlay's connection readout.
+  const pulseRef = useRef(0);
   const [runningId, setRunningId] = useState("");
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState("");
@@ -885,6 +889,8 @@ export default function Home() {
             setPublishOk(!failed && (pushed === true || (event.host.git == null && !failed)));
           }
           if (event.type === "error" && event.error) setError(event.error);
+        }, () => {
+          pulseRef.current = Date.now();
         });
         if (!gotDone && !ac.signal.aborted) retry = true;
       }
@@ -1207,6 +1213,7 @@ export default function Home() {
                 onStop={stop}
                 onBack={goBack}
                 onOpenMedia={(src, alt) => setMedia({ src, alt })}
+                pulse={pulseRef}
               />
             </>
           )}
@@ -1765,6 +1772,7 @@ function AgentConversation({
   const last = history[history.length - 1];
   const showCard =
     last?.role === "assistant" && !last.streaming && siriSignal === "complete" && Boolean(liveUrl) && publishOk;
+  const isAsking = siriSignal === "ask" && last?.role === "assistant" && !last.streaming;
 
   return (
     <div className="chat-scroll">
@@ -1803,6 +1811,7 @@ function AgentConversation({
             item={item}
             agentId={agent.id}
             showCard={showCard && index === history.length - 1}
+            asking={isAsking && index === history.length - 1}
             liveUrl={liveUrl}
             onOpenMedia={onOpenMedia}
           />
@@ -1821,11 +1830,6 @@ function AgentConversation({
           Task completed
         </div>
       )}
-      {siriSignal === "ask" && last?.role === "assistant" && !last.streaming && (
-        <div className="open-question" role="status">
-          Open question to user
-        </div>
-      )}
       <div ref={bottomRef} />
     </div>
   );
@@ -1835,12 +1839,14 @@ function AssistantTurn({
   item,
   agentId,
   showCard,
+  asking,
   liveUrl,
   onOpenMedia,
 }: {
   item: ChatMessage;
   agentId: string;
   showCard: boolean;
+  asking: boolean;
   liveUrl: string | null;
   onOpenMedia: (src: string, alt?: string) => void;
 }) {
@@ -1862,7 +1868,7 @@ function AssistantTurn({
   const gallery = collectImageHrefs(text, toolText).filter((href) => !inlineHrefs.has(href));
 
   return (
-    <div className="bubble-agent">
+    <div className={asking ? "bubble-agent asking" : "bubble-agent"}>
       {showTyping && (
         <div className="typing">
           <i />
@@ -1913,7 +1919,8 @@ function AssistantTurn({
         </a>
       )}
       {!item.streaming && (
-        <div className="meta-row">
+        <div className={asking ? "meta-row asking-row" : "meta-row"}>
+          {asking && <span className="asking-label">Open question</span>}
           <span>Now</span>
         </div>
       )}
@@ -1934,6 +1941,52 @@ type WorkPhase = "on" | "done" | "off";
 const BOOT_MS = 2440;
 /** Done beat (0.72s) plus the sink/fade exit; matches `.working-layer.done` in globals.css. */
 const EXIT_MS = 1260;
+
+/**
+ * Whose wait is it? Shown once a turn has gone quiet, so a slow reply is never mistaken for a broken app.
+ * - agent: the socket is alive (5s heartbeats landing) but the model has not produced anything for a while.
+ * - network: the socket has stalled and a tiny round trip to the host is failing or slow too.
+ * - host: the socket has stalled but the host answers quickly, so the turn's process is the one that went quiet.
+ * - offline: the browser reports no network at all.
+ */
+type NetVerdict = { kind: "agent" | "network" | "host" | "offline"; rtt?: number };
+/** Agent silence before the readout appears. */
+const QUIET_MS = 8000;
+/** No bytes at all (heartbeat is 5s) before the pipe counts as stalled. */
+const STALL_MS = 12000;
+/** A round trip slower than this is reported as a slow connection. */
+const SLOW_RTT_MS = 1500;
+
+/** One cheap GET against the health route; `null` when it fails or takes longer than 4s. */
+async function probeRtt(): Promise<number | null> {
+  const ac = new AbortController();
+  const timer = window.setTimeout(() => ac.abort(), 4000);
+  const at = performance.now();
+  try {
+    const res = await fetch(`/api/health?probe=${Date.now()}`, { cache: "no-store", signal: ac.signal });
+    return res.ok ? Math.round(performance.now() - at) : null;
+  } catch {
+    return null;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+function netText(net: NetVerdict) {
+  const rtt = net.rtt == null ? "" : net.rtt >= 1000 ? `${(net.rtt / 1000).toFixed(1)} s` : `${net.rtt} ms`;
+  switch (net.kind) {
+    case "agent":
+      return `Your connection is fine${rtt ? ` (${rtt})` : ""}. The agent is still thinking; the wait is on our side.`;
+    case "network":
+      return rtt
+        ? `Your connection is slow (${rtt} round trip). The agent keeps working; the reply is stuck in transit.`
+        : "Your connection dropped. The agent keeps working; we will reconnect.";
+    case "host":
+      return "Your connection is fine, but the host went quiet. It may be restarting; we will reconnect.";
+    case "offline":
+      return "You are offline. The agent keeps working; reconnect to catch up.";
+  }
+}
 
 function formatElapsed(ms: number) {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -1958,6 +2011,7 @@ function WorkingOverlay({
   onStop,
   onBack,
   onOpenMedia,
+  pulse,
 }: {
   active: boolean;
   agent: Agent;
@@ -1969,6 +2023,7 @@ function WorkingOverlay({
   onStop: () => void;
   onBack: () => void;
   onOpenMedia: (src: string, alt?: string) => void;
+  pulse: { current: number };
 }) {
   const [phase, setPhase] = useState<WorkPhase>(active ? "on" : "off");
   const [seenActive, setSeenActive] = useState(active);
@@ -1978,6 +2033,10 @@ function WorkingOverlay({
   const [boot, setBoot] = useState(false);
   // False until the window has painted once; the flight starts on the frame after (see `.working-layer.pre`).
   const [entered, setEntered] = useState(false);
+  const [net, setNet] = useState<NetVerdict | null>(null);
+  const startRef = useRef(0);
+  const lastContentRef = useRef(0);
+  const probeRef = useRef({ busy: false, at: 0 });
   const windowRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
 
@@ -1989,6 +2048,7 @@ function WorkingOverlay({
       setStopped(false);
       setBoot(true);
       setEntered(false);
+      setNet(null);
       setPhase("on");
     } else if (phase === "on") {
       setPhase("done");
@@ -2020,6 +2080,8 @@ function WorkingOverlay({
     if (phase !== "on") return undefined;
     windowRef.current?.focus({ preventScroll: true });
     const at = Date.now();
+    startRef.current = at;
+    lastContentRef.current = at;
     const timer = window.setInterval(() => setElapsed(Date.now() - at), 1000);
     return () => window.clearInterval(timer);
   }, [phase]);
@@ -2045,11 +2107,46 @@ function WorkingOverlay({
   // Follow the live transcript unless the reader has scrolled up to inspect something.
   const contentSize = blocks.length + text.length;
   useEffect(() => {
+    lastContentRef.current = Date.now();
     const body = bodyRef.current;
     if (!body) return;
     const distance = body.scrollHeight - body.scrollTop - body.clientHeight;
     if (distance < 160) body.scrollTop = body.scrollHeight;
   }, [contentSize]);
+
+  // The connection readout: once a second, decide whose wait this is. The round-trip probe runs only
+  // while the turn is already slow, at most every 8s when the pipe is stalled and every 20s otherwise.
+  const diagnosing = phase === "on" && !boot;
+  useEffect(() => {
+    if (!diagnosing) return undefined;
+    const tick = () => {
+      const now = Date.now();
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        setNet({ kind: "offline" });
+        return;
+      }
+      // A pulse older than this turn's start belongs to the previous turn.
+      const lastByte = () => Math.max(pulse.current, startRef.current);
+      const stalled = now - lastByte() > STALL_MS;
+      const quiet = now - lastContentRef.current > QUIET_MS;
+      if (!stalled && !quiet) {
+        setNet(null);
+        return;
+      }
+      const probe = probeRef.current;
+      if (probe.busy || now - probe.at < (stalled ? 8000 : 20000)) return;
+      probe.busy = true;
+      probe.at = now;
+      void probeRtt().then((rtt) => {
+        probe.busy = false;
+        const stalledNow = Date.now() - lastByte() > STALL_MS;
+        if (rtt == null || rtt > SLOW_RTT_MS) setNet({ kind: "network", rtt: rtt ?? undefined });
+        else setNet(stalledNow ? { kind: "host", rtt } : { kind: "agent", rtt });
+      });
+    };
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [diagnosing, pulse]);
 
   if (phase === "off") return null;
 
@@ -2130,6 +2227,12 @@ function WorkingOverlay({
           )}
           <span>{headline}</span>
         </div>
+        {live && !boot && net && (
+          <p className={`working-net ${net.kind}`} role="status" aria-live="polite">
+            <i />
+            <span>{netText(net)}</span>
+          </p>
+        )}
         {showBody && (
           <div className="working-body" ref={bodyRef}>
             {workBlocks.length > 0 && (

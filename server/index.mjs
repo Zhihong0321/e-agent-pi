@@ -2381,9 +2381,10 @@ const server = createServer(async (req, res) => {
       );
       /** @type {ReturnType<typeof createTurn>} */
       let lastTurn = createTurn();
+      // 5s so the client can tell a quiet agent (pings still landing) from a stalled pipe: ~25 bytes each.
       const heartbeat = setInterval(() => {
         if (!res.writableEnded) res.write(`: ping ${Date.now()}\n\n`);
-      }, 15000);
+      }, 5000);
 
       try {
         const onEvent = (event, liveTurn) => {
