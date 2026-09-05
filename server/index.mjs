@@ -21,9 +21,9 @@ import {
   updateSession,
 } from "./db.mjs";
 import { envFlags, loadRecentFromDb, logEvent, railwayMeta, recentEvents } from "./debug.mjs";
-import { latestSample, metricsPayload, setPiAliveGetter, startSampler, stopSampler } from "./metrics.mjs";
-import { childrenOf, envInt, killTree, reapLeakedChildren, rpcClientPid } from "./proc.mjs";
-import { pickIdleSlots } from "./pi-idle.mjs";
+import { cgroupMemory, latestSample, metricsPayload, setPiAliveGetter, startSampler, stopSampler } from "./metrics.mjs";
+import { childrenOf, envInt, killTree, pidAlive, reapLeakedChildren, rpcClientPid } from "./proc.mjs";
+import { memoryPressure, pickEvictable, pickIdleSlots } from "./pi-idle.mjs";
 import { fileMime, listWorkspaceFiles, resolveWorkspaceFile } from "./files.mjs";
 import { getGitStatus, getGitWorkspaceStatus, initGitWorkspace, initWorkspace, syncGitWorkspace } from "./github.mjs";
 import { forgetBundleHash, hostConfigured, hostPublic, publishWorkspace } from "./ee-html.mjs";
@@ -128,6 +128,7 @@ const boot = { step: "starting", error: null, ready: false };
  *   client: RpcClient | undefined,
  *   booting: Promise<RpcClient> | undefined,
  *   agentId: string,
+ *   agentSlug: string,
  *   modelId: string,
  *   activeStudioSessionId: string | null,
  *   resumeSessionFile: string | null,
@@ -136,14 +137,36 @@ const boot = { step: "starting", error: null, ready: false };
  *   busy: boolean,
  *   lock: Promise<void>,
  *   lastUsedAt: number,
+ *   exits: number[],
  * }} PiSlot
  */
 /** @type {Map<string, PiSlot>} */
 const piPool = new Map();
 const MAX_PI_SLOTS = envInt("PI_POOL_SIZE", 3, { min: 1, max: 16 });
 const PI_SLOT_IDLE_MS = envInt("PI_SLOT_IDLE_MS", 180_000, { min: 15_000 });
-const PI_KEEP_WARM = envInt("PI_KEEP_WARM", 1, { min: 1, max: 8 });
+const PI_KEEP_WARM = envInt("PI_KEEP_WARM", 2, { min: 1, max: 8 });
 const PI_IDLE_SWEEP_MS = envInt("PI_IDLE_SWEEP_MS", 30_000, { min: 10_000, max: 300_000 });
+/** Agent ids or slugs the idle sweep never evicts (comma separated). */
+const PI_PIN_AGENTS = new Set(
+  String(process.env.PI_PIN_AGENTS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+);
+/** Agents to boot a Pi for right after startup (comma separated ids/slugs); the last-used one is always added. */
+const PI_PREWARM_AGENTS = String(process.env.PI_PREWARM_AGENTS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+/** Above this share of the cgroup limit the sweep drops warm extras immediately. */
+const PI_MEM_SOFT = envInt("PI_MEM_SOFT_PCT", 60, { min: 10, max: 100 }) / 100;
+/** Above this share a new Pi is only started after freeing memory, else refused. */
+const PI_MEM_HARD = envInt("PI_MEM_HARD_PCT", 75, { min: 10, max: 100 }) / 100;
+/** Re-warm an idle slot after an unexpected exit at most this many times per 10 min. */
+const PI_REWARM_MAX = 2;
+const PI_REWARM_WINDOW_MS = 10 * 60_000;
+const PI_REWARM_DELAY_MS = 5_000;
+const PI_LAST_SLOT_SETTING = "pi_last_slot";
 /** @type {Promise<void>} */
 let poolReserveLock = Promise.resolve();
 /** @type {Map<string, Promise<void>>} */
@@ -307,6 +330,9 @@ async function snapshot() {
     piPoolMax: MAX_PI_SLOTS,
     piKeepWarm: PI_KEEP_WARM,
     piIdleMs: PI_SLOT_IDLE_MS,
+    piPinned: [...PI_PIN_AGENTS],
+    piMemory: { soft: PI_MEM_SOFT, hard: PI_MEM_HARD, ratio: await memoryRatio() },
+    piWarm: poolWarmSummary(),
     env: envFlags(),
     secrets: secretFlags(),
     railway: railwayMeta(),
@@ -462,6 +488,19 @@ function withSlotLock(slot, fn) {
   return run;
 }
 
+/** Which agents actually have a live Pi right now (a slot entry alone is not proof). */
+function poolWarmSummary() {
+  return [...piPool.values()]
+    .filter((slot) => slot.client && slot.pid && pidAlive(slot.pid))
+    .map((slot) => ({
+      agent: slot.agentSlug,
+      model: slot.modelId,
+      pid: slot.pid,
+      busy: slot.busy,
+      idleSec: Math.round((Date.now() - (slot.lastUsedAt || 0)) / 1000),
+    }));
+}
+
 function liveKeepPids() {
   return [...piPool.values()].map((slot) => slot.pid || rpcClientPid(slot.client)).filter(Boolean);
 }
@@ -502,15 +541,75 @@ function evictIfNeeded() {
   for (const slot of oldest) evictSlot(slot);
 }
 
+/**
+ * Share of the container memory limit in use, or null when the host does not
+ * expose a cgroup limit (then the pool never throttles on memory).
+ */
+async function memoryRatio() {
+  try {
+    return memoryPressure(await cgroupMemory());
+  } catch {
+    return null;
+  }
+}
+
+function pct(ratio) {
+  return `${Math.round(ratio * 100)}%`;
+}
+
+/**
+ * Before spawning another Pi: if the container is above the hard threshold,
+ * stop least-recently-used idle slots (never the one we are booting for,
+ * never a busy one) until there is room, else refuse with a clear message
+ * instead of letting the kernel OOM-kill whatever it likes.
+ * @param {PiSlot} slot
+ */
+async function ensureMemoryHeadroom(slot) {
+  for (let round = 0; round < MAX_PI_SLOTS + 1; round += 1) {
+    const ratio = await memoryRatio();
+    if (ratio == null || ratio < PI_MEM_HARD) return;
+    const victim = pickEvictable([...piPool.values()], { keepWarm: 0, exclude: slot })[0];
+    if (!victim) {
+      throw new Error(
+        `Host is at memory capacity (${pct(ratio)} of the container limit) and no idle Pi can be stopped. Try again in a minute.`,
+      );
+    }
+    logEvent("warn", `memory ${pct(ratio)} >= hard ${pct(PI_MEM_HARD)}: evicting agent=${victim.agentSlug} to start agent=${slot.agentSlug}`);
+    await stopSlot(victim);
+  }
+}
+
 async function sweepIdleSlots() {
+  const slots = [...piPool.values()];
+
+  // A Pi that died (OOM, crash) must not look warm. The exit listener
+  // normally clears it first; this catches anything it missed.
+  for (const slot of slots) {
+    if (slot.client && !slot.booting && slot.pid && !pidAlive(slot.pid)) {
+      logEvent("warn", `Pi pid=${slot.pid} agent=${slot.agentSlug} is gone; dropping slot`);
+      await stopSlot(slot);
+    }
+  }
+
   const idle = pickIdleSlots([...piPool.values()], {
     idleMs: PI_SLOT_IDLE_MS,
     keepWarm: PI_KEEP_WARM,
+    pinned: PI_PIN_AGENTS,
   });
   for (const slot of idle) {
-    logEvent("info", `idle-evict agent=${slot.agentId} keepWarm=${PI_KEEP_WARM} live=${piPool.size}/${MAX_PI_SLOTS}`);
+    logEvent("info", `idle-evict agent=${slot.agentSlug} keepWarm=${PI_KEEP_WARM} live=${piPool.size}/${MAX_PI_SLOTS}`);
     await stopSlot(slot);
   }
+
+  const ratio = await memoryRatio();
+  if (ratio != null && ratio >= PI_MEM_SOFT) {
+    const extras = pickEvictable([...piPool.values()], { keepWarm: PI_KEEP_WARM, pinned: PI_PIN_AGENTS });
+    for (const slot of extras) {
+      logEvent("warn", `memory ${pct(ratio)} >= soft ${pct(PI_MEM_SOFT)}: evicting warm extra agent=${slot.agentSlug}`);
+      await stopSlot(slot);
+    }
+  }
+
   const leaked = await reapLeakedChildren({ keepPids: liveKeepPids() }).catch(() => 0);
   if (leaked) logEvent("warn", `reaped ${leaked} leaked Pi/MCP child process(es)`);
 }
@@ -553,7 +652,9 @@ async function startSlotClient(slot, agent, modelId) {
 
   const workspace = agentWorkspace(agent);
   await mkdir(workspace, { recursive: true });
+  await ensureMemoryHeadroom(slot);
   const beforeKids = new Set(await childrenOf(process.pid).catch(() => []));
+  const spawnedAt = Date.now();
   const pi = new RpcClient({
     cliPath: PI_CLI_PATH,
     cwd: workspace,
@@ -573,8 +674,115 @@ async function startSlotClient(slot, agent, modelId) {
     slot.pid = born[0] ?? null;
   }
   slot.lastUsedAt = Date.now();
-  logEvent("info", sessionFile ? `Pi client started pid=${slot.pid || "?"} session=${sessionFile}` : `Pi client started pid=${slot.pid || "?"}`);
+  watchSlotExit(slot, pi, agent, modelId);
+  logEvent(
+    "info",
+    `Pi client started pid=${slot.pid || "?"} spawnMs=${Date.now() - spawnedAt}${sessionFile ? ` session=${sessionFile}` : ""}`,
+  );
   return pi;
+}
+
+/**
+ * Notice a Pi that dies on its own (OOM kill, crash). Without this the slot
+ * looks warm until the next turn's get_state times out 30s later. Planned
+ * stops clear `slot.client` before killing, so they never reach the body.
+ * @param {PiSlot} slot
+ * @param {RpcClient} pi
+ */
+function watchSlotExit(slot, pi, agent, modelId) {
+  /** @type {import("node:child_process").ChildProcess | undefined} */
+  const child = pi.process ?? pi.child ?? pi._process;
+  if (!child || typeof child.once !== "function") return;
+  const pid = slot.pid;
+  child.once("exit", (code, signal) => {
+    if (slot.client !== pi) return;
+    slot.client = undefined;
+    slot.pid = null;
+    const wasBusy = slot.busy;
+    logEvent(
+      "warn",
+      `Pi exited unexpectedly agent=${slot.agentSlug} pid=${pid || "?"} code=${code ?? "?"} signal=${signal ?? "-"} busy=${wasBusy}`,
+    );
+    void killTree(pid);
+    if (wasBusy) return; // the turn's own error path restarts it
+    const now = Date.now();
+    slot.exits = (slot.exits || []).filter((ts) => now - ts < PI_REWARM_WINDOW_MS);
+    slot.exits.push(now);
+    if (slot.exits.length > PI_REWARM_MAX) {
+      logEvent("error", `Pi agent=${slot.agentSlug} exited ${slot.exits.length}x in 10 min; not re-warming`);
+      piPool.delete(slot.key);
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (piPool.get(slot.key) !== slot || slot.client || slot.booting) return;
+      void prewarmSlot(agent.id, modelId, "re-warm after exit");
+    }, PI_REWARM_DELAY_MS);
+    timer.unref?.();
+  });
+}
+
+/**
+ * Boot a Pi for an agent nobody is waiting on yet (startup, or after an
+ * unexpected exit) so the next message starts warm. Never throws.
+ * @param {string} agentRef id or slug
+ * @param {string | null | undefined} modelId
+ * @param {string} reason
+ */
+async function prewarmSlot(agentRef, modelId, reason) {
+  if (!dbReady()) return false;
+  try {
+    const agent = await getAgent(agentRef);
+    if (!agent) {
+      logEvent("warn", `prewarm skipped (${reason}): unknown agent ${agentRef}`);
+      return false;
+    }
+    await ensureCatalog();
+    const wanted = modelId || defaultModelId || "";
+    const model = findModel(modelCatalog ?? [], wanted);
+    if (!model?.available) {
+      logEvent("warn", `prewarm skipped (${reason}): model ${wanted || "none"} unavailable for agent=${agent.slug}`);
+      return false;
+    }
+    const startedAt = Date.now();
+    const slot = await getOrCreatePiSlot(agent, model.id);
+    logEvent("info", `prewarmed agent=${agent.slug} model=${model.id} pid=${slot.pid || "?"} readyMs=${Date.now() - startedAt} (${reason})`);
+    return true;
+  } catch (error) {
+    logEvent("warn", `prewarm failed (${reason}) agent=${agentRef}: ${sanitizeError(error)}`);
+    return false;
+  }
+}
+
+/**
+ * Remember which agent+model was used last so the next boot can pre-warm it.
+ * @param {PiSlot} slot
+ */
+function rememberLastSlot(slot) {
+  if (!dbReady()) return;
+  void setSetting(PI_LAST_SLOT_SETTING, JSON.stringify({ agentId: slot.agentId, modelId: slot.modelId })).catch(() => {});
+}
+
+/**
+ * Sequential so two cold starts never stack their memory spikes.
+ */
+async function prewarmOnBoot() {
+  if (!dbReady()) return;
+  /** @type {{ ref: string; modelId: string | null; reason: string }[]} */
+  const targets = PI_PREWARM_AGENTS.map((ref) => ({ ref, modelId: null, reason: "PI_PREWARM_AGENTS" }));
+  try {
+    const raw = await getSetting(PI_LAST_SLOT_SETTING);
+    const last = raw ? JSON.parse(raw) : null;
+    if (last?.agentId) targets.unshift({ ref: last.agentId, modelId: last.modelId || null, reason: "last used" });
+  } catch {
+    // no record yet
+  }
+  if (!targets.length) return;
+  const seen = new Set();
+  for (const target of targets.slice(0, PI_KEEP_WARM)) {
+    if (seen.has(target.ref)) continue;
+    seen.add(target.ref);
+    await prewarmSlot(target.ref, target.modelId, `boot: ${target.reason}`);
+  }
 }
 
 /**
@@ -619,6 +827,7 @@ async function getOrCreatePiSlot(agent, modelId, { sessionFile } = {}) {
         client: undefined,
         booting: undefined,
         agentId: agent.id,
+        agentSlug: agent.slug || agent.id,
         modelId,
         activeStudioSessionId: null,
         resumeSessionFile: sessionFile ?? null,
@@ -627,6 +836,7 @@ async function getOrCreatePiSlot(agent, modelId, { sessionFile } = {}) {
         busy: false,
         lock: Promise.resolve(),
         lastUsedAt: 0,
+        exits: [],
       };
       piPool.set(key, s);
     }
@@ -636,6 +846,7 @@ async function getOrCreatePiSlot(agent, modelId, { sessionFile } = {}) {
   if (slot.client) {
     await refreshSlotRuntime(slot, agent, modelId);
     evictIfNeeded();
+    rememberLastSlot(slot);
     return slot;
   }
   if (!slot.booting) slot.booting = startSlotClient(slot, agent, modelId);
@@ -645,6 +856,7 @@ async function getOrCreatePiSlot(agent, modelId, { sessionFile } = {}) {
     slot.booting = undefined;
   }
   evictIfNeeded();
+  rememberLastSlot(slot);
   return slot;
 }
 
@@ -1125,7 +1337,10 @@ async function bootServices() {
     startSampler();
     const idleSweep = setInterval(() => void sweepIdleSlots(), PI_IDLE_SWEEP_MS);
     idleSweep.unref?.();
-    logEvent("info", `resource sampler every 15s; Pi idle extras ${PI_SLOT_IDLE_MS / 1000}s, keep ${PI_KEEP_WARM} warm`);
+    logEvent(
+      "info",
+      `resource sampler every 15s; Pi idle extras ${PI_SLOT_IDLE_MS / 1000}s, keep ${PI_KEEP_WARM} warm, pinned=${[...PI_PIN_AGENTS].join(",") || "none"}, memory soft/hard ${pct(PI_MEM_SOFT)}/${pct(PI_MEM_HARD)}`,
+    );
   } catch (error) {
     logEvent("error", `resource sampler failed: ${sanitizeError(error)}`);
   }
@@ -1275,6 +1490,9 @@ async function bootServices() {
   boot.step = "ready";
   boot.ready = true;
   logEvent("info", "boot complete");
+
+  // Not part of boot: the health check must not wait on a Pi cold start.
+  void prewarmOnBoot();
 }
 
 const server = createServer(async (req, res) => {
@@ -1515,6 +1733,7 @@ const server = createServer(async (req, res) => {
         piPoolSize: piPool.size,
         piPoolMax: MAX_PI_SLOTS,
         piKeepWarm: PI_KEEP_WARM,
+        piWarm: poolWarmSummary(),
       });
       return;
     }

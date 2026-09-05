@@ -42,7 +42,7 @@ You are reviewer: read-only review. Check correctness, accessibility, mobile lay
 };
 
 const SPAWN_TOOLS = ["spawn_subagent", "subagent_status", "stop_subagent"];
-const MAX_RUNNING = Math.max(1, Number(process.env.CLOUD_PI_SUBAGENT_MAX || 3) || 3);
+const MAX_RUNNING = Math.max(1, Number(process.env.CLOUD_PI_SUBAGENT_MAX || 2) || 2);
 const MAX_TURNS = Math.max(4, Number(process.env.CLOUD_PI_SUBAGENT_MAX_TURNS || 24) || 24);
 const TIMEOUT_MS = Math.max(30_000, Number(process.env.CLOUD_PI_SUBAGENT_TIMEOUT_MS || 8 * 60_000) || 8 * 60_000);
 const RESULT_CHARS = 8000;

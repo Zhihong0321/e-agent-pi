@@ -62,7 +62,24 @@ async function rssKb(pid) {
   return match ? Number(match[1]) : null;
 }
 
-async function cgroupMemory() {
+/**
+ * @param {string | null} statText
+ * @param {string} key
+ */
+function statValue(statText, key) {
+  if (!statText) return null;
+  const match = statText.match(new RegExp(`^${key}\\s+(\\d+)`, "m"));
+  const n = match ? Number(match[1]) : NaN;
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Container memory: `used` is what the cgroup reports (page cache included,
+ * matches what the platform shows), `inactiveFile` is the reclaimable part
+ * so the Pi pool can size pressure on anonymous memory only.
+ * @returns {Promise<{ used: number | null; limit: number | null; inactiveFile: number | null }>}
+ */
+export async function cgroupMemory() {
   const current = await readText("/sys/fs/cgroup/memory.current");
   if (current) {
     const max = (await readText("/sys/fs/cgroup/memory.max"))?.trim();
@@ -71,6 +88,7 @@ async function cgroupMemory() {
     return {
       used: Number.isFinite(used) ? used : null,
       limit: limit != null && Number.isFinite(limit) && limit < 1e15 ? limit : null,
+      inactiveFile: statValue(await readText("/sys/fs/cgroup/memory.stat"), "inactive_file"),
     };
   }
   const usedText = await readText("/sys/fs/cgroup/memory/memory.usage_in_bytes");
@@ -80,9 +98,10 @@ async function cgroupMemory() {
     return {
       used: Number.isFinite(used) ? used : null,
       limit: Number.isFinite(limitRaw) && limitRaw > 0 && limitRaw < 1e15 ? limitRaw : null,
+      inactiveFile: statValue(await readText("/sys/fs/cgroup/memory/memory.stat"), "total_inactive_file"),
     };
   }
-  return { used: null, limit: null };
+  return { used: null, limit: null, inactiveFile: null };
 }
 
 async function cgroupCpuUs() {
