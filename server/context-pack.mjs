@@ -232,7 +232,7 @@ export function mergeTurns(a, b) {
 
 /**
  * @param {{ blocks?: { type?: string; name?: string }[]; text?: string }} turn
- * @param {{ autoContinues?: number }} extra
+ * @param {{ autoContinues?: number; timing?: Record<string, unknown> | null }} extra
  */
 export function turnMetrics(turn, extra = {}) {
   const tools = (turn?.blocks || []).filter((block) => block.type === "tool");
@@ -244,6 +244,7 @@ export function turnMetrics(turn, extra = {}) {
     callsBeforeFirstEdit: firstEdit === -1 ? null : firstEdit + 1,
     autoContinues: extra.autoContinues || 0,
     endedWithoutText: !String(turn?.text || "").trim(),
+    ...(extra.timing || {}),
   };
 }
 

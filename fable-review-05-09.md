@@ -195,3 +195,10 @@ Files: `server/index.mjs`, `server/pi-idle.mjs` (+ tests), `server/metrics.mjs`,
 Env summary: `PI_POOL_SIZE` `PI_KEEP_WARM` `PI_SLOT_IDLE_MS` `PI_IDLE_SWEEP_MS` `PI_PIN_AGENTS` `PI_PREWARM_AGENTS` `PI_MEM_SOFT_PCT` `PI_MEM_HARD_PCT` `CLOUD_PI_SUBAGENT_MAX`.
 
 Verify after deploy: `/api/health` should show one entry in `piWarm` within ~20 s of `boot complete` with nobody chatting; `/api/debug` events should contain `prewarmed agent=…`.
+
+## 9. Implemented 2026-09-05 (F5–F6)
+
+Files: `server/index.mjs`, `server/debug.mjs`, `server/files.mjs`, `server/context-pack.mjs`.
+
+- **F5 instrumentation.** Every Pi turn now logs one `turn metrics` event with: `coldStart`, `slotMs` (time to get a slot, includes the spawn on a cold start), `ensureMs` / `getStateMs` / `switchMs` / `sessionMode` (same, switch, new, restart), `firstEventMs`, `firstTokenMs`, `firstToolMs` (all from `prompt()`), `totalMs`, `childrenAtEnd`, `wallMs` (whole HTTP turn incl. publish and journal), plus the existing tool counters. A `Pi ready agent=… readyMs=…` line marks the first successful `get_state` after a spawn; that is the real boot time to size the UI boot beat from. Boot pre-warm now calls `get_state` too, so `prewarmed … readyMs` is a real number and the first user message never pays Pi's load. `/api/debug` reads 200 events by default and accepts `?limit=&level=&since=&match=` (e.g. `/api/debug?match=turn%20metrics`).
+- **F6 hot path.** (1) `refreshSlotRuntime` hashes its inputs (pool key + models.json text + MCP config) and skips the four file rewrites when nothing changed; verified against pi-coding-agent 0.84.4 that the appended role file is read only at load or on explicit reload, so the per-turn rewrite never reached a running Pi. (2) `publishToHost` takes a count/bytes/mtime fingerprint of the workspace first and skips zip+hash when it matches the last in-sync publish. (3) STATE.md journal, the session-rename RPC, and the metrics log now run after the `done` and `host` SSE frames, still inside the agent lock. (4) The rename RPC only fires on the turn that set the title.

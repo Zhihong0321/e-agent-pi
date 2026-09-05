@@ -23,9 +23,9 @@ import {
 } from "./db.mjs";
 import { envFlags, loadRecentFromDb, logEvent, railwayMeta, recentEvents } from "./debug.mjs";
 import { cgroupMemory, latestSample, metricsPayload, setPiAliveGetter, startSampler, stopSampler } from "./metrics.mjs";
-import { childrenOf, envInt, killTree, pidAlive, reapLeakedChildren, rpcClientPid } from "./proc.mjs";
+import { childrenOf, descendants, envInt, killTree, pidAlive, reapLeakedChildren, rpcClientPid } from "./proc.mjs";
 import { memoryPressure, pickEvictable, pickIdleSlots } from "./pi-idle.mjs";
-import { fileMime, listWorkspaceFiles, resolveWorkspaceFile } from "./files.mjs";
+import { fileMime, listWorkspaceFiles, resolveWorkspaceFile, workspaceFingerprint } from "./files.mjs";
 import { getGitStatus, getGitWorkspaceStatus, initGitWorkspace, initWorkspace, syncGitWorkspace } from "./github.mjs";
 import { forgetBundleHash, hostConfigured, hostPublic, publishWorkspace } from "./ee-html.mjs";
 import { imagenConfigured, imagenPublic } from "./imagen.mjs";
@@ -139,6 +139,10 @@ const boot = { step: "starting", error: null, ready: false };
  *   lock: Promise<void>,
  *   lastUsedAt: number,
  *   exits: number[],
+ *   runtimeHash: string,
+ *   bootedAt: number,
+ *   readyAt: number,
+ *   lastEnsure: { getStateMs: number; switchMs: number; mode: string } | null,
  * }} PiSlot
  */
 /** @type {Map<string, PiSlot>} */
@@ -343,12 +347,22 @@ async function snapshot() {
   };
 }
 
+/** Workspace fingerprint at the last publish that left the host in sync (published or unchanged). */
+let publishedFingerprint = "";
+
 async function publishToHost({ force = false } = {}) {
   try {
+    // Zipping and hashing the whole workspace every turn is the expensive
+    // part; a count/bytes/mtime walk is not. Skip the zip when nothing moved.
+    const fingerprint = await workspaceFingerprint(WORKSPACE).catch(() => "");
+    if (!force && fingerprint && fingerprint === publishedFingerprint && secret("ee_html_url")) {
+      return { ...hostPublic(), skipped: true };
+    }
     const published = await publishWorkspace({ force });
     if (published.lastError) logEvent("error", `ee-html: ${published.lastError}`);
     else if (published.skipped) logEvent("info", `ee-html unchanged ${published.url || hostPublic().slug}`);
     else logEvent("info", `ee-html published ${published.url}`);
+    if (!published.lastError && fingerprint) publishedFingerprint = fingerprint;
     return published;
   } catch (error) {
     logEvent("error", `ee-html publish failed: ${sanitizeError(error)}`);
@@ -615,9 +629,37 @@ async function sweepIdleSlots() {
   if (leaked) logEvent("warn", `reaped ${leaked} leaked Pi/MCP child process(es)`);
 }
 
+/**
+ * Everything the runtime files are built from. The pool key already covers
+ * role, pack, skills, MCP ids, model and imagen; MCP server config and the
+ * provider base URLs are the only inputs it does not.
+ * @param {PiSlot} slot
+ */
+function runtimeInputsHash(slot, agent, modelsJson) {
+  return createHash("sha1")
+    .update(slot.key)
+    .update("\0")
+    .update(modelsJson)
+    .update("\0")
+    .update(JSON.stringify(agent.mcp ?? []))
+    .digest("hex")
+    .slice(0, 16);
+}
+
+/**
+ * Rewrite the slot's runtime files only when their inputs changed. Before
+ * this ran on every turn of a warm slot (models.json + ROLE.md + mcp.json +
+ * settings.json) for no effect: Pi read ROLE.md once at spawn.
+ * @param {PiSlot} slot
+ */
 async function refreshSlotRuntime(slot, agent, modelId) {
-  const modelsJson = await writePiModels();
+  const modelsJson = await buildPiModelsJson();
+  const hash = runtimeInputsHash(slot, agent, modelsJson);
+  if (slot.runtimeHash === hash) return false;
+  await writePiModels(modelsJson);
   await materializeAgentRuntime(agent, agent.mcp ?? [], modelsJson, { modelId, runtimeKey: slot.runtimeKey });
+  slot.runtimeHash = hash;
+  return true;
 }
 
 /**
@@ -636,6 +678,7 @@ async function startSlotClient(slot, agent, modelId) {
     modelId,
     runtimeKey: slot.runtimeKey,
   });
+  slot.runtimeHash = runtimeInputsHash(slot, agent, modelsJson);
   const sessionFile = slot.resumeSessionFile;
   const args = buildPiArgs({
     agent,
@@ -675,12 +718,26 @@ async function startSlotClient(slot, agent, modelId) {
     slot.pid = born[0] ?? null;
   }
   slot.lastUsedAt = Date.now();
+  slot.bootedAt = spawnedAt;
+  slot.readyAt = 0;
   watchSlotExit(slot, pi, agent, modelId);
   logEvent(
     "info",
     `Pi client started pid=${slot.pid || "?"} spawnMs=${Date.now() - spawnedAt}${sessionFile ? ` session=${sessionFile}` : ""}`,
   );
   return pi;
+}
+
+/**
+ * First successful get_state after a spawn marks the process ready: Pi has
+ * loaded skills, extensions and any --session file by then. This is the
+ * number the "boot beat" in the UI should be sized from.
+ * @param {PiSlot} slot
+ */
+function markSlotReady(slot) {
+  if (slot.readyAt || !slot.bootedAt) return;
+  slot.readyAt = Date.now();
+  logEvent("info", `Pi ready agent=${slot.agentSlug} pid=${slot.pid || "?"} readyMs=${slot.readyAt - slot.bootedAt}`);
 }
 
 /**
@@ -749,6 +806,11 @@ async function prewarmSlot(agentRef, modelId, reason) {
     }
     const startedAt = Date.now();
     const slot = await getOrCreatePiSlot(agent, model.id);
+    // Force Pi to finish loading now, not when the first message arrives.
+    if (slot.client) {
+      await slot.client.getState();
+      markSlotReady(slot);
+    }
     logEvent("info", `prewarmed agent=${agent.slug} model=${model.id} pid=${slot.pid || "?"} readyMs=${Date.now() - startedAt} (${reason})`);
     return true;
   } catch (error) {
@@ -850,6 +912,10 @@ async function getOrCreatePiSlot(agent, modelId, { sessionFile } = {}) {
         lock: Promise.resolve(),
         lastUsedAt: 0,
         exits: [],
+        runtimeHash: "",
+        bootedAt: 0,
+        readyAt: 0,
+        lastEnsure: null,
       };
       piPool.set(key, s);
     }
@@ -897,14 +963,21 @@ async function ensurePiOnSlot(slot, profile, session) {
 
   let pi = slot.client;
   let state;
+  const ensure = { getStateMs: 0, switchMs: 0, mode: "same" };
+  slot.lastEnsure = ensure;
+  const t0 = Date.now();
   try {
+    if (!pi) throw new Error("slot has no live client");
     state = await pi.getState();
   } catch (error) {
     logEvent("error", `Pi get_state failed: ${sanitizeError(error)}`);
     slot.resumeSessionFile = session.piSessionFile ?? null;
     pi = await restartSlotClient(slot, profile, slot.modelId);
     state = await pi.getState();
+    ensure.mode = "restart";
   }
+  ensure.getStateMs = Date.now() - t0;
+  markSlotReady(slot);
 
   if (session.piSessionFile && state.sessionFile === session.piSessionFile) {
     slot.activeStudioSessionId = session.id;
@@ -914,15 +987,19 @@ async function ensurePiOnSlot(slot, profile, session) {
   }
 
   if (session.piSessionFile) {
+    const t1 = Date.now();
     try {
       const switched = await pi.switchSession(session.piSessionFile);
+      ensure.switchMs = Date.now() - t1;
       if (!switched?.cancelled) {
+        if (ensure.mode === "same") ensure.mode = "switch";
         slot.activeStudioSessionId = session.id;
         slot.resumeSessionFile = session.piSessionFile;
         slot.forceNewPiSession = false;
         return pi;
       }
     } catch (error) {
+      ensure.switchMs = Date.now() - t1;
       logEvent("warn", `Pi switch_session failed: ${sanitizeError(error)}`);
     }
     logEvent("warn", `Pi session file missing, starting a new one for ${session.id}`);
@@ -930,10 +1007,13 @@ async function ensurePiOnSlot(slot, profile, session) {
 
   const needNew = Boolean(slot.activeStudioSessionId || slot.forceNewPiSession);
   if (needNew) {
+    const t2 = Date.now();
     const created = await pi.newSession();
     if (created?.cancelled) throw new Error("Could not start a new agent session.");
     state = await pi.getState();
+    ensure.switchMs += Date.now() - t2;
   }
+  if (ensure.mode === "same") ensure.mode = "new";
   slot.forceNewPiSession = false;
 
   const next = await updateSession(session.id, {
@@ -1121,15 +1201,43 @@ async function chat(message, modelId, session, onEvent, images) {
   if (!entry) throw new Error(`Unknown model: ${resolvedModelId}`);
   if (!entry.available) throw new Error(`${entry.label} is missing its API key.`);
 
+  const t0 = Date.now();
   const slot = await getOrCreatePiSlot(profile, resolvedModelId, { sessionFile: session.piSessionFile });
+  const slotMs = Date.now() - t0;
+  const coldStart = slot.bootedAt >= t0;
   return withSlotLock(slot, async () => {
     turnsInFlight += 1;
     try {
+      const tEnsure = Date.now();
       const pi = await ensurePiOnSlot(slot, profile, session);
+      const ensureMs = Date.now() - tEnsure;
       const turn = createTurn();
       let assistantError = "";
+      /** Per-turn timing, all relative to this call. Logged as `turn metrics`. */
+      const timing = {
+        coldStart,
+        slotMs,
+        ensureMs,
+        getStateMs: slot.lastEnsure?.getStateMs ?? 0,
+        switchMs: slot.lastEnsure?.switchMs ?? 0,
+        sessionMode: slot.lastEnsure?.mode ?? "same",
+        firstEventMs: null,
+        firstTokenMs: null,
+        firstToolMs: null,
+        totalMs: 0,
+        childrenAtEnd: null,
+      };
+      let promptedAt = 0;
       const unsubscribe = pi.onEvent((event) => {
         try {
+          if (promptedAt) {
+            const dt = Date.now() - promptedAt;
+            if (timing.firstEventMs == null) timing.firstEventMs = dt;
+            if (timing.firstTokenMs == null && (event.type === "message_update" || event.type === "message_start")) {
+              timing.firstTokenMs = dt;
+            }
+            if (timing.firstToolMs == null && event.type === "tool_execution_start") timing.firstToolMs = dt;
+          }
           const mapped = applyPiEvent(turn, event);
           if (mapped) onEvent?.(mapped, turn);
           if (event.type === "message_end" && event.message?.role === "assistant" && event.message?.errorMessage) {
@@ -1143,6 +1251,7 @@ async function chat(message, modelId, session, onEvent, images) {
       const settled = waitUntilAgentSettled(pi);
       try {
         onEvent?.({ type: "status", text: "Working…" }, turn);
+        promptedAt = Date.now();
         await pi.prompt(message, images?.length ? images : undefined);
         await settled;
         const text = (await pi.getLastAssistantText())?.trim() || turn.text.trim();
@@ -1152,6 +1261,11 @@ async function chat(message, modelId, session, onEvent, images) {
             turn.blocks.push({ type: "text", text });
           }
         }
+        timing.totalMs = Date.now() - t0;
+        if (process.platform === "linux" && slot.pid) {
+          timing.childrenAtEnd = (await descendants(slot.pid).catch(() => [])).length;
+        }
+        turn.timing = timing;
         if (!text && assistantError) throw new Error(assistantError);
         if (!text && !turn.blocks.length) throw new Error("No response from agent.");
         return turn;
@@ -1294,8 +1408,8 @@ async function resetPiPool({ agentId } = {}) {
   await Promise.all(targets.map((slot) => stopSlot(slot)));
 }
 
-async function writePiModels() {
-  await mkdir(PI_AGENT_DIR, { recursive: true });
+/** The models.json text Pi should see: bundled catalog plus saved provider base URLs. Pure. */
+async function buildPiModelsJson() {
   const raw = JSON.parse(await readFile(BUNDLED_MODELS, "utf8"));
   const cavoti = secret("cavoti_base_url");
   const kimi = secret("kimi_base_url");
@@ -1303,9 +1417,17 @@ async function writePiModels() {
   if (cavoti) raw.providers.cavoti.baseUrl = normalizeCavotiBaseUrl(cavoti);
   if (kimi) raw.providers["kimi-k3"].baseUrl = kimi;
   if (glm53) raw.providers.glm53.baseUrl = glm53;
-  const text = JSON.stringify(raw, null, 2);
-  await writeFile(path.join(PI_AGENT_DIR, "models.json"), text);
-  return text;
+  return JSON.stringify(raw, null, 2);
+}
+
+/**
+ * @param {string} [text] prebuilt models.json; built when omitted
+ */
+async function writePiModels(text) {
+  await mkdir(PI_AGENT_DIR, { recursive: true });
+  const body = text ?? (await buildPiModelsJson());
+  await writeFile(path.join(PI_AGENT_DIR, "models.json"), body);
+  return body;
 }
 
 async function prepareDirs() {
@@ -1757,8 +1879,14 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && pathname === "/api/debug") {
+      // ?limit=200&level=warn&since=2026-09-05T00:00:00Z&match=prewarm
       const body = await snapshot();
-      body.dbEvents = await loadRecentFromDb();
+      body.dbEvents = await loadRecentFromDb({
+        limit: url.searchParams.get("limit") || 200,
+        level: url.searchParams.get("level"),
+        since: url.searchParams.get("since"),
+        match: url.searchParams.get("match"),
+      });
       json(res, 200, body);
       return;
     }
@@ -2180,13 +2308,17 @@ const server = createServer(async (req, res) => {
         content: storedUser,
         modelId: typeof modelId === "string" ? modelId : session.modelId || defaultModelId,
       });
+      let titleSetThisTurn = false;
       if (session.title === "New chat") {
         const title = titleFromMessage(trimmed || packed.files[0]?.name || "New chat");
         const updated = await updateSession(session.id, {
           title,
           modelId: session.engine === "agy" ? (modelId || session.modelId || "gemini-3.8-flash-high") : defaultModelId,
         });
-        if (updated) session = updated;
+        if (updated) {
+          session = updated;
+          titleSetThisTurn = true;
+        }
       }
 
       res.writeHead(200, {
@@ -2234,6 +2366,7 @@ const server = createServer(async (req, res) => {
         await withAgentLock(profile.id, async () => {
           let turn = await runOnce(chatPrompt, packed.images);
           lastTurn = turn;
+          const timing = turn.timing ?? null;
           let autoContinues = 0;
           while (autoContinues < 2 && needsAutoContinue(turn)) {
             autoContinues += 1;
@@ -2267,21 +2400,7 @@ const server = createServer(async (req, res) => {
               if (host?.lastError) writeSse(res, { type: "error", error: host.lastError });
             }
           }
-          await appendStateJournal(profile, {
-            sessionId: session.id,
-            text: turn.text,
-            host,
-            startedAt: turnStartedAt,
-          }).catch((error) => logEvent("warn", `STATE.md journal failed: ${sanitizeError(error)}`));
-          logEvent("info", "turn metrics", turnMetrics(turn, { autoContinues }));
           await persister.finish(turn, false);
-          if (session.title && session.title !== "New chat" && session.engine !== "agy") {
-            for (const slot of piPool.values()) {
-              if (slot.activeStudioSessionId === session.id && slot.client) {
-                await slot.client.setSessionName(session.title).catch(() => {});
-              }
-            }
-          }
 
           const active =
             session.engine === "agy"
@@ -2303,6 +2422,28 @@ const server = createServer(async (req, res) => {
             });
           }
           if (host && !res.writableEnded) writeSse(res, { type: "host", host });
+
+          // Host bookkeeping runs after the reply is on the wire. It stays
+          // inside the agent lock so the next turn sees the journal.
+          await appendStateJournal(profile, {
+            sessionId: session.id,
+            text: turn.text,
+            host,
+            startedAt: turnStartedAt,
+          }).catch((error) => logEvent("warn", `STATE.md journal failed: ${sanitizeError(error)}`));
+          if (titleSetThisTurn && session.title && session.engine !== "agy") {
+            for (const slot of piPool.values()) {
+              if (slot.activeStudioSessionId === session.id && slot.client) {
+                await slot.client.setSessionName(session.title).catch(() => {});
+              }
+            }
+          }
+          logEvent("info", "turn metrics", {
+            ...turnMetrics(turn, { autoContinues, timing }),
+            wallMs: Date.now() - turnStartedAt,
+            agent: profile.slug,
+            engine: session.engine || "pi",
+          });
         });
       } catch (error) {
         await persister.finish(lastTurn, false).catch(() => {});

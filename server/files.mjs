@@ -58,6 +58,44 @@ function isInside(root, full) {
 }
 
 /**
+ * Cheap change detector for a workspace: file count, total bytes and the
+ * newest mtime. Two equal fingerprints mean nothing worth re-zipping changed.
+ * Skips the same reserved directories as listWorkspaceFiles.
+ * @param {string} [dir]
+ */
+export async function workspaceFingerprint(dir = WORKSPACE) {
+  let count = 0;
+  let bytes = 0;
+  let newest = 0;
+  async function walk(current) {
+    let entries;
+    try {
+      entries = await readdir(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.name === ".git" || entry.name === "_inbox" || entry.name === "node_modules") continue;
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        await walk(full);
+        continue;
+      }
+      try {
+        const info = await stat(full);
+        count += 1;
+        bytes += info.size;
+        if (info.mtimeMs > newest) newest = info.mtimeMs;
+      } catch {
+        // vanished mid-walk
+      }
+    }
+  }
+  await walk(dir);
+  return `${count}:${bytes}:${Math.round(newest)}`;
+}
+
+/**
  * @param {string} [dir]
  * @param {string} [base]
  * @returns {Promise<{ path: string; size: number }[]>}

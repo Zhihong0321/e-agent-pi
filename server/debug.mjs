@@ -51,13 +51,40 @@ async function persist(event) {
   }
 }
 
-export async function loadRecentFromDb() {
+/**
+ * Recent persisted events, oldest first. Defaults to 200 rows so a couple of
+ * boots plus a few chats do not push the interesting lines out of view.
+ * @param {{ limit?: number; level?: string | null; since?: string | null; match?: string | null }} [opts]
+ */
+export async function loadRecentFromDb({ limit = 200, level = null, since = null, match = null } = {}) {
+  const max = Math.min(2000, Math.max(1, Math.floor(Number(limit) || 200)));
+  /** @type {unknown[]} */
+  const values = [];
+  const where = [];
+  if (level && /^(info|warn|error)$/.test(level)) {
+    values.push(level);
+    where.push(`level = $${values.length}`);
+  }
+  if (since) {
+    const ts = new Date(since);
+    if (!Number.isNaN(ts.getTime())) {
+      values.push(ts.toISOString());
+      where.push(`created_at >= $${values.length}`);
+    }
+  }
+  if (match) {
+    values.push(`%${String(match).slice(0, 200)}%`);
+    where.push(`message ILIKE $${values.length}`);
+  }
+  values.push(max);
   try {
     const result = await getPool().query(
       `SELECT created_at AS ts, level, message, meta
        FROM debug_events
+       ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
        ORDER BY id DESC
-       LIMIT 50`,
+       LIMIT $${values.length}`,
+      values,
     );
     return result.rows.reverse();
   } catch {
