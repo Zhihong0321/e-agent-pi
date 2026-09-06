@@ -110,7 +110,7 @@
         {
           "id": "zai-org/glm-5.3-flash",
           "name": "GLM 5.3 Flash (Hive AI)",
-          "input": ["text", "image", "video"],
+          "input": ["text", "image"],
           "contextWindow": 1000000,
           "maxTokens": 32768
         }
