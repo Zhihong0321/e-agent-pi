@@ -958,6 +958,9 @@ a.file-row { color: inherit; text-decoration: none; }
   white-space: pre-wrap;
   word-break: break-word;
 }
+.bubble-agent > p {
+  font-size: 13.5px;
+}
 .bubble-agent:has(.chat-cards),
 .bubble-agent:has(.chat-table-wrap),
 .bubble-agent:has(.chat-report-frame) {
@@ -997,6 +1000,9 @@ a.file-row { color: inherit; text-decoration: none; }
   min-width: 0;
   font-size: 15.5px;
   line-height: 1.45;
+}
+.bubble-agent .chat-copy {
+  font-size: 13.5px;
 }
 .chat-copy > p {
   margin: 0;
