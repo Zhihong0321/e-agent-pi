@@ -57,6 +57,7 @@ import {
   SETTINGS_AGENT_ID,
   AFA_AGENT_ID,
   SALES_AGENT_ID,
+  WHATSAPP_AGENT_ID,
   RUNTIME_DIR,
   SKILLS_DIR,
   STORAGE,
@@ -94,6 +95,7 @@ import {
 import { ensureImpeccableForWebsite } from "./impeccable.mjs";
 import { ensureScraplingForWebsite, scraplingPublic } from "./scrapling.mjs";
 import { ensureSalesMcp } from "./sales-mcp.mjs";
+import { ensureWhatsappMcp, startWhatsappSidecar, stopWhatsappSidecar, whatsappStatus, whatsappQr, whatsappUnlink } from "./whatsapp.mjs";
 import { closeBrowsers } from "./browser.mjs";
 import { ensureSitesSchema, getSite, listSites, upsertSite, deleteSite } from "./sites.mjs";
 import {
@@ -275,6 +277,7 @@ function wantsAuth(pathname, method = "GET") {
   if (pathname === "/api/settings") return true;
   if (pathname === "/api/manage" || pathname.startsWith("/api/manage/")) return true;
   if (pathname === "/api/sites" || pathname.startsWith("/api/sites/")) return true;
+  if (pathname === "/api/whatsapp" || pathname.startsWith("/api/whatsapp/")) return true;
   if (pathname === "/api/np/health") return false;
   if (pathname === "/api/np" || pathname.startsWith("/api/np/")) return true;
   const mutating = method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
@@ -1465,6 +1468,7 @@ async function prepareDirs() {
   await mkdir(agentWorkspace({ id: SETTINGS_AGENT_ID, slug: "settings" }), { recursive: true });
   await mkdir(agentWorkspace({ id: AFA_AGENT_ID, slug: "afa-rate" }), { recursive: true });
   await mkdir(agentWorkspace({ id: SALES_AGENT_ID, slug: "sales" }), { recursive: true });
+  await mkdir(agentWorkspace({ id: WHATSAPP_AGENT_ID, slug: "whatsapp-assistant" }), { recursive: true });
   await mkdir(STORAGE, { recursive: true });
   await mkdir(PI_AGENT_DIR, { recursive: true });
   await mkdir(LIBRARY_DIR, { recursive: true });
@@ -1600,6 +1604,17 @@ async function bootServices() {
     }
   } catch (error) {
     logEvent("error", `sales-data mcp failed: ${sanitizeError(error)}`);
+  }
+
+  boot.step = "whatsapp-sidecar";
+  try {
+    await startWhatsappSidecar();
+    if (dbReady()) {
+      await ensureWhatsappMcp();
+      logEvent("info", "whatsapp mcp registered and attached to whatsapp-assistant agent");
+    }
+  } catch (error) {
+    logEvent("error", `whatsapp sidecar failed: ${sanitizeError(error)}`);
   }
 
   boot.step = "sites";
@@ -1845,6 +1860,38 @@ const server = createServer(async (req, res) => {
         json(res, 500, { error: sanitizeError(error) });
         return;
       }
+    }
+
+    if (pathname === "/api/whatsapp" || pathname.startsWith("/api/whatsapp/")) {
+      try {
+        if (req.method === "GET" && pathname === "/api/whatsapp/status") {
+          json(res, 200, await whatsappStatus());
+          return;
+        }
+        if (req.method === "GET" && pathname === "/api/whatsapp/qr") {
+          const qr = await whatsappQr();
+          if (!qr.ok) {
+            json(res, qr.status || 502, { error: "QR not available" });
+            return;
+          }
+          res.writeHead(200, {
+            "Content-Type": qr.contentType,
+            "Cache-Control": "no-store",
+            "Access-Control-Allow-Origin": "*",
+          });
+          res.end(Buffer.from(qr.body));
+          return;
+        }
+        if (req.method === "POST" && pathname === "/api/whatsapp/unlink") {
+          json(res, 200, await whatsappUnlink());
+          return;
+        }
+      } catch (error) {
+        json(res, 500, { error: sanitizeError(error) });
+        return;
+      }
+      json(res, 404, { error: "Not found" });
+      return;
     }
 
     if (pathname === "/api/stock" || pathname.startsWith("/api/stock/")) {
@@ -2617,6 +2664,7 @@ async function shutdown() {
   logEvent("info", turnsInFlight ? `shutdown during ${turnsInFlight} in-flight turn(s)` : "shutdown");
   stopSampler();
   await Promise.allSettled([...piPool.values()].map((slot) => stopSlot(slot)));
+  await stopWhatsappSidecar().catch(() => {});
   await closeBrowsers().catch(() => {});
   await closeDb().catch(() => {});
   process.exit(0);

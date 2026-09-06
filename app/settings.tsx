@@ -31,8 +31,8 @@ type Settings = {
   salesPgProxyExpiresAt: string;
 };
 
-type Tab = "keys" | "models" | "agents" | "sites" | "skills" | "mcp" | "display" | "usage";
-const TABS: Tab[] = ["keys", "models", "agents", "sites", "skills", "mcp", "display", "usage"];
+type Tab = "keys" | "models" | "agents" | "sites" | "skills" | "mcp" | "whatsapp" | "display" | "usage";
+const TABS: Tab[] = ["keys", "models", "agents", "sites", "skills", "mcp", "whatsapp", "display", "usage"];
 
 const AI_REPLY_DARK_KEY = "e-agent-ai-reply-dark";
 
@@ -55,6 +55,13 @@ type SiteItem = {
   passwordSet: boolean;
   lastLoginAt?: string | null;
   lastError?: string | null;
+};
+type WhatsappStatus = {
+  linked: boolean;
+  sidecarUp: boolean;
+  phone?: string;
+  pushName?: string;
+  connectedSince?: number;
 };
 type ModelItem = {
   id: string;
@@ -226,6 +233,9 @@ export default function SettingsPage() {
   const [busy, setBusy] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [metrics, setMetrics] = useState<MetricsPayload | null>(null);
+  const [whatsapp, setWhatsapp] = useState<WhatsappStatus | null>(null);
+  const [whatsappQrTick, setWhatsappQrTick] = useState(0);
+  const [whatsappBusy, setWhatsappBusy] = useState(false);
 
   const loadKeys = async () => {
     const data = await authedJson<Settings>("/api/settings");
@@ -314,6 +324,42 @@ export default function SettingsPage() {
       window.clearInterval(id);
     };
   }, [authed, tab]);
+
+  useEffect(() => {
+    if (!authed || tab !== "whatsapp") return;
+    let cancelled = false;
+    const loadWhatsapp = async () => {
+      try {
+        const data = await authedJson<WhatsappStatus>("/api/whatsapp/status");
+        if (cancelled) return;
+        setWhatsapp(data);
+        if (!data.linked) setWhatsappQrTick((t) => t + 1);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Could not load WhatsApp status");
+      }
+    };
+    void loadWhatsapp();
+    const id = window.setInterval(() => void loadWhatsapp(), 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [authed, tab]);
+
+  const unlinkWhatsapp = async () => {
+    if (!window.confirm("Unlink WhatsApp? You'll need to scan a new QR code to reconnect.")) return;
+    setWhatsappBusy(true);
+    setError("");
+    try {
+      await authedJson("/api/whatsapp/unlink", { method: "POST" });
+      setWhatsapp(null);
+      setWhatsappQrTick((t) => t + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unlink failed");
+    } finally {
+      setWhatsappBusy(false);
+    }
+  };
 
   const goTab = (item: Tab) => {
     setTab(item);
@@ -694,7 +740,7 @@ export default function SettingsPage() {
           <nav className="settings-tabs">
             {TABS.map((item) => (
               <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => goTab(item)}>
-                {item === "mcp" ? "MCP" : item[0].toUpperCase() + item.slice(1)}
+                {item === "mcp" ? "MCP" : item === "whatsapp" ? "WhatsApp" : item[0].toUpperCase() + item.slice(1)}
               </button>
             ))}
           </nav>
@@ -1488,6 +1534,38 @@ export default function SettingsPage() {
                   </button>
                 ) : null}
               </div>
+            </section>
+          )}
+
+          {tab === "whatsapp" && (
+            <section className="settings-card">
+              <p>
+                Links the owner&rsquo;s real WhatsApp to the WhatsApp Assistant agent: it can read chat history and
+                draft replies, but only sends a message after you say yes in that chat.
+              </p>
+              {!whatsapp?.sidecarUp ? (
+                <p>
+                  <em>Starting up… the WhatsApp sidecar isn&rsquo;t reachable yet.</em>
+                </p>
+              ) : whatsapp.linked ? (
+                <div className="whatsapp-linked">
+                  <p>
+                    Linked as <strong>+{whatsapp.phone}</strong>
+                    {whatsapp.pushName ? ` (${whatsapp.pushName})` : ""}
+                    {whatsapp.connectedSince
+                      ? ` · connected since ${new Date(whatsapp.connectedSince * 1000).toLocaleString()}`
+                      : ""}
+                  </p>
+                  <button type="button" className="secondary" onClick={() => void unlinkWhatsapp()} disabled={whatsappBusy}>
+                    {whatsappBusy ? "Unlinking…" : "Unlink"}
+                  </button>
+                </div>
+              ) : (
+                <div className="whatsapp-qr">
+                  <p>Scan with WhatsApp → Settings → Linked Devices → Link a Device. Refreshes automatically.</p>
+                  <img src={`/api/whatsapp/qr?t=${whatsappQrTick}`} alt="WhatsApp pairing QR code" width={256} height={256} />
+                </div>
+              )}
             </section>
           )}
 

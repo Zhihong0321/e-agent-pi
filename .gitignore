@@ -62,3 +62,4 @@ new-template/
 /sidecar/*.log
 /sidecar/*.pid
 /sidecar/*.exe
+/sidecar/*.exe~

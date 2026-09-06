@@ -23,6 +23,8 @@ import {
   SALES_ROLE_FILE,
   SETTINGS_ROLE_FILE,
   SKILLS_DIR,
+  WHATSAPP_AGENT_ID,
+  WHATSAPP_ROLE_FILE,
   agentWorkspace,
 } from "./paths.mjs";
 
@@ -846,6 +848,20 @@ export async function seedAgentCatalog() {
     rolePrompt: salesRole,
     toolProfile: "ops",
     thinkingLevel: "minimal",
+  });
+
+  const whatsappRole = await readFile(WHATSAPP_ROLE_FILE, "utf8").catch(() => "You are WhatsApp Assistant.");
+  await seedSystemAgent({
+    id: WHATSAPP_AGENT_ID,
+    slug: "whatsapp-assistant",
+    name: "WhatsApp Assistant",
+    short: "WA",
+    headline: "Reads and sends on the owner's real WhatsApp",
+    description: "Answers from WhatsApp history and drafts replies; only sends after the owner says yes in chat.",
+    color: "green",
+    rolePrompt: whatsappRole,
+    toolProfile: "assistant",
+    thinkingLevel: "low",
   });
 
   const manageRow = await getPool().query(`SELECT id FROM skills WHERE slug = 'manage-host-settings'`);

@@ -22,6 +22,7 @@ export const NEWPAGES_ROLE_FILE = path.join(ROOT, "agent", "roles", "newpages.md
 export const PACKAGE_ROLE_FILE = path.join(ROOT, "agent", "roles", "package.md");
 export const AFA_ROLE_FILE = path.join(ROOT, "agent", "roles", "afa-rate.md");
 export const SALES_ROLE_FILE = path.join(ROOT, "agent", "roles", "sales.md");
+export const WHATSAPP_ROLE_FILE = path.join(ROOT, "agent", "roles", "whatsapp.md");
 export const BUNDLED_SKILLS = path.join(ROOT, "agent", "skills");
 export const DEFAULT_AGENT_ID = "website";
 export const OPS_AGENT_ID = "ops";
@@ -31,6 +32,7 @@ export const NEWPAGES_AGENT_ID = "newpages";
 export const PACKAGE_AGENT_ID = "package";
 export const AFA_AGENT_ID = "afa-rate";
 export const SALES_AGENT_ID = "sales";
+export const WHATSAPP_AGENT_ID = "whatsapp-assistant";
 export const DEFAULT_PROPOSAL_REPO = "Zhihong0321/ee-proposal";
 export const DEFAULT_PROPOSAL_LIVE_URL = "https://ee-proposal-production.up.railway.app/shell.html#proposal";
 export const DEFAULT_NEWPAGES_LIVE_URL = "https://merchant.newpages.com.my";
@@ -125,6 +127,14 @@ export const PDF_CLI = path.join(ROOT, "server", "pdf-cli.mjs");
 export const PACKAGE_SHEET_CLI = path.join(ROOT, "server", "package-sheet-cli.mjs");
 export const SALES_MCP_SERVER = path.join(ROOT, "server", "sales-mcp-server.mjs");
 export const SALES_MCP_SLUG = "sales-data";
+export const WHATSAPP_MCP_SLUG = "whatsapp";
+export const WHATSAPP_DATA_DIR = path.join(DATA_DIR, "whatsapp");
+export const WHATSAPP_SIDECAR_BIN = path.join(
+  ROOT,
+  "sidecar",
+  process.platform === "win32" ? "whatsapp-sidecar.exe" : "whatsapp-sidecar",
+);
+export const WHATSAPP_MCP_ADDR = "127.0.0.1:8765";
 export const IMAGEN_SKILL_DIR = path.join(ROOT, "agent", "imagen");
 export const SUBAGENTS_EXTENSION = path.join(ROOT, "agent", "extensions", "subagents.ts");
 export const MCP_ADAPTER_EXTENSION = path.join(ROOT, "node_modules", "pi-mcp-adapter");
