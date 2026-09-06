@@ -82,6 +82,28 @@ func startControlServer(ts *toolServer, tracker *connectionTracker, dataDir stri
 		http.ServeFile(w, r, filepath.Join(dataDir, "qr.png"))
 	})
 
+	mux.HandleFunc("/qr/refresh", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if ts.client.Store.ID != nil {
+			http.Error(w, "already linked", http.StatusConflict)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+		// The QR channel whatsmeow opened at boot only rotates a few times
+		// before giving up ("timeout"), after which qr.png is stale forever
+		// until a fresh GetQRChannel is opened — which only happens at
+		// process start. Exit so the Node supervisor restarts us into a
+		// brand-new pairing attempt.
+		go func() {
+			time.Sleep(300 * time.Millisecond)
+			os.Exit(0)
+		}()
+	})
+
 	mux.HandleFunc("/unlink", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -103,7 +125,7 @@ func startControlServer(ts *toolServer, tracker *connectionTracker, dataDir stri
 		}()
 	})
 
-	fmt.Println("[control] listening on", addr, "(mcp at /mcp, status/qr.png/unlink for the host)")
+	fmt.Println("[control] listening on", addr, "(mcp at /mcp, status/qr.png/qr/refresh/unlink for the host)")
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		fmt.Println("[error] control server stopped:", err)
 	}

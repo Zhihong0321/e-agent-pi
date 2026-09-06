@@ -95,7 +95,7 @@ import {
 import { ensureImpeccableForWebsite } from "./impeccable.mjs";
 import { ensureScraplingForWebsite, scraplingPublic } from "./scrapling.mjs";
 import { ensureSalesMcp } from "./sales-mcp.mjs";
-import { ensureWhatsappMcp, startWhatsappSidecar, stopWhatsappSidecar, whatsappStatus, whatsappQr, whatsappUnlink } from "./whatsapp.mjs";
+import { ensureWhatsappMcp, startWhatsappSidecar, stopWhatsappSidecar, whatsappStatus, whatsappQr, whatsappRequestQr, whatsappUnlink } from "./whatsapp.mjs";
 import { closeBrowsers } from "./browser.mjs";
 import { ensureSitesSchema, getSite, listSites, upsertSite, deleteSite } from "./sites.mjs";
 import {
@@ -1880,6 +1880,10 @@ const server = createServer(async (req, res) => {
             "Access-Control-Allow-Origin": "*",
           });
           res.end(Buffer.from(qr.body));
+          return;
+        }
+        if (req.method === "POST" && pathname === "/api/whatsapp/qr/refresh") {
+          json(res, 200, await whatsappRequestQr());
           return;
         }
         if (req.method === "POST" && pathname === "/api/whatsapp/unlink") {

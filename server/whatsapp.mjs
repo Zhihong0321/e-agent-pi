@@ -107,6 +107,16 @@ export async function whatsappQr() {
   }
 }
 
+export async function whatsappRequestQr() {
+  try {
+    const res = await fetch(`${CONTROL_BASE}/qr/refresh`, { method: "POST", signal: AbortSignal.timeout(10000) });
+    if (!res.ok) return { ok: false, error: await res.text().catch(() => "request failed") };
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: String(error?.message || error) };
+  }
+}
+
 export async function whatsappUnlink() {
   try {
     const res = await fetch(`${CONTROL_BASE}/unlink`, { method: "POST", signal: AbortSignal.timeout(10000) });

@@ -346,6 +346,22 @@ export default function SettingsPage() {
     };
   }, [authed, tab]);
 
+  const requestWhatsappQr = async () => {
+    setWhatsappBusy(true);
+    setError("");
+    try {
+      await authedJson("/api/whatsapp/qr/refresh", { method: "POST" });
+      // The sidecar restarts to open a fresh pairing attempt; give it a
+      // moment to come back up before the next status poll fetches it.
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      setWhatsappQrTick((t) => t + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not request a new QR code");
+    } finally {
+      setWhatsappBusy(false);
+    }
+  };
+
   const unlinkWhatsapp = async () => {
     if (!window.confirm("Unlink WhatsApp? You'll need to scan a new QR code to reconnect.")) return;
     setWhatsappBusy(true);
@@ -1562,8 +1578,19 @@ export default function SettingsPage() {
                 </div>
               ) : (
                 <div className="whatsapp-qr">
-                  <p>Scan with WhatsApp → Settings → Linked Devices → Link a Device. Refreshes automatically.</p>
+                  <p>Scan with WhatsApp → Settings → Linked Devices → Link a Device.</p>
                   <img src={`/api/whatsapp/qr?t=${whatsappQrTick}`} alt="WhatsApp pairing QR code" width={256} height={256} />
+                  <div>
+                    <button type="button" className="secondary" onClick={() => void requestWhatsappQr()} disabled={whatsappBusy}>
+                      {whatsappBusy ? "Requesting…" : "Request new QR"}
+                    </button>
+                  </div>
+                  <p>
+                    <em>
+                      A code expires after a couple of minutes. If scanning fails or nothing happens, request a new
+                      one rather than rescanning the same code.
+                    </em>
+                  </p>
                 </div>
               )}
             </section>
