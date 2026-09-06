@@ -26,4 +26,14 @@ export function watchForNewBuild() {
     }
     window.location.reload();
   });
+  // A resumed app never navigates, so the browser never re-checks sw.js on its own and can sit on
+  // the previous build all day. Ask for an update check whenever the app returns to the foreground;
+  // if a new build is waiting, the controllerchange handler above takes it from there.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    navigator.serviceWorker
+      .getRegistration()
+      .then((reg) => reg?.update())
+      .catch(() => {});
+  });
 }

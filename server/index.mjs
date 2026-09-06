@@ -1977,6 +1977,7 @@ const server = createServer(async (req, res) => {
       // will fail the check (SIGTERM mid-turn) if a fetch hangs. Keep this cheap.
       json(res, 200, {
         ok: true,
+        build: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
         boot,
         db: { connected: dbReady() },
         host: hostPublic(),
