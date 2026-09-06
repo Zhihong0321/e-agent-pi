@@ -15,6 +15,4 @@ Read `../_shared/HOST-COMMON.md` first. Specific to this agent:
 - `npm test` does not exist.
 - `pg` and `playwright` are available via `NODE_PATH=/app/node_modules`. `puppeteer` (used by
   `generatePdf`) is **not** installed in this workspace; do not try to run the PDF route locally.
-- Attachments: images are readable only on a vision model (Gemini/Claude via AGY; not Kimi).
-  PDFs always have a `.txt` extract in `_inbox/`.
-- Skills attached: update-proposal, spawn-subagents, Scrapling, site-browser.
+- Skills attached: update-proposal, proposal-playbooks, spawn-subagents, Scrapling, site-browser.

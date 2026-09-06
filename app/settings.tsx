@@ -91,6 +91,8 @@ type AgentItem = {
   description: string;
   color: string;
   rolePrompt?: string;
+  toolProfile?: string;
+  thinkingLevel?: string | null;
   skillIds: string[];
   mcpIds: string[];
   skills: SkillItem[];
@@ -132,9 +134,19 @@ const emptyAgent = {
   description: "",
   color: "emerald",
   rolePrompt: "",
+  toolProfile: "coding",
+  thinkingLevel: "",
   skillIds: [] as string[],
   mcpIds: [] as string[],
 };
+
+const TOOL_PROFILES = [
+  { id: "coding", label: "Coding — default prompt, read/bash/edit/write" },
+  { id: "ops", label: "Ops — short prompt, read + bash only" },
+  { id: "assistant", label: "Assistant — short prompt, MCP tools only" },
+];
+
+const THINKING_LEVELS = ["", "off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 async function authedJson<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -435,6 +447,8 @@ export default function SettingsPage() {
       description: agent.description,
       color: agent.color,
       rolePrompt: agent.rolePrompt ?? "",
+      toolProfile: agent.toolProfile ?? "coding",
+      thinkingLevel: agent.thinkingLevel ?? "",
       skillIds: agent.skillIds ?? [],
       mcpIds: agent.mcpIds ?? [],
     });
@@ -454,6 +468,8 @@ export default function SettingsPage() {
         description: agentForm.description,
         color: agentForm.color,
         rolePrompt: agentForm.rolePrompt,
+        toolProfile: agentForm.toolProfile,
+        thinkingLevel: agentForm.thinkingLevel || null,
         skillIds: agentForm.skillIds,
         mcpIds: agentForm.mcpIds,
       };
@@ -1082,6 +1098,9 @@ export default function SettingsPage() {
                     <div>
                       <strong>{agent.name}</strong>
                       <small>
+                        {agent.toolProfile ?? "coding"}
+                        {agent.thinkingLevel ? ` · thinking:${agent.thinkingLevel}` : ""}
+                        {" · "}
                         {(agent.skills ?? []).map((row) => row.name).join(", ") || "no skills"}
                         {" · "}
                         {(agent.mcp ?? []).map((row) => row.name).join(", ") || "no MCP"}
@@ -1146,6 +1165,34 @@ export default function SettingsPage() {
                   rows={10}
                 />
               </label>
+              <div className="settings-two">
+                <label>
+                  Tool profile
+                  <select
+                    value={agentForm.toolProfile}
+                    onChange={(event) => setAgentForm({ ...agentForm, toolProfile: event.target.value })}
+                  >
+                    {TOOL_PROFILES.map((profile) => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Thinking level
+                  <select
+                    value={agentForm.thinkingLevel}
+                    onChange={(event) => setAgentForm({ ...agentForm, thinkingLevel: event.target.value })}
+                  >
+                    {THINKING_LEVELS.map((level) => (
+                      <option key={level || "default"} value={level}>
+                        {level || "Provider default"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
               <h2>Skills for this agent</h2>
               {skills.length === 0 ? (
                 <p>No skills in the library yet.</p>

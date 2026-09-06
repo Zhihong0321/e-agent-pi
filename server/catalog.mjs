@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { getPool } from "./db.mjs";
+import { DEFAULT_TOOL_PROFILE, normalizeThinkingLevel, normalizeToolProfile } from "./agent-profiles.mjs";
 import {
   AFA_AGENT_ID,
   AFA_ROLE_FILE,
@@ -123,6 +124,8 @@ export async function ensureCatalogSchema() {
   await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS workspace_repo TEXT`);
   await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS workspace_branch TEXT`);
   await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS live_url TEXT`);
+  await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS tool_profile TEXT NOT NULL DEFAULT 'coding'`);
+  await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS thinking_level TEXT`);
 }
 
 function mapAgent(row) {
@@ -141,6 +144,8 @@ function mapAgent(row) {
     workspaceRepo: row.workspaceRepo ?? row.workspace_repo ?? null,
     workspaceBranch: row.workspaceBranch ?? row.workspace_branch ?? null,
     liveUrl: row.liveUrl ?? row.live_url ?? null,
+    toolProfile: normalizeToolProfile(row.toolProfile ?? row.tool_profile),
+    thinkingLevel: normalizeThinkingLevel(row.thinkingLevel ?? row.thinking_level),
     createdAt: row.createdAt ?? row.created_at,
     updatedAt: row.updatedAt ?? row.updated_at,
   };
@@ -150,6 +155,7 @@ const AGENT_SELECT = `id, slug, name, short, headline, description, color,
   COALESCE(engine, 'pi') AS engine,
   role_prompt AS "rolePrompt", model_id AS "modelId",
   workspace_repo AS "workspaceRepo", workspace_branch AS "workspaceBranch", live_url AS "liveUrl",
+  COALESCE(tool_profile, 'coding') AS "toolProfile", thinking_level AS "thinkingLevel",
   created_at AS "createdAt", updated_at AS "updatedAt"`;
 
 const SKILL_SELECT = `id, slug, name, description, source, source_url AS "sourceUrl",
@@ -264,8 +270,8 @@ export async function createAgent(input = {}) {
   const slug = slugify(input.slug || name);
   const engine = input.engine === "agy" ? "agy" : "pi";
   const result = await getPool().query(
-    `INSERT INTO agents (id, slug, name, short, headline, description, color, engine, role_prompt, model_id, workspace_repo, workspace_branch, live_url)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    `INSERT INTO agents (id, slug, name, short, headline, description, color, engine, role_prompt, model_id, workspace_repo, workspace_branch, live_url, tool_profile, thinking_level)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
      RETURNING ${AGENT_SELECT}`,
     [
       id,
@@ -281,6 +287,8 @@ export async function createAgent(input = {}) {
       input.workspaceRepo ? String(input.workspaceRepo).trim() : null,
       input.workspaceBranch ? String(input.workspaceBranch).trim() : null,
       input.liveUrl ? String(input.liveUrl).trim() : null,
+      normalizeToolProfile(input.toolProfile ?? DEFAULT_TOOL_PROFILE),
+      normalizeThinkingLevel(input.thinkingLevel),
     ],
   );
   const agent = mapAgent(result.rows[0]);
@@ -327,12 +335,16 @@ export async function updateAgent(id, patch) {
     workspaceRepo: "workspace_repo",
     workspaceBranch: "workspace_branch",
     liveUrl: "live_url",
+    toolProfile: "tool_profile",
+    thinkingLevel: "thinking_level",
   };
   for (const [key, column] of Object.entries(map)) {
     if (patch[key] === undefined) continue;
     let value = patch[key];
     if (key === "slug") value = slugify(value);
     if (key === "short") value = normalizeShort(value);
+    if (key === "toolProfile") value = normalizeToolProfile(value);
+    if (key === "thinkingLevel") value = normalizeThinkingLevel(value);
     fields.push(`${column} = $${i++}`);
     values.push(value);
   }
@@ -691,8 +703,8 @@ export async function copyBundledSkills() {
 
 async function seedSystemAgent(row) {
   await getPool().query(
-    `INSERT INTO agents (id, slug, name, short, headline, description, color, role_prompt, workspace_repo, workspace_branch, live_url)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    `INSERT INTO agents (id, slug, name, short, headline, description, color, role_prompt, workspace_repo, workspace_branch, live_url, tool_profile, thinking_level)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
      ON CONFLICT (id) DO UPDATE SET
        slug = EXCLUDED.slug,
        name = EXCLUDED.name,
@@ -717,6 +729,8 @@ async function seedSystemAgent(row) {
       row.workspaceRepo ?? null,
       row.workspaceBranch ?? null,
       row.liveUrl ?? null,
+      normalizeToolProfile(row.toolProfile ?? DEFAULT_TOOL_PROFILE),
+      normalizeThinkingLevel(row.thinkingLevel),
     ],
   );
 }
@@ -738,6 +752,7 @@ export async function seedAgentCatalog() {
     description: "Designs static websites; the host publishes them to ee-html",
     color: "emerald",
     rolePrompt: websiteRole,
+    toolProfile: "coding",
   });
   await seedSystemAgent({
     id: OPS_AGENT_ID,
@@ -748,6 +763,8 @@ export async function seedAgentCatalog() {
     description: "Host catalog: install skills/MCP, then attach them per agent.",
     color: "violet",
     rolePrompt: settingsRole,
+    toolProfile: "ops",
+    thinkingLevel: "low",
   });
 
   const proposalRole = await readFile(PROPOSAL_ROLE_FILE, "utf8").catch(() => "You are Proposal Agent.");
@@ -763,6 +780,7 @@ export async function seedAgentCatalog() {
     workspaceRepo: DEFAULT_PROPOSAL_REPO,
     workspaceBranch: "main",
     liveUrl: DEFAULT_PROPOSAL_LIVE_URL,
+    toolProfile: "coding",
   });
 
   const newpagesRole = await readFile(NEWPAGES_ROLE_FILE, "utf8").catch(() => "You are NEWPAGES Site Manager.");
@@ -777,6 +795,7 @@ export async function seedAgentCatalog() {
     color: "rose",
     rolePrompt: newpagesRole,
     liveUrl: DEFAULT_NEWPAGES_LIVE_URL,
+    toolProfile: "coding",
   });
 
   const packageRole = await readFile(PACKAGE_ROLE_FILE, "utf8").catch(() => "You are Package Updater.");
@@ -790,6 +809,8 @@ export async function seedAgentCatalog() {
       "Keeps prod_main in sync with the Package google sheet: prices, new packages/products, and deactivating rows missing from the live tabs.",
     color: "amber",
     rolePrompt: packageRole,
+    toolProfile: "ops",
+    thinkingLevel: "low",
   });
 
   const afaRole = await readFile(AFA_ROLE_FILE, "utf8").catch(() => "You are AFA Rate Updater.");
@@ -802,6 +823,8 @@ export async function seedAgentCatalog() {
     description: "One job: POST the monthly AFA rate to the live website's API.",
     color: "blue",
     rolePrompt: afaRole,
+    toolProfile: "ops",
+    thinkingLevel: "low",
   });
 
   const salesRole = await readFile(SALES_ROLE_FILE, "utf8").catch(() => "You are Sales and Procurement.");
@@ -815,6 +838,8 @@ export async function seedAgentCatalog() {
       "Read-only into prod_main for sales/payment/install-status questions; keeps its own stock inventory to flag models running low.",
     color: "teal",
     rolePrompt: salesRole,
+    toolProfile: "ops",
+    thinkingLevel: "minimal",
   });
 
   const manageRow = await getPool().query(`SELECT id FROM skills WHERE slug = 'manage-host-settings'`);
@@ -863,6 +888,34 @@ export async function seedAgentCatalog() {
     await getPool().query(`INSERT INTO agent_skills (agent_id, skill_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [
       PACKAGE_AGENT_ID,
       packageSkillId,
+    ]);
+  }
+
+  const salesSkills = await getPool().query(
+    `SELECT id FROM skills WHERE slug IN ('sales-reports', 'stock-inventory')`,
+  );
+  for (const row of salesSkills.rows) {
+    await getPool().query(`INSERT INTO agent_skills (agent_id, skill_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [
+      SALES_AGENT_ID,
+      row.id,
+    ]);
+  }
+
+  const proposalPlaybooks = await getPool().query(`SELECT id FROM skills WHERE slug = 'proposal-playbooks'`);
+  const proposalPlaybooksId = proposalPlaybooks.rows[0]?.id;
+  if (proposalPlaybooksId) {
+    await getPool().query(`INSERT INTO agent_skills (agent_id, skill_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [
+      PROPOSAL_AGENT_ID,
+      proposalPlaybooksId,
+    ]);
+  }
+
+  const websitePlaybooks = await getPool().query(`SELECT id FROM skills WHERE slug = 'website-playbooks'`);
+  const websitePlaybooksId = websitePlaybooks.rows[0]?.id;
+  if (websitePlaybooksId) {
+    await getPool().query(`INSERT INTO agent_skills (agent_id, skill_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [
+      WEBSITE_AGENT_ID,
+      websitePlaybooksId,
     ]);
   }
 
@@ -926,6 +979,8 @@ export function publicAgent(agent, { includeRole = false } = {}) {
     workspaceRepo: agent.workspaceRepo ?? null,
     workspaceBranch: agent.workspaceBranch ?? null,
     liveUrl: agent.liveUrl ?? null,
+    toolProfile: agent.toolProfile ?? "coding",
+    thinkingLevel: agent.thinkingLevel ?? null,
     rolePrompt: includeRole ? agent.rolePrompt : undefined,
     skillIds: agent.skillIds ?? agent.skills?.map((row) => row.id) ?? [],
     mcpIds: agent.mcpIds ?? agent.mcp?.map((row) => row.id) ?? [],

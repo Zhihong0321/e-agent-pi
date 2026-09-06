@@ -113,8 +113,9 @@ import {
 } from "./newpages.mjs";
 import { newpagesHealth } from "./newpages-health.mjs";
 import { handleManage } from "./manage-api.mjs";
-import { buildPiArgs, materializeAgentRuntime } from "./runtime.mjs";
+import { buildPiArgs, buildRoleText, materializeAgentRuntime, resolveToolProfile } from "./runtime.mjs";
 import { agentEnv } from "./agent-env.mjs";
+import { normalizeThinkingLevel, normalizeToolProfile, toolsForProfile } from "./agent-profiles.mjs";
 import {
   AUTO_CONTINUE_PROMPT,
   appendStateJournal,
@@ -438,7 +439,9 @@ async function agentBundleKey(agent, modelId) {
   const skills = (agent.skillIds || []).slice().sort().join(",");
   const mcp = (agent.mcpIds || []).slice().sort().join(",");
   const imagen = imagenConfigured() ? `${secret("imagen_model") || "default"}:${secret("imagen_api") || "auto"}` : "off";
-  return `${agent.id}:${skills}:${mcp}:${role}:${pack}:${modelId || "none"}:${imagen}`;
+  const profile = agent.toolProfile || "coding";
+  const thinking = agent.thinkingLevel || "";
+  return `${agent.id}:${skills}:${mcp}:${role}:${pack}:${modelId || "none"}:${imagen}:${profile}:${thinking}`;
 }
 
 async function resolveAgentProfile(agentId) {
@@ -646,8 +649,8 @@ async function sweepIdleSlots() {
 
 /**
  * Everything the runtime files are built from. The pool key already covers
- * role, pack, skills, MCP ids, model and imagen; MCP server config and the
- * provider base URLs are the only inputs it does not.
+ * role, pack, skills, MCP ids, model, imagen, tool profile, and thinking level;
+ * MCP server config and the provider base URLs are the only inputs it does not.
  * @param {PiSlot} slot
  */
 function runtimeInputsHash(slot, agent, modelsJson) {
@@ -695,6 +698,8 @@ async function startSlotClient(slot, agent, modelId) {
   });
   slot.runtimeHash = runtimeInputsHash(slot, agent, modelsJson);
   const sessionFile = slot.resumeSessionFile;
+  const { profile: toolProfile, warning: profileWarning } = await resolveToolProfile(agent, agent.skills ?? []);
+  if (profileWarning) logEvent("warn", profileWarning);
   const args = buildPiArgs({
     agent,
     skills: agent.skills ?? [],
@@ -703,10 +708,12 @@ async function startSlotClient(slot, agent, modelId) {
     provider: active.provider,
     model: active.model,
     sessionFile,
+    toolProfile,
+    thinkingLevel: agent.thinkingLevel,
   });
   logEvent(
     "info",
-    `starting Pi agent=${agent.slug} skills=${agent.skills?.length ?? 0} mcp=${agent.mcp?.length ?? 0} subagents=${(agent.skills ?? []).some((row) => row.slug === "spawn-subagents") ? "on" : "off"} imagen=${imagenConfigured() ? "on" : "off"} ${active.provider}/${active.model} pool=${piPool.size}/${MAX_PI_SLOTS}`,
+    `starting Pi agent=${agent.slug} skills=${agent.skills?.length ?? 0} mcp=${agent.mcp?.length ?? 0} subagents=${(agent.skills ?? []).some((row) => row.slug === "spawn-subagents") ? "on" : "off"} imagen=${imagenConfigured() ? "on" : "off"} profile=${toolProfile} thinking=${agent.thinkingLevel || "default"} ${active.provider}/${active.model} pool=${piPool.size}/${MAX_PI_SLOTS}`,
   );
 
   const workspace = agentWorkspace(agent);
@@ -2029,6 +2036,42 @@ const server = createServer(async (req, res) => {
             modelId: typeof existing.modelId === "string" ? existing.modelId : defaultModelId,
           }),
         );
+        return;
+      }
+    }
+
+    {
+      const sizeMatch = pathname.match(/^\/api\/agents\/([^/]+)\/prompt-size$/);
+      if (sizeMatch && req.method === "GET") {
+        if (!dbReady()) {
+          json(res, 503, { error: "Database is not connected" });
+          return;
+        }
+        const existing = await getAgent(decodeURIComponent(sizeMatch[1]));
+        if (!existing) {
+          json(res, 404, { error: "Agent not found" });
+          return;
+        }
+        const modelId = typeof existing.modelId === "string" ? existing.modelId : defaultModelId;
+        const roleText = await buildRoleText(existing, { modelId });
+        const { profile: toolProfile, warning: profileWarning } = await resolveToolProfile(
+          existing,
+          existing.skills ?? [],
+        );
+        const contextPack = await previewContextPack(existing, { modelId });
+        json(res, 200, {
+          agentId: existing.id,
+          slug: existing.slug,
+          modelId: modelId || null,
+          roleBytes: Buffer.byteLength(roleText),
+          roleTokensApprox: Math.ceil(roleText.length / 4),
+          requestedToolProfile: normalizeToolProfile(existing.toolProfile),
+          effectiveToolProfile: toolProfile,
+          toolProfileWarning: profileWarning,
+          tools: toolsForProfile(toolProfile),
+          thinkingLevel: normalizeThinkingLevel(existing.thinkingLevel),
+          contextPack: { parts: contextPack.parts, tokensApprox: contextPack.tokensApprox, missingFiles: contextPack.missingFiles },
+        });
         return;
       }
     }
