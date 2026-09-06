@@ -124,7 +124,11 @@ export async function ensureCatalogSchema() {
   await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS workspace_repo TEXT`);
   await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS workspace_branch TEXT`);
   await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS live_url TEXT`);
-  await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS tool_profile TEXT NOT NULL DEFAULT 'coding'`);
+  // Nullable, not DEFAULT 'coding': seedSystemAgent needs to tell "never set" (NULL, backfill
+  // from the seed) apart from "operator picked coding on purpose" (would look identical to a
+  // column default). normalizeToolProfile()/AGENT_SELECT's COALESCE still resolve NULL to
+  // 'coding' everywhere the value is read.
+  await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS tool_profile TEXT`);
   await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS thinking_level TEXT`);
 }
 
@@ -716,6 +720,8 @@ async function seedSystemAgent(row) {
        workspace_repo = COALESCE(EXCLUDED.workspace_repo, agents.workspace_repo),
        workspace_branch = COALESCE(EXCLUDED.workspace_branch, agents.workspace_branch),
        live_url = COALESCE(EXCLUDED.live_url, agents.live_url),
+       tool_profile = COALESCE(agents.tool_profile, EXCLUDED.tool_profile),
+       thinking_level = COALESCE(agents.thinking_level, EXCLUDED.thinking_level),
        updated_at = NOW()`,
     [
       row.id,
