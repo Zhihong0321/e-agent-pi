@@ -10,6 +10,7 @@ export const DATA_DIR =
   "/storage";
 export const WORKSPACE = path.join(DATA_DIR, "workspace");
 export const WORKSPACES_DIR = path.join(DATA_DIR, "workspaces");
+export const TNB_WORKSPACE = path.join(WORKSPACES_DIR, "tnb");
 export const STORAGE = path.join(DATA_DIR, "storage");
 export const PI_AGENT_DIR = path.join(DATA_DIR, "pi");
 export const LIBRARY_DIR = path.join(DATA_DIR, "library");
@@ -23,6 +24,8 @@ export const PACKAGE_ROLE_FILE = path.join(ROOT, "agent", "roles", "package.md")
 export const AFA_ROLE_FILE = path.join(ROOT, "agent", "roles", "afa-rate.md");
 export const SALES_ROLE_FILE = path.join(ROOT, "agent", "roles", "sales.md");
 export const WHATSAPP_ROLE_FILE = path.join(ROOT, "agent", "roles", "whatsapp.md");
+export const GOOGLE_ADS_ROLE_FILE = path.join(ROOT, "agent", "roles", "google-ads.md");
+export const TNB_ROLE_FILE = path.join(ROOT, "agent", "roles", "tnb.md");
 export const BUNDLED_SKILLS = path.join(ROOT, "agent", "skills");
 export const DEFAULT_AGENT_ID = "website";
 export const OPS_AGENT_ID = "ops";
@@ -33,6 +36,8 @@ export const PACKAGE_AGENT_ID = "package";
 export const AFA_AGENT_ID = "afa-rate";
 export const SALES_AGENT_ID = "sales";
 export const WHATSAPP_AGENT_ID = "whatsapp-assistant";
+export const GOOGLE_ADS_AGENT_ID = "google-ads";
+export const TNB_AGENT_ID = "tnb";
 export const DEFAULT_PROPOSAL_REPO = "Zhihong0321/ee-proposal";
 export const DEFAULT_PROPOSAL_LIVE_URL = "https://ee-proposal-production.up.railway.app/shell.html#proposal";
 export const DEFAULT_NEWPAGES_LIVE_URL = "https://merchant.newpages.com.my";
@@ -72,6 +77,12 @@ export function agentWorkspace(agent) {
   if (id === SALES_AGENT_ID || slug === "sales") {
     return path.join(WORKSPACES_DIR, "sales");
   }
+  if (id === GOOGLE_ADS_AGENT_ID || slug === "google-ads") {
+    return path.join(WORKSPACES_DIR, "google-ads");
+  }
+  if (id === TNB_AGENT_ID || slug === "tnb") {
+    return TNB_WORKSPACE;
+  }
   if (isWebsiteAgent(agent)) return WORKSPACE;
   const folder = isSettingsAgent(agent) ? "settings" : slug || id || "scratch";
   return path.join(WORKSPACES_DIR, folder);
@@ -107,6 +118,18 @@ export function isSalesAgent(agent) {
   return id === SALES_AGENT_ID || slug === "sales";
 }
 
+export function isGoogleAdsAgent(agent) {
+  const id = typeof agent === "string" ? agent : agent?.id || "";
+  const slug = typeof agent === "string" ? agent : agent?.slug || "";
+  return id === GOOGLE_ADS_AGENT_ID || slug === "google-ads";
+}
+
+export function isTnbAgent(agent) {
+  const id = typeof agent === "string" ? agent : agent?.id || "";
+  const slug = typeof agent === "string" ? agent : agent?.slug || "";
+  return id === TNB_AGENT_ID || slug === "tnb";
+}
+
 export const DIST_DIR = path.join(ROOT, "dist");
 export const SEED_INDEX = path.join(ROOT, "agent-workspace", "index.html");
 export const BUNDLED_MODELS = path.join(ROOT, ".pi", "agent", "models.json");
@@ -125,8 +148,11 @@ export const IMAGEN_CLI = path.join(ROOT, "server", "imagen-cli.mjs");
 export const SITES_CLI = path.join(ROOT, "server", "sites-cli.mjs");
 export const PDF_CLI = path.join(ROOT, "server", "pdf-cli.mjs");
 export const PACKAGE_SHEET_CLI = path.join(ROOT, "server", "package-sheet-cli.mjs");
+export const TNB_CLI = path.join(ROOT, "server", "tnb-cli.mjs");
 export const SALES_MCP_SERVER = path.join(ROOT, "server", "sales-mcp-server.mjs");
 export const SALES_MCP_SLUG = "sales-data";
+export const GOOGLE_ADS_MCP_SERVER = path.join(ROOT, "server", "google-ads-mcp-server.mjs");
+export const GOOGLE_ADS_MCP_SLUG = "google-ads";
 export const WHATSAPP_MCP_SLUG = "whatsapp";
 export const WHATSAPP_DATA_DIR = path.join(DATA_DIR, "whatsapp");
 export const WHATSAPP_MEMORY_FILE = path.join(WHATSAPP_DATA_DIR, "memory.md");

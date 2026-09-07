@@ -1,4 +1,5 @@
 import { secret } from "./secrets.mjs";
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -101,6 +102,8 @@ export async function testModelRoundTrip(entry, env) {
   try {
     const headers = { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` };
     if (entry.requiresStream) headers.Accept = "text/event-stream";
+    // OpenCode GO's gateway routes by session and 400s without this header.
+    if (entry.provider === "opencode-go") headers["x-opencode-session"] = randomUUID();
     const res = await fetch(url, {
       method: "POST",
       headers,

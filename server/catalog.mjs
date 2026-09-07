@@ -11,6 +11,8 @@ import {
   DEFAULT_NEWPAGES_LIVE_URL,
   DEFAULT_PROPOSAL_LIVE_URL,
   DEFAULT_PROPOSAL_REPO,
+  GOOGLE_ADS_AGENT_ID,
+  GOOGLE_ADS_ROLE_FILE,
   NEWPAGES_AGENT_ID,
   NEWPAGES_ROLE_FILE,
   OPS_AGENT_ID,
@@ -23,6 +25,8 @@ import {
   SALES_ROLE_FILE,
   SETTINGS_ROLE_FILE,
   SKILLS_DIR,
+  TNB_AGENT_ID,
+  TNB_ROLE_FILE,
   WHATSAPP_AGENT_ID,
   WHATSAPP_ROLE_FILE,
   agentWorkspace,
@@ -414,7 +418,11 @@ export async function attachAgentResources(agentRef, { skills = [], mcp = [], de
         agent.id === AFA_AGENT_ID ||
         agent.slug === "afa-rate" ||
         agent.id === SALES_AGENT_ID ||
-        agent.slug === "sales")
+        agent.slug === "sales" ||
+        agent.id === GOOGLE_ADS_AGENT_ID ||
+        agent.slug === "google-ads" ||
+        agent.id === TNB_AGENT_ID ||
+        agent.slug === "tnb")
     ) {
       throw new Error("manage-host-settings stays on Settings Agent only.");
     }
@@ -465,6 +473,12 @@ export async function deleteAgent(id) {
   }
   if (agent.id === SALES_AGENT_ID || agent.slug === "sales") {
     throw new Error("The Sales and Procurement agent cannot be deleted.");
+  }
+  if (agent.id === GOOGLE_ADS_AGENT_ID || agent.slug === "google-ads") {
+    throw new Error("The Google Ads agent cannot be deleted.");
+  }
+  if (agent.id === TNB_AGENT_ID || agent.slug === "tnb") {
+    throw new Error("The TNB Bill Agent cannot be deleted.");
   }
   await getPool().query(`UPDATE sessions SET agent_id = $1 WHERE agent_id = $2`, [WEBSITE_AGENT_ID, agent.id]);
   await getPool().query(`DELETE FROM agents WHERE id = $1`, [agent.id]);
@@ -836,6 +850,20 @@ export async function seedAgentCatalog() {
     thinkingLevel: "low",
   });
 
+  const tnbRole = await readFile(TNB_ROLE_FILE, "utf8").catch(() => "You are TNB Bill Agent.");
+  await seedSystemAgent({
+    id: TNB_AGENT_ID,
+    slug: "tnb",
+    name: "TNB Bill Agent",
+    short: "TNB",
+    headline: "Fetches TNB electricity bills as PDFs",
+    description: "One job: given a TNB account number, download the latest bills as PDFs.",
+    color: "cyan",
+    rolePrompt: tnbRole,
+    toolProfile: "ops",
+    thinkingLevel: "low",
+  });
+
   const salesRole = await readFile(SALES_ROLE_FILE, "utf8").catch(() => "You are Sales and Procurement.");
   await seedSystemAgent({
     id: SALES_AGENT_ID,
@@ -847,6 +875,21 @@ export async function seedAgentCatalog() {
       "Read-only into prod_main for sales/payment/install-status questions; keeps its own stock inventory to flag models running low.",
     color: "teal",
     rolePrompt: salesRole,
+    toolProfile: "ops",
+    thinkingLevel: "minimal",
+  });
+
+  const googleAdsRole = await readFile(GOOGLE_ADS_ROLE_FILE, "utf8").catch(() => "You are Google Ads.");
+  await seedSystemAgent({
+    id: GOOGLE_ADS_AGENT_ID,
+    slug: "google-ads",
+    name: "Google Ads",
+    short: "GA",
+    headline: "Reports on and builds Google Ads campaigns",
+    description:
+      "Google Ads reporting plus campaign building. Everything it creates is paused — it cannot enable, unpause, or edit a serving campaign, so nothing it touches can spend.",
+    color: "sky",
+    rolePrompt: googleAdsRole,
     toolProfile: "ops",
     thinkingLevel: "minimal",
   });

@@ -29,9 +29,17 @@ const KEYS = [
   "settings_password",
   "afa_base_url",
   "afa_passkey",
+  "tnb_email",
+  "tnb_password",
   "sales_pg_proxy_token",
   "sales_pg_proxy_expires_at",
   "stock_api_token",
+  "google_ads_client_id",
+  "google_ads_client_secret",
+  "google_ads_developer_token",
+  "google_ads_refresh_token",
+  "google_ads_customer_id",
+  "google_ads_login_customer_id",
 ];
 
 export const DEFAULT_PASSWORD = "eternalgy2026";
@@ -72,8 +80,12 @@ export async function saveSecrets(patch) {
     "ee_html_api_key",
     "settings_password",
     "afa_passkey",
+    "tnb_password",
     "sales_pg_proxy_token",
     "stock_api_token",
+    "google_ads_client_secret",
+    "google_ads_developer_token",
+    "google_ads_refresh_token",
   ]);
   for (const key of KEYS) {
     if (!(key in patch) || patch[key] === undefined) continue;
@@ -112,8 +124,16 @@ export function publicSettings() {
     eeHtmlLastError: secret("ee_html_last_error") || "",
     afaBaseUrl: secret("afa_base_url") || "",
     afaPasskeySet: Boolean(secret("afa_passkey")),
+    tnbEmail: secret("tnb_email") || "",
+    tnbPasswordSet: Boolean(secret("tnb_password")),
     salesPgProxyTokenSet: Boolean(secret("sales_pg_proxy_token")),
     salesPgProxyExpiresAt: secret("sales_pg_proxy_expires_at") || "",
+    googleAdsClientId: secret("google_ads_client_id") || "",
+    googleAdsClientSecretSet: Boolean(secret("google_ads_client_secret")),
+    googleAdsDeveloperTokenSet: Boolean(secret("google_ads_developer_token")),
+    googleAdsRefreshTokenSet: Boolean(secret("google_ads_refresh_token")),
+    googleAdsCustomerId: secret("google_ads_customer_id") || "",
+    googleAdsLoginCustomerId: secret("google_ads_login_customer_id") || "",
   };
 }
 
@@ -130,7 +150,9 @@ export function secretFlags() {
     pgProxyToken: Boolean(secret("pg_proxy_token")),
     eeHtmlApiKey: Boolean(secret("ee_html_api_key") || process.env.EE_HTML_API_KEY),
     afaPasskey: Boolean(secret("afa_passkey")),
+    tnbPassword: Boolean(secret("tnb_password")),
     salesPgProxyToken: Boolean(secret("sales_pg_proxy_token")),
+    googleAdsRefreshToken: Boolean(secret("google_ads_refresh_token")),
   };
 }
 

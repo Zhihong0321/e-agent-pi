@@ -96,6 +96,7 @@ import {
 import { ensureImpeccableForWebsite } from "./impeccable.mjs";
 import { ensureScraplingForWebsite, scraplingPublic, SCRAPLING_SKILL_SLUG } from "./scrapling.mjs";
 import { ensureSalesMcp } from "./sales-mcp.mjs";
+import { ensureGoogleAdsMcp } from "./google-ads-mcp.mjs";
 import {
   ensureWhatsappMcp,
   startWhatsappSidecar,
@@ -1617,6 +1618,16 @@ async function bootServices() {
     }
   } catch (error) {
     logEvent("error", `sales-data mcp failed: ${sanitizeError(error)}`);
+  }
+
+  boot.step = "google-ads-mcp";
+  try {
+    if (dbReady()) {
+      await ensureGoogleAdsMcp();
+      logEvent("info", "google-ads mcp registered and attached to google-ads agent");
+    }
+  } catch (error) {
+    logEvent("error", `google-ads mcp failed: ${sanitizeError(error)}`);
   }
 
   boot.step = "whatsapp-sidecar";

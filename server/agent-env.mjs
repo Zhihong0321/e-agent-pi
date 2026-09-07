@@ -8,9 +8,12 @@ import {
   PI_PACKAGE_DIR,
   ROOT,
   SITES_CLI,
+  TNB_CLI,
   isAfaAgent,
+  isGoogleAdsAgent,
   isPackageAgent,
   isSalesAgent,
+  isTnbAgent,
 } from "./paths.mjs";
 import { secret } from "./secrets.mjs";
 
@@ -68,6 +71,7 @@ export function agentEnv(agent, extra = {}, from = process.env) {
   env.CLOUD_PI_IMAGEN = IMAGEN_CLI;
   env.CLOUD_PI_SITES = SITES_CLI;
   env.CLOUD_PI_PDF = PDF_CLI;
+  env.CLOUD_PI_TNB = TNB_CLI;
   env.PI_PACKAGE_DIR = from.PI_PACKAGE_DIR || PI_PACKAGE_DIR;
 
   if (isPackageAgent(agent)) {
@@ -81,6 +85,29 @@ export function agentEnv(agent, extra = {}, from = process.env) {
     const baseUrl = secret("afa_base_url");
     if (passkey) env.AFA_PASSKEY = passkey;
     if (baseUrl) env.AFA_BASE_URL = baseUrl;
+  }
+
+  if (isTnbAgent(agent)) {
+    const email = secret("tnb_email");
+    const password = secret("tnb_password");
+    if (email) env.TNB_EMAIL = email;
+    if (password) env.TNB_PASSWORD = password;
+  }
+
+  if (isGoogleAdsAgent(agent)) {
+    // The MCP server reads these directly; nothing touches disk or the vault.
+    const clientId = secret("google_ads_client_id");
+    const clientSecret = secret("google_ads_client_secret");
+    const developerToken = secret("google_ads_developer_token");
+    const refreshToken = secret("google_ads_refresh_token");
+    const customerId = secret("google_ads_customer_id");
+    const loginCustomerId = secret("google_ads_login_customer_id");
+    if (clientId) env.GOOGLE_ADS_CLIENT_ID = clientId;
+    if (clientSecret) env.GOOGLE_ADS_CLIENT_SECRET = clientSecret;
+    if (developerToken) env.GOOGLE_ADS_DEVELOPER_TOKEN = developerToken;
+    if (refreshToken) env.GOOGLE_ADS_REFRESH_TOKEN = refreshToken;
+    if (customerId) env.GOOGLE_ADS_CUSTOMER_ID = customerId;
+    if (loginCustomerId) env.GOOGLE_ADS_LOGIN_CUSTOMER_ID = loginCustomerId;
   }
 
   if (isSalesAgent(agent)) {

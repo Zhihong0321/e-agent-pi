@@ -27,7 +27,15 @@ type Settings = {
   eeHtmlLastError: string;
   afaBaseUrl: string;
   afaPasskeySet: boolean;
+  tnbEmail: string;
+  tnbPasswordSet: boolean;
   salesPgProxyTokenSet: boolean;
+  googleAdsClientId: string;
+  googleAdsClientSecretSet: boolean;
+  googleAdsDeveloperTokenSet: boolean;
+  googleAdsRefreshTokenSet: boolean;
+  googleAdsCustomerId: string;
+  googleAdsLoginCustomerId: string;
   salesPgProxyExpiresAt: string;
 };
 
@@ -204,7 +212,15 @@ export default function SettingsPage() {
     settingsPassword: "",
     afaBaseUrl: "",
     afaPasskey: "",
+    tnbEmail: "",
+    tnbPassword: "",
     salesPgProxyToken: "",
+    googleAdsClientId: "",
+    googleAdsClientSecret: "",
+    googleAdsDeveloperToken: "",
+    googleAdsRefreshToken: "",
+    googleAdsCustomerId: "",
+    googleAdsLoginCustomerId: "",
     salesPgProxyExpiresAt: "",
   });
   const [models, setModels] = useState<ModelItem[]>([]);
@@ -260,6 +276,10 @@ export default function SettingsPage() {
       eeHtmlSlug: data.eeHtmlSlug,
       eeHtmlName: data.eeHtmlName,
       afaBaseUrl: data.afaBaseUrl,
+      tnbEmail: data.tnbEmail || "",
+      googleAdsClientId: data.googleAdsClientId || "",
+      googleAdsCustomerId: data.googleAdsCustomerId || "",
+      googleAdsLoginCustomerId: data.googleAdsLoginCustomerId || "",
       salesPgProxyExpiresAt: data.salesPgProxyExpiresAt,
     }));
   };
@@ -492,12 +512,20 @@ export default function SettingsPage() {
           settings_password: form.settingsPassword,
           afa_base_url: form.afaBaseUrl,
           afa_passkey: form.afaPasskey,
+          tnb_email: form.tnbEmail,
+          tnb_password: form.tnbPassword,
           sales_pg_proxy_token: form.salesPgProxyToken,
+          google_ads_client_id: form.googleAdsClientId,
+          google_ads_client_secret: form.googleAdsClientSecret,
+          google_ads_developer_token: form.googleAdsDeveloperToken,
+          google_ads_refresh_token: form.googleAdsRefreshToken,
+          google_ads_customer_id: form.googleAdsCustomerId,
+          google_ads_login_customer_id: form.googleAdsLoginCustomerId,
           sales_pg_proxy_expires_at: form.salesPgProxyExpiresAt,
         }),
       });
       setSettings(data);
-      setForm((prev) => ({ ...prev, cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", opencodeGoApiKey: "", hiveAiApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", settingsPassword: "", afaPasskey: "", salesPgProxyToken: "" }));
+      setForm((prev) => ({ ...prev, cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", opencodeGoApiKey: "", hiveAiApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", settingsPassword: "", afaPasskey: "", tnbPassword: "", salesPgProxyToken: "", googleAdsClientSecret: "", googleAdsDeveloperToken: "", googleAdsRefreshToken: "" }));
       if (data.proposal?.lastError) {
         setError(data.proposal.lastError);
         setSaved("Saved keys, but GitHub rejected the proposal push.");
@@ -1056,6 +1084,69 @@ export default function SettingsPage() {
                 />
               </label>
 
+              <h2>Google Ads</h2>
+              <p>
+                The Google Ads agent uses these for <strong>read-only</strong> reporting. Get the refresh token by
+                running <code>node scripts/google-ads-oauth.mjs</code> — it opens a browser, you approve, and it
+                prints one. <strong>Login customer ID is the manager (MCC) account</strong> and is usually required:
+                without it calls fail with <code>USER_PERMISSION_DENIED</code> even when access is fine, because the
+                request has to be routed through the manager. Leave secret fields blank to keep saved values.
+              </p>
+              <label>
+                Customer ID <em>(the account to report on)</em>
+                <input
+                  type="text"
+                  value={form.googleAdsCustomerId}
+                  onChange={(event) => setForm({ ...form, googleAdsCustomerId: event.target.value })}
+                  placeholder="464-254-9168"
+                />
+              </label>
+              <label>
+                Login customer ID <em>(manager / MCC)</em>
+                <input
+                  type="text"
+                  value={form.googleAdsLoginCustomerId}
+                  onChange={(event) => setForm({ ...form, googleAdsLoginCustomerId: event.target.value })}
+                  placeholder="467-997-6211"
+                />
+              </label>
+              <label>
+                OAuth client ID
+                <input
+                  type="text"
+                  value={form.googleAdsClientId}
+                  onChange={(event) => setForm({ ...form, googleAdsClientId: event.target.value })}
+                  placeholder="52384474001-….apps.googleusercontent.com"
+                />
+              </label>
+              <label>
+                OAuth client secret {settings?.googleAdsClientSecretSet ? <em>saved</em> : <em>missing</em>}
+                <input
+                  type="password"
+                  value={form.googleAdsClientSecret}
+                  onChange={(event) => setForm({ ...form, googleAdsClientSecret: event.target.value })}
+                  placeholder={settings?.googleAdsClientSecretSet ? "••••••••  (unchanged)" : "GOCSPX-…"}
+                />
+              </label>
+              <label>
+                Developer token {settings?.googleAdsDeveloperTokenSet ? <em>saved</em> : <em>missing</em>}
+                <input
+                  type="password"
+                  value={form.googleAdsDeveloperToken}
+                  onChange={(event) => setForm({ ...form, googleAdsDeveloperToken: event.target.value })}
+                  placeholder={settings?.googleAdsDeveloperTokenSet ? "••••••••  (unchanged)" : "from the MCC API Center"}
+                />
+              </label>
+              <label>
+                Refresh token {settings?.googleAdsRefreshTokenSet ? <em>saved</em> : <em>missing</em>}
+                <input
+                  type="password"
+                  value={form.googleAdsRefreshToken}
+                  onChange={(event) => setForm({ ...form, googleAdsRefreshToken: event.target.value })}
+                  placeholder={settings?.googleAdsRefreshTokenSet ? "••••••••  (unchanged)" : "1//0g…"}
+                />
+              </label>
+
               <h2>AFA Rate API</h2>
               <p>
                 AFA Rate Updater uses these to <code>POST /api/afa-rates</code> on the live website. Base URL is the
@@ -1078,6 +1169,32 @@ export default function SettingsPage() {
                   value={form.afaPasskey}
                   onChange={(event) => setForm({ ...form, afaPasskey: event.target.value })}
                   placeholder={settings?.afaPasskeySet ? "••••••••  (unchanged)" : "eternalgy2026"}
+                />
+              </label>
+
+              <h2>TNB</h2>
+              <p>
+                TNB Bill Agent uses these to log into myTNB and fetch bills. Leave the password blank to keep the
+                saved value. Do not paste the password in chat.
+              </p>
+              <label>
+                Email
+                <input
+                  type="text"
+                  value={form.tnbEmail}
+                  onChange={(event) => setForm({ ...form, tnbEmail: event.target.value })}
+                  placeholder="you@example.com"
+                  autoComplete="username"
+                />
+              </label>
+              <label>
+                Password {settings?.tnbPasswordSet ? <em>saved</em> : <em>missing</em>}
+                <input
+                  type="password"
+                  value={form.tnbPassword}
+                  onChange={(event) => setForm({ ...form, tnbPassword: event.target.value })}
+                  placeholder={settings?.tnbPasswordSet ? "••••••••  (unchanged)" : "myTNB password"}
+                  autoComplete="new-password"
                 />
               </label>
 
