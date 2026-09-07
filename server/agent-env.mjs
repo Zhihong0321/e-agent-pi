@@ -11,6 +11,7 @@ import {
   TNB_CLI,
   isAfaAgent,
   isGoogleAdsAgent,
+  isOmAgent,
   isPackageAgent,
   isSalesAgent,
   isTnbAgent,
@@ -119,6 +120,12 @@ export function agentEnv(agent, extra = {}, from = process.env) {
     const stockToken = secret("stock_api_token");
     if (stockToken) env.STOCK_API_TOKEN = stockToken;
     env.STOCK_API_URL = `http://127.0.0.1:${from.PORT || "8080"}`;
+  }
+
+  if (isOmAgent(agent)) {
+    // The MCP server reads this directly; nothing touches disk or the vault.
+    const token = secret("om_api_token");
+    if (token) env.OM_API_TOKEN = token;
   }
 
   for (const [key, value] of Object.entries(extra)) {

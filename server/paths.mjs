@@ -27,6 +27,7 @@ export const WHATSAPP_ROLE_FILE = path.join(ROOT, "agent", "roles", "whatsapp.md
 export const GOOGLE_ADS_ROLE_FILE = path.join(ROOT, "agent", "roles", "google-ads.md");
 export const TNB_ROLE_FILE = path.join(ROOT, "agent", "roles", "tnb.md");
 export const SOLAR_ROI_ROLE_FILE = path.join(ROOT, "agent", "roles", "solar-roi.md");
+export const OM_ROLE_FILE = path.join(ROOT, "agent", "roles", "om.md");
 export const BUNDLED_SKILLS = path.join(ROOT, "agent", "skills");
 export const DEFAULT_AGENT_ID = "website";
 export const OPS_AGENT_ID = "ops";
@@ -40,6 +41,7 @@ export const WHATSAPP_AGENT_ID = "whatsapp-assistant";
 export const GOOGLE_ADS_AGENT_ID = "google-ads";
 export const TNB_AGENT_ID = "tnb";
 export const SOLAR_ROI_AGENT_ID = "solar-roi";
+export const OM_AGENT_ID = "om";
 export const DEFAULT_PROPOSAL_REPO = "Zhihong0321/ee-proposal";
 export const DEFAULT_PROPOSAL_LIVE_URL = "https://ee-proposal-production.up.railway.app/shell.html#proposal";
 export const DEFAULT_NEWPAGES_LIVE_URL = "https://merchant.newpages.com.my";
@@ -138,6 +140,12 @@ export function isSolarRoiAgent(agent) {
   return id === SOLAR_ROI_AGENT_ID || slug === "solar-roi";
 }
 
+export function isOmAgent(agent) {
+  const id = typeof agent === "string" ? agent : agent?.id || "";
+  const slug = typeof agent === "string" ? agent : agent?.slug || "";
+  return id === OM_AGENT_ID || slug === "om";
+}
+
 export const DIST_DIR = path.join(ROOT, "dist");
 export const SEED_INDEX = path.join(ROOT, "agent-workspace", "index.html");
 export const BUNDLED_MODELS = path.join(ROOT, ".pi", "agent", "models.json");
@@ -161,6 +169,8 @@ export const SALES_MCP_SERVER = path.join(ROOT, "server", "sales-mcp-server.mjs"
 export const SALES_MCP_SLUG = "sales-data";
 export const GOOGLE_ADS_MCP_SERVER = path.join(ROOT, "server", "google-ads-mcp-server.mjs");
 export const GOOGLE_ADS_MCP_SLUG = "google-ads";
+export const OM_MCP_SERVER = path.join(ROOT, "server", "om-mcp-server.mjs");
+export const OM_MCP_SLUG = "om-data";
 export const WHATSAPP_MCP_SLUG = "whatsapp";
 export const WHATSAPP_DATA_DIR = path.join(DATA_DIR, "whatsapp");
 export const WHATSAPP_MEMORY_FILE = path.join(WHATSAPP_DATA_DIR, "memory.md");

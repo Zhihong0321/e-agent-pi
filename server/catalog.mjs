@@ -15,6 +15,8 @@ import {
   GOOGLE_ADS_ROLE_FILE,
   NEWPAGES_AGENT_ID,
   NEWPAGES_ROLE_FILE,
+  OM_AGENT_ID,
+  OM_ROLE_FILE,
   OPS_AGENT_ID,
   PACKAGE_AGENT_ID,
   PACKAGE_ROLE_FILE,
@@ -886,6 +888,21 @@ export async function seedAgentCatalog() {
     rolePrompt: solarRoiRole,
     toolProfile: "ops",
     thinkingLevel: "low",
+  });
+
+  const omRole = await readFile(OM_ROLE_FILE, "utf8").catch(() => "You are O&M Agent.");
+  await seedSystemAgent({
+    id: OM_AGENT_ID,
+    slug: "om",
+    name: "O&M Agent",
+    short: "O&M",
+    headline: "Client solar plant status and generation, live from SAJ",
+    description:
+      "Read-only into the SAJ fleet API for a named client: online/offline status, today's generation, and historical kWh reports. Always resyncs live before answering.",
+    color: "orange",
+    rolePrompt: omRole,
+    toolProfile: "assistant",
+    thinkingLevel: "minimal",
   });
 
   const salesRole = await readFile(SALES_ROLE_FILE, "utf8").catch(() => "You are Sales and Procurement.");

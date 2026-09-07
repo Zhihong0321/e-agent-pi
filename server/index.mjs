@@ -97,6 +97,7 @@ import { ensureImpeccableForWebsite } from "./impeccable.mjs";
 import { ensureScraplingForWebsite, scraplingPublic, SCRAPLING_MCP_SLUG, SCRAPLING_SKILL_SLUG } from "./scrapling.mjs";
 import { ensureSalesMcp } from "./sales-mcp.mjs";
 import { ensureGoogleAdsMcp } from "./google-ads-mcp.mjs";
+import { ensureOmMcp } from "./om-mcp.mjs";
 import {
   ensureWhatsappMcp,
   startWhatsappSidecar,
@@ -1630,6 +1631,16 @@ async function bootServices() {
     }
   } catch (error) {
     logEvent("error", `google-ads mcp failed: ${sanitizeError(error)}`);
+  }
+
+  boot.step = "om-mcp";
+  try {
+    if (dbReady()) {
+      await ensureOmMcp();
+      logEvent("info", "om-data mcp registered and attached to om agent");
+    }
+  } catch (error) {
+    logEvent("error", `om-data mcp failed: ${sanitizeError(error)}`);
   }
 
   boot.step = "whatsapp-sidecar";

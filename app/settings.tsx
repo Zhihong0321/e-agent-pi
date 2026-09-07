@@ -39,6 +39,7 @@ type Settings = {
   googleAdsCustomerId: string;
   googleAdsLoginCustomerId: string;
   salesPgProxyExpiresAt: string;
+  omApiTokenSet: boolean;
 };
 
 type Tab = "keys" | "models" | "agents" | "sites" | "skills" | "mcp" | "whatsapp" | "display" | "usage";
@@ -226,6 +227,7 @@ export default function SettingsPage() {
     googleAdsCustomerId: "",
     googleAdsLoginCustomerId: "",
     salesPgProxyExpiresAt: "",
+    omApiToken: "",
   });
   const [models, setModels] = useState<ModelItem[]>([]);
   const [activeModelId, setActiveModelId] = useState<string>("");
@@ -529,10 +531,11 @@ export default function SettingsPage() {
           google_ads_customer_id: form.googleAdsCustomerId,
           google_ads_login_customer_id: form.googleAdsLoginCustomerId,
           sales_pg_proxy_expires_at: form.salesPgProxyExpiresAt,
+          om_api_token: form.omApiToken,
         }),
       });
       setSettings(data);
-      setForm((prev) => ({ ...prev, cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", opencodeGoApiKey: "", hiveAiApiKey: "", yerplanApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", settingsPassword: "", afaPasskey: "", tnbPassword: "", salesPgProxyToken: "", googleAdsClientSecret: "", googleAdsDeveloperToken: "", googleAdsRefreshToken: "" }));
+      setForm((prev) => ({ ...prev, cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", opencodeGoApiKey: "", hiveAiApiKey: "", yerplanApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", settingsPassword: "", afaPasskey: "", tnbPassword: "", salesPgProxyToken: "", googleAdsClientSecret: "", googleAdsDeveloperToken: "", googleAdsRefreshToken: "", omApiToken: "" }));
       if (data.proposal?.lastError) {
         setError(data.proposal.lastError);
         setSaved("Saved keys, but GitHub rejected the proposal push.");
@@ -1173,6 +1176,22 @@ export default function SettingsPage() {
                   value={form.googleAdsRefreshToken}
                   onChange={(event) => setForm({ ...form, googleAdsRefreshToken: event.target.value })}
                   placeholder={settings?.googleAdsRefreshTokenSet ? "••••••••  (unchanged)" : "1//0g…"}
+                />
+              </label>
+
+              <h2>O&M (SAJ fleet API)</h2>
+              <p>
+                The O&M Agent uses this <strong>read-only</strong> token to look up client plant/inverter status and
+                generation from the SAJ fleet data service (<code>ee-saj-api-production.up.railway.app</code>). Leave
+                blank to keep the saved value.
+              </p>
+              <label>
+                API token {settings?.omApiTokenSet ? <em>saved</em> : <em>missing</em>}
+                <input
+                  type="password"
+                  value={form.omApiToken}
+                  onChange={(event) => setForm({ ...form, omApiToken: event.target.value })}
+                  placeholder={settings?.omApiTokenSet ? "••••••••  (unchanged)" : "the service's shared token"}
                 />
               </label>
 

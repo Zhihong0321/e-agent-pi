@@ -42,6 +42,7 @@ const KEYS = [
   "google_ads_refresh_token",
   "google_ads_customer_id",
   "google_ads_login_customer_id",
+  "om_api_token",
 ];
 
 export const DEFAULT_PASSWORD = "eternalgy2026";
@@ -89,6 +90,7 @@ export async function saveSecrets(patch) {
     "google_ads_client_secret",
     "google_ads_developer_token",
     "google_ads_refresh_token",
+    "om_api_token",
   ]);
   for (const key of KEYS) {
     if (!(key in patch) || patch[key] === undefined) continue;
@@ -139,6 +141,7 @@ export function publicSettings() {
     googleAdsRefreshTokenSet: Boolean(secret("google_ads_refresh_token")),
     googleAdsCustomerId: secret("google_ads_customer_id") || "",
     googleAdsLoginCustomerId: secret("google_ads_login_customer_id") || "",
+    omApiTokenSet: Boolean(secret("om_api_token")),
   };
 }
 
@@ -159,6 +162,7 @@ export function secretFlags() {
     tnbPassword: Boolean(secret("tnb_password")),
     salesPgProxyToken: Boolean(secret("sales_pg_proxy_token")),
     googleAdsRefreshToken: Boolean(secret("google_ads_refresh_token")),
+    omApiToken: Boolean(secret("om_api_token")),
   };
 }
 
