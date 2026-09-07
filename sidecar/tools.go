@@ -90,31 +90,43 @@ type listChatsArgs struct {
 	Limit int `json:"limit,omitempty" jsonschema:"max number of chats to return, default 20"`
 }
 
-func (ts *toolServer) listChats(ctx context.Context, _ *mcp.CallToolRequest, args listChatsArgs) (*mcp.CallToolResult, []ChatRow, error) {
+// MCP requires a tool's outputSchema (and therefore structuredContent) to be a
+// JSON object at the top level; a bare slice's schema is `null | array`, which
+// fails Pi's client-side validation and drops the whole server's connection.
+// Every tool below returns a small named wrapper struct for this reason.
+type listChatsResult struct {
+	Chats []ChatRow `json:"chats"`
+}
+
+func (ts *toolServer) listChats(ctx context.Context, _ *mcp.CallToolRequest, args listChatsArgs) (*mcp.CallToolResult, listChatsResult, error) {
 	limit := args.Limit
 	if limit <= 0 {
 		limit = 20
 	}
 	chats, err := listChats(ctx, ts.db, limit)
 	if err != nil {
-		return nil, nil, err
+		return nil, listChatsResult{}, err
 	}
-	return nil, chats, nil
+	return nil, listChatsResult{Chats: chats}, nil
 }
 
 type findContactArgs struct {
 	Query string `json:"query" jsonschema:"name fragment to search for"`
 }
 
-func (ts *toolServer) findContact(ctx context.Context, _ *mcp.CallToolRequest, args findContactArgs) (*mcp.CallToolResult, []ChatRow, error) {
+type findContactResult struct {
+	Matches []ChatRow `json:"matches"`
+}
+
+func (ts *toolServer) findContact(ctx context.Context, _ *mcp.CallToolRequest, args findContactArgs) (*mcp.CallToolResult, findContactResult, error) {
 	if args.Query == "" {
-		return nil, nil, fmt.Errorf("query is required")
+		return nil, findContactResult{}, fmt.Errorf("query is required")
 	}
 	matches, err := findContacts(ctx, ts.db, args.Query, 20)
 	if err != nil {
-		return nil, nil, err
+		return nil, findContactResult{}, err
 	}
-	return nil, matches, nil
+	return nil, findContactResult{Matches: matches}, nil
 }
 
 type readChatArgs struct {
@@ -123,13 +135,17 @@ type readChatArgs struct {
 	Before int64  `json:"before,omitempty" jsonschema:"only return messages before this unix-seconds timestamp, for paging further back"`
 }
 
-func (ts *toolServer) readChat(ctx context.Context, _ *mcp.CallToolRequest, args readChatArgs) (*mcp.CallToolResult, []MessageRow, error) {
+type readChatResult struct {
+	Messages []MessageRow `json:"messages"`
+}
+
+func (ts *toolServer) readChat(ctx context.Context, _ *mcp.CallToolRequest, args readChatArgs) (*mcp.CallToolResult, readChatResult, error) {
 	if args.Chat == "" {
-		return nil, nil, fmt.Errorf("chat is required")
+		return nil, readChatResult{}, fmt.Errorf("chat is required")
 	}
 	jid, err := resolveChat(ctx, ts.db, args.Chat)
 	if err != nil {
-		return nil, nil, err
+		return nil, readChatResult{}, err
 	}
 	limit := args.Limit
 	if limit <= 0 {
@@ -137,9 +153,9 @@ func (ts *toolServer) readChat(ctx context.Context, _ *mcp.CallToolRequest, args
 	}
 	msgs, err := readChat(ctx, ts.db, jid, limit, args.Before)
 	if err != nil {
-		return nil, nil, err
+		return nil, readChatResult{}, err
 	}
-	return nil, msgs, nil
+	return nil, readChatResult{Messages: msgs}, nil
 }
 
 type searchMessagesArgs struct {
@@ -148,15 +164,19 @@ type searchMessagesArgs struct {
 	Limit int    `json:"limit,omitempty" jsonschema:"max number of messages to return, default 20"`
 }
 
-func (ts *toolServer) searchMessages(ctx context.Context, _ *mcp.CallToolRequest, args searchMessagesArgs) (*mcp.CallToolResult, []MessageRow, error) {
+type searchMessagesResult struct {
+	Messages []MessageRow `json:"messages"`
+}
+
+func (ts *toolServer) searchMessages(ctx context.Context, _ *mcp.CallToolRequest, args searchMessagesArgs) (*mcp.CallToolResult, searchMessagesResult, error) {
 	if args.Query == "" {
-		return nil, nil, fmt.Errorf("query is required")
+		return nil, searchMessagesResult{}, fmt.Errorf("query is required")
 	}
 	chatJID := ""
 	if args.Chat != "" {
 		jid, err := resolveChat(ctx, ts.db, args.Chat)
 		if err != nil {
-			return nil, nil, err
+			return nil, searchMessagesResult{}, err
 		}
 		chatJID = jid
 	}
@@ -166,9 +186,9 @@ func (ts *toolServer) searchMessages(ctx context.Context, _ *mcp.CallToolRequest
 	}
 	msgs, err := searchMessages(ctx, ts.db, args.Query, chatJID, limit)
 	if err != nil {
-		return nil, nil, err
+		return nil, searchMessagesResult{}, err
 	}
-	return nil, msgs, nil
+	return nil, searchMessagesResult{Messages: msgs}, nil
 }
 
 type sendTextArgs struct {
