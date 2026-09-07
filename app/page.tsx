@@ -1775,8 +1775,12 @@ function AgentConversation({
   onOpenMedia: (src: string, alt?: string) => void;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "end" });
+    const el = scrollRef.current;
+    if (!el) return;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distance < 160) bottomRef.current?.scrollIntoView({ block: "end" });
   }, [history, loading]);
 
   const last = history[history.length - 1];
@@ -1785,7 +1789,7 @@ function AgentConversation({
   const isAsking = siriSignal === "ask" && last?.role === "assistant" && !last.streaming;
 
   return (
-    <div className="chat-scroll">
+    <div className="chat-scroll" ref={scrollRef}>
       <div className="day-pill">Today</div>
       {history.length === 0 && (
         <div className="ready-card">
