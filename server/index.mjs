@@ -70,6 +70,7 @@ import {
 } from "./paths.mjs";
 import { applyPiEvent, createTurn, extractReply, serializeTurn } from "./pi-stream.mjs";
 import {
+  attachAgentResources,
   attachSkillToAllAgents,
   catalogCounts,
   createAgent,
@@ -93,9 +94,21 @@ import {
   WEBSITE_AGENT_ID,
 } from "./catalog.mjs";
 import { ensureImpeccableForWebsite } from "./impeccable.mjs";
-import { ensureScraplingForWebsite, scraplingPublic } from "./scrapling.mjs";
+import { ensureScraplingForWebsite, scraplingPublic, SCRAPLING_SKILL_SLUG } from "./scrapling.mjs";
 import { ensureSalesMcp } from "./sales-mcp.mjs";
-import { ensureWhatsappMcp, startWhatsappSidecar, stopWhatsappSidecar, whatsappStatus, whatsappQr, whatsappRequestQr, whatsappUnlink } from "./whatsapp.mjs";
+import {
+  ensureWhatsappMcp,
+  startWhatsappSidecar,
+  stopWhatsappSidecar,
+  whatsappStatus,
+  whatsappQr,
+  whatsappRequestQr,
+  whatsappUnlink,
+  whatsappReadMemory,
+  whatsappWriteMemory,
+  whatsappReadContacts,
+  whatsappWriteContacts,
+} from "./whatsapp.mjs";
 import { closeBrowsers } from "./browser.mjs";
 import { ensureSitesSchema, getSite, listSites, upsertSite, deleteSite } from "./sites.mjs";
 import {
@@ -1584,7 +1597,7 @@ async function bootServices() {
   boot.step = "scrapling";
   try {
     if (dbReady()) {
-      const result = await ensureScraplingForWebsite();
+      const result = await ensureScraplingForWebsite({ exclude: [WHATSAPP_AGENT_ID] });
       logEvent(
         "info",
         result.skipped
@@ -1621,11 +1634,29 @@ async function bootServices() {
   try {
     if (dbReady()) {
       await ensureSitesSchema();
-      const attached = await attachSkillToAllAgents("site-browser");
+      const attached = await attachSkillToAllAgents("site-browser", { exclude: [WHATSAPP_AGENT_ID] });
       logEvent("info", `site-browser skill on ${attached.length} agents`);
     }
   } catch (error) {
     logEvent("error", `site logins failed: ${sanitizeError(error)}`);
+  }
+
+  boot.step = "whatsapp-tool-cleanup";
+  try {
+    if (dbReady()) {
+      // scrapling/site-browser are attached to every agent by app-wide convention (above); strip them
+      // back off whatsapp-assistant, since either one needing bash silently upgrades its "assistant"
+      // tool_profile to "ops" (see resolveToolProfile), handing it read/bash tools it has no role for.
+      for (const slug of [SCRAPLING_SKILL_SLUG, "site-browser"]) {
+        try {
+          if (await getSkill(slug)) await attachAgentResources(WHATSAPP_AGENT_ID, { skills: [slug], detach: true });
+        } catch (error) {
+          logEvent("error", `whatsapp tool cleanup failed for ${slug}: ${sanitizeError(error)}`);
+        }
+      }
+    }
+  } catch (error) {
+    logEvent("error", `whatsapp tool cleanup failed: ${sanitizeError(error)}`);
   }
 
   boot.step = "catalog";
@@ -1888,6 +1919,24 @@ const server = createServer(async (req, res) => {
         }
         if (req.method === "POST" && pathname === "/api/whatsapp/unlink") {
           json(res, 200, await whatsappUnlink());
+          return;
+        }
+        if (req.method === "GET" && pathname === "/api/whatsapp/memory") {
+          json(res, 200, await whatsappReadMemory());
+          return;
+        }
+        if (req.method === "POST" && pathname === "/api/whatsapp/memory") {
+          const body = JSON.parse((await readBody(req)) || "{}");
+          json(res, 200, await whatsappWriteMemory(body.text));
+          return;
+        }
+        if (req.method === "GET" && pathname === "/api/whatsapp/contacts") {
+          json(res, 200, await whatsappReadContacts());
+          return;
+        }
+        if (req.method === "POST" && pathname === "/api/whatsapp/contacts") {
+          const body = JSON.parse((await readBody(req)) || "{}");
+          json(res, 200, await whatsappWriteContacts(body.text));
           return;
         }
       } catch (error) {

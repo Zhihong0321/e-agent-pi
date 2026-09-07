@@ -236,6 +236,10 @@ export default function SettingsPage() {
   const [whatsapp, setWhatsapp] = useState<WhatsappStatus | null>(null);
   const [whatsappQrTick, setWhatsappQrTick] = useState(0);
   const [whatsappBusy, setWhatsappBusy] = useState(false);
+  const [whatsappMemory, setWhatsappMemory] = useState("");
+  const [whatsappContacts, setWhatsappContacts] = useState("");
+  const [whatsappNotesBusy, setWhatsappNotesBusy] = useState("");
+  const [whatsappNotesSaved, setWhatsappNotesSaved] = useState("");
 
   const loadKeys = async () => {
     const data = await authedJson<Settings>("/api/settings");
@@ -345,6 +349,55 @@ export default function SettingsPage() {
       window.clearInterval(id);
     };
   }, [authed, tab]);
+
+  useEffect(() => {
+    if (!authed || tab !== "whatsapp") return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [memory, contacts] = await Promise.all([
+          authedJson<{ text: string }>("/api/whatsapp/memory"),
+          authedJson<{ text: string }>("/api/whatsapp/contacts"),
+        ]);
+        if (cancelled) return;
+        setWhatsappMemory(memory.text);
+        setWhatsappContacts(contacts.text);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Could not load WhatsApp notes");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authed, tab]);
+
+  const saveWhatsappMemory = async () => {
+    setWhatsappNotesBusy("memory");
+    setWhatsappNotesSaved("");
+    setError("");
+    try {
+      await authedJson("/api/whatsapp/memory", { method: "POST", body: JSON.stringify({ text: whatsappMemory }) });
+      setWhatsappNotesSaved("memory");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save memory");
+    } finally {
+      setWhatsappNotesBusy("");
+    }
+  };
+
+  const saveWhatsappContacts = async () => {
+    setWhatsappNotesBusy("contacts");
+    setWhatsappNotesSaved("");
+    setError("");
+    try {
+      await authedJson("/api/whatsapp/contacts", { method: "POST", body: JSON.stringify({ text: whatsappContacts }) });
+      setWhatsappNotesSaved("contacts");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save contact notes");
+    } finally {
+      setWhatsappNotesBusy("");
+    }
+  };
 
   const requestWhatsappQr = async () => {
     setWhatsappBusy(true);
@@ -1593,6 +1646,32 @@ export default function SettingsPage() {
                   </p>
                 </div>
               )}
+              <label>
+                Memory
+                <textarea
+                  value={whatsappMemory}
+                  onChange={(event) => setWhatsappMemory(event.target.value)}
+                  rows={6}
+                  placeholder="Standing instructions you tell the agent in chat land here too, e.g. &quot;always reply in Malay to family&quot;."
+                />
+              </label>
+              <button type="button" onClick={() => void saveWhatsappMemory()} disabled={whatsappNotesBusy === "memory"}>
+                {whatsappNotesBusy === "memory" ? "Saving…" : "Save memory"}
+              </button>
+              {whatsappNotesSaved === "memory" && <p className="settings-ok">Saved.</p>}
+              <label>
+                Contacts
+                <textarea
+                  value={whatsappContacts}
+                  onChange={(event) => setWhatsappContacts(event.target.value)}
+                  rows={6}
+                  placeholder="Context WhatsApp doesn't give the agent, e.g. &quot;- **+60123456789**: potential client, met at expo&quot;. The agent updates this too when you tell it who someone is."
+                />
+              </label>
+              <button type="button" onClick={() => void saveWhatsappContacts()} disabled={whatsappNotesBusy === "contacts"}>
+                {whatsappNotesBusy === "contacts" ? "Saving…" : "Save contacts"}
+              </button>
+              {whatsappNotesSaved === "contacts" && <p className="settings-ok">Saved.</p>}
             </section>
           )}
 

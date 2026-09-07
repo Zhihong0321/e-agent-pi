@@ -2,12 +2,14 @@
 // restarting it if it exits, and registers its MCP server in the catalog
 // attached to the WhatsApp Assistant agent. See whatsapp-auto-plan.md.
 import { spawn } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import {
   WHATSAPP_AGENT_ID,
+  WHATSAPP_CONTACTS_FILE,
   WHATSAPP_DATA_DIR,
   WHATSAPP_MCP_ADDR,
   WHATSAPP_MCP_SLUG,
+  WHATSAPP_MEMORY_FILE,
   WHATSAPP_SIDECAR_BIN,
 } from "./paths.mjs";
 import { createMcpServer, getMcpServer, updateMcpServer, attachAgentResources } from "./catalog.mjs";
@@ -124,4 +126,37 @@ export async function whatsappUnlink() {
   } catch (error) {
     return { ok: false, error: String(error?.message || error) };
   }
+}
+
+async function readTextFile(file) {
+  try {
+    return await readFile(file, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+async function writeTextFile(file, text) {
+  await mkdir(WHATSAPP_DATA_DIR, { recursive: true });
+  await writeFile(file, String(text ?? ""), "utf8");
+}
+
+// memory.md and contacts.md: the same two files the `remember`/`save_contact`
+// MCP tools write to (see sidecar/notes.go), also editable here in Settings.
+export async function whatsappReadMemory() {
+  return { text: await readTextFile(WHATSAPP_MEMORY_FILE) };
+}
+
+export async function whatsappWriteMemory(text) {
+  await writeTextFile(WHATSAPP_MEMORY_FILE, text);
+  return { ok: true };
+}
+
+export async function whatsappReadContacts() {
+  return { text: await readTextFile(WHATSAPP_CONTACTS_FILE) };
+}
+
+export async function whatsappWriteContacts(text) {
+  await writeTextFile(WHATSAPP_CONTACTS_FILE, text);
+  return { ok: true };
 }

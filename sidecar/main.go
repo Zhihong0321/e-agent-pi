@@ -83,7 +83,7 @@ func main() {
 	backfillChatNames(client, messagesDB)
 
 	limiter := &sendLimiter{limit: sendHourlyCap()}
-	ts := &toolServer{db: messagesDB, client: client, limits: limiter}
+	ts := &toolServer{db: messagesDB, client: client, limits: limiter, dataDir: dataDir}
 	go startControlServer(ts, tracker, dataDir)
 
 	if client.Store.ID == nil {

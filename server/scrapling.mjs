@@ -242,10 +242,14 @@ export async function grantScraplingToAgent(agentRef) {
 /**
  * Attach Scrapling to every agent on the host.
  */
-export async function attachScraplingToAllAgents() {
+export async function attachScraplingToAllAgents({ exclude = [] } = {}) {
   const agents = await listAgents();
   const attached = [];
   for (const agent of agents) {
+    if (exclude.includes(agent.id) || exclude.includes(agent.slug)) {
+      attached.push({ id: agent.id, slug: agent.slug, attached: false });
+      continue;
+    }
     const next = await grantScraplingToAgent(agent.id);
     attached.push({
       id: agent.id,
@@ -259,16 +263,16 @@ export async function attachScraplingToAllAgents() {
 /**
  * Install the skill pack, register MCP, attach skill + MCP to every agent.
  *
- * @param {{ force?: boolean }} [opts]
+ * @param {{ force?: boolean; exclude?: string[] }} [opts]
  */
-export async function ensureScraplingForWebsite({ force = false } = {}) {
-  return ensureScraplingDefault({ force });
+export async function ensureScraplingForWebsite({ force = false, exclude = [] } = {}) {
+  return ensureScraplingDefault({ force, exclude });
 }
 
 /**
- * @param {{ force?: boolean }} [opts]
+ * @param {{ force?: boolean; exclude?: string[] }} [opts]
  */
-export async function ensureScraplingDefault({ force = false } = {}) {
+export async function ensureScraplingDefault({ force = false, exclude = [] } = {}) {
   const installed = await installScraplingSkill({ force });
   const skill = await registerSkillDir({
     slug: SCRAPLING_SKILL_SLUG,
@@ -276,7 +280,7 @@ export async function ensureScraplingDefault({ force = false } = {}) {
     sourceUrl: SCRAPLING_DOCS,
   });
   const mcp = await ensureScraplingMcp();
-  const agents = await attachScraplingToAllAgents();
+  const agents = await attachScraplingToAllAgents({ exclude });
   return {
     skipped: installed.skipped,
     dest: installed.dest,

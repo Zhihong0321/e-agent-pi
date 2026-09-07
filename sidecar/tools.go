@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,9 +43,10 @@ func (l *sendLimiter) allow() bool {
 }
 
 type toolServer struct {
-	db     *sql.DB
-	client *whatsmeow.Client
-	limits *sendLimiter
+	db      *sql.DB
+	client  *whatsmeow.Client
+	limits  *sendLimiter
+	dataDir string
 }
 
 func registerTools(s *mcp.Server, ts *toolServer) {
@@ -71,6 +74,16 @@ func registerTools(s *mcp.Server, ts *toolServer) {
 		Name:        "send_text",
 		Description: "Send one text message to one WhatsApp chat. Only call this after the owner has explicitly approved the exact text in the current conversation.",
 	}, ts.sendText)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "remember",
+		Description: "Save a custom instruction from the owner for next time (e.g. a standing preference or rule). Also shown to the owner in the Settings tab and editable there.",
+	}, ts.remember)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "save_contact",
+		Description: "Save or update what you know about one contact that WhatsApp itself doesn't tell you — e.g. 'potential client', 'employee, accounts team'. Calling it again for the same contact replaces the old note.",
+	}, ts.saveContact)
 }
 
 type listChatsArgs struct {
@@ -205,4 +218,45 @@ func (ts *toolServer) sendText(ctx context.Context, _ *mcp.CallToolRequest, args
 		fmt.Println("[error] failed to store sent message:", err)
 	}
 	return nil, sendTextResult{Sent: true, Timestamp: resp.Timestamp.Unix(), ChatJID: jidStr}, nil
+}
+
+type rememberArgs struct {
+	Note string `json:"note" jsonschema:"the instruction or fact to remember, in your own words"`
+}
+
+type rememberResult struct {
+	Saved  bool   `json:"saved"`
+	Memory string `json:"memory" jsonschema:"the full updated memory.md content"`
+}
+
+func (ts *toolServer) remember(ctx context.Context, _ *mcp.CallToolRequest, args rememberArgs) (*mcp.CallToolResult, rememberResult, error) {
+	if strings.TrimSpace(args.Note) == "" {
+		return nil, rememberResult{}, fmt.Errorf("note is required")
+	}
+	content, err := appendMarkdownBullet(filepath.Join(ts.dataDir, "memory.md"), args.Note)
+	if err != nil {
+		return nil, rememberResult{}, err
+	}
+	return nil, rememberResult{Saved: true, Memory: content}, nil
+}
+
+type saveContactArgs struct {
+	Contact string `json:"contact" jsonschema:"the contact's name or phone number/JID, as you'd refer to them"`
+	Note    string `json:"note" jsonschema:"what to remember about this contact, e.g. 'potential client', 'employee - accounts team'"`
+}
+
+type saveContactResult struct {
+	Saved    bool   `json:"saved"`
+	Contacts string `json:"contacts" jsonschema:"the full updated contacts.md content"`
+}
+
+func (ts *toolServer) saveContact(ctx context.Context, _ *mcp.CallToolRequest, args saveContactArgs) (*mcp.CallToolResult, saveContactResult, error) {
+	if strings.TrimSpace(args.Contact) == "" || strings.TrimSpace(args.Note) == "" {
+		return nil, saveContactResult{}, fmt.Errorf("contact and note are required")
+	}
+	content, err := upsertContactNote(filepath.Join(ts.dataDir, "contacts.md"), args.Contact, args.Note)
+	if err != nil {
+		return nil, saveContactResult{}, err
+	}
+	return nil, saveContactResult{Saved: true, Contacts: content}, nil
 }

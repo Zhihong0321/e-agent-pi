@@ -430,12 +430,13 @@ export async function attachAgentResources(agentRef, { skills = [], mcp = [], de
   return updateAgent(agent.id, { skillIds, mcpIds });
 }
 
-export async function attachSkillToAllAgents(slug) {
+export async function attachSkillToAllAgents(slug, { exclude = [] } = {}) {
   const skill = await getSkill(slug);
   if (!skill) return [];
   const agents = await listAgents();
   const attached = [];
   for (const agent of agents) {
+    if (exclude.includes(agent.id) || exclude.includes(agent.slug)) continue;
     attached.push(await attachAgentResources(agent.id, { skills: [slug] }));
   }
   return attached;

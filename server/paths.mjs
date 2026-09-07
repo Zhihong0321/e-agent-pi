@@ -129,6 +129,8 @@ export const SALES_MCP_SERVER = path.join(ROOT, "server", "sales-mcp-server.mjs"
 export const SALES_MCP_SLUG = "sales-data";
 export const WHATSAPP_MCP_SLUG = "whatsapp";
 export const WHATSAPP_DATA_DIR = path.join(DATA_DIR, "whatsapp");
+export const WHATSAPP_MEMORY_FILE = path.join(WHATSAPP_DATA_DIR, "memory.md");
+export const WHATSAPP_CONTACTS_FILE = path.join(WHATSAPP_DATA_DIR, "contacts.md");
 export const WHATSAPP_SIDECAR_BIN = path.join(
   ROOT,
   "sidecar",

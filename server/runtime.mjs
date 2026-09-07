@@ -20,8 +20,41 @@ import {
   SPAWN_SUBAGENTS_SLUG,
   STORAGE,
   SUBAGENTS_EXTENSION,
+  WHATSAPP_AGENT_ID,
+  WHATSAPP_CONTACTS_FILE,
+  WHATSAPP_MEMORY_FILE,
   isProposalAgent,
 } from "./paths.mjs";
+
+function isWhatsappAgent(agent) {
+  return agent?.id === WHATSAPP_AGENT_ID || agent?.slug === "whatsapp-assistant";
+}
+
+async function readOptionalFile(file) {
+  try {
+    return (await readFile(file, "utf8")).trim();
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * memory.md and contacts.md: owner instructions and per-contact notes the
+ * `remember`/`save_contact` MCP tools (and the Settings tab) write to disk;
+ * folded into every turn's role text so the agent always has them without
+ * needing to call a tool first. Not part of contextPackFingerprint, same as
+ * the other per-agent extras below — no process restart needed to pick them up.
+ */
+async function whatsappNotesSystemPrompt() {
+  const [memory, contacts] = await Promise.all([
+    readOptionalFile(WHATSAPP_MEMORY_FILE),
+    readOptionalFile(WHATSAPP_CONTACTS_FILE),
+  ]);
+  const parts = [];
+  if (memory) parts.push(`## Remembered instructions\n\n${memory}`);
+  if (contacts) parts.push(`## Contact notes\n\n${contacts}`);
+  return parts.join("\n\n");
+}
 
 /**
  * @param {{ slug?: string; dirPath?: string }[] | undefined} skills
@@ -91,6 +124,7 @@ export async function buildRoleText(agent, { modelId } = {}) {
   const extras = [replyStyleSystemPrompt(), imagenSystemPrompt()];
   if (agent.id === "website" || agent.slug === "website") extras.push(hostSystemPrompt());
   if (isProposalAgent(agent)) extras.push(proposalSystemPrompt(agent));
+  if (isWhatsappAgent(agent)) extras.push(await whatsappNotesSystemPrompt());
   const pack = await loadContextPack(agent, { modelId });
   const extraText = [...extras.filter(Boolean), pack].filter(Boolean).join("\n\n");
   return extraText ? `${role}\n\n${extraText}`.trim() + "\n" : `${role}\n`;
