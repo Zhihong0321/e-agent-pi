@@ -94,7 +94,7 @@ import {
   WEBSITE_AGENT_ID,
 } from "./catalog.mjs";
 import { ensureImpeccableForWebsite } from "./impeccable.mjs";
-import { ensureScraplingForWebsite, scraplingPublic, SCRAPLING_SKILL_SLUG } from "./scrapling.mjs";
+import { ensureScraplingForWebsite, scraplingPublic, SCRAPLING_MCP_SLUG, SCRAPLING_SKILL_SLUG } from "./scrapling.mjs";
 import { ensureSalesMcp } from "./sales-mcp.mjs";
 import { ensureGoogleAdsMcp } from "./google-ads-mcp.mjs";
 import {
@@ -1658,12 +1658,24 @@ async function bootServices() {
       // scrapling/site-browser are attached to every agent by app-wide convention (above); strip them
       // back off whatsapp-assistant, since either one needing bash silently upgrades its "assistant"
       // tool_profile to "ops" (see resolveToolProfile), handing it read/bash tools it has no role for.
+      // grantScraplingToAgent attaches both the skill AND the scrapling MCP server together, so an
+      // earlier boot (before this exclude existed) could have left the MCP server attached even
+      // though the skill above just got stripped — a 2nd MCP server makes Pi namespace every tool
+      // call by server slug (whatsapp_list_chats instead of list_chats), which the role prompt
+      // didn't originally account for.
       for (const slug of [SCRAPLING_SKILL_SLUG, "site-browser"]) {
         try {
           if (await getSkill(slug)) await attachAgentResources(WHATSAPP_AGENT_ID, { skills: [slug], detach: true });
         } catch (error) {
           logEvent("error", `whatsapp tool cleanup failed for ${slug}: ${sanitizeError(error)}`);
         }
+      }
+      try {
+        if (await getMcpServer(SCRAPLING_MCP_SLUG)) {
+          await attachAgentResources(WHATSAPP_AGENT_ID, { mcp: [SCRAPLING_MCP_SLUG], detach: true });
+        }
+      } catch (error) {
+        logEvent("error", `whatsapp tool cleanup failed for scrapling mcp: ${sanitizeError(error)}`);
       }
     }
   } catch (error) {
