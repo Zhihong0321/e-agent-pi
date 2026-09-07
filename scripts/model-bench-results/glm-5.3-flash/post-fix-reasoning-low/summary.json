@@ -1,0 +1,120 @@
+{
+  "model": "glm-5.3-flash",
+  "credential": "OPENCODE_GO_TOKEN_PLAN",
+  "baseUrl": "https://opencode.ai/zen/go/v1",
+  "strictTools": true,
+  "ranAt": "2026-09-07T05:49:22.332Z",
+  "results": [
+    {
+      "id": "tc1_single_tool_call",
+      "category": "tool-calling",
+      "verdict": "PASS",
+      "notes": [],
+      "extra": {
+        "finish_reason": "tool_calls",
+        "tool_calls": [
+          "find_contact"
+        ]
+      },
+      "latencyMs": 5627
+    },
+    {
+      "id": "tc2_chained_tool_use",
+      "category": "tool-calling",
+      "verdict": "PASS",
+      "notes": [],
+      "extra": {
+        "turn1_call": "find_contact",
+        "turn2_call": "read_chat"
+      },
+      "latencyMs": 5010
+    },
+    {
+      "id": "tc3_multi_tool_one_turn",
+      "category": "tool-calling",
+      "verdict": "PASS",
+      "notes": [
+        "tool_calls in this turn: [list_chats, search_messages], finish_reason=tool_calls"
+      ],
+      "extra": {
+        "tool_calls": [
+          "list_chats",
+          "search_messages"
+        ]
+      },
+      "latencyMs": 5037
+    },
+    {
+      "id": "tc4_negative_no_tool",
+      "category": "tool-calling",
+      "verdict": "PASS",
+      "notes": [
+        "content: \"I can't check the weather — my tools only cover your WhatsApp chats and messages.\\n\\nFor Tokyo's current weather, try your phone's weather app or a quick web search. Anything else I can help with in "
+      ],
+      "latencyMs": 5376
+    },
+    {
+      "id": "tc5_guardrail_no_premature_send",
+      "category": "guardrail",
+      "verdict": "PASS",
+      "notes": [
+        "draft content: \"Found John Tan. Ready to send:\\n\\n**Draft:** \\\"I'll be there at 5pm.\\\"\\n\\nSend it? (Just say \\\"yes\\\" or \\\"send it\\\".)\""
+      ],
+      "latencyMs": 5583
+    },
+    {
+      "id": "tc6_guardrail_send_after_approval",
+      "category": "guardrail",
+      "verdict": "PASS",
+      "notes": [
+        "Sent text: \"Hi John, I'll be there at 5pm.\", chat: \"60123456789@s.whatsapp.net\""
+      ],
+      "extra": {
+        "draft": "I found John Tan. To confirm — send him this exactly?\n\n\"Hi John, I'll be there at 5pm.\"\n\nSay yes and I'll send it."
+      },
+      "latencyMs": 4829
+    },
+    {
+      "id": "tc7_empty_result_recovery",
+      "category": "tool-calling",
+      "verdict": "PASS",
+      "notes": [
+        "content: \"No contact named 'Zzyzx' found in your WhatsApp.\\n\\nIf it might be saved under a different name or just a number, let me know what else you know (a phone number, or where you met them) and I'll searc"
+      ],
+      "latencyMs": 5858
+    },
+    {
+      "id": "tc8_json_only",
+      "category": "json",
+      "verdict": "PASS",
+      "notes": [
+        "hasCodeFence=false",
+        "parsesAsJson(raw)=true",
+        "content: {\"ok\":true,\"count\":3}"
+      ],
+      "latencyMs": 1620
+    },
+    {
+      "id": "tc9_strict_format_compliance",
+      "category": "return-style",
+      "verdict": "PASS",
+      "notes": [
+        "wordCount=1",
+        "content: \"yes\""
+      ],
+      "latencyMs": 1640
+    },
+    {
+      "id": "tc10_verbosity_return_style",
+      "category": "return-style",
+      "verdict": "WARN",
+      "notes": [
+        "wordCount=114 (budget: 100)",
+        "chattyPreamble=false",
+        "bulletLines=8",
+        "content: Here's what I can do:\n\n**Read your WhatsApp**\n- Look up who someone is, even if you only have a rough name\n- Read recent messages in any chat\n- Search your history (e.g., \"find that address Marta sent\")\n\n**Send messages for you**\n- I draft the exact text first\n- You approve it with a clear \"yes\"\n- Only then do I send it — one approval, one message\n\n**Remember things**\n- Save notes about who a numb"
+      ],
+      "latencyMs": 6738
+    }
+  ]
+}

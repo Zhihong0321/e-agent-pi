@@ -1,0 +1,62 @@
+{
+  "id": "tc9_strict_format_compliance",
+  "category": "return-style",
+  "verdict": "PASS",
+  "notes": [
+    "wordCount=1",
+    "content: \"yes\""
+  ],
+  "resp": {
+    "ok": true,
+    "status": 200,
+    "latencyMs": 1199,
+    "raw": "{\"id\":\"d768c798-550e-441e-b47a-b9b0d0c25e6b\",\"object\":\"chat.completion\",\"created\":1788759406,\"model\":\"deepseek-v4-flash\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"logprobs\":null,\"message\":{\"role\":\"assistant\",\"content\":\"yes\",\"reasoning_content\":\"We need to answer with exactly one word: yes or no. Is 7 a prime number? Yes.\"}}],\"usage\":{\"prompt_tokens\":994,\"completion_tokens\":24,\"total_tokens\":1018,\"prompt_cache_hit_tokens\":0,\"prompt_cache_miss_tokens\":994,\"prompt_tokens_details\":{\"cached_tokens\":0},\"completion_tokens_details\":{\"reasoning_tokens\":22}},\"cost\":\"0\"}",
+    "json": {
+      "id": "d768c798-550e-441e-b47a-b9b0d0c25e6b",
+      "object": "chat.completion",
+      "created": 1788759406,
+      "model": "deepseek-v4-flash",
+      "choices": [
+        {
+          "index": 0,
+          "finish_reason": "stop",
+          "logprobs": null,
+          "message": {
+            "role": "assistant",
+            "content": "yes",
+            "reasoning_content": "We need to answer with exactly one word: yes or no. Is 7 a prime number? Yes."
+          }
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 994,
+        "completion_tokens": 24,
+        "total_tokens": 1018,
+        "prompt_cache_hit_tokens": 0,
+        "prompt_cache_miss_tokens": 994,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 22
+        }
+      },
+      "cost": "0"
+    },
+    "request": {
+      "model": "deepseek-v4-flash",
+      "messages": [
+        {
+          "role": "system",
+          "content": "# WhatsApp Assistant\n\nYou are **WhatsApp Assistant**. You read and search the owner's real WhatsApp history and can send messages on their behalf through the `whatsapp` MCP server: `list_chats`, `find_contact`, `read_chat`, `search_messages`, `send_text`.\n\n## Answering questions\n\nUse `find_contact` to resolve a name to a chat id, then `read_chat` or `search_messages` to answer. Quote what was actually said; don't paraphrase away specifics like dates, amounts, or names. If a name is ambiguous, list the candidates `find_contact` returned and ask which one.\n\n## Never send without a yes\n\n`send_text` delivers a real message to a real person immediately — there is no undo.\n\n1. When asked to reply to, tell, or message someone, draft the exact text in chat first.\n2. Wait for the owner to explicitly approve that exact text (a clear \"yes\", \"send it\", or the like — not silence, not a change of subject).\n3. Only then call `send_text`, with the approved text unchanged.\n4. If the owner edits the draft, treat the edited version as the new draft and wait for approval again before sending.\n\nNever call `send_text` proactively, speculatively, or \"while you're at it.\" One approval covers one send — a new message needs a new yes.\n\n## Remembering things\n\nYou also have `remember` and `save_contact`. Their saved content is shown to you at the start of every message under \"Remembered instructions\" and \"Contact notes\" — you don't need to call anything to read it back.\n\n- Call `remember` when the owner gives you a standing instruction for how to operate (a tone, a rule, a habit) — not for facts about a single one-off message.\n- Call `save_contact` when the owner tells you who a number or chat actually is — a client, an employee, a colleague, anything WhatsApp itself won't tell you. Resolve it with `find_contact` first if they gave you a name rather than a number, and pass the same identifier you'd use with `read_chat`. Calling it again for a contact you already have replaces the old note, so use it to correct one too.\n\n## Guardrails\n\n- Not a website builder, not a scraper, not a settings agent. WhatsApp Q&A and drafting is the whole job — route anything else to the agent that owns it.\n- The sidecar enforces a hard per-hour send cap as a backstop; if a send is rejected for hitting it, tell the owner rather than retrying.\n- Media isn't stored — a message may show as `[image]`, `[video]`, `[document]`, `[audio]`, or `[unsupported message type]` with only a caption, if any.\n\n## How to reply (phone screen, non-technical reader)\n\nThe person reading you is on a phone. They run operations, not code.\n\n1. Answer first. Line one answers exactly what was asked: done, not done, or what you need.\n2. Short. Under 100 words unless they ask for more. One idea per line. Bullets, not paragraphs. Max 5 bullets.\n3. Plain words. Say what happened and what it means for them. No file paths, code, commands, logs, or jargon.\n4. Never dump. No pasted files, raw output, or wide tables. Summarize, then offer the full version.\n5. Anything they must act on (a number, a name, a date) gets its own line.\n6. Need something from them? End with one clear question.\n7. Working notes stay out of the reply. No \"Let me check\", no step-by-step narration.\n\nIf a long answer is unavoidable: 3-line summary on top, details below a --- line.\n\n\nYou're a data/ops assistant, often read from a phone by a non-technical operator. Answer first, in plain language — no code, no file paths. Prefer your MCP tools; fall back to the documented API/SQL only when no tool covers the question. You have not edited any files — never claim to. Route website/repo requests to the agent handling them.\n"
+        },
+        {
+          "role": "user",
+          "content": "Answer with exactly one word: yes or no. Is 7 a prime number?"
+        }
+      ],
+      "max_tokens": 800,
+      "temperature": 0
+    }
+  }
+}

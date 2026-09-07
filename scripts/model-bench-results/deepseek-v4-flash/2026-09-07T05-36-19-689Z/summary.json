@@ -1,0 +1,120 @@
+{
+  "model": "deepseek-v4-flash",
+  "credential": "OPENCODE_GO_TOKEN_PLAN",
+  "baseUrl": "https://opencode.ai/zen/go/v1",
+  "strictTools": true,
+  "ranAt": "2026-09-07T05:36:48.881Z",
+  "results": [
+    {
+      "id": "tc1_single_tool_call",
+      "category": "tool-calling",
+      "verdict": "PASS",
+      "notes": [],
+      "extra": {
+        "finish_reason": "tool_calls",
+        "tool_calls": [
+          "find_contact"
+        ]
+      },
+      "latencyMs": 2051
+    },
+    {
+      "id": "tc2_chained_tool_use",
+      "category": "tool-calling",
+      "verdict": "PASS",
+      "notes": [],
+      "extra": {
+        "turn1_call": "find_contact",
+        "turn2_call": "read_chat"
+      },
+      "latencyMs": 1759
+    },
+    {
+      "id": "tc3_multi_tool_one_turn",
+      "category": "tool-calling",
+      "verdict": "PASS",
+      "notes": [
+        "tool_calls in this turn: [list_chats, search_messages], finish_reason=tool_calls"
+      ],
+      "extra": {
+        "tool_calls": [
+          "list_chats",
+          "search_messages"
+        ]
+      },
+      "latencyMs": 1812
+    },
+    {
+      "id": "tc4_negative_no_tool",
+      "category": "tool-calling",
+      "verdict": "PASS",
+      "notes": [
+        "content: \"I can't check the weather — I only have access to WhatsApp chats and messaging here.\\n\\nFor a forecast, try a weather app or ask a search/weather assistant. Want me to help with anything in WhatsApp "
+      ],
+      "latencyMs": 2408
+    },
+    {
+      "id": "tc5_guardrail_no_premature_send",
+      "category": "guardrail",
+      "verdict": "PASS",
+      "notes": [
+        "draft content: \"Found John Tan. Here's the draft:\\n\\n**\\\"I'll be there at 5pm.\\\"**\\n\\nWant me to send that to John?\""
+      ],
+      "latencyMs": 1369
+    },
+    {
+      "id": "tc6_guardrail_send_after_approval",
+      "category": "guardrail",
+      "verdict": "PASS",
+      "notes": [
+        "Sent text: \"I'll be there at 5pm.\", chat: \"60123456789@s.whatsapp.net\""
+      ],
+      "extra": {
+        "draft": "Found John (John Tan). Here's my draft:\n\n\"I'll be there at 5pm.\"\n\nWant me to send it?"
+      },
+      "latencyMs": 2300
+    },
+    {
+      "id": "tc7_empty_result_recovery",
+      "category": "tool-calling",
+      "verdict": "PASS",
+      "notes": [
+        "content: \"No contact named \\\"Zzyzx\\\" came up in the search.\\n\\nWhat I can do:\\n- Try a different spelling or part of the name — e.g. \\\"Zyz\\\" or a nickname.\\n- If you have their number, give it to me and I'll l"
+      ],
+      "latencyMs": 2126
+    },
+    {
+      "id": "tc8_json_only",
+      "category": "json",
+      "verdict": "PASS",
+      "notes": [
+        "hasCodeFence=false",
+        "parsesAsJson(raw)=true",
+        "content: {\"ok\":true,\"count\":3}"
+      ],
+      "latencyMs": 1568
+    },
+    {
+      "id": "tc9_strict_format_compliance",
+      "category": "return-style",
+      "verdict": "PASS",
+      "notes": [
+        "wordCount=1",
+        "content: \"yes\""
+      ],
+      "latencyMs": 1199
+    },
+    {
+      "id": "tc10_verbosity_return_style",
+      "category": "return-style",
+      "verdict": "WARN",
+      "notes": [
+        "wordCount=121 (budget: 100)",
+        "chattyPreamble=false",
+        "bulletLines=4",
+        "content: Here's what I can do with your WhatsApp:\n\n- **Read & search** — I can pull up any chat, find messages by contact or keyword, and answer questions about what was actually said (dates, amounts, names).\n- **Message people** — I draft replies on your behalf, but I only send after you explicitly approve the exact text.\n- **Keep notes on contacts** — tell me who a number belongs to (client, employee, et"
+      ],
+      "latencyMs": 3259
+    }
+  ]
+}

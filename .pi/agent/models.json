@@ -71,7 +71,7 @@
       "authHeader": true,
       "compat": {
         "supportsDeveloperRole": false,
-        "supportsReasoningEffort": false
+        "supportsReasoningEffort": true
       },
       "models": [
         {
@@ -93,7 +93,8 @@
           "name": "DeepSeek V4 Flash Vision (OpenCode GO)",
           "input": ["text", "image"],
           "contextWindow": 200000,
-          "maxTokens": 32768
+          "maxTokens": 32768,
+          "thinkingLevelMap": { "off": "none" }
         }
       ]
     },
