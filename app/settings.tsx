@@ -11,6 +11,8 @@ type Settings = {
   opencodeGoBaseUrl: string;
   hiveAiApiKeySet: boolean;
   hiveAiBaseUrl: string;
+  yerplanApiKeySet: boolean;
+  yerplanBaseUrl: string;
   imagenApiKeySet: boolean;
   imagenBaseUrl: string;
   imagenModel: string;
@@ -197,6 +199,8 @@ export default function SettingsPage() {
     opencodeGoBaseUrl: "",
     hiveAiApiKey: "",
     hiveAiBaseUrl: "",
+    yerplanApiKey: "",
+    yerplanBaseUrl: "",
     imagenApiKey: "",
     imagenBaseUrl: "",
     imagenModel: "",
@@ -267,6 +271,7 @@ export default function SettingsPage() {
       glm53BaseUrl: data.glm53BaseUrl,
       opencodeGoBaseUrl: data.opencodeGoBaseUrl,
       hiveAiBaseUrl: data.hiveAiBaseUrl,
+      yerplanBaseUrl: data.yerplanBaseUrl,
       imagenBaseUrl: data.imagenBaseUrl,
       imagenModel: data.imagenModel,
       imagenApi: data.imagenApi || "auto",
@@ -497,6 +502,8 @@ export default function SettingsPage() {
           opencode_go_base_url: form.opencodeGoBaseUrl,
           hive_ai_api_key: form.hiveAiApiKey,
           hive_ai_base_url: form.hiveAiBaseUrl,
+          yerplan_api_key: form.yerplanApiKey,
+          yerplan_base_url: form.yerplanBaseUrl,
           imagen_api_key: form.imagenApiKey,
           imagen_base_url: form.imagenBaseUrl,
           imagen_model: form.imagenModel,
@@ -525,7 +532,7 @@ export default function SettingsPage() {
         }),
       });
       setSettings(data);
-      setForm((prev) => ({ ...prev, cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", opencodeGoApiKey: "", hiveAiApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", settingsPassword: "", afaPasskey: "", tnbPassword: "", salesPgProxyToken: "", googleAdsClientSecret: "", googleAdsDeveloperToken: "", googleAdsRefreshToken: "" }));
+      setForm((prev) => ({ ...prev, cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", opencodeGoApiKey: "", hiveAiApiKey: "", yerplanApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", settingsPassword: "", afaPasskey: "", tnbPassword: "", salesPgProxyToken: "", googleAdsClientSecret: "", googleAdsDeveloperToken: "", googleAdsRefreshToken: "" }));
       if (data.proposal?.lastError) {
         setError(data.proposal.lastError);
         setSaved("Saved keys, but GitHub rejected the proposal push.");
@@ -945,6 +952,28 @@ export default function SettingsPage() {
                 <input
                   value={form.hiveAiBaseUrl}
                   onChange={(event) => setForm({ ...form, hiveAiBaseUrl: event.target.value })}
+                />
+              </label>
+
+              <h2>YerPlan</h2>
+              <p>
+                GLM 5.3 Flash via YerPlan&apos;s OpenAI-compatible proxy. Vision-capable, but slow to start
+                (~25s time-to-first-token before it streams fast).
+              </p>
+              <label>
+                API key {settings?.yerplanApiKeySet ? <em>saved</em> : <em>missing</em>}
+                <input
+                  type="password"
+                  value={form.yerplanApiKey}
+                  onChange={(event) => setForm({ ...form, yerplanApiKey: event.target.value })}
+                  placeholder={settings?.yerplanApiKeySet ? "••••••••  (unchanged)" : "Paste key"}
+                />
+              </label>
+              <label>
+                Base URL
+                <input
+                  value={form.yerplanBaseUrl}
+                  onChange={(event) => setForm({ ...form, yerplanBaseUrl: event.target.value })}
                 />
               </label>
 

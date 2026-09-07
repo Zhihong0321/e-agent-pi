@@ -1455,11 +1455,13 @@ async function buildPiModelsJson() {
   const glm53 = secret("glm53_base_url");
   const opencodeGo = secret("opencode_go_base_url");
   const hiveAi = secret("hive_ai_base_url");
+  const yerplan = secret("yerplan_base_url");
   if (cavoti) raw.providers.cavoti.baseUrl = normalizeCavotiBaseUrl(cavoti);
   if (kimi) raw.providers["kimi-k3"].baseUrl = kimi;
   if (glm53) raw.providers.glm53.baseUrl = glm53;
   if (opencodeGo) raw.providers["opencode-go"].baseUrl = opencodeGo;
   if (hiveAi) raw.providers["hive-ai"].baseUrl = hiveAi;
+  if (yerplan) raw.providers.yerplan.baseUrl = yerplan;
   return JSON.stringify(raw, null, 2);
 }
 

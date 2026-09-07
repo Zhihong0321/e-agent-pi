@@ -70,6 +70,16 @@
     "vision": true
   },
   {
+    "id": "glm-5.3-flash-yerplan",
+    "label": "GLM 5.3 Flash (YerPlan)",
+    "shortLabel": "GLM5.3F-Yer",
+    "provider": "yerplan",
+    "model": "glm-5.3-flash",
+    "vaultCredential": "YERPLAN_TOKEN_PLAN",
+    "envPrefix": "YERPLAN",
+    "vision": true
+  },
+  {
     "id": "glm-5.3-flash-hive",
     "label": "GLM 5.3 Flash (Hive AI)",
     "shortLabel": "GLM5.3F-Hive",

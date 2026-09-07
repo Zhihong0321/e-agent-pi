@@ -13,6 +13,7 @@ const DEFAULT_BASE_URL = {
   GLM53: "https://vectide.cn/v1",
   OPENCODE_GO: "https://opencode.ai/zen/go/v1",
   HIVE_AI: "https://api.thehive.ai/api/v3",
+  YERPLAN: "https://api.qiyue999.com/v1",
 };
 
 /** Vault stores origin (`https://cavoti.com`); Pi needs the OpenAI `/v1` path. */
@@ -144,6 +145,7 @@ export function interpolatePiModels(modelsJson) {
   const glm53 = secret("glm53_api_key");
   const opencodeGo = secret("opencode_go_api_key");
   const hiveAi = secret("hive_ai_api_key");
+  const yerplan = secret("yerplan_api_key");
   if (cavoti && data.providers?.cavoti) {
     data.providers.cavoti.apiKey = cavoti;
     data.providers.cavoti.baseUrl = normalizeCavotiBaseUrl(data.providers.cavoti.baseUrl);
@@ -152,5 +154,6 @@ export function interpolatePiModels(modelsJson) {
   if (glm53 && data.providers?.glm53) data.providers.glm53.apiKey = glm53;
   if (opencodeGo && data.providers?.["opencode-go"]) data.providers["opencode-go"].apiKey = opencodeGo;
   if (hiveAi && data.providers?.["hive-ai"]) data.providers["hive-ai"].apiKey = hiveAi;
+  if (yerplan && data.providers?.yerplan) data.providers.yerplan.apiKey = yerplan;
   return JSON.stringify(data, null, 2);
 }
