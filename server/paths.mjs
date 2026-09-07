@@ -26,6 +26,7 @@ export const SALES_ROLE_FILE = path.join(ROOT, "agent", "roles", "sales.md");
 export const WHATSAPP_ROLE_FILE = path.join(ROOT, "agent", "roles", "whatsapp.md");
 export const GOOGLE_ADS_ROLE_FILE = path.join(ROOT, "agent", "roles", "google-ads.md");
 export const TNB_ROLE_FILE = path.join(ROOT, "agent", "roles", "tnb.md");
+export const SOLAR_ROI_ROLE_FILE = path.join(ROOT, "agent", "roles", "solar-roi.md");
 export const BUNDLED_SKILLS = path.join(ROOT, "agent", "skills");
 export const DEFAULT_AGENT_ID = "website";
 export const OPS_AGENT_ID = "ops";
@@ -38,6 +39,7 @@ export const SALES_AGENT_ID = "sales";
 export const WHATSAPP_AGENT_ID = "whatsapp-assistant";
 export const GOOGLE_ADS_AGENT_ID = "google-ads";
 export const TNB_AGENT_ID = "tnb";
+export const SOLAR_ROI_AGENT_ID = "solar-roi";
 export const DEFAULT_PROPOSAL_REPO = "Zhihong0321/ee-proposal";
 export const DEFAULT_PROPOSAL_LIVE_URL = "https://ee-proposal-production.up.railway.app/shell.html#proposal";
 export const DEFAULT_NEWPAGES_LIVE_URL = "https://merchant.newpages.com.my";
@@ -128,6 +130,12 @@ export function isTnbAgent(agent) {
   const id = typeof agent === "string" ? agent : agent?.id || "";
   const slug = typeof agent === "string" ? agent : agent?.slug || "";
   return id === TNB_AGENT_ID || slug === "tnb";
+}
+
+export function isSolarRoiAgent(agent) {
+  const id = typeof agent === "string" ? agent : agent?.id || "";
+  const slug = typeof agent === "string" ? agent : agent?.slug || "";
+  return id === SOLAR_ROI_AGENT_ID || slug === "solar-roi";
 }
 
 export const DIST_DIR = path.join(ROOT, "dist");

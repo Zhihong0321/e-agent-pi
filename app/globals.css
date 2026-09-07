@@ -349,6 +349,7 @@ a:hover { color: var(--green-dark); }
 .avatar.amber { background: linear-gradient(145deg, #fbbf24, #c97a06); }
 .avatar.teal { background: linear-gradient(145deg, #14b8a6, #0d7f74); }
 .avatar.green { background: linear-gradient(145deg, #25d366, #008069); }
+.avatar.yellow { background: linear-gradient(145deg, #fde047, #ca8a04); }
 .avatar .online {
   position: absolute;
   right: -3px;

@@ -25,6 +25,8 @@ import {
   SALES_ROLE_FILE,
   SETTINGS_ROLE_FILE,
   SKILLS_DIR,
+  SOLAR_ROI_AGENT_ID,
+  SOLAR_ROI_ROLE_FILE,
   TNB_AGENT_ID,
   TNB_ROLE_FILE,
   WHATSAPP_AGENT_ID,
@@ -422,7 +424,9 @@ export async function attachAgentResources(agentRef, { skills = [], mcp = [], de
         agent.id === GOOGLE_ADS_AGENT_ID ||
         agent.slug === "google-ads" ||
         agent.id === TNB_AGENT_ID ||
-        agent.slug === "tnb")
+        agent.slug === "tnb" ||
+        agent.id === SOLAR_ROI_AGENT_ID ||
+        agent.slug === "solar-roi")
     ) {
       throw new Error("manage-host-settings stays on Settings Agent only.");
     }
@@ -479,6 +483,9 @@ export async function deleteAgent(id) {
   }
   if (agent.id === TNB_AGENT_ID || agent.slug === "tnb") {
     throw new Error("The TNB Bill Agent cannot be deleted.");
+  }
+  if (agent.id === SOLAR_ROI_AGENT_ID || agent.slug === "solar-roi") {
+    throw new Error("The Solar PV ROI Calculator Agent cannot be deleted.");
   }
   await getPool().query(`UPDATE sessions SET agent_id = $1 WHERE agent_id = $2`, [WEBSITE_AGENT_ID, agent.id]);
   await getPool().query(`DELETE FROM agents WHERE id = $1`, [agent.id]);
@@ -860,6 +867,23 @@ export async function seedAgentCatalog() {
     description: "One job: given a TNB account number, download the latest bills as PDFs.",
     color: "cyan",
     rolePrompt: tnbRole,
+    toolProfile: "ops",
+    thinkingLevel: "low",
+  });
+
+  const solarRoiRole = await readFile(SOLAR_ROI_ROLE_FILE, "utf8").catch(
+    () => "You are Solar PV ROI Calculator Agent.",
+  );
+  await seedSystemAgent({
+    id: SOLAR_ROI_AGENT_ID,
+    slug: "solar-roi",
+    name: "Solar PV ROI Calculator Agent",
+    short: "ROI",
+    headline: "Turns a TNB bill into a solar ROI report link",
+    description:
+      "One job: given a monthly bill (and optional system details), calls the public Solar Calculator API and returns a ROI report link.",
+    color: "yellow",
+    rolePrompt: solarRoiRole,
     toolProfile: "ops",
     thinkingLevel: "low",
   });
