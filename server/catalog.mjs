@@ -909,9 +909,17 @@ export async function seedAgentCatalog() {
     thinkingLevel: "minimal",
   });
 
-  const appHelperRole = await readFile(PROTOTYPER_REPO_ROLE_FILE, "utf8").catch(
+  // The role file is generic across repo-bound Prototypers, so name the system
+  // this instance is bound to — otherwise it can only call it "the source folder".
+  const appHelperRoleBase = await readFile(PROTOTYPER_REPO_ROLE_FILE, "utf8").catch(
     () => "You are App Helper, a repo-bound Prototyper.",
   );
+  const appHelperRole = `${appHelperRoleBase}
+## Your system
+You are bound to **Agent OS** — Eternalgy's internal solar quotation, proposal and invoicing system. Its code is \`${DEFAULT_APP_HELPER_REPO}\` (branch \`${DEFAULT_APP_HELPER_BRANCH}\`), cloned read-only at \`source/\`. Call it Agent OS when you talk to people.
+
+Ignore \`legacy_backup/\` and \`_ARCHIVE_QUARANTINE_2026-01-27/\` — retired code, not the live system.
+`;
   await seedSystemAgent({
     id: APP_HELPER_AGENT_ID,
     slug: "app-helper",
