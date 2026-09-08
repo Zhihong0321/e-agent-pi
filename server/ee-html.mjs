@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { access } from "node:fs/promises";
+import { access, readdir } from "node:fs/promises";
 import path from "node:path";
 import { rememberSecret, secret } from "./secrets.mjs";
 import { WORKSPACE } from "./paths.mjs";
@@ -148,5 +148,122 @@ export async function publishWorkspace(opts = {}) {
     lastError: null,
     files: body.files,
     skipped: false,
+  };
+}
+
+/** ee-html slugs are lowercase, hyphenated, and capped at 63 characters. */
+export function normalizeSlug(value, fallback = "prototype") {
+  const slug = String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 63);
+  return slug || fallback;
+}
+
+/**
+ * POST one directory to the HTML host as its own app.
+ *
+ * Unlike publishWorkspace this touches none of the shared ee_html_* settings:
+ * the caller owns the slug, so many prototypes can live side by side under the
+ * one API key without overwriting the company site.
+ *
+ * @param {{ dir: string; slug: string; name?: string }} opts
+ */
+export async function publishDirectory(opts) {
+  const slug = normalizeSlug(opts.slug);
+  if (!hostConfigured()) {
+    return { slug, url: null, lastError: "Add the HTML host API key on the Settings page." };
+  }
+  try {
+    await access(path.join(opts.dir, "index.html"));
+  } catch {
+    return { slug, url: null, lastError: "No index.html in this folder; nothing to publish." };
+  }
+
+  const zip = await zipDirectory(opts.dir);
+  const form = new FormData();
+  form.append("bundle", new File([new Uint8Array(zip)], "site.zip", { type: "application/zip" }));
+  form.append("slug", slug);
+  form.append("name", opts.name || slug);
+
+  const res = await fetch(`${hostBaseUrl()}/api/apps`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${hostApiKey()}` },
+    body: form,
+  });
+  const raw = await res.text();
+  let body = {};
+  try {
+    body = raw ? JSON.parse(raw) : {};
+  } catch {
+    body = { error: raw };
+  }
+  if (!res.ok) {
+    return {
+      slug,
+      url: null,
+      lastError: String(body.error || body.message || raw || `HTML host ${res.status}`).slice(0, 400),
+    };
+  }
+  return {
+    slug: body.slug || slug,
+    url: String(body.url || `${hostBaseUrl()}/app/${body.slug || slug}/`),
+    lastError: null,
+    hash: createHash("sha1").update(zip).digest("hex"),
+  };
+}
+
+/** Per-folder zip hashes, so an untouched prototype isn't re-uploaded every turn. */
+const prototypeHashes = new Map();
+
+/**
+ * Publish every prototype folder in a Prototyper's workspace.
+ *
+ * One folder is one app and the folder name is the slug, so the agent owns its
+ * own URLs — a `stock-count-v2` folder simply gets a v2 URL, and an approved
+ * blueprint's link keeps working because nothing overwrites it. The host stays
+ * dumb on purpose. `source/` is the read-only checkout, never a prototype.
+ *
+ * @param {{ dir: string; prefix?: string; skip?: string[] }} opts
+ */
+export async function publishPrototypes(opts) {
+  const prefix = opts.prefix ? `${normalizeSlug(opts.prefix)}-` : "";
+  const skip = new Set(opts.skip || ["source"]);
+  if (!hostConfigured()) {
+    return { configured: false, prototypes: [], lastError: "Add the HTML host API key on the Settings page." };
+  }
+
+  let entries = [];
+  try {
+    entries = await readdir(opts.dir, { withFileTypes: true });
+  } catch {
+    return { configured: true, prototypes: [], lastError: null };
+  }
+
+  const published = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith(".") || skip.has(entry.name)) continue;
+    const dir = path.join(opts.dir, entry.name);
+    try {
+      await access(path.join(dir, "index.html"));
+    } catch {
+      continue;
+    }
+    const slug = normalizeSlug(`${prefix}${entry.name}`);
+    const hash = createHash("sha1").update(await zipDirectory(dir)).digest("hex");
+    if (prototypeHashes.get(slug) === hash) {
+      published.push({ slug, url: `${hostBaseUrl()}/app/${slug}/`, lastError: null, skipped: true });
+      continue;
+    }
+    const result = await publishDirectory({ dir, slug, name: entry.name });
+    if (!result.lastError) prototypeHashes.set(slug, result.hash || hash);
+    published.push({ ...result, skipped: false });
+  }
+
+  return {
+    configured: true,
+    prototypes: published,
+    lastError: published.find((p) => p.lastError)?.lastError || null,
   };
 }

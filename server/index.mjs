@@ -35,7 +35,13 @@ import {
   initWorkspace,
   syncGitWorkspace,
 } from "./github.mjs";
-import { forgetBundleHash, hostConfigured, hostPublic, publishWorkspace } from "./ee-html.mjs";
+import {
+  forgetBundleHash,
+  hostConfigured,
+  hostPublic,
+  publishPrototypes,
+  publishWorkspace,
+} from "./ee-html.mjs";
 import { imagenConfigured, imagenPublic } from "./imagen.mjs";
 import { findModel, normalizeCavotiBaseUrl, resolveModelCredentials, testModelRoundTrip } from "./models.mjs";
 import { hasApiAuth, hasSession, hasStockAuth, sessionCookie, sessionToken, checkPassword } from "./auth.mjs";
@@ -76,6 +82,7 @@ import {
   WORKSPACES_DIR,
   agentSourceDir,
   agentWorkspace,
+  isAppHelperAgent,
   isNewpagesAgent,
   isPackageAgent,
   isProposalAgent,
@@ -1408,6 +1415,12 @@ function hostStatusNote(host, { proposal = false } = {}) {
     const sha = host.git?.sha ? String(host.git.sha).slice(0, 7) : "clean";
     return `GitHub: nothing new to push (${sha}).`;
   }
+  if (Array.isArray(host.prototypes)) {
+    if (host.lastError) return `Prototype publish failed: ${host.lastError}`;
+    const live = host.prototypes.filter((p) => p.url);
+    if (!live.length) return null;
+    return ["Prototypes live:", ...live.map((p) => `- ${p.url}`)].join("\n");
+  }
   if (host.lastError) return `ee-html publish failed: ${host.lastError}`;
   return null;
 }
@@ -2712,6 +2725,13 @@ const server = createServer(async (req, res) => {
             }
           } else if (isProposalAgent(profile)) {
             host = await publishProposal(profile);
+          } else if (isAppHelperAgent(profile)) {
+            try {
+              host = await publishPrototypes({ dir: agentWorkspace(profile), prefix: "proto" });
+            } catch (error) {
+              logEvent("error", `prototype publish failed: ${sanitizeError(error)}`);
+              host = { configured: true, prototypes: [], lastError: sanitizeError(error) };
+            }
           }
           const hostNote = hostStatusNote(host, { proposal: isProposalAgent(profile) });
           if (hostNote) {

@@ -28,9 +28,19 @@ Copy the design language out of the repo once and reuse it. Tailwind: load `http
 - **Static only.** HTML, CSS, vanilla JS. No Node server, no npm, no build step. Tailwind CDN is fine; not much else.
 - **Data is a baked file.** Pull rows while you build, write `data.json`, read that. The page never calls a database at runtime.
 - **Write no production concerns.** No auth, sanitising, error handling, logging, tests, or abstraction "for later". That is the System Engineer's job and every token you spend on it is wasted. If you catch yourself adding a `try/catch` to be safe — stop.
-- **Never publish.** The host publishes to ee-html after the turn.
+- **Never publish yourself.** The host does it after your turn — see below.
 - Every turn ends with a **result** (what you built + the URL) or **one question**. Never "Let me…".
 - Reply in GitHub Markdown.
+
+## Publishing
+
+One folder in your workspace is one prototype is one published site. After your turn the host publishes every folder holding an `index.html`, and the URL is predictable:
+
+`https://ee-html.up.railway.app/app/proto-<folder-name>/`
+
+So give the human the link in the same turn you build it, and put it in the blueprint — no need to wait and ask. Use relative asset paths (`styles.css`, never `/styles.css`); the site is served under a subpath.
+
+Revising something already signed off? Make a **new folder** (`stock-count-v2`) so the approved version's link keeps working.
 
 ## Show, don't tell
 
