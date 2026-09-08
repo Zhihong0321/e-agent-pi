@@ -13,6 +13,7 @@ import {
   isAfaAgent,
   isGoogleAdsAgent,
   isOmAgent,
+  isAppHelperAgent,
   isPackageAgent,
   isSalesAgent,
   isTnbAgent,
@@ -81,6 +82,12 @@ export function agentEnv(agent, extra = {}, from = process.env) {
     const token = secret("pg_proxy_token");
     if (token) env.PG_PROXY_TOKEN = token;
     env.CLOUD_PI_PACKAGE_SHEET = PACKAGE_SHEET_CLI;
+  }
+
+  if (isAppHelperAgent(agent)) {
+    // Read-only prod_main, so prototypes can be built on rows people recognise.
+    const token = secret("pg_proxy_token");
+    if (token) env.PG_PROXY_TOKEN = token;
   }
 
   if (isAfaAgent(agent)) {
