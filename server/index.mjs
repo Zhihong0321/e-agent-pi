@@ -26,7 +26,7 @@ import { cgroupMemory, latestSample, metricsPayload, setPiAliveGetter, startSamp
 import { childrenOf, descendants, envInt, killTree, pidAlive, reapLeakedChildren, rpcClientPid } from "./proc.mjs";
 import { memoryPressure, pickEvictable, pickIdleSlots } from "./pi-idle.mjs";
 import { fileMime, listWorkspaceFiles, resolveWorkspaceFile, workspaceFingerprint } from "./files.mjs";
-import { ensureBlueprintSchema } from "./blueprints.mjs";
+import { ensureBlueprintSchema, getBlueprint, listBlueprintVersions, listBlueprints } from "./blueprints.mjs";
 import {
   getGitStatus,
   getGitWorkspaceStatus,
@@ -2136,6 +2136,20 @@ const server = createServer(async (req, res) => {
         match: url.searchParams.get("match"),
       });
       json(res, 200, body);
+      return;
+    }
+
+    if (req.method === "GET" && pathname === "/api/blueprints") {
+      if (!dbReady()) {
+        json(res, 503, { error: "Database is not connected" });
+        return;
+      }
+      const slug = url.searchParams.get("slug");
+      if (slug) {
+        json(res, 200, { versions: await listBlueprintVersions(slug) });
+        return;
+      }
+      json(res, 200, { blueprints: await listBlueprints({ status: url.searchParams.get("status") }) });
       return;
     }
 
