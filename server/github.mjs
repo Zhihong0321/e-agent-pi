@@ -671,3 +671,57 @@ If the operator says push: run those three commands. Do not say you are forbidde
 The host also pushes ${branch} at the end of the turn if anything is still unpushed.
 `;
 }
+
+/**
+ * Clone or refresh a READ-ONLY source checkout of a target repo.
+ *
+ * Deliberately not initGitWorkspace: that one calls enableLocalPushAuth, which
+ * bakes the GitHub token into the clone's config and leaves the agent able to
+ * push. This one stores no credential and sets no commit identity, so a `git
+ * commit` or `git push` run inside the checkout fails on its own — the ban is
+ * structural, not just a line in a role prompt. A dead push URL is the third
+ * guard, so the failure is immediate and legible.
+ *
+ * The tree is disposable: local edits are discarded on every refresh, because
+ * it exists to be read, never worked in.
+ *
+ * @param {{ dir: string; repo: string; branch?: string; depth?: number }} opts
+ */
+export async function initReadOnlyClone(opts) {
+  const config = repoConfig({ repo: opts.repo, branch: opts.branch });
+  if (!config) {
+    return { connected: false, repo: null, branch: DEFAULT_BRANCH, sha: null, lastError: "No repo configured" };
+  }
+  const dir = opts.dir;
+  const depth = Number.isFinite(opts.depth) ? Number(opts.depth) : 1;
+  // Public repos clone tokenless; a token only widens access to private ones.
+  const token = config.token || null;
+
+  try {
+    await mkdir(dir, { recursive: true });
+    if (!(await pathExists(path.join(dir, ".git")))) {
+      if (await dirHasFiles(dir)) {
+        throw new Error(`${config.repo}: source directory has files and is not a git clone`);
+      }
+      const args = ["clone", "--branch", config.branch, "--single-branch"];
+      if (depth > 0) args.push("--depth", String(depth));
+      args.push(originUrl(config.repo), ".");
+      await git(args, dir, token);
+    } else {
+      await git(["remote", "set-url", "origin", originUrl(config.repo)], dir);
+      const fetchArgs = ["fetch", "origin", config.branch];
+      if (depth > 0) fetchArgs.splice(1, 0, "--depth", String(depth));
+      await git(fetchArgs, dir, token);
+      await git(["reset", "--hard", `origin/${config.branch}`], dir);
+      await git(["clean", "-fd"], dir);
+    }
+    await git(["remote", "set-url", "--push", "origin", "DISABLED-read-only-clone"], dir);
+    const sha = await currentSha(dir);
+    await recordSync({ repo: config.repo, sha, status: "ok", message: `${config.repo} source synced (read-only)` });
+    return { connected: true, repo: config.repo, branch: config.branch, sha, lastError: null };
+  } catch (error) {
+    const message = explainGitError(error, config.repo);
+    await recordSync({ repo: config.repo, status: "error", message });
+    return { connected: false, repo: config.repo, branch: config.branch, sha: null, lastError: message };
+  }
+}

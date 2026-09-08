@@ -1,6 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import {
+  BLUEPRINT_CLI,
   CATALOG_CLI,
   IMAGEN_CLI,
   PACKAGE_SHEET_CLI,
@@ -73,6 +74,7 @@ export function agentEnv(agent, extra = {}, from = process.env) {
   env.CLOUD_PI_SITES = SITES_CLI;
   env.CLOUD_PI_PDF = PDF_CLI;
   env.CLOUD_PI_TNB = TNB_CLI;
+  env.CLOUD_PI_BLUEPRINT = BLUEPRINT_CLI;
   env.PI_PACKAGE_DIR = from.PI_PACKAGE_DIR || PI_PACKAGE_DIR;
 
   if (isPackageAgent(agent)) {

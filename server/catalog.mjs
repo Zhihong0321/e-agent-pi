@@ -15,9 +15,13 @@ import {
   GOOGLE_ADS_ROLE_FILE,
   NEWPAGES_AGENT_ID,
   NEWPAGES_ROLE_FILE,
+  APP_HELPER_AGENT_ID,
+  DEFAULT_APP_HELPER_BRANCH,
+  DEFAULT_APP_HELPER_REPO,
   OM_AGENT_ID,
   OM_ROLE_FILE,
   OPS_AGENT_ID,
+  PROTOTYPER_REPO_ROLE_FILE,
   PACKAGE_AGENT_ID,
   PACKAGE_ROLE_FILE,
   PROPOSAL_AGENT_ID,
@@ -903,6 +907,25 @@ export async function seedAgentCatalog() {
     rolePrompt: omRole,
     toolProfile: "assistant",
     thinkingLevel: "minimal",
+  });
+
+  const appHelperRole = await readFile(PROTOTYPER_REPO_ROLE_FILE, "utf8").catch(
+    () => "You are App Helper, a repo-bound Prototyper.",
+  );
+  await seedSystemAgent({
+    id: APP_HELPER_AGENT_ID,
+    slug: "app-helper",
+    name: "App Helper (Agent OS)",
+    short: "AH",
+    headline: "Prototypes changes to Agent OS, then files the blueprint",
+    description:
+      "Repo-bound Prototyper for Agent OS. Reads the codebase read-only, builds standalone static prototypes of proposed features, and submits the approved spec as a blueprint. Never touches the real system.",
+    color: "indigo",
+    rolePrompt: appHelperRole,
+    workspaceRepo: DEFAULT_APP_HELPER_REPO,
+    workspaceBranch: DEFAULT_APP_HELPER_BRANCH,
+    toolProfile: "coding",
+    thinkingLevel: "medium",
   });
 
   const salesRole = await readFile(SALES_ROLE_FILE, "utf8").catch(() => "You are Sales and Procurement.");

@@ -26,7 +26,15 @@ import { cgroupMemory, latestSample, metricsPayload, setPiAliveGetter, startSamp
 import { childrenOf, descendants, envInt, killTree, pidAlive, reapLeakedChildren, rpcClientPid } from "./proc.mjs";
 import { memoryPressure, pickEvictable, pickIdleSlots } from "./pi-idle.mjs";
 import { fileMime, listWorkspaceFiles, resolveWorkspaceFile, workspaceFingerprint } from "./files.mjs";
-import { getGitStatus, getGitWorkspaceStatus, initGitWorkspace, initWorkspace, syncGitWorkspace } from "./github.mjs";
+import { ensureBlueprintSchema } from "./blueprints.mjs";
+import {
+  getGitStatus,
+  getGitWorkspaceStatus,
+  initGitWorkspace,
+  initReadOnlyClone,
+  initWorkspace,
+  syncGitWorkspace,
+} from "./github.mjs";
 import { forgetBundleHash, hostConfigured, hostPublic, publishWorkspace } from "./ee-html.mjs";
 import { imagenConfigured, imagenPublic } from "./imagen.mjs";
 import { findModel, normalizeCavotiBaseUrl, resolveModelCredentials, testModelRoundTrip } from "./models.mjs";
@@ -45,6 +53,9 @@ import {
   BUNDLED_MODELS,
   DATA_DIR,
   DEFAULT_PROPOSAL_LIVE_URL,
+  APP_HELPER_AGENT_ID,
+  DEFAULT_APP_HELPER_BRANCH,
+  DEFAULT_APP_HELPER_REPO,
   DEFAULT_PROPOSAL_REPO,
   DIST_DIR,
   LIBRARY_DIR,
@@ -63,6 +74,7 @@ import {
   STORAGE,
   WORKSPACE,
   WORKSPACES_DIR,
+  agentSourceDir,
   agentWorkspace,
   isNewpagesAgent,
   isPackageAgent,
@@ -1581,6 +1593,36 @@ async function bootServices() {
     }
   } catch (error) {
     logEvent("error", `proposal workspace init failed: ${sanitizeError(error)}`);
+  }
+
+  boot.step = "app-helper-source";
+  try {
+    if (dbReady()) {
+      const agent = await getAgent(APP_HELPER_AGENT_ID).catch(() => null);
+      // Read-only on purpose: initReadOnlyClone stores no credential, so the
+      // agent can read Agent OS but cannot commit or push to it.
+      const source = await initReadOnlyClone({
+        dir: agentSourceDir({ id: APP_HELPER_AGENT_ID, slug: "app-helper" }),
+        repo: agent?.workspaceRepo || DEFAULT_APP_HELPER_REPO,
+        branch: agent?.workspaceBranch || DEFAULT_APP_HELPER_BRANCH,
+      });
+      logEvent(
+        "info",
+        `app-helper source repo=${source.repo || "none"} sha=${source.sha?.slice(0, 7) || "none"}${source.lastError ? ` error=${source.lastError}` : ""}`,
+      );
+    }
+  } catch (error) {
+    logEvent("error", `app-helper source init failed: ${sanitizeError(error)}`);
+  }
+
+  boot.step = "blueprints";
+  try {
+    if (dbReady()) {
+      await ensureBlueprintSchema();
+      logEvent("info", "blueprints table ready");
+    }
+  } catch (error) {
+    logEvent("error", `blueprint schema failed: ${sanitizeError(error)}`);
   }
 
   boot.step = "impeccable";
