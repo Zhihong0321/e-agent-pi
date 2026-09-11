@@ -1822,6 +1822,16 @@ a.file-row { color: inherit; text-decoration: none; }
 .catalog-item strong { font-size: 13px; }
 .catalog-item small { color: var(--muted); font-size: 11px; line-height: 1.35; }
 .catalog-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.settings-card pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 11px;
+  max-height: 240px;
+  overflow: auto;
+  background: var(--field);
+  padding: 8px;
+  border-radius: 8px;
+}
 .settings-card button.secondary {
   margin-top: 0;
   height: 32px;

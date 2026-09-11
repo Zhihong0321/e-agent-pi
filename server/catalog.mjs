@@ -18,6 +18,9 @@ import {
   APP_HELPER_AGENT_ID,
   DEFAULT_APP_HELPER_BRANCH,
   DEFAULT_APP_HELPER_REPO,
+  OPEN_DESIGN_AGENT_ID,
+  DEFAULT_OPEN_DESIGN_BRANCH,
+  DEFAULT_OPEN_DESIGN_REPO,
   OM_AGENT_ID,
   OM_ROLE_FILE,
   OPS_AGENT_ID,
@@ -932,6 +935,29 @@ Ignore \`legacy_backup/\` and \`_ARCHIVE_QUARANTINE_2026-01-27/\` — retired co
     rolePrompt: appHelperRole,
     workspaceRepo: DEFAULT_APP_HELPER_REPO,
     workspaceBranch: DEFAULT_APP_HELPER_BRANCH,
+    toolProfile: "coding",
+    thinkingLevel: "medium",
+  });
+
+  const openDesignRoleBase = await readFile(PROTOTYPER_REPO_ROLE_FILE, "utf8").catch(
+    () => "You are Open Design Helper, a repo-bound Prototyper.",
+  );
+  const openDesignRole = `${openDesignRoleBase}
+## Your system
+You are bound to **Open Design** — the open-source local-first design tool at \`${DEFAULT_OPEN_DESIGN_REPO}\` (branch \`${DEFAULT_OPEN_DESIGN_BRANCH}\`), cloned read-only at \`source/\`. It's a pnpm monorepo: \`apps/daemon\` is the Node API/daemon, \`apps/web\` is the Next.js static-export UI, \`deploy/\` holds the Docker/Railway deployment setup, and \`skills\`/\`design-systems\`/\`craft\` hold its bundled design skills. Call it Open Design when you talk to people.
+`;
+  await seedSystemAgent({
+    id: OPEN_DESIGN_AGENT_ID,
+    slug: "open-design-helper",
+    name: "Open Design Helper",
+    short: "OD",
+    headline: "Prototypes changes to Open Design, then files the blueprint",
+    description:
+      "Repo-bound Prototyper for Open Design (nexu-io/open-design). Reads the codebase read-only, builds standalone static prototypes of proposed features, and submits the approved spec as a blueprint. Never touches the real system.",
+    color: "fuchsia",
+    rolePrompt: openDesignRole,
+    workspaceRepo: DEFAULT_OPEN_DESIGN_REPO,
+    workspaceBranch: DEFAULT_OPEN_DESIGN_BRANCH,
     toolProfile: "coding",
     thinkingLevel: "medium",
   });

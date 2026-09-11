@@ -26,7 +26,14 @@ import { cgroupMemory, latestSample, metricsPayload, setPiAliveGetter, startSamp
 import { childrenOf, descendants, envInt, killTree, pidAlive, reapLeakedChildren, rpcClientPid } from "./proc.mjs";
 import { memoryPressure, pickEvictable, pickIdleSlots } from "./pi-idle.mjs";
 import { fileMime, listWorkspaceFiles, resolveWorkspaceFile, workspaceFingerprint } from "./files.mjs";
-import { ensureBlueprintSchema, getBlueprint, listBlueprintVersions, listBlueprints } from "./blueprints.mjs";
+import {
+  BLUEPRINT_STATUSES,
+  ensureBlueprintSchema,
+  getBlueprint,
+  listBlueprintVersions,
+  listBlueprints,
+  setBlueprintStatus,
+} from "./blueprints.mjs";
 import {
   getGitStatus,
   getGitWorkspaceStatus,
@@ -62,6 +69,9 @@ import {
   APP_HELPER_AGENT_ID,
   DEFAULT_APP_HELPER_BRANCH,
   DEFAULT_APP_HELPER_REPO,
+  OPEN_DESIGN_AGENT_ID,
+  DEFAULT_OPEN_DESIGN_BRANCH,
+  DEFAULT_OPEN_DESIGN_REPO,
   DEFAULT_PROPOSAL_REPO,
   DIST_DIR,
   LIBRARY_DIR,
@@ -83,6 +93,7 @@ import {
   agentSourceDir,
   agentWorkspace,
   isAppHelperAgent,
+  isOpenDesignAgent,
   isNewpagesAgent,
   isPackageAgent,
   isProposalAgent,
@@ -322,7 +333,8 @@ function wantsAuth(pathname, method = "GET") {
     pathname === "/api/skills" ||
     pathname.startsWith("/api/skills/") ||
     pathname === "/api/mcp" ||
-    pathname.startsWith("/api/mcp/")
+    pathname.startsWith("/api/mcp/") ||
+    pathname.startsWith("/api/blueprints/")
   );
 }
 
@@ -1628,6 +1640,26 @@ async function bootServices() {
     logEvent("error", `app-helper source init failed: ${sanitizeError(error)}`);
   }
 
+  boot.step = "open-design-source";
+  try {
+    if (dbReady()) {
+      const agent = await getAgent(OPEN_DESIGN_AGENT_ID).catch(() => null);
+      // Read-only on purpose: initReadOnlyClone stores no credential, so the
+      // agent can read Open Design but cannot commit or push to it.
+      const source = await initReadOnlyClone({
+        dir: agentSourceDir({ id: OPEN_DESIGN_AGENT_ID, slug: "open-design-helper" }),
+        repo: agent?.workspaceRepo || DEFAULT_OPEN_DESIGN_REPO,
+        branch: agent?.workspaceBranch || DEFAULT_OPEN_DESIGN_BRANCH,
+      });
+      logEvent(
+        "info",
+        `open-design source repo=${source.repo || "none"} sha=${source.sha?.slice(0, 7) || "none"}${source.lastError ? ` error=${source.lastError}` : ""}`,
+      );
+    }
+  } catch (error) {
+    logEvent("error", `open-design source init failed: ${sanitizeError(error)}`);
+  }
+
   boot.step = "blueprints";
   try {
     if (dbReady()) {
@@ -2164,6 +2196,31 @@ const server = createServer(async (req, res) => {
       }
       json(res, 200, { blueprints: await listBlueprints({ status: url.searchParams.get("status") }) });
       return;
+    }
+
+    {
+      const blueprintStatusMatch = pathname.match(/^\/api\/blueprints\/([^/]+)\/status$/);
+      if (blueprintStatusMatch && req.method === "POST") {
+        if (!dbReady()) {
+          json(res, 503, { error: "Database is not connected" });
+          return;
+        }
+        const slug = decodeURIComponent(blueprintStatusMatch[1]);
+        const body = JSON.parse((await readBody(req)) || "{}");
+        if (!BLUEPRINT_STATUSES.includes(body.status)) {
+          json(res, 400, { error: `status must be one of ${BLUEPRINT_STATUSES.join(", ")}` });
+          return;
+        }
+        try {
+          const blueprint = await setBlueprintStatus(slug, body.status, {
+            approvedBy: typeof body.approvedBy === "string" && body.approvedBy.trim() ? body.approvedBy.trim() : null,
+          });
+          json(res, 200, { blueprint });
+        } catch (error) {
+          json(res, 404, { error: sanitizeError(error) });
+        }
+        return;
+      }
     }
 
     if (req.method === "GET" && pathname === "/api/git") {
@@ -2728,6 +2785,13 @@ const server = createServer(async (req, res) => {
           } else if (isAppHelperAgent(profile)) {
             try {
               host = await publishPrototypes({ dir: agentWorkspace(profile), prefix: "proto" });
+            } catch (error) {
+              logEvent("error", `prototype publish failed: ${sanitizeError(error)}`);
+              host = { configured: true, prototypes: [], lastError: sanitizeError(error) };
+            }
+          } else if (isOpenDesignAgent(profile)) {
+            try {
+              host = await publishPrototypes({ dir: agentWorkspace(profile), prefix: "od" });
             } catch (error) {
               logEvent("error", `prototype publish failed: ${sanitizeError(error)}`);
               host = { configured: true, prototypes: [], lastError: sanitizeError(error) };

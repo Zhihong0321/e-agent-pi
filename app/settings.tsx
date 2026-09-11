@@ -42,10 +42,11 @@ type Settings = {
   omApiTokenSet: boolean;
 };
 
-type Tab = "keys" | "models" | "agents" | "sites" | "skills" | "mcp" | "whatsapp" | "display" | "usage";
-const TABS: Tab[] = ["keys", "models", "agents", "sites", "skills", "mcp", "whatsapp", "display", "usage"];
+type Tab = "keys" | "models" | "agents" | "blueprints" | "sites" | "skills" | "mcp" | "whatsapp" | "display" | "usage";
+const TABS: Tab[] = ["keys", "models", "agents", "blueprints", "sites", "skills", "mcp", "whatsapp", "display", "usage"];
 
 const AI_REPLY_DARK_KEY = "e-agent-ai-reply-dark";
+const BLUEPRINT_APPROVER_KEY = "e-agent-blueprint-approver";
 
 function readTab(): Tab {
   if (typeof window === "undefined") return "keys";
@@ -115,6 +116,26 @@ type AgentItem = {
   mcpIds: string[];
   skills: SkillItem[];
   mcp: McpItem[];
+};
+
+type BlueprintStatus = "draft" | "approved" | "shelved";
+type BlueprintItem = {
+  id: string;
+  slug: string;
+  version: number;
+  title: string;
+  department?: string | null;
+  requester?: string | null;
+  originalIntent: string;
+  discussionSummary: string;
+  prototypeUrl?: string | null;
+  spec: Record<string, unknown[]>;
+  status: BlueprintStatus;
+  approvedBy?: string | null;
+  approvedAt?: string | null;
+  createdBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 type ResourceSample = {
@@ -262,6 +283,18 @@ export default function SettingsPage() {
   const [whatsappContacts, setWhatsappContacts] = useState("");
   const [whatsappNotesBusy, setWhatsappNotesBusy] = useState("");
   const [whatsappNotesSaved, setWhatsappNotesSaved] = useState("");
+  const [blueprints, setBlueprints] = useState<BlueprintItem[]>([]);
+  const [blueprintFilter, setBlueprintFilter] = useState<"" | BlueprintStatus>("");
+  const [blueprintBusy, setBlueprintBusy] = useState("");
+  const [blueprintExpanded, setBlueprintExpanded] = useState("");
+  const [blueprintVersions, setBlueprintVersions] = useState<Record<string, BlueprintItem[]>>({});
+  const [approverName, setApproverName] = useState(() => {
+    try {
+      return window.localStorage.getItem(BLUEPRINT_APPROVER_KEY) || "";
+    } catch {
+      return "";
+    }
+  });
 
   const loadKeys = async () => {
     const data = await authedJson<Settings>("/api/settings");
@@ -325,6 +358,58 @@ export default function SettingsPage() {
   const loadSites = async () => {
     const data = await authedJson<{ sites: SiteItem[] }>("/api/sites");
     setSites(data.sites ?? []);
+  };
+
+  const loadBlueprints = async (status: "" | BlueprintStatus) => {
+    const query = status ? `?status=${status}` : "";
+    const data = await authedJson<{ blueprints: BlueprintItem[] }>(`/api/blueprints${query}`);
+    setBlueprints(data.blueprints ?? []);
+  };
+
+  const updateApproverName = (value: string) => {
+    setApproverName(value);
+    try {
+      window.localStorage.setItem(BLUEPRINT_APPROVER_KEY, value);
+    } catch {
+      // best-effort only
+    }
+  };
+
+  const toggleBlueprintDetail = async (slug: string) => {
+    if (blueprintExpanded === slug) {
+      setBlueprintExpanded("");
+      return;
+    }
+    setBlueprintExpanded(slug);
+    if (blueprintVersions[slug]) return;
+    try {
+      const data = await authedJson<{ versions: BlueprintItem[] }>(`/api/blueprints?slug=${encodeURIComponent(slug)}`);
+      setBlueprintVersions((prev) => ({ ...prev, [slug]: data.versions ?? [] }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load blueprint versions");
+    }
+  };
+
+  const setBlueprintStatusAction = async (blueprint: BlueprintItem, status: BlueprintStatus) => {
+    if (status === "approved" && !approverName.trim()) {
+      setError("Enter your name above before approving.");
+      return;
+    }
+    setBlueprintBusy(blueprint.slug);
+    try {
+      await authedJson(`/api/blueprints/${encodeURIComponent(blueprint.slug)}/status`, {
+        method: "POST",
+        body: JSON.stringify({ status, approvedBy: approverName.trim() || null }),
+      });
+      await loadBlueprints(blueprintFilter);
+      setBlueprintVersions((prev) =>
+        Object.fromEntries(Object.entries(prev).filter(([key]) => key !== blueprint.slug)),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update blueprint status");
+    } finally {
+      setBlueprintBusy("");
+    }
   };
 
   useEffect(() => {
@@ -397,6 +482,18 @@ export default function SettingsPage() {
       cancelled = true;
     };
   }, [authed, tab]);
+
+  useEffect(() => {
+    if (!authed || tab !== "blueprints") return;
+    const load = async () => {
+      try {
+        await loadBlueprints(blueprintFilter);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Could not load blueprints");
+      }
+    };
+    void load();
+  }, [authed, tab, blueprintFilter]);
 
   const saveWhatsappMemory = async () => {
     setWhatsappNotesBusy("memory");
@@ -818,7 +915,7 @@ export default function SettingsPage() {
         <div className="settings-brand">
           <img className="brand-logo" src="/logo-black.png" alt="" width={36} height={36} />
           <div>
-            <small>Keys · Models · Agents · Sites · Skills · MCP · Display · Usage</small>
+            <small>Keys · Models · Agents · Blueprints · Sites · Skills · MCP · Display · Usage</small>
             <h1>Settings</h1>
           </div>
         </div>
@@ -1522,6 +1619,123 @@ export default function SettingsPage() {
                     New agent
                   </button>
                 ) : null}
+              </div>
+            </section>
+          )}
+
+          {tab === "blueprints" && (
+            <section className="settings-card">
+              <p>
+                Prototypers file a blueprint once a department signs off on a prototype: the original ask, the spec,
+                and a link to what they saw. Approving here is the record that it was accepted — it never touches the
+                prototype or the real system.
+              </p>
+              <label>
+                Approved by
+                <input
+                  value={approverName}
+                  onChange={(event) => updateApproverName(event.target.value)}
+                  placeholder="Your name, for the approval record"
+                />
+              </label>
+              <div className="catalog-actions">
+                {(["", "draft", "approved", "shelved"] as const).map((status) => (
+                  <button
+                    key={status || "all"}
+                    type="button"
+                    className={blueprintFilter === status ? "" : "secondary"}
+                    onClick={() => setBlueprintFilter(status)}
+                  >
+                    {status ? status[0].toUpperCase() + status.slice(1) : "All"}
+                  </button>
+                ))}
+              </div>
+              {blueprints.length === 0 ? <p>No blueprints filed yet.</p> : null}
+              <div className="catalog-list">
+                {blueprints.map((bp) => (
+                  <div className="catalog-item" key={bp.id} style={{ display: "block" }}>
+                    <h2>
+                      {bp.title} <small>v{bp.version}</small>
+                    </h2>
+                    <small>
+                      {bp.slug} · {bp.status}
+                      {bp.department ? ` · ${bp.department}` : ""}
+                      {bp.requester ? ` · requested by ${bp.requester}` : ""}
+                      {bp.createdBy ? ` · filed by ${bp.createdBy}` : ""}
+                      {` · updated ${new Date(bp.updatedAt).toLocaleString()}`}
+                      {bp.status === "approved" && bp.approvedBy ? ` · approved by ${bp.approvedBy}` : ""}
+                    </small>
+                    {bp.prototypeUrl ? (
+                      <p>
+                        <a href={bp.prototypeUrl} target="_blank" rel="noreferrer">
+                          {bp.prototypeUrl}
+                        </a>
+                      </p>
+                    ) : null}
+                    <div className="catalog-actions">
+                      <button type="button" className="secondary" onClick={() => void toggleBlueprintDetail(bp.slug)}>
+                        {blueprintExpanded === bp.slug ? "Hide details" : "View details"}
+                      </button>
+                      {bp.status !== "approved" ? (
+                        <button
+                          type="button"
+                          onClick={() => void setBlueprintStatusAction(bp, "approved")}
+                          disabled={Boolean(blueprintBusy)}
+                        >
+                          {blueprintBusy === bp.slug ? "Working…" : "Approve"}
+                        </button>
+                      ) : null}
+                      {bp.status !== "shelved" ? (
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() => void setBlueprintStatusAction(bp, "shelved")}
+                          disabled={Boolean(blueprintBusy)}
+                        >
+                          Shelve
+                        </button>
+                      ) : null}
+                      {bp.status !== "draft" ? (
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() => void setBlueprintStatusAction(bp, "draft")}
+                          disabled={Boolean(blueprintBusy)}
+                        >
+                          Reopen
+                        </button>
+                      ) : null}
+                    </div>
+                    {blueprintExpanded === bp.slug ? (
+                      <div>
+                        <h3>Original intent</h3>
+                        <p>{bp.originalIntent}</p>
+                        {bp.discussionSummary ? (
+                          <>
+                            <h3>Discussion</h3>
+                            <p>{bp.discussionSummary}</p>
+                          </>
+                        ) : null}
+                        <h3>Spec</h3>
+                        {Object.entries(bp.spec || {}).map(([section, rows]) => (
+                          <details key={section}>
+                            <summary>
+                              {section} ({Array.isArray(rows) ? rows.length : 0})
+                            </summary>
+                            <pre>{JSON.stringify(rows, null, 2)}</pre>
+                          </details>
+                        ))}
+                        <h3>Versions</h3>
+                        {(blueprintVersions[bp.slug] ?? []).map((v) => (
+                          <div className="status-line" key={v.id}>
+                            <span className="status-dot" />
+                            {`v${v.version} · ${v.status} · ${new Date(v.updatedAt).toLocaleString()}`}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
               </div>
             </section>
           )}

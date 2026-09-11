@@ -48,6 +48,9 @@ export const APP_HELPER_AGENT_ID = "app-helper";
 /** Agent OS lives in the Solar_Calculator repo; its default branch is master, not main. */
 export const DEFAULT_APP_HELPER_REPO = "Zhihong0321/Solar_Calculator";
 export const DEFAULT_APP_HELPER_BRANCH = "master";
+export const OPEN_DESIGN_AGENT_ID = "open-design-helper";
+export const DEFAULT_OPEN_DESIGN_REPO = "nexu-io/open-design";
+export const DEFAULT_OPEN_DESIGN_BRANCH = "main";
 export const DEFAULT_PROPOSAL_REPO = "Zhihong0321/ee-proposal";
 export const DEFAULT_PROPOSAL_LIVE_URL = "https://ee-proposal-production.up.railway.app/shell.html#proposal";
 export const DEFAULT_NEWPAGES_LIVE_URL = "https://merchant.newpages.com.my";
@@ -156,6 +159,12 @@ export function isAppHelperAgent(agent) {
   const id = typeof agent === "string" ? agent : agent?.id || "";
   const slug = typeof agent === "string" ? agent : agent?.slug || "";
   return id === APP_HELPER_AGENT_ID || slug === "app-helper";
+}
+
+export function isOpenDesignAgent(agent) {
+  const id = typeof agent === "string" ? agent : agent?.id || "";
+  const slug = typeof agent === "string" ? agent : agent?.slug || "";
+  return id === OPEN_DESIGN_AGENT_ID || slug === "open-design-helper";
 }
 
 /**
