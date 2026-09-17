@@ -11,6 +11,7 @@
   height: 100dvh;
   display: flex;
   justify-content: center;
+  overflow: hidden;
   background: #d9e2de;
   color: var(--ink);
   font-size: 15px;
@@ -29,6 +30,9 @@
   z-index: 1;
   display: grid;
   grid-template-columns: 76px minmax(300px, 25vw) minmax(0, 1fr);
+  /* Cap the single row: an auto row would size to the tallest pane's content and
+     stretch the whole app past the viewport instead of scrolling inside a pane. */
+  grid-template-rows: minmax(0, 1fr);
   width: min(100%, 1600px);
   height: 100dvh;
   background: #fff;
@@ -47,6 +51,8 @@
   flex-direction: column;
   align-items: center;
   gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
   padding: 12px 0 14px;
   background: #f0f2f5;
   border-right: 1px solid var(--line);
@@ -123,6 +129,7 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   background: #fff;
   border-right: 1px solid var(--line);
 }
@@ -156,6 +163,7 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   background-color: var(--chat-bg);
   background-image: radial-gradient(rgba(120, 140, 130, 0.16) 1px, transparent 1px);
   background-size: 14px 14px;
