@@ -2147,6 +2147,15 @@ const server = createServer(async (req, res) => {
         await forgetBundleHash();
       }
       await writePiModels().catch((error) => logEvent("error", sanitizeError(error)));
+      if (dbReady()) {
+        // Composio registers at boot, so a key saved here would otherwise sit
+        // unused until a restart. Before resetPiPool so respawned slots pick it up.
+        await ensureComposioMcp()
+          .then((result) => {
+            if (!result.skipped) logEvent("info", "composio mcp registered from settings save");
+          })
+          .catch((error) => logEvent("error", `composio mcp failed: ${sanitizeError(error)}`));
+      }
       await resetPiPool();
       await initWorkspace().catch((error) => logEvent("error", `workspace reinit: ${sanitizeError(error)}`));
       await ensureCatalog();
