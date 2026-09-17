@@ -1,0 +1,390 @@
+/* ==================== Desktop shell (/web) — WhatsApp Web format ====================
+   Three panes side by side instead of the phone frame: icon rail, list sidebar,
+   conversation. Everything *inside* a pane reuses the mobile component classes
+   (.session-row, .chat-head, .chat-scroll, .composer, .avatar, .model-row) so the
+   two shells stay visually identical; only the container layout is new.
+
+   Loaded after globals.css, which matters: .web-modal must outrank .sheet. */
+
+.web-stage {
+  position: relative;
+  height: 100dvh;
+  display: flex;
+  justify-content: center;
+  background: #d9e2de;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.35;
+}
+/* The green band the panel sits on, as in WhatsApp Web. */
+.web-stage::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 127px;
+  background: var(--green);
+}
+.web-app {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 76px minmax(300px, 25vw) minmax(0, 1fr);
+  width: min(100%, 1600px);
+  height: 100dvh;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(16, 33, 27, 0.24);
+}
+@media (min-width: 1640px) {
+  .web-app {
+    height: calc(100dvh - 38px);
+    margin: 19px 0;
+  }
+}
+
+/* ---- icon rail ---- */
+.web-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 12px 0 14px;
+  background: #f0f2f5;
+  border-right: 1px solid var(--line);
+}
+.web-rail-brand {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 12px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(16, 33, 27, 0.16);
+}
+.web-rail-brand img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+.web-rail-btn {
+  position: relative;
+  width: 62px;
+  padding: 8px 0 6px;
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--muted);
+  text-decoration: none;
+  transition:
+    background 0.16s,
+    color 0.16s;
+}
+.web-rail-btn:hover {
+  background: #e3e8e6;
+  color: var(--ink);
+}
+.web-rail-btn.on {
+  background: var(--soft);
+  color: var(--green-dark);
+}
+.web-rail-btn small {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+.web-rail-icon {
+  display: grid;
+  place-items: center;
+  height: 24px;
+}
+.web-rail-badge {
+  position: absolute;
+  top: 3px;
+  right: 7px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--unread);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+}
+.web-rail-spacer {
+  flex: 1;
+}
+
+/* ---- list sidebar ---- */
+.web-side {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: #fff;
+  border-right: 1px solid var(--line);
+}
+.web-side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #f0f2f5;
+  border-bottom: 1px solid var(--line);
+}
+.web-side-head h1 {
+  font-size: 19px;
+  letter-spacing: -0.4px;
+}
+.web-side-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 20px;
+}
+/* The mobile list reserves 90px at the bottom for its nav bar; there is none here. */
+.web-side-body .search-bar {
+  margin-block: 8px;
+}
+
+/* ---- conversation pane ---- */
+.web-main {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background-color: var(--chat-bg);
+  background-image: radial-gradient(rgba(120, 140, 130, 0.16) 1px, transparent 1px);
+  background-size: 14px 14px;
+}
+.web-chat-head {
+  padding: 10px 16px;
+  gap: 10px;
+}
+.web-close-chat {
+  display: none;
+}
+.web-main .chat-scroll {
+  padding: 16px 10px 20px;
+}
+/* Keep the transcript readable on wide screens. Padding, not align-items: the
+   bubbles set their own align-self (user right, agent left) and must keep it. */
+@media (min-width: 1200px) {
+  .web-main .chat-scroll {
+    padding-inline: max(10px, calc((100% - 940px) / 2));
+  }
+}
+.web-composer {
+  padding: 8px 16px 14px;
+  background: #f0f2f5;
+  border-top: 1px solid var(--line);
+}
+.web-composer .composer-row,
+.web-composer .attach-chips {
+  width: 100%;
+  max-width: 940px;
+  margin-inline: auto;
+}
+
+/* ---- empty state (no chat open) ---- */
+.web-empty {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 48px 24px;
+  text-align: center;
+  background: #f0f2f5;
+  border-bottom: 6px solid var(--green);
+}
+.web-empty img {
+  width: 88px;
+  height: 88px;
+  object-fit: contain;
+  opacity: 0.92;
+}
+.web-empty h2 {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 400;
+  letter-spacing: -0.6px;
+  color: #41525d;
+}
+.web-empty > p {
+  margin: 0;
+  max-width: 460px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.web-empty-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+.web-empty-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.web-empty-actions .primary {
+  background: var(--green);
+  color: #fff;
+}
+.web-empty-actions .primary:hover {
+  background: var(--green-dark);
+}
+.web-empty-actions .ghost {
+  background: #fff;
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.web-empty-actions .ghost:hover {
+  background: var(--hover);
+}
+.web-empty-agents {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 8px;
+  width: 100%;
+  max-width: 740px;
+  margin-top: 20px;
+}
+.web-empty-agent {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: inset 0 0 0 1px var(--line);
+  text-align: left;
+}
+.web-empty-agent:hover {
+  box-shadow: inset 0 0 0 1px var(--green);
+  background: var(--hover);
+}
+.web-empty-agent.on {
+  box-shadow: inset 0 0 0 1px var(--green);
+}
+.web-empty-agent > span:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+.web-empty-agent strong {
+  font-size: 13px;
+}
+.web-empty-agent small {
+  color: var(--muted);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.web-empty-note {
+  color: var(--dim);
+  font-size: 12px;
+  margin-top: 16px;
+}
+
+/* ---- desktop modals (replace the mobile bottom sheets) ---- */
+.web-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: block;
+  padding: 0;
+  background: rgba(16, 33, 27, 0.4);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+.web-modal-backdrop.on {
+  opacity: 1;
+  pointer-events: auto;
+}
+.web-modal {
+  position: fixed;
+  z-index: 61;
+  top: 50%;
+  left: 50%;
+  width: min(560px, calc(100vw - 48px));
+  max-height: min(78vh, 720px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.32);
+  opacity: 0;
+  transform: translate(-50%, -46%) scale(0.98);
+  pointer-events: none;
+  transition:
+    opacity 0.2s,
+    transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.web-modal.on {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+  pointer-events: auto;
+}
+.web-modal-scroll {
+  overflow-y: auto;
+  min-height: 0;
+  margin: 0 -6px;
+  padding: 0 6px;
+}
+.web-modal .sheet-title {
+  padding: 0 2px 4px;
+}
+.web-modal .sheet-actions {
+  padding-top: 6px;
+}
+
+/* ---- narrower desktops / tablet ---- */
+@media (max-width: 1000px) {
+  .web-app {
+    grid-template-columns: 64px minmax(260px, 34%) minmax(0, 1fr);
+  }
+  .web-rail-btn {
+    width: 54px;
+  }
+  .web-rail-brand {
+    width: 40px;
+    height: 40px;
+  }
+}
+/* Below this the three panes no longer fit, so fall back to one pane at a time
+   with the rail always visible. */
+@media (max-width: 820px) {
+  .web-app {
+    grid-template-columns: 60px minmax(0, 1fr);
+  }
+  .web-main {
+    display: none;
+  }
+  .web-app.in-chat .web-side {
+    display: none;
+  }
+  .web-app.in-chat .web-main {
+    display: flex;
+  }
+  .web-close-chat {
+    display: grid;
+  }
+  .web-main .chat-scroll {
+    padding-inline: 10px;
+  }
+}
