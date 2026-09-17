@@ -1141,7 +1141,9 @@ export function publicMcp(server, { secrets = false } = {}) {
     url: server.url,
     hasEnv: Boolean(server.env && Object.keys(server.env).length),
     env: secrets ? server.env || {} : undefined,
-    config: server.config || {},
+    // config carries auth headers for remote servers, so gate it like env —
+    // the unauthenticated /api/agents and /api/mcp listings use secrets:false.
+    config: secrets ? server.config || {} : undefined,
   };
 }
 

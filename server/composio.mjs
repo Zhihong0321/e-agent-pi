@@ -88,6 +88,9 @@ export async function ensureComposioMcp() {
   // `directTools` surfaces Composio's handful of meta-tools as named tools
   // instead of folding them behind the adapter's generic `mcp` proxy — they are
   // already a discovery layer, so a second one only costs a round trip.
+  // `eager` because the adapter only dials a server at startup for eager or
+  // keep-alive; a lazy one registers tools from its metadata cache alone, and a
+  // fresh remote endpoint has none — which left the agent with zero tools.
   const payload = {
     name: "Composio",
     slug: COMPOSIO_MCP_SLUG,
@@ -97,6 +100,7 @@ export async function ensureComposioMcp() {
       headers: headers ?? {},
       httpTransport: type === "sse" ? "sse" : "streamable-http",
       directTools: true,
+      lifecycle: "eager",
     },
   };
   const existing = await getMcpServer(COMPOSIO_MCP_SLUG);
