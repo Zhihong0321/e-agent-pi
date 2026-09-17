@@ -128,6 +128,7 @@ import { ensureScraplingForWebsite, scraplingPublic, SCRAPLING_MCP_SLUG, SCRAPLI
 import { ensureSalesMcp } from "./sales-mcp.mjs";
 import { ensureGoogleAdsMcp } from "./google-ads-mcp.mjs";
 import { ensureOmMcp } from "./om-mcp.mjs";
+import { ensureComposioMcp } from "./composio.mjs";
 import {
   ensureWhatsappMcp,
   startWhatsappSidecar,
@@ -1728,6 +1729,21 @@ async function bootServices() {
     }
   } catch (error) {
     logEvent("error", `om-data mcp failed: ${sanitizeError(error)}`);
+  }
+
+  boot.step = "composio-mcp";
+  try {
+    if (dbReady()) {
+      const result = await ensureComposioMcp();
+      logEvent(
+        "info",
+        result.skipped
+          ? `composio mcp skipped: ${result.reason}`
+          : "composio mcp registered and attached to composio agent",
+      );
+    }
+  } catch (error) {
+    logEvent("error", `composio mcp failed: ${sanitizeError(error)}`);
   }
 
   boot.step = "whatsapp-sidecar";

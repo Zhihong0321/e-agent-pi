@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=22.22.3"
   },
   "scripts": {
     "start": "node server/index.mjs",
@@ -17,6 +17,7 @@
     "test": "npm run build"
   },
   "dependencies": {
+    "@composio/core": "^0.18.1",
     "@earendil-works/pi-coding-agent": "latest",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "pg": "^8.23.0",

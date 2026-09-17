@@ -40,6 +40,8 @@ type Settings = {
   googleAdsLoginCustomerId: string;
   salesPgProxyExpiresAt: string;
   omApiTokenSet: boolean;
+  composioApiKeySet: boolean;
+  composioSessionId: string;
 };
 
 type Tab = "keys" | "models" | "agents" | "blueprints" | "sites" | "skills" | "mcp" | "whatsapp" | "display" | "usage";
@@ -249,6 +251,7 @@ export default function SettingsPage() {
     googleAdsLoginCustomerId: "",
     salesPgProxyExpiresAt: "",
     omApiToken: "",
+    composioApiKey: "",
   });
   const [models, setModels] = useState<ModelItem[]>([]);
   const [activeModelId, setActiveModelId] = useState<string>("");
@@ -629,10 +632,11 @@ export default function SettingsPage() {
           google_ads_login_customer_id: form.googleAdsLoginCustomerId,
           sales_pg_proxy_expires_at: form.salesPgProxyExpiresAt,
           om_api_token: form.omApiToken,
+          composio_api_key: form.composioApiKey,
         }),
       });
       setSettings(data);
-      setForm((prev) => ({ ...prev, cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", opencodeGoApiKey: "", hiveAiApiKey: "", yerplanApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", settingsPassword: "", afaPasskey: "", tnbPassword: "", salesPgProxyToken: "", googleAdsClientSecret: "", googleAdsDeveloperToken: "", googleAdsRefreshToken: "", omApiToken: "" }));
+      setForm((prev) => ({ ...prev, cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", opencodeGoApiKey: "", hiveAiApiKey: "", yerplanApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", settingsPassword: "", afaPasskey: "", tnbPassword: "", salesPgProxyToken: "", googleAdsClientSecret: "", googleAdsDeveloperToken: "", googleAdsRefreshToken: "", omApiToken: "", composioApiKey: "" }));
       if (data.proposal?.lastError) {
         setError(data.proposal.lastError);
         setSaved("Saved keys, but GitHub rejected the proposal push.");
@@ -1291,6 +1295,28 @@ export default function SettingsPage() {
                   placeholder={settings?.omApiTokenSet ? "••••••••  (unchanged)" : "the service's shared token"}
                 />
               </label>
+
+              <h2>Composio</h2>
+              <p>
+                The Composio Agent uses this <code>ak_…</code> project key to open a session against{" "}
+                <code>dashboard.composio.dev</code> → Platform → Getting Started. Saving it registers the{" "}
+                <code>composio</code> MCP server on the next boot, giving that agent tool access to 1000+ external
+                apps. Leave blank to keep the saved value. Do not paste the key in chat.
+              </p>
+              <label>
+                API key {settings?.composioApiKeySet ? <em>saved</em> : <em>missing</em>}
+                <input
+                  type="password"
+                  value={form.composioApiKey}
+                  onChange={(event) => setForm({ ...form, composioApiKey: event.target.value })}
+                  placeholder={settings?.composioApiKeySet ? "••••••••  (unchanged)" : "ak_…"}
+                />
+              </label>
+              {settings?.composioSessionId ? (
+                <p>
+                  Session <code>{settings.composioSessionId}</code> — connected accounts persist across redeploys.
+                </p>
+              ) : null}
 
               <h2>AFA Rate API</h2>
               <p>

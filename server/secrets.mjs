@@ -43,6 +43,9 @@ const KEYS = [
   "google_ads_customer_id",
   "google_ads_login_customer_id",
   "om_api_token",
+  "composio_api_key",
+  "composio_session_id",
+  "composio_session_scope",
 ];
 
 export const DEFAULT_PASSWORD = "eternalgy2026";
@@ -91,6 +94,7 @@ export async function saveSecrets(patch) {
     "google_ads_developer_token",
     "google_ads_refresh_token",
     "om_api_token",
+    "composio_api_key",
   ]);
   for (const key of KEYS) {
     if (!(key in patch) || patch[key] === undefined) continue;
@@ -142,6 +146,8 @@ export function publicSettings() {
     googleAdsCustomerId: secret("google_ads_customer_id") || "",
     googleAdsLoginCustomerId: secret("google_ads_login_customer_id") || "",
     omApiTokenSet: Boolean(secret("om_api_token")),
+    composioApiKeySet: Boolean(secret("composio_api_key")),
+    composioSessionId: secret("composio_session_id"),
   };
 }
 
@@ -163,6 +169,7 @@ export function secretFlags() {
     salesPgProxyToken: Boolean(secret("sales_pg_proxy_token")),
     googleAdsRefreshToken: Boolean(secret("google_ads_refresh_token")),
     omApiToken: Boolean(secret("om_api_token")),
+    composioApiKey: Boolean(secret("composio_api_key")),
   };
 }
 

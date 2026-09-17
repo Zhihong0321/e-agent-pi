@@ -28,6 +28,7 @@ export const GOOGLE_ADS_ROLE_FILE = path.join(ROOT, "agent", "roles", "google-ad
 export const TNB_ROLE_FILE = path.join(ROOT, "agent", "roles", "tnb.md");
 export const SOLAR_ROI_ROLE_FILE = path.join(ROOT, "agent", "roles", "solar-roi.md");
 export const OM_ROLE_FILE = path.join(ROOT, "agent", "roles", "om.md");
+export const COMPOSIO_ROLE_FILE = path.join(ROOT, "agent", "roles", "composio.md");
 export const PROTOTYPER_ROLE_FILE = path.join(ROOT, "agent", "roles", "prototyper.md");
 export const PROTOTYPER_REPO_ROLE_FILE = path.join(ROOT, "agent", "roles", "prototyper-repo.md");
 export const BUNDLED_SKILLS = path.join(ROOT, "agent", "skills");
@@ -44,6 +45,7 @@ export const GOOGLE_ADS_AGENT_ID = "google-ads";
 export const TNB_AGENT_ID = "tnb";
 export const SOLAR_ROI_AGENT_ID = "solar-roi";
 export const OM_AGENT_ID = "om";
+export const COMPOSIO_AGENT_ID = "composio";
 export const APP_HELPER_AGENT_ID = "app-helper";
 /** Agent OS lives in the Solar_Calculator repo; its default branch is master, not main. */
 export const DEFAULT_APP_HELPER_REPO = "Zhihong0321/Solar_Calculator";
@@ -202,6 +204,8 @@ export const GOOGLE_ADS_MCP_SERVER = path.join(ROOT, "server", "google-ads-mcp-s
 export const GOOGLE_ADS_MCP_SLUG = "google-ads";
 export const OM_MCP_SERVER = path.join(ROOT, "server", "om-mcp-server.mjs");
 export const OM_MCP_SLUG = "om-data";
+/** Remote http MCP (Composio-hosted session endpoint), so there is no local *-mcp-server.mjs. */
+export const COMPOSIO_MCP_SLUG = "composio";
 export const WHATSAPP_MCP_SLUG = "whatsapp";
 export const WHATSAPP_DATA_DIR = path.join(DATA_DIR, "whatsapp");
 export const WHATSAPP_MEMORY_FILE = path.join(WHATSAPP_DATA_DIR, "memory.md");

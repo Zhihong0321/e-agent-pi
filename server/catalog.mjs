@@ -7,6 +7,8 @@ import {
   AFA_AGENT_ID,
   AFA_ROLE_FILE,
   BUNDLED_SKILLS,
+  COMPOSIO_AGENT_ID,
+  COMPOSIO_ROLE_FILE,
   DEFAULT_AGENT_ID,
   DEFAULT_NEWPAGES_LIVE_URL,
   DEFAULT_PROPOSAL_LIVE_URL,
@@ -1002,6 +1004,21 @@ You are bound to **Open Design** — the open-source local-first design tool at 
     description: "Answers from WhatsApp history and drafts replies; only sends after the owner says yes in chat.",
     color: "green",
     rolePrompt: whatsappRole,
+    toolProfile: "assistant",
+    thinkingLevel: "low",
+  });
+
+  const composioRole = await readFile(COMPOSIO_ROLE_FILE, "utf8").catch(() => "You are Composio Agent.");
+  await seedSystemAgent({
+    id: COMPOSIO_AGENT_ID,
+    slug: "composio",
+    name: "Composio Agent",
+    short: "CO",
+    headline: "Google Sheets, Docs and Slides through Composio",
+    description:
+      "Reads and writes Google Sheets, Google Docs and Google Slides through one Composio session. Sends a Connect Link the first time Google needs authorizing, and asks before anything that overwrites or sends.",
+    color: "violet",
+    rolePrompt: composioRole,
     toolProfile: "assistant",
     thinkingLevel: "low",
   });
