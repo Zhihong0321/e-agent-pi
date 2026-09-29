@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { REPORT_CSS } from "../shared/report-style.mjs";
+import { workspaceFileUrl } from "../shared/workspace-links.mjs";
 
 export const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|svg|avif|bmp)(?:\?|#|$)/i;
 const CHAT_TOKEN_RE =
@@ -52,12 +53,7 @@ export function normalizeWorkspacePath(src: string) {
 }
 
 export function workspaceMediaUrl(agentId: string, src: string) {
-  if (isRemoteSrc(src)) return src;
-  const rel = normalizeWorkspacePath(src);
-  if (!rel) return src;
-  const query = new URLSearchParams({ path: rel });
-  if (agentId) query.set("agent", agentId);
-  return `/api/files/raw?${query.toString()}`;
+  return workspaceFileUrl(agentId, src);
 }
 
 export function tokenizeChat(text: string): ChatPart[] {

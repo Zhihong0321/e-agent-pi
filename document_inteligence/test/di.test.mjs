@@ -202,6 +202,11 @@ test("document intelligence", async (t) => {
     assert.equal(issued.document.number, `QT-${year}-0001`);
     assert.equal(issued.document.status, "issued");
     assert.match(issued.pdf.link, /QT-\d{4}-0001\.pdf/);
+    const pdfUrl = new URL(issued.pdf.url, "https://test.local");
+    assert.equal(pdfUrl.pathname, "/api/files/raw");
+    assert.equal(pdfUrl.searchParams.get("agent"), "di-documents");
+    assert.equal(pdfUrl.searchParams.get("path"), issued.pdf.path);
+    assert.ok(rendered.some((abs) => abs.endsWith(path.join("di-documents", issued.pdf.path))));
     const html = await readFile(rendered.at(-1), "utf8");
     assert.match(html, /Eternalgy Sdn Bhd/);
     assert.match(html, /10kWp rooftop package/);
@@ -280,6 +285,7 @@ test("document intelligence", async (t) => {
     assert.equal(again.template.version, 2);
     const preview = await tpl("preview_template", { id: again.template.id });
     assert.match(preview.pdf.link, /preview/);
+    assert.equal(new URL(preview.pdf.url, "https://test.local").searchParams.get("agent"), "di-templates");
     assert.equal(renderTemplate("{{x}}", { x: "<script>" }), "&lt;script&gt;");
     assert.equal(checkTemplate("{{#if a}}x{{else}}y{{/if}}").ok, true);
     // the invoice issued earlier keeps its original template

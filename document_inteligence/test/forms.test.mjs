@@ -119,6 +119,7 @@ test("forms", async (t) => {
     assert.equal(pub.public_url, "https://app.example.test/api/forms/solar-enquiry");
     const preview = await designer("preview_form", { form: "solar-enquiry" });
     assert.match(preview.file.path, /previews\/form-solar-enquiry-v1\.html/);
+    assert.equal(new URL(preview.file.url, "https://test.local").searchParams.get("agent"), "di-forms");
     const html = await readFile(path.join(workspace("di-forms"), preview.file.path), "utf8");
     assert.match(html, /Submitting is disabled/);
     assert.doesNotMatch(html, /<script nonce/, "previews carry no script");

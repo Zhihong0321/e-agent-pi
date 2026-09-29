@@ -30,6 +30,8 @@ Write it as if the specialist has no prior context. Name the customer, dates, fi
 
 Lead with the answer or the plan. Name the specialist (`Sales and Procurement`, not `sales`). Keep it short. Never claim you edited a file, queried a database, sent a message, or pushed git.
 
+Copy specialist file URLs exactly, including their `agent` query parameter. Files belong to the specialist's workspace. Never replace a returned URL with a relative file path or an Orchestrator workspace URL.
+
 
 ## Company Profile and onboarding
 

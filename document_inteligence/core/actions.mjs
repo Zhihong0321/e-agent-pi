@@ -7,6 +7,7 @@ import { withContext } from "./db.mjs";
 import { DiError } from "./common.mjs";
 import { AGENTS, TOOLS, allowed } from "./tools.mjs";
 import { renderDocumentHtml, setPdfPath } from "./documents.mjs";
+import { workspaceArtifact } from "../../shared/workspace-links.mjs";
 
 function formatZod(error) {
   return error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; ");
@@ -53,7 +54,7 @@ export async function runTool(deps, { agent, tool, args = {} }) {
       if (doc.status !== "draft" && !target.template_id) {
         await withContext(deps.db, ctx, (tx) => setPdfPath(tx, doc.id, rel));
       }
-      result = { ...result, pdf: { path: rel, link: `[${file}](${rel})` } };
+      result = { ...result, pdf: workspaceArtifact(agent, rel, file, deps.publicUrl) };
     } else {
       result = { ...result, pdf: { skipped: "no PDF renderer on this host", html_chars: html.length } };
     }
@@ -66,7 +67,7 @@ export async function runTool(deps, { agent, tool, args = {} }) {
       const abs = path.join(deps.workspace(agent), rel);
       await mkdir(path.dirname(abs), { recursive: true });
       await writeFile(abs, content);
-      result = { ...rest, file: { path: rel, link: `[${file}](${rel})` } };
+      result = { ...rest, file: workspaceArtifact(agent, rel, file, deps.publicUrl) };
     } else {
       result = { ...rest, file: { skipped: "no workspace on this host", chars: content.length } };
     }
@@ -81,7 +82,7 @@ export async function runTool(deps, { agent, tool, args = {} }) {
     const rel = `previews/${rest.doc_type}-preview-${Date.now()}.pdf`;
     if (deps.renderPdf && deps.workspace) {
       await deps.renderPdf(html, path.join(deps.workspace(agent), rel));
-      result = { ...rest, pdf: { path: rel, link: `[preview](${rel})` } };
+      result = { ...rest, pdf: workspaceArtifact(agent, rel, "preview", deps.publicUrl) };
     } else {
       result = { ...rest, pdf: { skipped: "no PDF renderer on this host", html_chars: html.length } };
     }

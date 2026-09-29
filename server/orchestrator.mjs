@@ -1,7 +1,8 @@
 // Orchestrator plans/tasks and dispatch policy. The MCP stdio server is a thin
 // HTTP client; this module runs in the host and owns Postgres + the specialist
 // turn runner (injected from server/index.mjs so we never import the Pi pool).
-import { companyOnboardingStatus } from '../document_inteligence/host.mjs';
+import { companyOnboardingStatus, publicBaseUrl } from '../document_inteligence/host.mjs';
+import { qualifyWorkspaceLinks } from '../shared/workspace-links.mjs';
 import { randomBytes, randomUUID } from "node:crypto";
 import { createSession, getPool, getSession } from "./db.mjs";
 import { getAgent, listAgents } from "./catalog.mjs";
@@ -383,7 +384,7 @@ async function runSpecialist(task, agent) {
       agentId: agent.id,
       sessionId: session.id,
     });
-    const reply = clipResult(turn?.reply || "");
+    const reply = clipResult(qualifyWorkspaceLinks(agent.id, turn?.reply || "", publicBaseUrl()));
     await setTask(task.id, { status: "done", result: reply, error: null });
     await refreshPlanStatus(task.planId);
     return getTaskRow(task.id);
