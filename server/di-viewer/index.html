@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Document Intelligence · Database Viewer</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cellipse cx='12' cy='6' rx='8' ry='3' fill='%23188038'/%3E%3Cpath d='M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6' fill='none' stroke='%23188038' stroke-width='2'/%3E%3Cpath d='M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6' fill='none' stroke='%23188038' stroke-width='2'/%3E%3C/svg%3E" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+        <ellipse cx="12" cy="5.5" rx="8" ry="3.2" fill="#34a853"/>
+        <path d="M4 5.5v6c0 1.8 3.6 3.2 8 3.2s8-1.4 8-3.2v-6" fill="none" stroke="#188038" stroke-width="2"/>
+        <path d="M4 11.5v6c0 1.8 3.6 3.2 8 3.2s8-1.4 8-3.2v-6" fill="none" stroke="#188038" stroke-width="2"/>
+      </svg>
+      <span class="brand-name">Document Intelligence</span>
+      <span class="brand-tag">read-only</span>
+    </div>
+
+    <div class="conn" id="conn">
+      <span class="dot" id="conn-dot" title="Checking connection…"></span>
+      <span class="db-badge" id="db-badge">—</span>
+      <span class="access-badge" id="access-badge">read-only</span>
+      <span class="expiry" id="expiry" title="Token expiry"></span>
+    </div>
+
+    <div class="topbar-actions">
+      <a class="btn" href="/settings">Settings</a><button id="btn-sql" class="btn" title="Toggle SQL editor">SQL</button>
+      <button id="btn-refresh" class="btn icon" title="Reload table list">⟳</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <div class="search-wrap">
+          <span class="search-ico">🔍</span>
+          <input id="table-search" type="text" placeholder="Search tables…" autocomplete="off" spellcheck="false" />
+        </div>
+        <div class="table-count" id="table-count">loading…</div>
+      </div>
+      <ul id="table-list" class="table-list"></ul>
+    </aside>
+
+    <main class="main">
+      <div class="formula-bar">
+        <div class="cell-ref" id="cell-ref">&nbsp;</div>
+        <div class="formula-value" id="formula-value" title=""></div>
+        <button id="btn-copy" class="btn icon sm" title="Copy cell value">⧉</button>
+        <button id="btn-expand" class="btn icon sm" title="Expand cell value">⤢</button>
+      </div>
+
+      <div class="grid-toolbar">
+        <div class="gt-left">
+          <span class="table-title" id="table-title">Select a table to browse</span>
+          <span class="row-count" id="row-count"></span>
+          <span class="sql-badge hidden" id="sql-badge">SQL result</span>
+        </div>
+        <div class="gt-right">
+          <label class="pg-size">Rows
+            <select id="page-size">
+              <option value="50">50</option>
+              <option value="100" selected>100</option>
+              <option value="250">250</option>
+              <option value="500">500</option>
+            </select>
+          </label>
+          <div class="pager">
+            <button id="first-page" class="btn icon sm" title="First page">«</button>
+            <button id="prev-page" class="btn icon sm" title="Previous page">‹</button>
+            <span id="page-info">—</span>
+            <button id="next-page" class="btn icon sm" title="Next page">›</button>
+            <button id="last-page" class="btn icon sm" title="Last page">»</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sql-panel hidden" id="sql-panel">
+        <textarea id="sql-input" spellcheck="false" placeholder="SELECT * FROM di.customer LIMIT 100;   -- read-only"></textarea>
+        <div class="sql-actions">
+          <button id="btn-run-sql" class="btn primary">▶ Run</button>
+          <button id="btn-clear-sql" class="btn">Clear</button>
+          <span class="sql-status" id="sql-status"></span>
+        </div>
+      </div>
+
+      <div class="grid-wrap">
+        <div class="grid-scroll" id="grid-scroll">
+          <table class="grid" id="grid"></table>
+        </div>
+        <div class="overlay hidden" id="grid-loading"><div class="spinner"></div><span>Loading…</span></div>
+        <div class="overlay hidden" id="grid-empty">
+          <div class="empty-ico">🗄️</div>
+          <div class="empty-title" id="empty-title">Nothing to show</div>
+          <div class="empty-sub" id="empty-sub">Pick a table on the left, or run a SQL query.</div>
+        </div>
+        <div class="overlay hidden" id="grid-error">
+          <div class="empty-ico">⚠️</div>
+          <div class="empty-title">Query failed</div>
+          <div class="empty-sub" id="error-msg"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div class="modal-backdrop hidden" id="modal">
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-head">
+        <span id="modal-title">Value</span>
+        <button id="modal-close" class="btn icon sm" title="Close">✕</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-foot">
+        <span class="modal-meta" id="modal-meta"></span>
+        <button id="modal-copy" class="btn">Copy</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

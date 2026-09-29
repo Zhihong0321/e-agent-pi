@@ -137,6 +137,10 @@ export default function WebHome() {
             </button>
           ))}
           <span className="web-rail-spacer" />
+          <a className="web-rail-btn" href="/db-viewer/" aria-label="Document Intelligence database" title="Document Intelligence database">
+            <span className="web-rail-icon">▤</span>
+            <small>Database</small>
+          </a>
           <a className="web-rail-btn" href="/settings" aria-label="Open settings" title="Settings">
             <span className="web-rail-icon">
               <IconSettings />
