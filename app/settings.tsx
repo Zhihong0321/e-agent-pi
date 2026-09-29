@@ -923,7 +923,10 @@ export default function SettingsPage() {
             <h1>Settings</h1>
           </div>
         </div>
-        <a href="/">Back to studio</a>
+        <nav>
+          <a href="/db-viewer/">Database viewer</a>{" · "}
+          <a href="/">Back to studio</a>
+        </nav>
       </header>
 
       {!authed ? (

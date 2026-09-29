@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
+import { handleDiViewer } from "./di-viewer.mjs";
 import path from "node:path";
 import { RpcClient } from "@earendil-works/pi-coding-agent";
 import {
@@ -1866,6 +1867,10 @@ async function bootServices() {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url || "/", "http://localhost");
   const pathname = url.pathname;
+
+  if (pathname === "/db-viewer" || pathname.startsWith("/db-viewer/")) {
+    return handleDiViewer(req, res, url);
+  }
 
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
