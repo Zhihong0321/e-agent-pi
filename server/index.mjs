@@ -3,7 +3,9 @@ import { createReadStream } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { handleCompanyProfile } from './company-profile.mjs';
-import { companyOnboardingStatus } from '../document_inteligence/host.mjs';
+import { companyOnboardingStatus, companyHostContext, publicBaseUrl } from '../document_inteligence/host.mjs';
+import { handleFileSharing } from './file-sharing.mjs';
+import { filesFromBlocks } from '../shared/shared-files.mjs';
 import { handleDiViewer } from "./di-viewer.mjs";
 import path from "node:path";
 import { RpcClient } from "@earendil-works/pi-coding-agent";
@@ -1456,6 +1458,7 @@ async function runManageTurn({ message, agentId, sessionId, modelId, images }) {
 
   return {
     reply: turn.text,
+    shared_files: filesFromBlocks(turn.blocks),
     tools,
     session: publicSession({ ...session, preview: turn.text || trimmed }),
     agentId: session.agentId,
@@ -1971,6 +1974,11 @@ const server = createServer(async (req, res) => {
   }
 
   try {
+    if (await handleFileSharing(req, res, url, {
+      root: path.join(DATA_DIR, "files"), publicUrl: publicBaseUrl(), readBody, authorized,
+      companyId: () => companyHostContext().tenantId,
+      workspaceFor: async (id) => { const agent = await getAgent(id); return agent ? agentWorkspace(agent) : null; },
+    })) return;
     if (req.method === "POST" && pathname === "/api/internal/orchestrator") {
       if (!orchestratorAuthorized(req)) {
         json(res, 401, { error: "Unauthorized" });

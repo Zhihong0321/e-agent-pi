@@ -1,6 +1,7 @@
 // Presentational components shared by the mobile (/) and desktop (/web) shells.
 // Pure props-in/JSX-out: no data fetching, no session state.
 import { useEffect, useRef, useState, type SVGProps } from "react";
+import { filesFromBlocks } from "../shared/shared-files.mjs";
 import {
   ChatCopy,
   collectImageHrefs,
@@ -543,6 +544,7 @@ export function AssistantTurn({
   onOpenMedia: (src: string, alt?: string) => void;
 }) {
   const blocks = item.blocks ?? [];
+  const sharedFiles = filesFromBlocks(blocks);
   const textBlocks = blocks.filter((block) => block.type === "text" || block.type === "note");
   const workBlocks = blocks.filter((block) => block.type === "thinking" || block.type === "tool");
   const text = textBlocks.map((block) => block.text).join("\n") || item.content;
@@ -572,6 +574,15 @@ export function AssistantTurn({
         <TurnBlocks blocks={workBlocks} streaming={item.streaming} agentId={agentId} onOpen={onOpenMedia} />
       )}
       {text ? <ChatCopy text={text} agentId={agentId} streaming={item.streaming} onOpen={onOpenMedia} /> : null}
+      {sharedFiles.length > 0 && (
+        <div className="shared-file-attachments">
+          {sharedFiles.map((file) => (
+            <a key={file.id} className="chat-file-link" href={file.url} target="_blank" rel="noreferrer">
+              📎 {file.name}
+            </a>
+          ))}
+        </div>
+      )}
       {gallery.length > 0 && !item.streaming && (
         <div className={gallery.length === 1 ? "chat-gallery one" : "chat-gallery"}>
           {gallery.map((href) => {

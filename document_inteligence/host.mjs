@@ -5,6 +5,7 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { readFile, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { DATA_DIR } from "../server/paths.mjs";
 import { migrate, pgAdapter, roleAvailable, withContext } from "./core/db.mjs";
 import { ensureDefaultTenant, seedTenant } from "./core/seed.mjs";
 import { getCompanyProfile } from './core/company.mjs';
@@ -143,6 +144,7 @@ export async function handleDiRequest(req, body, deps) {
         workspace: (id) => deps.workspace({ id, slug: id }),
         renderPdf,
         publicUrl: publicBaseUrl(),
+        filesRoot: path.join(DATA_DIR, "files"),
       },
       { agent, tool: body.tool, args: body.args },
     );

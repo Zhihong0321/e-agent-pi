@@ -62,10 +62,12 @@ export type HostStatus = {
   git?: { pushed?: boolean; sha?: string | null; lastError?: string | null };
 };
 
+export type SharedFile = { id: string; name: string; bytes?: number; url: string };
+
 export type TurnBlock =
   | { type: "thinking"; text: string }
   | { type: "text"; text: string }
-  | { type: "tool"; id: string; name: string; detail: string; result?: string; isError?: boolean; running?: boolean }
+  | { type: "tool"; id: string; name: string; detail: string; result?: string; isError?: boolean; running?: boolean; shared_files?: SharedFile[] }
   | { type: "note"; text: string };
 
 export type ChatMessage = {
@@ -105,6 +107,7 @@ export type StreamEvent = {
   status?: string;
   reply?: string;
   blocks?: TurnBlock[];
+  shared_files?: SharedFile[];
   host?: HostStatus;
   session?: ChatSession;
   sessionId?: string;
@@ -256,6 +259,7 @@ export function applyStreamEvent(blocks: TurnBlock[], event: StreamEvent): TurnB
       result: event.result,
       isError: event.isError,
       running: event.phase !== "end",
+      shared_files: event.shared_files,
     };
     if (index === -1) return [...blocks, next];
     const copy = [...blocks];
@@ -267,6 +271,7 @@ export function applyStreamEvent(blocks: TurnBlock[], event: StreamEvent): TurnB
         name: next.name || prev.name,
         detail: next.detail || prev.detail,
         result: next.result ?? prev.result,
+        shared_files: next.shared_files ?? prev.shared_files,
       };
     }
     return copy;

@@ -1,9 +1,10 @@
+import { sharedFilesFromResult } from "../shared/shared-files.mjs";
 const RESULT_LIMIT = 4000;
 
 /**
  * @typedef {{ type: "thinking"; text: string }
  *   | { type: "text"; text: string }
- *   | { type: "tool"; id: string; name: string; detail: string; result?: string; isError?: boolean; running?: boolean }
+ *   | { type: "tool"; id: string; name: string; detail: string; result?: string; isError?: boolean; running?: boolean; shared_files?: any[] }
  *   | { type: "note"; text: string }} TurnBlock
  */
 
@@ -47,6 +48,7 @@ export function serializeTurn(turn, extra = {}) {
       detail: block.detail,
       result: block.result,
       isError: block.isError,
+      shared_files: block.shared_files,
     };
   });
   return JSON.stringify({
@@ -104,8 +106,9 @@ export function applyPiEvent(turn, event) {
     const detail = toolDetail(name, event.args);
     const result = clip(resultText(event.result));
     const isError = Boolean(event.isError);
-    upsertTool(turn, id || name, { name, detail, result, isError, running: false });
-    return { type: "tool", phase: "end", id, name, detail, result, isError };
+    const shared_files = isError ? [] : sharedFilesFromResult(event.result);
+    upsertTool(turn, id || name, { name, detail, result, isError, shared_files, running: false });
+    return { type: "tool", phase: "end", id, name, detail, result, isError, shared_files };
   }
   if (type === "message_end" && event.message && typeof event.message === "object") {
     const message = /** @type {Record<string, unknown>} */ (event.message);
@@ -189,6 +192,7 @@ function upsertTool(turn, id, patch) {
     if (patch.result !== undefined) existing.result = patch.result;
     if (patch.isError !== undefined) existing.isError = patch.isError;
     if (patch.running !== undefined) existing.running = patch.running;
+    if (patch.shared_files !== undefined) existing.shared_files = patch.shared_files;
     return existing;
   }
   /** @type {Extract<TurnBlock, { type: "tool" }>} */
@@ -200,6 +204,7 @@ function upsertTool(turn, id, patch) {
     result: patch.result,
     isError: patch.isError,
     running: patch.running ?? true,
+    shared_files: patch.shared_files,
   };
   turn.blocks.push(block);
   return block;

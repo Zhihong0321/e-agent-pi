@@ -1,8 +1,7 @@
 // Orchestrator plans/tasks and dispatch policy. The MCP stdio server is a thin
 // HTTP client; this module runs in the host and owns Postgres + the specialist
 // turn runner (injected from server/index.mjs so we never import the Pi pool).
-import { companyOnboardingStatus, publicBaseUrl } from '../document_inteligence/host.mjs';
-import { qualifyWorkspaceLinks } from '../shared/workspace-links.mjs';
+import { companyOnboardingStatus } from '../document_inteligence/host.mjs';
 import { randomBytes, randomUUID } from "node:crypto";
 import { createSession, getPool, getSession } from "./db.mjs";
 import { getAgent, listAgents } from "./catalog.mjs";
@@ -124,6 +123,7 @@ export async function ensureOrchestratorSchema() {
   `);
   await pool.query(`CREATE INDEX IF NOT EXISTS orchestrator_plans_parent_idx ON orchestrator_plans (parent_session_id)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS orchestrator_tasks_plan_idx ON orchestrator_tasks (plan_id)`);
+  await pool.query(`ALTER TABLE orchestrator_tasks ADD COLUMN IF NOT EXISTS shared_files JSONB NOT NULL DEFAULT '[]'::jsonb`);
 }
 
 function mapPlan(row) {
@@ -151,6 +151,7 @@ function mapTask(row) {
     status: row.status,
     childSessionId: row.childSessionId ?? row.child_session_id ?? null,
     result: row.result ?? null,
+    shared_files: row.shared_files ?? [],
     error: row.error ?? null,
     sortOrder: row.sortOrder ?? row.sort_order ?? 0,
   };
@@ -160,7 +161,7 @@ const PLAN_SELECT = `id, parent_session_id AS "parentSessionId", title, status, 
   created_at AS "createdAt", updated_at AS "updatedAt"`;
 const TASK_SELECT = `id, plan_id AS "planId", agent_id AS "agentId", title, prompt,
   depends_on AS "dependsOn", status, child_session_id AS "childSessionId", result, error,
-  sort_order AS "sortOrder"`;
+  sort_order AS "sortOrder", shared_files`;
 
 export async function listSpecialists() {
   const agents = await listAgents();
@@ -345,10 +346,11 @@ async function setTask(id, patch) {
     ["result", "result"],
     ["error", "error"],
     ["childSessionId", "child_session_id"],
+    ["shared_files", "shared_files"],
   ]) {
     if (patch[key] === undefined) continue;
     fields.push(`${column} = $${i++}`);
-    values.push(patch[key]);
+    values.push(key === "shared_files" ? JSON.stringify(patch[key]) : patch[key]);
   }
   if (!fields.length) return getTaskRow(id);
   fields.push("updated_at = NOW()");
@@ -384,8 +386,8 @@ async function runSpecialist(task, agent) {
       agentId: agent.id,
       sessionId: session.id,
     });
-    const reply = clipResult(qualifyWorkspaceLinks(agent.id, turn?.reply || "", publicBaseUrl()));
-    await setTask(task.id, { status: "done", result: reply, error: null });
+    const reply = clipResult(turn?.reply || "");
+    await setTask(task.id, { status: "done", result: reply, shared_files: turn?.shared_files || [], error: null });
     await refreshPlanStatus(task.planId);
     return getTaskRow(task.id);
   } catch (error) {

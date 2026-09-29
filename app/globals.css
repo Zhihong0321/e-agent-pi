@@ -2326,3 +2326,4 @@ a.file-row { color: inherit; text-decoration: none; }
   .working-boot-scan { display: none; }
 }
 @keyframes bootFade { from { opacity: 0; } }
+.shared-file-attachments { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 12px; }

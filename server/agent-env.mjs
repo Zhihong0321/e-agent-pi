@@ -23,6 +23,7 @@ import { secret } from "./secrets.mjs";
 import { SEARCH_TOKEN, jinaKeys } from "./web-search.mjs";
 import { DISPATCH_TOKEN } from "./orchestrator.mjs";
 import { diAgentEnv } from "../document_inteligence/host.mjs";
+import { fileSharingEnv } from "./file-sharing.mjs";
 
 const ALLOW_EXACT = new Set([
   "PATH",
@@ -74,6 +75,7 @@ export function agentEnv(agent, extra = {}, from = process.env) {
   env.NODE_PATH = from.NODE_PATH || path.join(ROOT, "node_modules");
   env.SCRAPLING_BIN = from.SCRAPLING_BIN || process.env.SCRAPLING_BIN || "/opt/scrapling/bin/scrapling";
   env.CLOUD_PI_ROOT = ROOT;
+  env.CLOUD_PI_SHARE_FILE = path.join(ROOT, "server", "share-file-cli.mjs");
   env.CLOUD_PI_CATALOG = CATALOG_CLI;
   env.CLOUD_PI_IMAGEN = IMAGEN_CLI;
   env.CLOUD_PI_SITES = SITES_CLI;
@@ -156,6 +158,7 @@ export function agentEnv(agent, extra = {}, from = process.env) {
 
   // Document Intelligence micro-agents: per-agent token for /api/internal/di.
   Object.assign(env, diAgentEnv(agent, from.PORT || process.env.PORT || "8080"));
+  Object.assign(env, fileSharingEnv(agent, from.PORT || process.env.PORT || "8080"));
 
   for (const [key, value] of Object.entries(extra)) {
     if (value == null || value === "") continue;

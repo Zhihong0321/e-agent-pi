@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { imagenConfigured, imagenSystemPrompt } from "./imagen.mjs";
 import { replyStyleSystemPrompt } from "./reply-style.mjs";
+import { FILE_SHARING_PROMPT } from "./file-sharing.mjs";
 import { hostSystemPrompt } from "./ee-html.mjs";
 import { proposalSystemPrompt } from "./github.mjs";
 import { loadContextPack } from "./context-pack.mjs";
@@ -17,6 +18,7 @@ import {
   IMAGEN_SKILL_DIR,
   MCP_ADAPTER_EXTENSION,
   RUNTIME_DIR,
+  ROOT,
   SPAWN_SUBAGENTS_SLUG,
   STORAGE,
   SUBAGENTS_EXTENSION,
@@ -121,7 +123,7 @@ export function mcpServerConfig(server) {
  */
 export async function buildRoleText(agent, { modelId } = {}) {
   const role = String(agent.rolePrompt || "").trim();
-  const extras = [replyStyleSystemPrompt(), imagenSystemPrompt()];
+  const extras = [replyStyleSystemPrompt(), FILE_SHARING_PROMPT, imagenSystemPrompt()];
   if (agent.id === "website" || agent.slug === "website") extras.push(hostSystemPrompt());
   if (isProposalAgent(agent)) extras.push(proposalSystemPrompt(agent));
   if (isWhatsappAgent(agent)) extras.push(await whatsappNotesSystemPrompt());
@@ -204,6 +206,7 @@ export function buildPiArgs(opts) {
     if (skill.dirPath) args.push("--skill", skill.dirPath);
   }
   if (opts.mcpCount) args.push("--extension", MCP_ADAPTER_EXTENSION);
+  args.push("--extension", path.join(ROOT, "agent", "extensions", "share-file.ts"));
   if (agentHasSubagents(opts.skills)) args.push("--extension", SUBAGENTS_EXTENSION);
   if (opts.sessionFile) args.push("--session", opts.sessionFile);
   return args;
