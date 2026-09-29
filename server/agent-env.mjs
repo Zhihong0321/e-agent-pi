@@ -10,6 +10,7 @@ import {
   ROOT,
   SITES_CLI,
   TNB_CLI,
+  WEB_SEARCH_CLI,
   isAfaAgent,
   isGoogleAdsAgent,
   isOmAgent,
@@ -19,6 +20,7 @@ import {
   isTnbAgent,
 } from "./paths.mjs";
 import { secret } from "./secrets.mjs";
+import { SEARCH_TOKEN, jinaKeys } from "./web-search.mjs";
 import { diAgentEnv } from "../document_inteligence/host.mjs";
 
 const ALLOW_EXACT = new Set([
@@ -78,6 +80,14 @@ export function agentEnv(agent, extra = {}, from = process.env) {
   env.CLOUD_PI_TNB = TNB_CLI;
   env.CLOUD_PI_BLUEPRINT = BLUEPRINT_CLI;
   env.PI_PACKAGE_DIR = from.PI_PACKAGE_DIR || PI_PACKAGE_DIR;
+
+  // Web search runs on the host with the saved Jina tokens; agents only get a
+  // per-boot bearer for the internal endpoint, and only once a token exists.
+  if (jinaKeys().length) {
+    env.CLOUD_PI_SEARCH = WEB_SEARCH_CLI;
+    env.CLOUD_PI_SEARCH_URL = `http://127.0.0.1:${from.PORT || process.env.PORT || "8080"}`;
+    env.CLOUD_PI_SEARCH_TOKEN = SEARCH_TOKEN;
+  }
 
   if (isPackageAgent(agent)) {
     const token = secret("pg_proxy_token");

@@ -42,6 +42,7 @@ type Settings = {
   omApiTokenSet: boolean;
   composioApiKeySet: boolean;
   composioSessionId: string;
+  jinaKeysSet: boolean[];
 };
 
 type Tab = "keys" | "models" | "agents" | "blueprints" | "sites" | "skills" | "mcp" | "whatsapp" | "display" | "usage";
@@ -92,6 +93,8 @@ type ModelTestResult = {
   latencyMs: number;
   error?: string;
 };
+type JinaTestResult = { slot: number; ok: boolean; latencyMs: number; error?: string };
+const JINA_SLOTS = 5;
 type McpItem = {
   id: string;
   slug: string;
@@ -252,7 +255,10 @@ export default function SettingsPage() {
     salesPgProxyExpiresAt: "",
     omApiToken: "",
     composioApiKey: "",
+    jinaKeys: Array.from({ length: JINA_SLOTS }, () => ""),
   });
+  const [jinaTest, setJinaTest] = useState<JinaTestResult[] | null>(null);
+  const [jinaBusy, setJinaBusy] = useState("");
   const [models, setModels] = useState<ModelItem[]>([]);
   const [activeModelId, setActiveModelId] = useState<string>("");
   const [modelTestResults, setModelTestResults] = useState<Record<string, ModelTestResult>>({});
@@ -633,10 +639,12 @@ export default function SettingsPage() {
           sales_pg_proxy_expires_at: form.salesPgProxyExpiresAt,
           om_api_token: form.omApiToken,
           composio_api_key: form.composioApiKey,
+          ...Object.fromEntries(form.jinaKeys.map((value, index) => [`jina_api_key_${index + 1}`, value])),
         }),
       });
       setSettings(data);
-      setForm((prev) => ({ ...prev, cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", opencodeGoApiKey: "", hiveAiApiKey: "", yerplanApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", settingsPassword: "", afaPasskey: "", tnbPassword: "", salesPgProxyToken: "", googleAdsClientSecret: "", googleAdsDeveloperToken: "", googleAdsRefreshToken: "", omApiToken: "", composioApiKey: "" }));
+      setJinaTest(null);
+      setForm((prev) => ({ ...prev, jinaKeys: Array.from({ length: JINA_SLOTS }, () => ""), cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", opencodeGoApiKey: "", hiveAiApiKey: "", yerplanApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", settingsPassword: "", afaPasskey: "", tnbPassword: "", salesPgProxyToken: "", googleAdsClientSecret: "", googleAdsDeveloperToken: "", googleAdsRefreshToken: "", omApiToken: "", composioApiKey: "" }));
       if (data.proposal?.lastError) {
         setError(data.proposal.lastError);
         setSaved("Saved keys, but GitHub rejected the proposal push.");
@@ -885,6 +893,38 @@ export default function SettingsPage() {
       setActiveModelId(data.activeModelId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not set default model");
+    }
+  };
+
+  const removeJinaKey = async (slot: number) => {
+    setError("");
+    setSaved("");
+    setJinaBusy(`remove-${slot}`);
+    try {
+      const data = await authedJson<Settings>("/api/settings", {
+        method: "PUT",
+        body: JSON.stringify({ clear_secrets: [`jina_api_key_${slot}`] }),
+      });
+      setSettings(data);
+      setJinaTest(null);
+      setSaved(`Jina token ${slot} removed.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not remove the token");
+    } finally {
+      setJinaBusy("");
+    }
+  };
+
+  const testJinaKeys = async () => {
+    setError("");
+    setJinaBusy("test");
+    try {
+      const data = await authedJson<{ results: JinaTestResult[] }>("/api/settings/jina-test", { method: "POST" });
+      setJinaTest(data.results);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Token test failed");
+    } finally {
+      setJinaBusy("");
     }
   };
 
@@ -1320,6 +1360,57 @@ export default function SettingsPage() {
                   Session <code>{settings.composioSessionId}</code> — connected accounts persist across redeploys.
                 </p>
               ) : null}
+
+              <h2>Jina web search</h2>
+              <p>
+                Lets agents search the web by keyword through the <code>web-search</code> skill. Add up to {JINA_SLOTS}{" "}
+                Jina API tokens: searches rotate through them round-robin, and a token that is rate-limited or out of
+                quota is skipped for a while. Agents never see the tokens. Attach the skill to an agent under Agents.
+                Leave a slot blank to keep it. Do not paste tokens in chat.
+              </p>
+              {Array.from({ length: JINA_SLOTS }, (_, index) => {
+                const slot = index + 1;
+                const isSet = Boolean(settings?.jinaKeysSet?.[index]);
+                const result = jinaTest?.find((row) => row.slot === slot);
+                return (
+                  <div key={slot}>
+                    <label>
+                      Token {slot} {isSet ? <em>saved</em> : <em>empty</em>}
+                      {result ? (
+                        <em title={result.error}>
+                          {result.ok ? ` · works (${result.latencyMs}ms)` : ` · failed: ${result.error ?? "error"}`}
+                        </em>
+                      ) : null}
+                      <input
+                        type="password"
+                        value={form.jinaKeys[index]}
+                        onChange={(event) =>
+                          setForm({ ...form, jinaKeys: form.jinaKeys.map((v, i) => (i === index ? event.target.value : v)) })
+                        }
+                        placeholder={isSet ? "••••••••  (unchanged)" : "jina_…"}
+                      />
+                    </label>
+                    {isSet ? (
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => void removeJinaKey(slot)}
+                        disabled={jinaBusy !== ""}
+                      >
+                        {jinaBusy === `remove-${slot}` ? "Removing…" : `Remove token ${slot}`}
+                      </button>
+                    ) : null}
+                  </div>
+                );
+              })}
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => void testJinaKeys()}
+                disabled={jinaBusy !== "" || !settings?.jinaKeysSet?.some(Boolean)}
+              >
+                {jinaBusy === "test" ? "Testing…" : "Test saved tokens"}
+              </button>
 
               <h2>AFA Rate API</h2>
               <p>

@@ -53,6 +53,7 @@ import {
 import { imagenConfigured, imagenPublic } from "./imagen.mjs";
 import { findModel, normalizeCavotiBaseUrl, resolveModelCredentials, testModelRoundTrip } from "./models.mjs";
 import { hasApiAuth, hasSession, hasStockAuth, sessionCookie, sessionToken, checkPassword } from "./auth.mjs";
+import { searchAuthorized, searchWeb, testJinaKeys } from "./web-search.mjs";
 import { loadSecrets, publicSettings, rememberSecret, saveSecrets, secret, secretFlags } from "./secrets.mjs";
 import {
   adjustStockItem,
@@ -329,12 +330,13 @@ function readBody(req) {
 }
 
 function wantsAuth(pathname, method = "GET") {
-  if (pathname === "/api/settings") return true;
+  if (pathname === "/api/settings" || pathname.startsWith("/api/settings/")) return true;
   if (pathname === "/api/manage" || pathname.startsWith("/api/manage/")) return true;
   if (pathname === "/api/sites" || pathname.startsWith("/api/sites/")) return true;
   if (pathname === "/api/whatsapp" || pathname.startsWith("/api/whatsapp/")) return true;
   if (pathname === "/api/np/health") return false;
   if (pathname === "/api/internal/di") return false;
+  if (pathname === "/api/internal/web-search") return false;
   if (pathname === "/api/np" || pathname.startsWith("/api/np/")) return true;
   const mutating = method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
   if (!mutating) return false;
@@ -1899,6 +1901,17 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "POST" && pathname === "/api/internal/web-search") {
+      if (!searchAuthorized(req)) {
+        json(res, 401, { error: "Unauthorized" });
+        return;
+      }
+      const body = JSON.parse((await readBody(req)) || "{}");
+      const { status, ...outcome } = await searchWeb(body);
+      json(res, outcome.ok ? 200 : status, outcome);
+      return;
+    }
+
     // Public form links (no login): the page and its submissions. Limits live in the handler.
     if ((req.method === "GET" || req.method === "POST") && pathname.startsWith("/api/forms/")) {
       await handlePublicForm(req, res, url, { workspace: agentWorkspace });
@@ -2210,6 +2223,11 @@ const server = createServer(async (req, res) => {
       const proposal = await publishProposal(proposalAgent || { id: PROPOSAL_AGENT_ID, slug: "proposal" });
       logEvent("info", "settings saved to postgres");
       json(res, 200, { ...publicSettings(), host, proposal });
+      return;
+    }
+
+    if (req.method === "POST" && pathname === "/api/settings/jina-test") {
+      json(res, 200, { results: await testJinaKeys() });
       return;
     }
 

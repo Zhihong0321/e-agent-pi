@@ -193,6 +193,7 @@ export const PI_CLI_PATH = path.join(
 export const PI_PACKAGE_DIR = path.join(ROOT, "node_modules", "@earendil-works", "pi-coding-agent");
 export const CATALOG_CLI = path.join(ROOT, "server", "catalog-cli.mjs");
 export const IMAGEN_CLI = path.join(ROOT, "server", "imagen-cli.mjs");
+export const WEB_SEARCH_CLI = path.join(ROOT, "server", "web-search-cli.mjs");
 export const SITES_CLI = path.join(ROOT, "server", "sites-cli.mjs");
 export const PDF_CLI = path.join(ROOT, "server", "pdf-cli.mjs");
 export const PACKAGE_SHEET_CLI = path.join(ROOT, "server", "package-sheet-cli.mjs");
