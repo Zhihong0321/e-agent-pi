@@ -55,6 +55,9 @@ display text is shortened. It stores them on the tool block in the existing mess
 transcript. The client renders a file attachment from that reference, independently of
 the assistant's Markdown or which agent is currently selected.
 
+The app's service worker must pass `/files/` requests to the network, including navigation.
+Never serve the offline app page or cache file bytes for this route. Dev/preview proxy it to the host.
+
 Specialist turns return `shared_files`. Orchestrator persists them in its existing task
 row and returns them with dispatch/status results. No path inference or prose rewriting
 is required. Use `shared_files` for every new tool that publishes files.
