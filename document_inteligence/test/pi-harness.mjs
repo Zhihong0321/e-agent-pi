@@ -234,7 +234,7 @@ export async function runStressTest(opts) {
 
     const query = async (sql) => (await db.query(sql)).rows;
     report.finalState = {
-      company: await query("SELECT name, legal_name, reg_no, address, phone, email, currency, bank_details FROM di.tenant"),
+      company: await query("SELECT name, legal_name, reg_no, address, phone, email, currency, bank_details FROM di.company_profile"),
       customers: await query("SELECT code, name, legal_name, reg_no, billing_address, payment_terms_days FROM di.customer"),
       contacts: await query("SELECT name, job_title, email, is_primary FROM di.contact"),
       products: await query("SELECT sku, name, unit_price, tax_code FROM di.product"),

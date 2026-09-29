@@ -29,6 +29,7 @@ export const TNB_ROLE_FILE = path.join(ROOT, "agent", "roles", "tnb.md");
 export const SOLAR_ROI_ROLE_FILE = path.join(ROOT, "agent", "roles", "solar-roi.md");
 export const OM_ROLE_FILE = path.join(ROOT, "agent", "roles", "om.md");
 export const COMPOSIO_ROLE_FILE = path.join(ROOT, "agent", "roles", "composio.md");
+export const ORCHESTRATOR_ROLE_FILE = path.join(ROOT, "agent", "roles", "orchestrator.md");
 export const PROTOTYPER_ROLE_FILE = path.join(ROOT, "agent", "roles", "prototyper.md");
 export const PROTOTYPER_REPO_ROLE_FILE = path.join(ROOT, "agent", "roles", "prototyper-repo.md");
 export const BUNDLED_SKILLS = path.join(ROOT, "agent", "skills");
@@ -46,6 +47,7 @@ export const TNB_AGENT_ID = "tnb";
 export const SOLAR_ROI_AGENT_ID = "solar-roi";
 export const OM_AGENT_ID = "om";
 export const COMPOSIO_AGENT_ID = "composio";
+export const ORCHESTRATOR_AGENT_ID = "orchestrator";
 export const APP_HELPER_AGENT_ID = "app-helper";
 /** Agent OS lives in the Solar_Calculator repo; its default branch is master, not main. */
 export const DEFAULT_APP_HELPER_REPO = "Zhihong0321/Solar_Calculator";
@@ -169,6 +171,12 @@ export function isOpenDesignAgent(agent) {
   return id === OPEN_DESIGN_AGENT_ID || slug === "open-design-helper";
 }
 
+export function isOrchestratorAgent(agent) {
+  const id = typeof agent === "string" ? agent : agent?.id || "";
+  const slug = typeof agent === "string" ? agent : agent?.slug || "";
+  return id === ORCHESTRATOR_AGENT_ID || slug === "orchestrator";
+}
+
 /**
  * Read-only checkout of the system a repo-bound Prototyper designs against.
  * Kept inside the agent's workspace but outside its prototypes: the agent
@@ -204,10 +212,14 @@ export const SALES_MCP_SERVER = path.join(ROOT, "server", "sales-mcp-server.mjs"
 export const SALES_MCP_SLUG = "sales-data";
 export const GOOGLE_ADS_MCP_SERVER = path.join(ROOT, "server", "google-ads-mcp-server.mjs");
 export const GOOGLE_ADS_MCP_SLUG = "google-ads";
+export const BROWSER_MCP_SERVER = path.join(ROOT, "server", "browser-mcp-server.mjs");
+export const BROWSER_MCP_SLUG = "browser";
 export const OM_MCP_SERVER = path.join(ROOT, "server", "om-mcp-server.mjs");
 export const OM_MCP_SLUG = "om-data";
 /** Remote http MCP (Composio-hosted session endpoint), so there is no local *-mcp-server.mjs. */
 export const COMPOSIO_MCP_SLUG = "composio";
+export const ORCHESTRATOR_MCP_SERVER = path.join(ROOT, "server", "orchestrator-mcp-server.mjs");
+export const ORCHESTRATOR_MCP_SLUG = "orchestrator-dispatch";
 export const WHATSAPP_MCP_SLUG = "whatsapp";
 export const WHATSAPP_DATA_DIR = path.join(DATA_DIR, "whatsapp");
 export const WHATSAPP_MEMORY_FILE = path.join(WHATSAPP_DATA_DIR, "memory.md");

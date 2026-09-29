@@ -17,9 +17,11 @@ import {
   isPackageAgent,
   isSalesAgent,
   isTnbAgent,
+  isOrchestratorAgent,
 } from "./paths.mjs";
 import { secret } from "./secrets.mjs";
 import { SEARCH_TOKEN, jinaKeys } from "./web-search.mjs";
+import { DISPATCH_TOKEN } from "./orchestrator.mjs";
 import { diAgentEnv } from "../document_inteligence/host.mjs";
 
 const ALLOW_EXACT = new Set([
@@ -145,6 +147,11 @@ export function agentEnv(agent, extra = {}, from = process.env) {
     // The MCP server reads this directly; nothing touches disk or the vault.
     const token = secret("om_api_token");
     if (token) env.OM_API_TOKEN = token;
+  }
+
+  if (isOrchestratorAgent(agent)) {
+    env.ORCHESTRATOR_DISPATCH_URL = `http://127.0.0.1:${from.PORT || process.env.PORT || "8080"}`;
+    env.ORCHESTRATOR_DISPATCH_TOKEN = DISPATCH_TOKEN;
   }
 
   // Document Intelligence micro-agents: per-agent token for /api/internal/di.

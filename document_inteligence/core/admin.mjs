@@ -6,26 +6,8 @@ import { DiError, defined, isUuid, requireRow, round2, setClause } from "./commo
 import { CHECKS, validateRules } from "./workflows.mjs";
 import { addressLines, checkTemplate, renderTemplate, sampleContext } from "./templates.mjs";
 
-const TENANT_FIELDS = [
-  "name", "legal_name", "reg_no", "tin", "sst_no", "msic_code", "business_activity", "address", "phone",
-  "email", "website", "currency", "logo_url", "bank_details", "settings",
-];
-
-export async function getCompanyProfile(tx) {
-  const { rows } = await tx.query(
-    `SELECT id, name, legal_name, reg_no, tin, sst_no, msic_code, business_activity, address, phone, email, website,
-            currency, logo_url, bank_details, settings FROM di.tenant WHERE id = di.current_tenant()`,
-  );
-  return { company: rows[0] };
-}
-
-export async function updateCompanyProfile(tx, args = {}) {
-  const patch = defined(args);
-  const { sql, values } = setClause(patch, TENANT_FIELDS);
-  if (!sql) throw new DiError(`Nothing to update. Fields: ${TENANT_FIELDS.join(", ")}`);
-  await tx.query(`UPDATE di.tenant SET ${sql} WHERE id = di.current_tenant()`, values);
-  return getCompanyProfile(tx);
-}
+import { getCompanyProfile } from './company.mjs';
+export { getCompanyProfile, updateCompanyProfile } from './company.mjs';
 
 export async function describeSchema(tx, { entity } = {}) {
   const entities = (

@@ -591,7 +591,7 @@ export async function archiveForm(tx, { form, reason }) {
 /** Renders a version (draft by default) as the public page would, for review. */
 export async function previewForm(tx, { form, version }, { renderPage }) {
   const out = await getForm(tx, { form, version });
-  const company = (await tx.query("SELECT name, legal_name, logo_url FROM di.tenant WHERE id = di.current_tenant()")).rows[0];
+  const company = (await tx.query("SELECT name, legal_name, logo_url FROM di.company_profile WHERE tenant_id = di.current_tenant()")).rows[0];
   const html = renderPage({ form: out.form, version: out.shown, company, preview: true });
   return {
     slug: out.form.slug,
@@ -738,7 +738,7 @@ export async function loadPublicForm(tx, slug) {
     const n = (await tx.query("SELECT count(*)::int AS n FROM di.form_submission WHERE form_id = $1 AND status <> 'spam' AND deleted_at IS NULL", [f.id])).rows[0].n;
     full = n >= view.settings.max_submissions;
   }
-  const company = (await tx.query("SELECT name, legal_name, logo_url FROM di.tenant WHERE id = di.current_tenant()")).rows[0];
+  const company = (await tx.query("SELECT name, legal_name, logo_url FROM di.company_profile WHERE tenant_id = di.current_tenant()")).rows[0];
   return {
     form: { id: f.id, slug: f.slug, title: f.title },
     version: { ...view, id: v.id },

@@ -90,7 +90,10 @@ export async function ensureDefaultTenant(db, name = "My Company") {
 }
 
 export async function seedTenant(db, tenantId) {
-  return withContext(db, { tenantId, actor: "system", agent: "seed", asRole: false }, async (tx) => {
+  return withContext(db, { tenantId, actor: "system", agent: "seed", asRole: false }, (tx) => seedTenantTx(tx, tenantId));
+}
+
+export async function seedTenantTx(tx, tenantId) {
     for (const t of DEFAULT_TAX_CODES) {
       await tx.query(
         `INSERT INTO di.tax_code (tenant_id, code, name, rate, kind, is_default)
@@ -134,5 +137,4 @@ export async function seedTenant(db, tenantId) {
       );
     }
     return tenantId;
-  });
 }

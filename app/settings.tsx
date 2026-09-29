@@ -964,6 +964,7 @@ export default function SettingsPage() {
           </div>
         </div>
         <nav>
+          <a href="/company-profile/">Company Profile</a>{" | "}
           <a href="/db-viewer/">Database viewer</a>{" · "}
           <a href="/">Back to studio</a>
         </nav>

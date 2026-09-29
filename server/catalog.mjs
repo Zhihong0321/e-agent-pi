@@ -26,6 +26,8 @@ import {
   OM_AGENT_ID,
   OM_ROLE_FILE,
   OPS_AGENT_ID,
+  ORCHESTRATOR_AGENT_ID,
+  ORCHESTRATOR_ROLE_FILE,
   PROTOTYPER_REPO_ROLE_FILE,
   PACKAGE_AGENT_ID,
   PACKAGE_ROLE_FILE,
@@ -150,6 +152,33 @@ export async function ensureCatalogSchema() {
   await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS tool_profile TEXT`);
   await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS thinking_level TEXT`);
   await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS user_facing BOOLEAN NOT NULL DEFAULT FALSE`);
+  await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS parent_session_id TEXT`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS orchestrator_plans (
+      id TEXT PRIMARY KEY,
+      parent_session_id TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'draft',
+      summary TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS orchestrator_tasks (
+      id TEXT PRIMARY KEY,
+      plan_id TEXT NOT NULL REFERENCES orchestrator_plans(id) ON DELETE CASCADE,
+      agent_id TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+      prompt TEXT NOT NULL DEFAULT '',
+      depends_on TEXT[] NOT NULL DEFAULT '{}',
+      status TEXT NOT NULL DEFAULT 'pending',
+      child_session_id TEXT,
+      result TEXT,
+      error TEXT,
+      sort_order INT NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
 }
 
 function mapAgent(row) {
@@ -191,7 +220,7 @@ const MCP_SELECT = `id, slug, name, description, transport, command, args, url, 
   created_at AS "createdAt", updated_at AS "updatedAt"`;
 
 export async function listAgents() {
-  const result = await getPool().query(`SELECT ${AGENT_SELECT} FROM agents ORDER BY name ASC`);
+  const result = await getPool().query(`SELECT ${AGENT_SELECT} FROM agents ORDER BY (id = '${ORCHESTRATOR_AGENT_ID}') DESC, name ASC`);
   const agents = result.rows.map(mapAgent);
   const skillMap = await attachmentsByAgent("agent_skills", "skill_id");
   const mcpMap = await attachmentsByAgent("agent_mcp", "mcp_id");
@@ -443,7 +472,9 @@ export async function attachAgentResources(agentRef, { skills = [], mcp = [], de
         agent.id === TNB_AGENT_ID ||
         agent.slug === "tnb" ||
         agent.id === SOLAR_ROI_AGENT_ID ||
-        agent.slug === "solar-roi")
+        agent.slug === "solar-roi" ||
+        agent.id === ORCHESTRATOR_AGENT_ID ||
+        agent.slug === "orchestrator")
     ) {
       throw new Error("manage-host-settings stays on Settings Agent only.");
     }
@@ -503,6 +534,9 @@ export async function deleteAgent(id) {
   }
   if (agent.id === SOLAR_ROI_AGENT_ID || agent.slug === "solar-roi") {
     throw new Error("The Solar PV ROI Calculator Agent cannot be deleted.");
+  }
+  if (agent.id === ORCHESTRATOR_AGENT_ID || agent.slug === "orchestrator") {
+    throw new Error("The Orchestrator cannot be deleted.");
   }
   await getPool().query(`UPDATE sessions SET agent_id = $1 WHERE agent_id = $2`, [WEBSITE_AGENT_ID, agent.id]);
   await getPool().query(`DELETE FROM agents WHERE id = $1`, [agent.id]);
@@ -1030,6 +1064,23 @@ You are bound to **Open Design** — the open-source local-first design tool at 
     toolProfile: "assistant",
     thinkingLevel: "low",
   });
+
+  const orchestratorRole = await readFile(ORCHESTRATOR_ROLE_FILE, "utf8").catch(() => "You are Orchestrator.");
+  await seedSystemAgent({
+    id: ORCHESTRATOR_AGENT_ID,
+    slug: "orchestrator",
+    name: "Orchestrator",
+    short: "OR",
+    headline: "Plans and dispatches work to every specialist",
+    description:
+      "The only user-facing agent. Lists specialists live, writes a plan, and dispatches each task to the matching agent. It cannot do their jobs itself.",
+    color: "slate",
+    rolePrompt: orchestratorRole,
+    toolProfile: "assistant",
+    thinkingLevel: "medium",
+    userFacing: true,
+  });
+  await mkdir(agentWorkspace({ id: ORCHESTRATOR_AGENT_ID, slug: "orchestrator" }), { recursive: true });
 
   const manageRow = await getPool().query(`SELECT id FROM skills WHERE slug = 'manage-host-settings'`);
   const manageId = manageRow.rows[0]?.id;

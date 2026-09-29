@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { migrate, pgAdapter, roleAvailable, withContext } from "./core/db.mjs";
 import { ensureDefaultTenant, seedTenant } from "./core/seed.mjs";
+import { getCompanyProfile } from './core/company.mjs';
 import { runTool, describeError } from "./core/actions.mjs";
 import { AGENTS } from "./core/tools.mjs";
 import { LIMITS, acceptSubmission, loadPublicForm } from "./core/forms.mjs";
@@ -22,6 +23,11 @@ const SECRET = randomBytes(32);
 const state = { db: null, tenantId: null, asRole: true };
 
 const AGENT_CARDS = {
+  "di-onboarding": {
+    color: "cyan", userFacing: true,
+    headline: "Set up your company and start fresh",
+    description: "Completes the shared company profile, collects business and invoicing defaults, guides invoice-template setup and custom fields, and directs owners to the reset preview. Shares the manual Company Profile form with users.",
+  },
   "di-records": {
     color: "teal",
     userFacing: true,
@@ -326,4 +332,18 @@ export async function ensureDocumentIntelligence({ pool, catalog, logEvent = () 
   else await catalog.createMcpServer(payload);
   for (const id of DI_AGENT_IDS) await catalog.attachAgentResources(id, { skills: [], mcp: [DI_MCP_SLUG] });
   return { applied, tenantId: state.tenantId, roleSeparation: state.asRole };
+}
+
+/** Live host-selected tenant context; callers never supply a tenant id. */
+export function companyHostContext() {
+  if (!state.db || !state.tenantId) throw new Error("Document Intelligence is not ready");
+  return { db: state.db, tenantId: state.tenantId, asRole: state.asRole };
+}
+
+export async function companyOnboardingStatus() {
+  const ctx = companyHostContext();
+  const result = await withContext(ctx.db, { ...ctx, agent: 'orchestrator' }, getCompanyProfile);
+  // Orchestrator needs readiness, not bank details or the rest of the private profile.
+  return { ...result.readiness, revision: result.company.revision, company_name: result.company.name,
+    form_url: result.form_url, onboarding_agent: result.onboarding_agent };
 }

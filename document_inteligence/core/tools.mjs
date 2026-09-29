@@ -7,10 +7,12 @@ import * as records from "./records.mjs";
 import * as catalog from "./catalog.mjs";
 import * as documents from "./documents.mjs";
 import * as admin from "./admin.mjs";
+import * as company from './company.mjs';
 import * as forms from "./forms.mjs";
 import { renderFormPage } from "./formpage.mjs";
 
 export const AGENTS = {
+  "di-onboarding": { name: "Company Onboarding", short: "CO" },
   "di-records": { name: "Records Clerk", short: "RC" },
   "di-documents": { name: "Document Agent", short: "DA" },
   "di-templates": { name: "Template Designer", short: "TD" },
@@ -24,6 +26,7 @@ const RECORDS = "di-records";
 const DOCS = "di-documents";
 const TPL = "di-templates";
 const DB = "di-db";
+const ONBOARD = "di-onboarding";
 const FORMS = "di-forms";
 const INTAKE = "di-intake";
 
@@ -103,6 +106,19 @@ const customerFields = {
 
 /** @type {Record<string, { agents: string[], description: string, input: Record<string, z.ZodTypeAny>, run: Function, pdf?: Function, previewPdf?: boolean, saveFile?: Function }>} */
 export const TOOLS = {
+  get_onboarding_status: {
+    agents: ALL, description: "Live company profile, field definitions, missing minimum setup, invoice profile readiness and manual form link. Re-read after updates; never infer completion from chat history.",
+    input: {}, run: company.getCompanyProfile,
+  },
+  update_onboarding_progress: {
+    agents: [ONBOARD, DB, TPL], description: "Record a completed setup check after verifying it. Does not override computed profile readiness.",
+    input: { check: z.enum(["website_reviewed", "invoice_reviewed", "template_preview_checked", "numbering_checked", "tax_codes_checked"]), done: z.boolean() },
+    run: company.updateOnboardingProgress,
+  },
+  request_company_reset: {
+    agents: [ONBOARD], description: "Direct the owner to the authenticated reset preview and confirmation form. This tool never deletes data.",
+    input: {}, run: async () => ({ form_url: "/company-profile/#reset", requires_owner_confirmation: true, message: "Open the Company Profile form, preview the affected records, then confirm Reset & Start Fresh. Schema and custom field definitions are preserved." }),
+  },
   // -------------------------------------------------------------- shared reads
   find_customers: {
     agents: ALL,
@@ -425,7 +441,7 @@ export const TOOLS = {
 
   // -------------------------------------------------------------- company / DB Manager
   update_company_profile: {
-    agents: [DB, TPL],
+    agents: [DB, TPL, ONBOARD],
     description: "Update your company's details (name, legal name, SSM, TIN, SST no, MSIC, address, phone, email, bank details, logo_url).",
     input: {
       name: z.string().optional(),
@@ -442,11 +458,23 @@ export const TOOLS = {
       currency: z.string().optional(),
       logo_url: z.string().optional(),
       bank_details: z.string().optional(),
+      business_type: z.enum(["products", "services", "both", ""]).optional(),
+      customer_type: z.enum(["b2b", "b2c", "both", ""]).optional(),
+      country: z.string().optional(),
+      timezone: z.string().optional(),
+      language: z.string().optional(),
+      payment_terms_days: z.number().int().nullable().optional(),
+      payment_instructions: z.string().optional(),
+      tax_status: z.enum(["not_registered", "registered", "exempt", "needs_review", ""]).optional(),
+      invoice_reference: z.string().optional(),
+      expected_revision: z.number().int().optional(),
+      source: z.enum(["user", "website", "invoice"]).optional(),
+      source_ref: z.string().optional(),
     },
     run: admin.updateCompanyProfile,
   },
   define_custom_field: {
-    agents: [DB],
+    agents: [DB, ONBOARD],
     description:
       "Add (or relabel) a company-specific field on customer/contact/product/package/document/payment. required_for: save | quotation.issue | invoice.issue makes it mandatory at that step. Type cannot change later.",
     input: {
@@ -461,7 +489,7 @@ export const TOOLS = {
     run: admin.defineCustomField,
   },
   set_workflow_rules: {
-    agents: [DB],
+    agents: [DB, ONBOARD],
     description: "Replace the readiness rules for issuing a document type. Read describe_schema first and send the full list back with your change.",
     input: {
       doc_type: z.enum(["quotation", "invoice", "credit_note"]),
@@ -473,7 +501,7 @@ export const TOOLS = {
     run: admin.setWorkflowRules,
   },
   set_numbering: {
-    agents: [DB],
+    agents: [DB, ONBOARD],
     description: "Change a numbering sequence (prefix, padding, yearly reset). next_number can only move forward.",
     input: {
       key: z.string().describe("quotation | invoice | credit_note | receipt | customer"),
@@ -485,7 +513,7 @@ export const TOOLS = {
     run: admin.setNumbering,
   },
   save_tax_code: {
-    agents: [DB],
+    agents: [DB, ONBOARD],
     description: "Add or change a tax code (e.g. when SST rates change).",
     input: {
       code: z.string(),
