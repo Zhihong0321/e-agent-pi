@@ -1363,10 +1363,11 @@ export default function SettingsPage() {
 
               <h2>Jina web search</h2>
               <p>
-                Lets agents search the web by keyword through the <code>web-search</code> skill. Add up to {JINA_SLOTS}{" "}
+                Gives agents a <code>web_search</code> tool (keyword in, ranked results out). Add up to {JINA_SLOTS}{" "}
                 Jina API tokens: searches rotate through them round-robin, and a token that is rate-limited or out of
-                quota is skipped for a while. Agents never see the tokens. Attach the skill to an agent under Agents.
-                Leave a slot blank to keep it. Do not paste tokens in chat.
+                quota is skipped for a while. Agents never see the tokens. To give an agent the tool, tick the{" "}
+                <code>Web Search</code> MCP server on that agent under Agents. Leave a slot blank to keep it. Do not
+                paste tokens in chat.
               </p>
               {Array.from({ length: JINA_SLOTS }, (_, index) => {
                 const slot = index + 1;

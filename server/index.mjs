@@ -130,6 +130,7 @@ import { ensureScraplingForWebsite, scraplingPublic, SCRAPLING_MCP_SLUG, SCRAPLI
 import { ensureSalesMcp } from "./sales-mcp.mjs";
 import { ensureGoogleAdsMcp } from "./google-ads-mcp.mjs";
 import { ensureOmMcp } from "./om-mcp.mjs";
+import { ensureWebSearchMcp } from "./web-search-mcp.mjs";
 import { ensureComposioMcp } from "./composio.mjs";
 import * as catalogApi from "./catalog.mjs";
 import { getPool } from "./db.mjs";
@@ -1741,6 +1742,16 @@ async function bootServices() {
     }
   } catch (error) {
     logEvent("error", `om-data mcp failed: ${sanitizeError(error)}`);
+  }
+
+  boot.step = "web-search-mcp";
+  try {
+    if (dbReady()) {
+      await ensureWebSearchMcp();
+      logEvent("info", "web-search mcp registered (attach it to agents in Settings)");
+    }
+  } catch (error) {
+    logEvent("error", `web-search mcp failed: ${sanitizeError(error)}`);
   }
 
   boot.step = "composio-mcp";

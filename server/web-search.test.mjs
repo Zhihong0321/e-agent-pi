@@ -140,12 +140,12 @@ test("only the per-boot search token is accepted by the internal endpoint", () =
   assert.equal(searchAuthorized(req("")), false);
 });
 
-test("agents get the search command only once a Jina token exists, and never the token", async () => {
+test("agents get the search endpoint only once a Jina token exists, and never the token", async () => {
   const before = agentEnv({ slug: "website" }, {}, { PORT: "8080", PATH: "/bin" });
-  assert.equal(before.CLOUD_PI_SEARCH, undefined);
+  assert.equal(before.CLOUD_PI_SEARCH_URL, undefined);
+  assert.equal(before.CLOUD_PI_SEARCH_TOKEN, undefined);
   await rememberSecret("jina_api_key_1", "jina_secret_value");
   const after = agentEnv({ slug: "website" }, {}, { PORT: "8080", PATH: "/bin" });
-  assert.match(after.CLOUD_PI_SEARCH, /web-search-cli\.mjs$/);
   assert.equal(after.CLOUD_PI_SEARCH_URL, "http://127.0.0.1:8080");
   assert.equal(after.CLOUD_PI_SEARCH_TOKEN, SEARCH_TOKEN);
   assert.equal(JSON.stringify(after).includes("jina_secret_value"), false);
