@@ -19,6 +19,7 @@ import {
   isTnbAgent,
 } from "./paths.mjs";
 import { secret } from "./secrets.mjs";
+import { diAgentEnv } from "../document_inteligence/host.mjs";
 
 const ALLOW_EXACT = new Set([
   "PATH",
@@ -136,6 +137,9 @@ export function agentEnv(agent, extra = {}, from = process.env) {
     const token = secret("om_api_token");
     if (token) env.OM_API_TOKEN = token;
   }
+
+  // Document Intelligence micro-agents: per-agent token for /api/internal/di.
+  Object.assign(env, diAgentEnv(agent, from.PORT || process.env.PORT || "8080"));
 
   for (const [key, value] of Object.entries(extra)) {
     if (value == null || value === "") continue;

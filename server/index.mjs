@@ -129,6 +129,14 @@ import { ensureSalesMcp } from "./sales-mcp.mjs";
 import { ensureGoogleAdsMcp } from "./google-ads-mcp.mjs";
 import { ensureOmMcp } from "./om-mcp.mjs";
 import { ensureComposioMcp } from "./composio.mjs";
+import * as catalogApi from "./catalog.mjs";
+import { getPool } from "./db.mjs";
+import {
+  DI_AGENT_IDS,
+  ensureDocumentIntelligence,
+  handleDiRequest,
+  handlePublicForm,
+} from "../document_inteligence/host.mjs";
 import {
   ensureWhatsappMcp,
   startWhatsappSidecar,
@@ -325,6 +333,7 @@ function wantsAuth(pathname, method = "GET") {
   if (pathname === "/api/sites" || pathname.startsWith("/api/sites/")) return true;
   if (pathname === "/api/whatsapp" || pathname.startsWith("/api/whatsapp/")) return true;
   if (pathname === "/api/np/health") return false;
+  if (pathname === "/api/internal/di") return false;
   if (pathname === "/api/np" || pathname.startsWith("/api/np/")) return true;
   const mutating = method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
   if (!mutating) return false;
@@ -1689,7 +1698,7 @@ async function bootServices() {
   boot.step = "scrapling";
   try {
     if (dbReady()) {
-      const result = await ensureScraplingForWebsite({ exclude: [WHATSAPP_AGENT_ID] });
+      const result = await ensureScraplingForWebsite({ exclude: [WHATSAPP_AGENT_ID, ...DI_AGENT_IDS] });
       logEvent(
         "info",
         result.skipped
@@ -1746,6 +1755,19 @@ async function bootServices() {
     logEvent("error", `composio mcp failed: ${sanitizeError(error)}`);
   }
 
+  boot.step = "document-intelligence";
+  try {
+    if (dbReady()) {
+      const di = await ensureDocumentIntelligence({ pool: getPool(), catalog: catalogApi, logEvent });
+      logEvent(
+        "info",
+        `document-intelligence ready (migrations: ${di.applied.join(", ") || "none"}; role separation: ${di.roleSeparation})`,
+      );
+    }
+  } catch (error) {
+    logEvent("error", `document-intelligence failed: ${sanitizeError(error)}`);
+  }
+
   boot.step = "whatsapp-sidecar";
   try {
     await startWhatsappSidecar();
@@ -1761,7 +1783,7 @@ async function bootServices() {
   try {
     if (dbReady()) {
       await ensureSitesSchema();
-      const attached = await attachSkillToAllAgents("site-browser", { exclude: [WHATSAPP_AGENT_ID] });
+      const attached = await attachSkillToAllAgents("site-browser", { exclude: [WHATSAPP_AGENT_ID, ...DI_AGENT_IDS] });
       logEvent("info", `site-browser skill on ${attached.length} agents`);
     }
   } catch (error) {
@@ -1865,6 +1887,19 @@ const server = createServer(async (req, res) => {
   }
 
   try {
+    if (req.method === "POST" && pathname === "/api/internal/di") {
+      const body = JSON.parse((await readBody(req)) || "{}");
+      const outcome = await handleDiRequest(req, body, { workspace: agentWorkspace });
+      json(res, outcome.status, outcome.body);
+      return;
+    }
+
+    // Public form links (no login): the page and its submissions. Limits live in the handler.
+    if ((req.method === "GET" || req.method === "POST") && pathname.startsWith("/api/forms/")) {
+      await handlePublicForm(req, res, url, { workspace: agentWorkspace });
+      return;
+    }
+
     if (req.method === "GET" && pathname === "/api/auth/me") {
       json(res, 200, { ok: hasSession(req) });
       return;

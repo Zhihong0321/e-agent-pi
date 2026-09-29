@@ -149,6 +149,7 @@ export async function ensureCatalogSchema() {
   // normalizeToolProfile()/AGENT_SELECT's COALESCE resolve a null tool_profile to 'coding'.
   await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS tool_profile TEXT`);
   await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS thinking_level TEXT`);
+  await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS user_facing BOOLEAN NOT NULL DEFAULT FALSE`);
 }
 
 function mapAgent(row) {
@@ -169,6 +170,7 @@ function mapAgent(row) {
     liveUrl: row.liveUrl ?? row.live_url ?? null,
     toolProfile: normalizeToolProfile(row.toolProfile ?? row.tool_profile),
     thinkingLevel: normalizeThinkingLevel(row.thinkingLevel ?? row.thinking_level),
+    userFacing: Boolean(row.userFacing ?? row.user_facing),
     createdAt: row.createdAt ?? row.created_at,
     updatedAt: row.updatedAt ?? row.updated_at,
   };
@@ -179,6 +181,7 @@ const AGENT_SELECT = `id, slug, name, short, headline, description, color,
   role_prompt AS "rolePrompt", model_id AS "modelId",
   workspace_repo AS "workspaceRepo", workspace_branch AS "workspaceBranch", live_url AS "liveUrl",
   COALESCE(tool_profile, 'coding') AS "toolProfile", thinking_level AS "thinkingLevel",
+  COALESCE(user_facing, false) AS "userFacing",
   created_at AS "createdAt", updated_at AS "updatedAt"`;
 
 const SKILL_SELECT = `id, slug, name, description, source, source_url AS "sourceUrl",
@@ -293,8 +296,8 @@ export async function createAgent(input = {}) {
   const slug = slugify(input.slug || name);
   const engine = input.engine === "agy" ? "agy" : "pi";
   const result = await getPool().query(
-    `INSERT INTO agents (id, slug, name, short, headline, description, color, engine, role_prompt, model_id, workspace_repo, workspace_branch, live_url, tool_profile, thinking_level)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+    `INSERT INTO agents (id, slug, name, short, headline, description, color, engine, role_prompt, model_id, workspace_repo, workspace_branch, live_url, tool_profile, thinking_level, user_facing)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
      RETURNING ${AGENT_SELECT}`,
     [
       id,
@@ -312,6 +315,7 @@ export async function createAgent(input = {}) {
       input.liveUrl ? String(input.liveUrl).trim() : null,
       normalizeToolProfile(input.toolProfile ?? DEFAULT_TOOL_PROFILE),
       normalizeThinkingLevel(input.thinkingLevel),
+      Boolean(input.userFacing),
     ],
   );
   const agent = mapAgent(result.rows[0]);
@@ -360,6 +364,7 @@ export async function updateAgent(id, patch) {
     liveUrl: "live_url",
     toolProfile: "tool_profile",
     thinkingLevel: "thinking_level",
+    userFacing: "user_facing",
   };
   for (const [key, column] of Object.entries(map)) {
     if (patch[key] === undefined) continue;
@@ -368,6 +373,7 @@ export async function updateAgent(id, patch) {
     if (key === "short") value = normalizeShort(value);
     if (key === "toolProfile") value = normalizeToolProfile(value);
     if (key === "thinkingLevel") value = normalizeThinkingLevel(value);
+    if (key === "userFacing") value = Boolean(value);
     fields.push(`${column} = $${i++}`);
     values.push(value);
   }
@@ -740,10 +746,10 @@ export async function copyBundledSkills() {
   }
 }
 
-async function seedSystemAgent(row) {
+export async function seedSystemAgent(row) {
   await getPool().query(
-    `INSERT INTO agents (id, slug, name, short, headline, description, color, role_prompt, workspace_repo, workspace_branch, live_url, tool_profile, thinking_level)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    `INSERT INTO agents (id, slug, name, short, headline, description, color, role_prompt, workspace_repo, workspace_branch, live_url, tool_profile, thinking_level, user_facing)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
      ON CONFLICT (id) DO UPDATE SET
        slug = EXCLUDED.slug,
        name = EXCLUDED.name,
@@ -757,6 +763,7 @@ async function seedSystemAgent(row) {
        live_url = COALESCE(EXCLUDED.live_url, agents.live_url),
        tool_profile = EXCLUDED.tool_profile,
        thinking_level = EXCLUDED.thinking_level,
+       user_facing = EXCLUDED.user_facing,
        updated_at = NOW()`,
     [
       row.id,
@@ -772,6 +779,7 @@ async function seedSystemAgent(row) {
       row.liveUrl ?? null,
       normalizeToolProfile(row.toolProfile ?? DEFAULT_TOOL_PROFILE),
       normalizeThinkingLevel(row.thinkingLevel),
+      Boolean(row.userFacing),
     ],
   );
 }
@@ -1164,6 +1172,7 @@ export function publicAgent(agent, { includeRole = false } = {}) {
     liveUrl: agent.liveUrl ?? null,
     toolProfile: agent.toolProfile ?? "coding",
     thinkingLevel: agent.thinkingLevel ?? null,
+    userFacing: Boolean(agent.userFacing),
     rolePrompt: includeRole ? agent.rolePrompt : undefined,
     skillIds: agent.skillIds ?? agent.skills?.map((row) => row.id) ?? [],
     mcpIds: agent.mcpIds ?? agent.mcp?.map((row) => row.id) ?? [],

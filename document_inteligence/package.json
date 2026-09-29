@@ -1,0 +1,12 @@
+{
+  "name": "document-intelligence-dev",
+  "private": true,
+  "type": "module",
+  "description": "Dev-only deps for Document Intelligence tests. Runtime code uses the root package's pg/zod/MCP SDK.",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8"
+  }
+}
