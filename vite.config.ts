@@ -39,11 +39,11 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: "/index.html",
-        navigateFallbackDenylist: [/^\/api\//, /^\/test-agy/],
+        navigateFallbackDenylist: [/^\/api\//, /^\/test-agy/, /^\/db-viewer(?:\/|$)/],
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2,webmanifest}"],
         runtimeCaching: [
           {
-            urlPattern: ({ url }) => url.pathname.startsWith("/api/"),
+            urlPattern: ({ url }) => url.pathname.startsWith("/api/") || url.pathname.startsWith("/db-viewer/"),
             handler: "NetworkOnly",
           },
         ],
@@ -58,6 +58,7 @@ export default defineConfig({
       ignored: ["**/*.zip"],
     },
     proxy: {
+      "/db-viewer": "http://127.0.0.1:47831",
       "/api": {
         target: "http://127.0.0.1:47831",
         timeout: 3_600_000,
@@ -69,6 +70,7 @@ export default defineConfig({
     port: 47822,
     strictPort: true,
     proxy: {
+      "/db-viewer": "http://127.0.0.1:47831",
       "/api": {
         target: "http://127.0.0.1:47831",
         timeout: 3_600_000,
