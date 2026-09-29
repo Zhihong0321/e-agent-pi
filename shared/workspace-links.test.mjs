@@ -19,6 +19,13 @@ test("same-origin file URLs are not nested or reassigned by chat", () => {
   assert.equal(workspaceFileUrl("orchestrator", pdf.url), pdf.url);
 });
 
+test("bare server file paths from old invoice lookups become browser URLs", () => {
+  const raw = "file:///storage/workspaces/di-documents/documents/INV-2026-0001.pdf?agent=di-documents";
+  const expected = workspaceArtifact("di-documents", "documents/INV-2026-0001.pdf", "", base).url;
+  assert.equal(qualifyWorkspaceLinks("di-documents", raw, base), expected);
+  assert.equal(qualifyWorkspaceLinks("di-documents", `[Invoice](${raw})`, base), `[Invoice](${expected})`);
+});
+
 test("old relative specialist PDFs and images become owned links before relay", () => {
   const text = "[Invoice](documents/INV-2026-0001.pdf) ![Preview](previews/chart.png)";
   const result = qualifyWorkspaceLinks("di-documents", text, base);
@@ -27,7 +34,7 @@ test("old relative specialist PDFs and images become owned links before relay", 
 });
 
 test("public pages, external links, fragments and fenced examples stay unchanged", () => {
-  const text = "[Profile](/company-profile/) [Web](https://example.com/file.pdf) [Public](/forms/example.html) [Section](#intro)\n```md\n[Example](documents/test.pdf)\n```";
+  const text = "[Profile](/company-profile/) [Web](https://example.com/storage/workspaces/demo/file.pdf) https://example.com/storage/workspaces/demo/file.pdf [Public](/forms/example.html) [Section](#intro)\n```md\n[Example](documents/test.pdf)\n```";
   assert.equal(qualifyWorkspaceLinks("di-documents", text, base), text);
 });
 

@@ -207,6 +207,8 @@ test("document intelligence", async (t) => {
     assert.equal(pdfUrl.searchParams.get("agent"), "di-documents");
     assert.equal(pdfUrl.searchParams.get("path"), issued.pdf.path);
     assert.ok(rendered.some((abs) => abs.endsWith(path.join("di-documents", issued.pdf.path))));
+    const retrieved = await tpl("get_document", { ref: issued.document.number });
+    assert.equal(retrieved.pdf.url, issued.pdf.url, "retrieving from another agent preserves the PDF owner");
     const html = await readFile(rendered.at(-1), "utf8");
     assert.match(html, /Eternalgy Sdn Bhd/);
     assert.match(html, /10kWp rooftop package/);

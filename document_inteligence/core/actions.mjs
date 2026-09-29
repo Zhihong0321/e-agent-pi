@@ -41,6 +41,11 @@ export async function runTool(deps, { agent, tool, args = {} }) {
   const ctx = { tenantId: await deps.tenantId(), actor: deps.actor || "owner", agent, asRole: deps.asRole };
   let result = await withContext(deps.db, ctx, (tx) => spec.run(tx, parsed.data));
 
+  if (tool === "get_document" && result.document?.pdf_path) {
+    const rel = result.document.pdf_path;
+    result = { ...result, pdf: workspaceArtifact("di-documents", rel, rel.split("/").pop(), deps.publicUrl) };
+  }
+
   if (spec.pdf) {
     const raw = spec.pdf(result);
     const target = typeof raw === "string" ? { id: raw } : raw;
