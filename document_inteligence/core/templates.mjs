@@ -135,7 +135,48 @@ export function addressLines(addr) {
   return [addr.line1, addr.line2, addr.line3, cityLine, addr.state, addr.country].filter(Boolean);
 }
 
+/** A company or customer as templates see it: raw fields plus ready-made display lines. */
+export function partyView(p) {
+  const lines = addressLines(p.address);
+  return {
+    ...p,
+    address_lines: lines,
+    address_inline: lines.join(", "),
+    contact_line: [p.phone, p.email, p.website].filter(Boolean).join(" · "),
+    tax_line: [p.sst_no && `SST No. ${p.sst_no}`, p.tin && `TIN ${p.tin}`].filter(Boolean).join(" · "),
+  };
+}
+
 const TYPE_LABEL = { quotation: "Quotation", invoice: "Invoice", credit_note: "Credit Note" };
+
+const STATUS_LABEL = { partially_paid: "Part paid", void: "Void", cancelled: "Cancelled" };
+const STATUS_TONE = {
+  draft: "amber", issued: "blue", partially_paid: "amber", paid: "green", accepted: "green",
+  converted: "blue", void: "red", cancelled: "red", rejected: "red", expired: "red",
+};
+const titleCase = (s) => String(s || "").replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+
+/**
+ * What the summary band at the top of a document says: the one figure a reader
+ * wants first (amount due, paid in full, quotation total) and how to tone it.
+ */
+function summarise(doc, balance) {
+  const isInvoice = doc.doc_type === "invoice";
+  const owing = isInvoice && ["issued", "partially_paid"].includes(doc.status) && balance > 0.005;
+  const due = String(doc.due_date || "").slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  const overdue = owing && Boolean(due) && due < today;
+  let label = STATUS_LABEL[doc.status] || titleCase(doc.status);
+  let tone = STATUS_TONE[doc.status] || "grey";
+  if (overdue) [label, tone] = ["Overdue", "red"];
+  let summary = { label: "Total", amount: doc.total };
+  if (doc.doc_type === "quotation") summary = { label: "Quotation total", amount: doc.total };
+  else if (doc.doc_type === "credit_note") summary = { label: "Credit total", amount: doc.total };
+  else if (owing) summary = { label: "Amount due", amount: balance };
+  else if (isInvoice && doc.status === "paid") summary = { label: "Paid in full", amount: doc.total };
+  else if (isInvoice && doc.status === "draft") summary = { label: "Total (draft)", amount: doc.total };
+  return { label, tone, overdue, owing, summary };
+}
 
 /**
  * Everything a template can reference. Issued documents render from their frozen
@@ -154,6 +195,7 @@ export function buildContext({ doc, lines, customer, contact, tenant }) {
     taxes.set(key, t);
   }
   const balance = Number(doc.total) - Number(doc.amount_paid || 0);
+  const sum = summarise(doc, balance);
   return {
     doc: {
       type: doc.doc_type,
@@ -161,11 +203,19 @@ export function buildContext({ doc, lines, customer, contact, tenant }) {
       number: doc.number || "DRAFT",
       is_draft: doc.status === "draft",
       status: doc.status,
+      status_label: sum.label,
+      status_tone: sum.tone,
+      is_overdue: sum.overdue,
+      is_paid: doc.doc_type === "invoice" && doc.status === "paid",
+      watermark: doc.status === "draft" ? "DRAFT" : ["void", "cancelled"].includes(doc.status) ? "VOID" : "",
+      summary_label: sum.summary.label,
+      summary_amount: money(sum.summary.amount),
       issue_date: fmtDate(doc.issue_date),
       valid_until: fmtDate(doc.valid_until),
       due_date: fmtDate(doc.due_date),
       reference: doc.reference || "",
       notes: doc.notes || "",
+      remarks: [doc.notes, doc.terms].filter(Boolean).join("\n\n"),
       terms: doc.terms || "",
       currency: doc.currency || "MYR",
       subtotal: money(doc.subtotal),
@@ -178,8 +228,8 @@ export function buildContext({ doc, lines, customer, contact, tenant }) {
       einvoice_uuid: doc.einvoice_uuid || "",
       einvoice_qr_url: doc.einvoice_qr_url || "",
     },
-    company: { ...issuer, address_lines: addressLines(issuer.address) },
-    customer: { ...bill, address_lines: addressLines(bill.address) },
+    company: partyView(issuer),
+    customer: partyView(bill),
     lines: lines.map((l, idx) => ({
       no: idx + 1,
       description: l.description,
@@ -284,110 +334,208 @@ export function sampleContext(docType = "invoice") {
 
 // ---------------------------------------------------------------- default templates
 
+/** Bump when defaultTemplateHtml changes, so seedTenantTx can upgrade untouched seeded copies. */
+export const DEFAULT_TEMPLATE_REV = 3;
+
+// A printed document, not a web page: fixed A4 sheets that flow onto further pages when the
+// lines run long. Text is set in serif for the name and figures that matter, sans for the rest;
+// structure comes from rules and spacing rather than boxes.
+const TEMPLATE_CSS = `
+  @page {
+    size: A4;
+    margin: 18mm 17mm 16mm;
+    @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 7.5pt "Helvetica Neue", Arial, "Liberation Sans", sans-serif; color: #7b8593; }
+  }
+  * { box-sizing: border-box; }
+  :root { --navy: #0f2340; --gold: #9a7b3f; --ink: #1c2733; --grey: #5f6b7a; --faint: #8b94a1; --line: #d7dce3; --wash: #f5f6f8; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { margin: 0; color: var(--ink); font: 9pt/1.5 "Helvetica Neue", Arial, "Liberation Sans", sans-serif; font-variant-numeric: tabular-nums; }
+  .serif { font-family: Georgia, Cambria, "Times New Roman", "Liberation Serif", serif; }
+  .r { text-align: right; }
+  .grey { color: var(--grey); }
+  .cap { font-size: 6.8pt; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--faint); }
+
+  /* on screen, show the sheet as paper; in print the page itself is the sheet */
+  @media screen {
+    html { background: #7d8590; padding: 10mm 0; }
+    body { width: 210mm; min-height: 297mm; margin: 0 auto; padding: 18mm 17mm 24mm; background: #fff; box-shadow: 0 2px 16px rgba(0,0,0,.4); }
+    .pgfoot { margin-top: 14mm; }
+  }
+  @media print { .pgfoot { position: fixed; left: 0; right: 0; bottom: 0; } }
+  /* every printed page reserves the footer's space, so a long table can never run under it */
+  table.frame { width: 100%; border-collapse: collapse; }
+  table.frame > tbody > tr > td, table.frame > tfoot > tr > td { padding: 0; }
+  table.frame td.reserve { height: 15mm; }
+
+  /* masthead */
+  .mast { display: flex; justify-content: space-between; align-items: flex-end; gap: 18mm; padding-bottom: 4mm; }
+  .logo { max-height: 15mm; max-width: 55mm; object-fit: contain; display: block; margin-bottom: 2.5mm; }
+  .co { font-size: 15pt; font-weight: 700; letter-spacing: .02em; color: var(--navy); line-height: 1.2; }
+  .co-lines { margin-top: 1.5mm; font-size: 7.8pt; line-height: 1.55; color: var(--grey); }
+  .title { text-align: right; flex: none; }
+  .title .kind { font-size: 25pt; font-weight: 400; letter-spacing: .28em; text-transform: uppercase; color: var(--navy); line-height: 1; margin-right: -.28em; }
+  .title .no { margin-top: 3mm; font-size: 11pt; color: var(--ink); letter-spacing: .04em; }
+  .rule { height: 0; border-top: 1.4pt solid var(--navy); border-bottom: .5pt solid var(--gold); padding-top: 1pt; margin-bottom: 5mm; }
+
+  /* parties and particulars */
+  .info { display: flex; gap: 14mm; margin-bottom: 6mm; }
+  .info > .to { flex: 1.25; min-width: 0; }
+  .info > .facts { flex: 1; min-width: 0; }
+  .to .name { margin: 2mm 0 1mm; font-size: 12pt; font-weight: 700; color: var(--navy); line-height: 1.25; }
+  .to .lines { font-size: 8.3pt; line-height: 1.6; color: var(--grey); }
+  table.facts { width: 100%; border-collapse: collapse; margin-top: 1.5mm; }
+  table.facts td { padding: 1.1mm 0; border-bottom: .5pt solid var(--line); vertical-align: baseline; }
+  table.facts tr:first-child td { border-top: .5pt solid var(--line); }
+  table.facts td:first-child { color: var(--grey); font-size: 8pt; }
+  table.facts td:last-child { text-align: right; font-weight: 600; }
+  .st { font-weight: 700; letter-spacing: .12em; text-transform: uppercase; font-size: 7.6pt; }
+  .st.green { color: #1e6a45; } .st.red { color: #a12a22; } .st.amber { color: #8a5a08; } .st.blue { color: #1f4b8a; } .st.grey { color: var(--grey); }
+
+  /* line items */
+  table.lines { width: 100%; border-collapse: collapse; }
+  table.lines thead { display: table-header-group; }
+  table.lines th { padding: 2.6mm 2mm 2.4mm; font-size: 6.8pt; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--navy); text-align: left; border-top: 1.2pt solid var(--navy); border-bottom: .5pt solid var(--navy); }
+  table.lines th.r { text-align: right; }
+  table.lines td { padding: 2.4mm 2mm; border-bottom: .5pt solid var(--line); vertical-align: top; }
+  table.lines tr { break-inside: avoid; }
+  table.lines td.no { width: 8mm; color: var(--faint); font-size: 8pt; }
+  table.lines .desc { font-weight: 600; }
+  table.lines .detail { margin-top: .6mm; color: var(--grey); font-size: 8pt; line-height: 1.45; }
+  table.lines .disc { color: var(--gold); font-size: 8pt; }
+  table.lines td.num { white-space: nowrap; text-align: right; }
+  table.lines td.amt { font-weight: 700; }
+
+  /* totals */
+  .sum { display: flex; justify-content: space-between; gap: 14mm; margin-top: 4mm; break-inside: avoid; }
+  .sum .side { flex: 1; min-width: 0; }
+  table.totals { width: 82mm; flex: none; border-collapse: collapse; }
+  table.totals td { padding: 1.3mm 2mm; border-bottom: .5pt solid var(--line); }
+  table.totals td:last-child { text-align: right; white-space: nowrap; font-weight: 600; }
+  table.totals tr.tax td { color: var(--grey); font-size: 8pt; font-weight: 400; }
+  table.totals tr.due td { padding: 3.2mm 3mm; border: 0; background: var(--navy); color: #fff; }
+  table.totals tr.due td:first-child { font-size: 7.4pt; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
+  table.totals tr.due td:last-child { font-family: Georgia, Cambria, "Times New Roman", "Liberation Serif", serif; font-size: 13.5pt; font-weight: 700; }
+  table.totals tr.due + tr td { border: 0; }
+  .stamp { display: inline-block; margin-top: 4mm; padding: 1.2mm 5mm; border: 1.6pt solid #1e6a45; color: #1e6a45; font-size: 15pt; font-weight: 700; letter-spacing: .3em; text-transform: uppercase; transform: rotate(-7deg); opacity: .85; }
+
+  /* closing matter */
+  .notes { display: flex; gap: 14mm; margin-top: 6mm; break-inside: avoid; }
+  .notes > div { flex: 1; min-width: 0; padding-top: 2.5mm; border-top: .5pt solid var(--navy); }
+  .notes .body { margin-top: 1.5mm; font-size: 8.3pt; line-height: 1.6; color: var(--grey); white-space: pre-line; }
+  .sign { margin-top: 15mm; border-top: .5pt solid var(--ink); padding-top: 1.5mm; font-size: 7.6pt; color: var(--grey); }
+  .einv { margin-top: 3mm; font-size: 7pt; color: var(--faint); word-break: break-all; }
+
+  /* running footer (every printed page) and watermark */
+  .pgfoot { padding-top: 2mm; border-top: .5pt solid var(--line); font-size: 7.5pt; color: var(--faint); }
+  .pgfoot b { color: var(--grey); font-weight: 600; }
+  .wm { position: fixed; top: 105mm; left: 0; right: 0; text-align: center; font-family: Georgia, "Times New Roman", "Liberation Serif", serif; font-size: 110pt; letter-spacing: .12em; color: rgba(15, 35, 64, .055); transform: rotate(-32deg); pointer-events: none; z-index: -1; }
+`;
+
+/**
+ * The template every tenant is seeded with: an A4 corporate document (letterhead, rules,
+ * restrained navy and gold), multi-page safe, with a running footer and page numbers.
+ * Written in the logic-less template language above, so it can be edited like any other.
+ */
 export function defaultTemplateHtml(docType) {
   const isQuote = docType === "quotation";
+  const isCredit = docType === "credit_note";
+  const partyLabel = isQuote ? "Prepared for" : isCredit ? "Credited to" : "Billed to";
+  const numLabel = isQuote ? "Quotation no." : isCredit ? "Credit note no." : "Invoice no.";
+  const dateRows = isQuote
+    ? `<tr><td>Date of issue</td><td>{{doc.issue_date}}</td></tr>{{#if doc.valid_until}}<tr><td>Valid until</td><td>{{doc.valid_until}}</td></tr>{{/if}}`
+    : `<tr><td>Date of issue</td><td>{{doc.issue_date}}</td></tr>{{#if doc.due_date}}<tr><td>Payment due</td><td>{{doc.due_date}}</td></tr>{{/if}}`;
+  const lowerRight = isQuote
+    ? `<div><div class="cap">Acceptance</div><div class="body">By signing, the customer accepts this quotation and its terms.</div><div class="sign">Authorised signature, name, date &amp; company stamp</div></div>`
+    : `{{#if company.bank_details}}<div><div class="cap">Payment details</div><div class="body">{{company.bank_details}}{{#if doc.is_draft}}{{else}}
+Please quote {{doc.number}} as the payment reference.{{/if}}</div></div>{{/if}}`;
   return `<!doctype html>
 <html><head><meta charset="utf-8"><title>{{doc.type_label}} {{doc.number}}</title>
-<style>
-  @page { size: A4; margin: 16mm 14mm; }
-  * { box-sizing: border-box; }
-  body { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 10.5pt; color: #1f2933; margin: 0; }
-  .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #1f2933; padding-bottom: 10px; }
-  .co-name { font-size: 15pt; font-weight: 700; }
-  .muted { color: #616e7c; font-size: 9pt; line-height: 1.45; }
-  .title { text-align: right; }
-  .title h1 { margin: 0; font-size: 20pt; letter-spacing: 1px; text-transform: uppercase; }
-  .draft { color: #c0392b; font-weight: 700; }
-  .meta { display: flex; justify-content: space-between; margin: 16px 0; gap: 24px; }
-  .box h3 { margin: 0 0 4px; font-size: 8.5pt; text-transform: uppercase; color: #616e7c; letter-spacing: .5px; }
-  table.kv td { padding: 1px 0 1px 12px; font-size: 9.5pt; }
-  table.kv td:first-child { color: #616e7c; padding-left: 0; }
-  table.lines { width: 100%; border-collapse: collapse; margin-top: 6px; }
-  table.lines th { background: #f0f3f6; text-align: left; font-size: 8.5pt; text-transform: uppercase; padding: 6px; }
-  table.lines td { padding: 6px; border-bottom: 1px solid #e4e7eb; vertical-align: top; }
-  .r { text-align: right; }
-  .detail { color: #616e7c; font-size: 8.5pt; }
-  .totals { width: 45%; margin-left: auto; margin-top: 10px; border-collapse: collapse; }
-  .totals td { padding: 4px 6px; }
-  .totals .grand td { border-top: 2px solid #1f2933; font-weight: 700; font-size: 12pt; }
-  .foot { margin-top: 22px; display: flex; gap: 24px; }
-  .foot > div { flex: 1; }
-  .sign { margin-top: 40px; border-top: 1px solid #9aa5b1; width: 60%; padding-top: 4px; font-size: 9pt; color: #616e7c; }
-</style></head>
+<style>${TEMPLATE_CSS}</style></head>
 <body>
-  <div class="head">
+  {{#if doc.watermark}}<div class="wm">{{doc.watermark}}</div>{{/if}}
+  <table class="frame"><tfoot><tr><td class="reserve"></td></tr></tfoot><tbody><tr><td>
+
+  <div class="mast">
     <div>
-      {{#if company.logo_url}}<img src="{{company.logo_url}}" style="max-height:56px;margin-bottom:6px"><br>{{/if}}
-      <div class="co-name">{{company.legal_name}}</div>
-      <div class="muted">
+      {{#if company.logo_url}}<img class="logo" src="{{company.logo_url}}" alt="">{{/if}}
+      <div class="co serif">{{company.legal_name}}</div>
+      <div class="co-lines">
         {{#if company.reg_no}}Reg. No. {{company.reg_no}}<br>{{/if}}
-        {{#each company.address_lines}}{{this}}<br>{{/each}}
-        {{#if company.phone}}Tel {{company.phone}} {{/if}}{{#if company.email}}· {{company.email}}{{/if}}
-        {{#if company.sst_no}}<br>SST No. {{company.sst_no}}{{/if}}{{#if company.tin}} · TIN {{company.tin}}{{/if}}
+        {{#if company.address_inline}}{{company.address_inline}}<br>{{/if}}
+        {{#if company.contact_line}}{{company.contact_line}}<br>{{/if}}
+        {{#if company.tax_line}}{{company.tax_line}}{{/if}}
       </div>
     </div>
     <div class="title">
-      <h1>{{doc.type_label}}</h1>
-      <div>{{#if doc.is_draft}}<span class="draft">DRAFT — not issued</span>{{else}}<strong>{{doc.number}}</strong>{{/if}}</div>
+      <div class="kind serif">{{doc.type_label}}</div>
+      <div class="no">{{doc.number}}</div>
     </div>
   </div>
+  <div class="rule"></div>
 
-  <div class="meta">
-    <div class="box">
-      <h3>${isQuote ? "Prepared for" : "Bill to"}</h3>
-      <strong>{{customer.name}}</strong>
-      <div class="muted">
+  <div class="info">
+    <div class="to">
+      <div class="cap">${partyLabel}</div>
+      <div class="name serif">{{customer.name}}</div>
+      <div class="lines">
+        {{#if customer.legal_name}}{{customer.legal_name}}<br>{{/if}}
         {{#if customer.reg_no}}Reg. No. {{customer.reg_no}}<br>{{/if}}
-        {{#each customer.address_lines}}{{this}}<br>{{/each}}
-        {{#if customer.attention}}Attn: {{customer.attention}}<br>{{/if}}
-        {{#if customer.email}}{{customer.email}} {{/if}}{{#if customer.phone}}· {{customer.phone}}{{/if}}
-        {{#if customer.tin}}<br>TIN {{customer.tin}}{{/if}}
+        {{#if customer.address_inline}}{{customer.address_inline}}<br>{{/if}}
+        {{#if customer.attention}}Attention: {{customer.attention}}<br>{{/if}}
+        {{#if customer.contact_line}}{{customer.contact_line}}<br>{{/if}}
+        {{#if customer.tin}}TIN {{customer.tin}}{{/if}}
       </div>
     </div>
-    <table class="kv">
-      <tr><td>Date</td><td>{{doc.issue_date}}</td></tr>
-      ${isQuote ? "{{#if doc.valid_until}}<tr><td>Valid until</td><td>{{doc.valid_until}}</td></tr>{{/if}}" : "{{#if doc.due_date}}<tr><td>Due date</td><td>{{doc.due_date}}</td></tr>{{/if}}"}
-      {{#if doc.reference}}<tr><td>Reference</td><td>{{doc.reference}}</td></tr>{{/if}}
-      <tr><td>Currency</td><td>{{doc.currency}}</td></tr>
-    </table>
+    <div class="facts">
+      <div class="cap">Particulars</div>
+      <table class="facts">
+        <tr><td>${numLabel}</td><td>{{doc.number}}</td></tr>
+        ${dateRows}
+        {{#if doc.reference}}<tr><td>Your reference</td><td>{{doc.reference}}</td></tr>{{/if}}
+        <tr><td>Currency</td><td>{{doc.currency}}</td></tr>
+        <tr><td>Status</td><td><span class="st {{doc.status_tone}}">{{doc.status_label}}</span></td></tr>
+      </table>
+    </div>
   </div>
 
   <table class="lines">
-    <thead><tr><th>#</th><th>Description</th><th class="r">Qty</th><th class="r">Unit price</th><th class="r">Tax</th><th class="r">Amount</th></tr></thead>
+    <thead><tr><th>No.</th><th>Description</th><th class="r">Qty</th><th class="r">Unit price</th><th class="r">Tax</th><th class="r">Amount ({{doc.currency}})</th></tr></thead>
     <tbody>
       {{#each lines}}
       <tr>
-        <td>{{no}}</td>
-        <td>{{description}}{{#if detail}}<div class="detail">{{detail}}</div>{{/if}}{{#if discount}}<div class="detail">Discount -{{discount}}</div>{{/if}}</td>
-        <td class="r">{{quantity}} {{unit}}</td>
-        <td class="r">{{unit_price}}</td>
-        <td class="r">{{#if tax_rate}}{{tax_code}} {{tax_rate}}{{else}}-{{/if}}</td>
-        <td class="r">{{subtotal}}</td>
+        <td class="no">{{no}}</td>
+        <td><div class="desc">{{description}}</div>{{#if detail}}<div class="detail">{{detail}}</div>{{/if}}{{#if discount}}<div class="disc">Less discount {{discount}}</div>{{/if}}</td>
+        <td class="num">{{quantity}} {{unit}}</td>
+        <td class="num">{{unit_price}}</td>
+        <td class="num grey">{{#if tax_rate}}{{tax_code}} {{tax_rate}}{{else}}-{{/if}}</td>
+        <td class="num amt">{{subtotal}}</td>
       </tr>
       {{/each}}
     </tbody>
   </table>
 
-  <table class="totals">
-    <tr><td>Subtotal</td><td class="r">{{doc.gross}}</td></tr>
-    {{#if doc.discount_total}}<tr><td>Discount</td><td class="r">-{{doc.discount_total}}</td></tr>{{/if}}
-    {{#each tax_summary}}<tr><td>{{code}} @ {{rate}}% on {{taxable}}</td><td class="r">{{tax}}</td></tr>{{/each}}
-    <tr class="grand"><td>Total ({{doc.currency}})</td><td class="r">{{doc.total}}</td></tr>
-    ${isQuote ? "" : "{{#if doc.amount_paid}}<tr><td>Paid</td><td class=\"r\">-{{doc.amount_paid}}</td></tr><tr><td><strong>Balance due</strong></td><td class=\"r\"><strong>{{doc.balance}}</strong></td></tr>{{/if}}"}
-  </table>
-
-  <div class="foot">
-    <div>
-      {{#if doc.notes}}<div class="box"><h3>Notes</h3><div class="muted">{{doc.notes}}</div></div>{{/if}}
-      {{#if doc.terms}}<div class="box" style="margin-top:8px"><h3>Terms</h3><div class="muted">{{doc.terms}}</div></div>{{/if}}
-    </div>
-    <div>
-      ${
-        isQuote
-          ? '<div class="box"><h3>Acceptance</h3><div class="sign">Authorised signature, name &amp; company stamp</div></div>'
-          : '{{#if company.bank_details}}<div class="box"><h3>Payment details</h3><div class="muted">{{company.bank_details}}</div></div>{{/if}}{{#if doc.einvoice_uuid}}<div class="muted" style="margin-top:8px">e-Invoice UUID {{doc.einvoice_uuid}}</div>{{/if}}'
-      }
-    </div>
+  <div class="sum">
+    <div class="side">{{#if doc.is_paid}}<span class="stamp serif">Paid</span>{{/if}}</div>
+    <table class="totals">
+      <tr><td>Subtotal</td><td>{{doc.gross}}</td></tr>
+      {{#if doc.discount_total}}<tr><td>Discount</td><td>-{{doc.discount_total}}</td></tr>{{/if}}
+      {{#each tax_summary}}<tr class="tax"><td>{{code}} {{rate}}% on {{taxable}}</td><td>{{tax}}</td></tr>{{/each}}
+      {{#if doc.amount_paid}}<tr><td>Total</td><td>{{doc.total}}</td></tr><tr><td>Received to date</td><td>-{{doc.amount_paid}}</td></tr>{{/if}}
+      <tr class="due"><td>{{doc.summary_label}}</td><td>{{doc.currency}} {{doc.summary_amount}}</td></tr>
+    </table>
   </div>
+
+  <div class="notes">
+    {{#if doc.remarks}}<div>
+      <div class="cap">Notes &amp; terms</div>
+      <div class="body">{{doc.remarks}}</div>
+    </div>{{/if}}
+    ${lowerRight}
+  </div>
+  {{#if doc.einvoice_uuid}}<div class="einv">e-Invoice UUID {{doc.einvoice_uuid}}</div>{{/if}}
+
+  </td></tr></tbody></table>
+
+  <div class="pgfoot"><b>{{company.legal_name}}</b>{{#if company.reg_no}} · {{company.reg_no}}{{/if}}{{#if company.contact_line}} · {{company.contact_line}}{{/if}}${isQuote ? "" : '<br>This is a computer-generated document. No signature is required.'}</div>
 </body></html>`;
 }

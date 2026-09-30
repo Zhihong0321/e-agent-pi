@@ -4,7 +4,7 @@
 // never run DDL, so a tenant's customisation can't break the tables.
 import { DiError, defined, isUuid, requireRow, round2, setClause } from "./common.mjs";
 import { CHECKS, validateRules } from "./workflows.mjs";
-import { addressLines, checkTemplate, renderTemplate, sampleContext } from "./templates.mjs";
+import { addressLines, checkTemplate, partyView, renderTemplate, sampleContext } from "./templates.mjs";
 
 import { getCompanyProfile } from './company.mjs';
 export { getCompanyProfile, updateCompanyProfile } from './company.mjs';
@@ -251,7 +251,7 @@ export async function previewTemplateHtml(tx, { id, html, doc_type = "invoice" }
   const ctx = sampleContext(type);
   const company = (await getCompanyProfile(tx)).company;
   if (company?.name) {
-    ctx.company = { ...ctx.company, ...company, legal_name: company.legal_name || company.name, address_lines: addressLines(company.address) };
+    ctx.company = partyView({ ...ctx.company, ...company, legal_name: company.legal_name || company.name });
   }
   return { html: renderTemplate(src, ctx), unknown_fields: check.unknownFields, doc_type: type };
 }
