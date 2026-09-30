@@ -8,6 +8,7 @@ import * as catalog from "./catalog.mjs";
 import * as documents from "./documents.mjs";
 import * as admin from "./admin.mjs";
 import * as company from './company.mjs';
+import * as members from './members.mjs';
 import * as forms from "./forms.mjs";
 import { renderFormPage } from "./formpage.mjs";
 
@@ -109,6 +110,24 @@ export const TOOLS = {
   get_onboarding_status: {
     agents: ALL, description: "Live company profile, field definitions, missing minimum setup, invoice profile readiness and manual form link. Re-read after updates; never infer completion from chat history.",
     input: {}, run: company.getCompanyProfile,
+  },
+  list_company_members: {
+    agents: ALL, description: "Read the company's own people, their positions, departments and contact details. These are internal company members, not customer contacts. Use before assigning work or adding a person.",
+    input: {}, run: members.listCompanyMembers,
+  },
+  save_company_member: {
+    agents: [ONBOARD, DB], description: "Record or update one person who works for this company. Ask for name, position, department and a work email or phone when available; use id to update an existing member. Do not create a customer contact for company staff.",
+    input: {
+      id: z.string().uuid().optional(),
+      name: z.string().optional(),
+      position: z.string().optional(),
+      department: z.string().optional(),
+      email: z.string().optional(),
+      phone: z.string().optional(),
+      location: z.string().optional(),
+      notes: z.string().optional(),
+    },
+    run: members.saveCompanyMember,
   },
   update_onboarding_progress: {
     agents: [ONBOARD, DB, TPL], description: "Record a completed setup check after verifying it. Does not override computed profile readiness.",

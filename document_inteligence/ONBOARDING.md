@@ -11,6 +11,15 @@ Minimum setup requires company name, country, business type, business activity,
 currency and either email or phone. Extracted values need user confirmation.
 Edits increment a revision; stale manual/agent saves are rejected.
 
+After the business basics, the agent asks for key company people: name, position,
+department and a work email or phone. `004_company_members.sql` stores these in
+tenant-scoped `di.company_member`, separate from CRM customer contacts. The agent
+uses `list_company_members` before `save_company_member` to avoid duplicates;
+other DI agents can read the list for later work. Company people can be added
+later and are not a prerequisite for invoice profile readiness. The `/demo`
+onboarding flow has a separate contact-sharing step and keeps its sample entries
+in browser memory.
+
 The orchestrator receives current readiness every turn and can refresh it with
 `get_company_setup`. Operational DI dispatch is blocked until minimum setup is
 ready; onboarding, database and template specialists remain available. This gate

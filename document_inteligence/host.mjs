@@ -27,7 +27,7 @@ const AGENT_CARDS = {
   "di-onboarding": {
     color: "cyan", userFacing: true,
     headline: "Set up your company and start fresh",
-    description: "Completes the shared company profile, collects business and invoicing defaults, guides invoice-template setup and custom fields, and directs owners to the reset preview. Shares the manual Company Profile form with users.",
+    description: "Completes the shared company profile, records company people with their positions and departments, collects invoicing defaults, guides invoice-template setup and custom fields, and directs owners to the reset preview. Shares the manual Company Profile form with users.",
   },
   "di-records": {
     color: "teal",

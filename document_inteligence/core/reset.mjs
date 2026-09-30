@@ -5,7 +5,7 @@ import { seedTenantTx } from './seed.mjs';
 
 // Children precede parents. Names are constants, never request data.
 const DATA = ['form_submission','form_version','form','payment_allocation','payment',
-  'document_line','document','attachment','package_item','package','product','contact','customer'];
+  'document_line','document','attachment','package_item','package','product','contact','customer','company_member'];
 const CONFIG = ['template','workflow_def','tax_code'];
 const SNAPSHOT = [...DATA,...CONFIG,'document_sequence','company_profile','onboarding_progress','field_def','entity_def'];
 
