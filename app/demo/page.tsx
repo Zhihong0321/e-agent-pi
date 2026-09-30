@@ -172,31 +172,35 @@ const guideLines = [
 ];
 
 function OnboardingGuide() {
-  const [visible, setVisible] = useState<string[]>(["", "", ""]);
+  const [visible, setVisible] = useState({ line: 0, text: "" });
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setVisible(guideLines);
-      return;
-    }
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let line = 0;
     let letter = 0;
     let timer: number;
     const type = () => {
-      if (line >= guideLines.length) return;
-      const currentLine = line;
-      const currentLetter = ++letter;
-      setVisible((old) => old.map((text, index) => index === currentLine ? guideLines[currentLine].slice(0, currentLetter) : text));
-      if (currentLetter >= guideLines[currentLine].length) {
-        line++;
-        letter = 0;
-        timer = window.setTimeout(type, line < guideLines.length ? 380 : 0);
+      if (reducedMotion) {
+        setVisible({ line, text: guideLines[line] });
+        line = (line + 1) % guideLines.length;
+        timer = window.setTimeout(type, 3500);
+        return;
+      }
+      letter++;
+      setVisible({ line, text: guideLines[line].slice(0, letter) });
+      if (letter >= guideLines[line].length) {
+        timer = window.setTimeout(() => {
+          line = (line + 1) % guideLines.length;
+          setVisible({ line, text: "" });
+          letter = 0;
+          timer = window.setTimeout(type, 200);
+        }, 1800);
       } else timer = window.setTimeout(type, 34);
     };
-    timer = window.setTimeout(type, 300);
+    timer = window.setTimeout(type, reducedMotion ? 0 : 300);
     return () => window.clearTimeout(timer);
   }, []);
   return <div className="demo-guide" aria-label={guideLines.join(". ")}>
-    {guideLines.map((line, index) => <div className="demo-guide-line" key={line} aria-hidden="true"><span>{String(index + 1).padStart(2, "0")}</span><strong>{visible[index]}{visible[index] && visible[index].length < line.length && <i className="demo-guide-cursor"/>}</strong></div>)}
+    <div className="demo-guide-line" aria-hidden="true"><span>{String(visible.line + 1).padStart(2, "0")}</span><strong>{visible.text}{visible.text.length < guideLines[visible.line].length && <i className="demo-guide-cursor"/>}</strong></div>
   </div>;
 }
 
