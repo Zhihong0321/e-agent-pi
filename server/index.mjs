@@ -140,6 +140,8 @@ import { ensureOmMcp } from "./om-mcp.mjs";
 import { ensureWebSearchMcp } from "./web-search-mcp.mjs";
 import { ensureComposioMcp } from "./composio.mjs";
 import { ensureOrchestratorMcp } from "./orchestrator-mcp.mjs";
+import { ensureEeMailMcp } from "./ee-mail-mcp.mjs";
+import { handleEmailRequest } from "./ee-mail.mjs";
 import * as catalogApi from "./catalog.mjs";
 import { getPool } from "./db.mjs";
 import {
@@ -363,6 +365,7 @@ function wantsAuth(pathname, method = "GET") {
   if (pathname === "/api/np/health") return false;
   if (pathname === "/api/internal/orchestrator") return false;
   if (pathname === "/api/internal/di") return false;
+  if (pathname === "/api/internal/ee-mail") return false;
   if (pathname === "/api/internal/web-search") return false;
   if (pathname === "/api/np" || pathname.startsWith("/api/np/")) return true;
   const mutating = method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
@@ -1838,6 +1841,16 @@ async function bootServices() {
     logEvent("error", `document-intelligence failed: ${sanitizeError(error)}`);
   }
 
+  boot.step = "ee-mail-mcp";
+  try {
+    if (dbReady()) {
+      await ensureEeMailMcp();
+      logEvent("info", "ee-mail mcp registered and attached to di-documents");
+    }
+  } catch (error) {
+    logEvent("error", `ee-mail mcp failed: ${sanitizeError(error)}`);
+  }
+
   boot.step = "whatsapp-sidecar";
   try {
     await startWhatsappSidecar();
@@ -2048,6 +2061,13 @@ const server = createServer(async (req, res) => {
     if (req.method === "POST" && pathname === "/api/internal/di") {
       const body = JSON.parse((await readBody(req)) || "{}");
       const outcome = await handleDiRequest(req, body, { workspace: agentWorkspace });
+      json(res, outcome.status, outcome.body);
+      return;
+    }
+
+    if (req.method === "POST" && pathname === "/api/internal/ee-mail") {
+      const body = JSON.parse((await readBody(req)) || "{}");
+      const outcome = await handleEmailRequest(req, body);
       json(res, outcome.status, outcome.body);
       return;
     }

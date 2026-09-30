@@ -48,6 +48,9 @@ export const SOLAR_ROI_AGENT_ID = "solar-roi";
 export const OM_AGENT_ID = "om";
 export const COMPOSIO_AGENT_ID = "composio";
 export const ORCHESTRATOR_AGENT_ID = "orchestrator";
+export const EE_MAIL_AGENT_ID = "di-documents";
+export const EE_MAIL_MCP_SLUG = "ee-mail";
+export const EE_MAIL_MCP_SERVER = path.join(ROOT, "server", "ee-mail-mcp-server.mjs");
 export const APP_HELPER_AGENT_ID = "app-helper";
 /** Agent OS lives in the Solar_Calculator repo; its default branch is master, not main. */
 export const DEFAULT_APP_HELPER_REPO = "Zhihong0321/Solar_Calculator";

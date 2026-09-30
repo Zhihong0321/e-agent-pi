@@ -23,6 +23,12 @@ test("agentEnv grants orchestrator only the dispatch token, never specialist sec
   assert.ok(orch.ORCHESTRATOR_DISPATCH_TOKEN);
   const website = agentEnv({ id: "website", slug: "website" }, {}, from);
   assert.equal(website.ORCHESTRATOR_DISPATCH_TOKEN, undefined);
+  const docs = agentEnv({ id: "di-documents", slug: "di-documents" }, {}, from);
+  assert.equal(docs.DATABASE_URL, undefined);
+  assert.equal(docs.EE_MAIL_API_KEY, undefined);
+  assert.equal(docs.EE_MAIL_AGENT, "di-documents");
+  assert.equal(docs.EE_MAIL_URL, "http://127.0.0.1:8080");
+  assert.ok(docs.EE_MAIL_TOKEN);
 });
 
 test("agentEnv strips host secrets and does not grant PG_PROXY_TOKEN to website", () => {

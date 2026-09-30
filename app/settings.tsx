@@ -28,6 +28,8 @@ type Settings = {
   eeHtmlName: string;
   eeHtmlUrl: string;
   eeHtmlLastError: string;
+  eeMailBaseUrl: string;
+  eeMailApiKeySet: boolean;
   afaBaseUrl: string;
   afaPasskeySet: boolean;
   tnbEmail: string;
@@ -239,6 +241,8 @@ export default function SettingsPage() {
     pgProxyToken: "",
     eeHtmlApiKey: "",
     eeHtmlBaseUrl: "",
+    eeMailApiKey: "",
+    eeMailBaseUrl: "",
     eeHtmlSlug: "e-agent-site",
     eeHtmlName: "Website Dev Agent",
     settingsPassword: "",
@@ -323,6 +327,7 @@ export default function SettingsPage() {
       githubRepo: data.githubRepo,
       githubBranch: data.githubBranch,
       eeHtmlBaseUrl: data.eeHtmlBaseUrl,
+      eeMailBaseUrl: data.eeMailBaseUrl,
       eeHtmlSlug: data.eeHtmlSlug,
       eeHtmlName: data.eeHtmlName,
       afaBaseUrl: data.afaBaseUrl,
@@ -623,6 +628,8 @@ export default function SettingsPage() {
           pg_proxy_token: form.pgProxyToken,
           ee_html_api_key: form.eeHtmlApiKey,
           ee_html_base_url: form.eeHtmlBaseUrl,
+          ee_mail_api_key: form.eeMailApiKey,
+          ee_mail_base_url: form.eeMailBaseUrl,
           ee_html_slug: form.eeHtmlSlug,
           ee_html_name: form.eeHtmlName,
           settings_password: form.settingsPassword,
@@ -645,7 +652,7 @@ export default function SettingsPage() {
       });
       setSettings(data);
       setJinaTest(null);
-      setForm((prev) => ({ ...prev, jinaKeys: Array.from({ length: JINA_SLOTS }, () => ""), cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", opencodeGoApiKey: "", hiveAiApiKey: "", yerplanApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", settingsPassword: "", afaPasskey: "", tnbPassword: "", salesPgProxyToken: "", googleAdsClientSecret: "", googleAdsDeveloperToken: "", googleAdsRefreshToken: "", omApiToken: "", composioApiKey: "" }));
+      setForm((prev) => ({ ...prev, jinaKeys: Array.from({ length: JINA_SLOTS }, () => ""), cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", opencodeGoApiKey: "", hiveAiApiKey: "", yerplanApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", eeMailApiKey: "", settingsPassword: "", afaPasskey: "", tnbPassword: "", salesPgProxyToken: "", googleAdsClientSecret: "", googleAdsDeveloperToken: "", googleAdsRefreshToken: "", omApiToken: "", composioApiKey: "" }));
       if (data.proposal?.lastError) {
         setError(data.proposal.lastError);
         setSaved("Saved keys, but GitHub rejected the proposal push.");
@@ -1220,6 +1227,28 @@ export default function SettingsPage() {
               <button type="button" disabled={busy || publishing || !settings?.eeHtmlApiKeySet} onClick={() => void publishHost()}>
                 {publishing ? "Publishing…" : "Publish workspace now"}
               </button>
+
+              <h2>EE-Mail</h2>
+              <p>
+                Document Agent sends only after explicit confirmation through the host-proxied EE-Mail REST service. The public service documents <code>/send</code>; keep the base URL at its discovery path unless your deployment differs.
+              </p>
+              <label>
+                API key {settings?.eeMailApiKeySet ? <em>saved</em> : <em>optional / not documented</em>}
+                <input
+                  type="password"
+                  value={form.eeMailApiKey}
+                  onChange={(event) => setForm({ ...form, eeMailApiKey: event.target.value })}
+                  placeholder={settings?.eeMailApiKeySet ? "••••••••  (unchanged)" : "Optional Bearer token"}
+                />
+              </label>
+              <label>
+                Base URL
+                <input
+                  value={form.eeMailBaseUrl}
+                  onChange={(event) => setForm({ ...form, eeMailBaseUrl: event.target.value })}
+                  placeholder="https://ee-mail-production.up.railway.app/api"
+                />
+              </label>
 
               <h2>Postgres proxy</h2>
               <p>
