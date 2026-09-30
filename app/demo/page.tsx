@@ -19,7 +19,7 @@ const initialInvoices: Invoice[] = [
   { id: "i-2", number: "INV-2026-002", customer: "Meridian Labs", description: "Monthly consulting", amount: 1850, due: "2026-10-20", status: "Issued", created: "2026-09-24" },
 ];
 const initialOnboard: Message[] = [
-  { id: 1, role: "assistant", text: "Hi! I’ll help set up your business profile. Tell me your company name to begin, or upload a company document and I’ll keep it alongside this demo conversation." },
+  { id: 1, role: "assistant", text: "Share your company profile or website to begin." },
 ];
 const initialWork: Message[] = [
   { id: 1, role: "assistant", text: "Your workspace is ready. Try creating an invoice or adding a CRM contact. The invoice table on the right updates as you work." },
@@ -91,7 +91,7 @@ function recordProfile(profile: Profile, input: string): { profile: Profile; rec
   const billing = named(/(?:billing|invoice)\s+address\s*(?:is|:)?\s+(.+)/i);
   if (billing) { next.billingAddress = billing; return { profile: next, recorded: "Billing address" }; }
   if (email) { next.email = email; return { profile: next, recorded: "Business email" }; }
-  if (website && /website|site|url|https?:/i.test(value)) { next.website = website.startsWith("http") ? website : `https://${website}`; return { profile: next, recorded: "Website" }; }
+  if (website && (/website|site|url|https?:/i.test(value) || website === value)) { next.website = website.startsWith("http") ? website : `https://${website}`; return { profile: next, recorded: "Website" }; }
   if (registration) { next.registration = registration; return { profile: next, recorded: "Registration number" }; }
   if (currency && /currency|invoice|use|prefer/i.test(value)) { next.currency = currency.toUpperCase(); return { profile: next, recorded: "Currency" }; }
   const phone = named(/(?:phone|telephone|tel)\s*(?:is|:)?\s+([+\d][\d\s()-]{5,})/i);
@@ -165,6 +165,41 @@ function nextMemberQuestion(member: Omit<CompanyMember, "id">) {
   return null;
 }
 
+const guideLines = [
+  "Attach your company profile PDF",
+  "Tell me your company’s official website",
+  "I can quickly understand your company within minutes.",
+];
+
+function OnboardingGuide() {
+  const [visible, setVisible] = useState<string[]>(["", "", ""]);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setVisible(guideLines);
+      return;
+    }
+    let line = 0;
+    let letter = 0;
+    let timer: number;
+    const type = () => {
+      if (line >= guideLines.length) return;
+      const currentLine = line;
+      const currentLetter = ++letter;
+      setVisible((old) => old.map((text, index) => index === currentLine ? guideLines[currentLine].slice(0, currentLetter) : text));
+      if (currentLetter >= guideLines[currentLine].length) {
+        line++;
+        letter = 0;
+        timer = window.setTimeout(type, line < guideLines.length ? 380 : 0);
+      } else timer = window.setTimeout(type, 34);
+    };
+    timer = window.setTimeout(type, 300);
+    return () => window.clearTimeout(timer);
+  }, []);
+  return <div className="demo-guide" aria-label={guideLines.join(". ")}>
+    {guideLines.map((line, index) => <div className="demo-guide-line" key={line} aria-hidden="true"><span>{String(index + 1).padStart(2, "0")}</span><strong>{visible[index]}{visible[index] && visible[index].length < line.length && <i className="demo-guide-cursor"/>}</strong></div>)}
+  </div>;
+}
+
 function OnboardingPanel({ profile, setProfile, branches, setBranches, doneCount, essentialCount, onNavigate }: {
   profile: Profile;
   setProfile: React.Dispatch<React.SetStateAction<Profile>>;
@@ -174,14 +209,20 @@ function OnboardingPanel({ profile, setProfile, branches, setBranches, doneCount
   essentialCount: number;
   onNavigate: () => void;
 }) {
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const highlights = [
+    { label: "Company", value: profile.name },
+    { label: "Website", value: profile.website },
+    { label: "Headquarters", value: profile.headquarters },
+  ].filter((item) => item.value);
   return <aside className="demo-side">
-    <div className="demo-panel profile-panel">
-      <div className="demo-panel-kicker"><Icon name="grid" size={16}/> LIVE PROFILE</div>
-      <h2>What we’ve recorded</h2>
-      <p>Business details appear here as you chat. Edit any field directly.</p>
-      <div className="demo-profile-summary"><div><strong>{doneCount}</strong><span>details recorded</span></div><div><strong>{branches.filter(Boolean).length}</strong><span>branches</span></div><div><strong>{essentialCount}/8</strong><span>setup essentials</span></div></div>
-      <div className="demo-progress-head"><strong>Essential setup</strong><span>{Math.round(essentialCount / 8 * 100)}%</span></div>
-      <div className="demo-progress"><div style={{ width: `${essentialCount / 8 * 100}%` }}/></div>
+    <div className="demo-panel profile-panel demo-profile-overview">
+      <div className="demo-overview-head"><div><span className="demo-panel-kicker">YOUR PROFILE</span><h2>What I know so far</h2></div><span className="demo-overview-count">{doneCount} saved</span></div>
+      {highlights.length ? <dl className="demo-overview-list">{highlights.map((item) => <div key={item.label}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl> : <p className="demo-overview-empty">Your company details will appear here.</p>}
+      <button type="button" className="demo-text-button" onClick={() => setDetailsOpen(true)}>View or edit all details <Icon name="arrow" size={15}/></button>
+      <button type="button" className="demo-continue" onClick={onNavigate}>Continue to company people <Icon name="arrow" size={16}/></button>
+    </div>
+    {detailsOpen && <div className="demo-drawer-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailsOpen(false); }}><div className="demo-profile-drawer" role="dialog" aria-modal="true" aria-label="Company profile details"><div className="demo-drawer-head"><div><span className="demo-panel-kicker">COMPANY PROFILE</span><h2>All details</h2></div><button type="button" aria-label="Close profile details" onClick={() => setDetailsOpen(false)}><Icon name="close" size={20}/></button></div><p className="demo-drawer-intro">Edit what you know. You can fill in the rest later.</p><div className="demo-drawer-progress">{essentialCount} of 8 essentials saved · {branches.filter(Boolean).length} branches</div>
       {profileSections.map((section) => <div className="demo-profile-section" key={section.title}>
         <div className="demo-section-heading"><div><h3>{section.title}</h3><p>{section.description}</p></div><span>{section.fields.filter(({ key }) => String(profile[key]).trim()).length}/{section.fields.length}</span></div>
         <div className="demo-profile-grid">{section.fields.map(({ key, label, hint }) => <label className="demo-profile-field" key={key}>
@@ -190,8 +231,7 @@ function OnboardingPanel({ profile, setProfile, branches, setBranches, doneCount
         </label>)}</div>
         {section.title === "Locations" && <div className="demo-branches"><div className="demo-branches-heading"><div><strong>Branches & outlets</strong><span>Additional locations, if any</span></div><button type="button" onClick={() => setBranches((old) => [...old, ""])}><Icon name="plus" size={13}/> Add branch</button></div>{branches.map((branch, index) => <div className="demo-branch-row" key={index}><input aria-label={`Branch ${index + 1}`} placeholder={`Branch ${index + 1} address or name`} value={branch} onChange={(event) => setBranches((old) => old.map((item, itemIndex) => itemIndex === index ? event.target.value : item))}/><button type="button" aria-label={`Remove branch ${index + 1}`} onClick={() => setBranches((old) => old.filter((_, itemIndex) => itemIndex !== index))}><Icon name="close" size={14}/></button></div>)}</div>}
       </div>)}
-    </div>
-    <div className="demo-next-card"><span className="demo-next-icon"><Icon name="spark" size={20}/></span><div><strong>{essentialCount === 8 ? "Profile basics are in place" : "Next: company people"}</strong><p>{essentialCount === 8 ? "Now record who works at your company." : "You can finish the profile later. Add a key person next."}</p><button onClick={onNavigate}>Continue to company people <Icon name="arrow" size={15}/></button></div></div>
+    </div></div>}
   </aside>;
 }
 
@@ -259,7 +299,7 @@ export default function DemoPage() {
   const chatEnd = useRef<HTMLDivElement>(null);
   const messages = area === "onboarding" ? onboardMessages : area === "people" ? peopleMessages : workMessages;
   const setMessages = area === "onboarding" ? setOnboardMessages : area === "people" ? setPeopleMessages : setWorkMessages;
-  const doneCount = profileLabels.filter(({ key }) => String(profile[key]).trim()).length + branches.filter(Boolean).length;
+  const doneCount = profileLabels.filter(({ key }) => key !== "country" && key !== "currency" && String(profile[key]).trim()).length + branches.filter(Boolean).length;
   const essentialCount = [profile.name, profile.country, profile.businessType, profile.businessActivity, profile.email || profile.phone, profile.billingAddress, profile.currency, profile.taxStatus].filter(Boolean).length;
   const activeInvoice = invoices.find((invoice) => invoice.id === selectedInvoice);
   const filteredInvoices = invoices.filter((invoice) => (filter === "All records" || invoice.status === filter) && `${invoice.number} ${invoice.customer} ${invoice.description}`.toLowerCase().includes(search.toLowerCase()));
@@ -371,25 +411,24 @@ export default function DemoPage() {
   return <div className="di-demo">
     <aside className="demo-rail">
       <a className="demo-brand" href="/demo" aria-label="Document Intelligence demo home"><span className="demo-brand-mark"><Icon name="spark" size={22}/></span><span><strong>document<span>iq</span></strong><small>INTERACTIVE DEMO</small></span></a>
-      <div className="demo-rail-label">EXPLORE</div>
       <nav aria-label="Demo sections">
-        <button className={area === "onboarding" ? "active" : ""} onClick={() => setArea("onboarding")}><Icon name="chat"/><span>Onboarding</span><span className="demo-nav-count">01</span></button>
-        <button className={area === "people" ? "active" : ""} onClick={() => setArea("people")}><Icon name="users"/><span>Company people</span><span className="demo-nav-count">02</span></button>
-        <button className={area === "workspace" ? "active" : ""} onClick={() => setArea("workspace")}><Icon name="grid"/><span>Function demo</span><span className="demo-nav-count">03</span></button>
+        <button className={area === "onboarding" ? "active" : ""} onClick={() => setArea("onboarding")}><Icon name="chat"/><span>Onboarding</span></button>
+        <button className={area === "people" ? "active" : ""} onClick={() => setArea("people")}><Icon name="users"/><span>Company people</span></button>
+        <button className={area === "workspace" ? "active" : ""} onClick={() => setArea("workspace")}><Icon name="grid"/><span>Function demo</span></button>
       </nav>
-      <div className="demo-rail-bottom"><span className="demo-live-dot"/> Guided sandbox <p>Try the workflows with sample records. Changes reset when you refresh.</p></div>
     </aside>
 
     <main className="demo-main">
-      <header className="demo-topbar"><div className="demo-breadcrumb">Document Intelligence <span>/</span> <strong>{area === "onboarding" ? "Onboarding" : area === "people" ? "Company people" : "Function demo"}</strong></div><div className="demo-top-actions"><span className="demo-badge"><span/> DEMO ENVIRONMENT</span><a href="/" className="demo-exit">Back to app <Icon name="arrow" size={15}/></a></div></header>
+      <header className="demo-topbar"><span className="demo-breadcrumb">Interactive demo</span><a href="/" className="demo-exit">Back to app <Icon name="arrow" size={15}/></a></header>
       <div className="demo-content">
-        <div className="demo-heading"><div><div className="demo-eyebrow">{area === "onboarding" ? "STEP 01 · GETTING STARTED" : area === "people" ? "STEP 02 · KNOW YOUR TEAM" : "STEP 03 · EXPLORE CAPABILITIES"}</div><h1>{area === "onboarding" ? "Set up your workspace" : area === "people" ? "Meet your company people" : "Make work happen"}</h1><p>{area === "onboarding" ? "Tell the assistant about your business and watch your profile take shape." : area === "people" ? "Share a key contact, their position and department, so future work reaches the right person." : "Create records and see the invoice database update instantly."}</p></div>{area === "workspace" && <button className="demo-primary demo-heading-button" onClick={() => setModal("invoice")}><Icon name="plus" size={17}/> New invoice</button>}</div>
+        <div className="demo-heading"><h1>{area === "onboarding" ? "Let's get to know your company" : area === "people" ? "Who should I know?" : "Try it out"}</h1></div>
+        {area === "onboarding" && <OnboardingGuide/>}
         <div className="demo-layout">
           <section className="demo-chat-card" aria-label={`${area} chat`}>
-            <div className="demo-card-head"><div className="demo-agent-avatar"><Icon name="spark" size={21}/></div><div><strong>{area === "onboarding" ? "Onboarding assistant" : area === "people" ? "People assistant" : "Document assistant"}</strong><span><i/> Online · Guided demo</span></div><button className="demo-more" aria-label="About this demo" title="Guided demo with browser-held data" onClick={() => setNotice("This is a guided demo. Uploaded files are listed but their contents are not processed.")}>···</button></div>
-            <div className="demo-chat-scroll"><div className="demo-chat-date">TODAY</div>{messages.map((message) => <div className={`demo-message ${message.role}`} key={message.id}><div className="demo-message-avatar">{message.role === "assistant" ? <Icon name="spark" size={15}/> : "Y"}</div><div className="demo-message-body"><div className="demo-message-name">{message.role === "assistant" ? "Assistant" : "You"}</div><div className="demo-bubble">{message.text}{message.files?.map((file) => <div className="demo-message-file" key={file}><Icon name="file" size={15}/>{file}</div>)}</div></div></div>)}<div ref={chatEnd}/></div>
-            {area === "onboarding" ? <div className="demo-suggestions"><span>TRY SAYING</span><button onClick={() => sendMessage("My company is Acme Studio")}>My company is Acme Studio</button><button onClick={() => sendMessage("My email is hello@acme.example")}>Add business email</button></div> : area === "people" ? <div className="demo-suggestions"><span>TRY SAYING</span><button onClick={() => sendMessage("Name: Maya Tan; Position: Operations Manager; Department: Operations; Email: maya@acme.example")}>Share example contact</button><button onClick={() => sendMessage("Name: Daniel Lee")}>Start with a name</button></div> : <div className="demo-suggestions"><span>QUICK ACTIONS</span><button onClick={() => setModal("invoice")}><Icon name="file" size={14}/> New invoice</button><button onClick={() => setModal("customer")}><Icon name="users" size={14}/> Add CRM entry</button></div>}
-            <div className="demo-composer-wrap">{attachments.length > 0 && <div className="demo-attachments">{attachments.map((file, index) => <span key={`${file.name}-${index}`}><Icon name="file" size={14}/>{file.name}<button aria-label={`Remove ${file.name}`} onClick={() => setAttachments((old) => old.filter((_, i) => i !== index))}><Icon name="close" size={12}/></button></span>)}</div>}<form className="demo-composer" onSubmit={(event) => { event.preventDefault(); sendMessage(); }}><input ref={fileInput} type="file" accept="application/pdf,image/*" multiple hidden onChange={(event) => addFiles(event.target.files)}/><button type="button" className="demo-attach" onClick={() => fileInput.current?.click()} aria-label="Attach PDF or image" title="Attach PDF or image"><Icon name="upload" size={19}/></button><input aria-label="Message" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={area === "onboarding" ? "Tell me about your business..." : area === "people" ? "Share a person's details..." : "What would you like to create?"}/><button type="submit" className="demo-send" aria-label="Send message"><Icon name="send" size={17}/></button></form><div className="demo-composer-note">PDF and images accepted · Demo files stay in your browser</div></div>
+            <div className="demo-card-head"><div className="demo-agent-avatar"><Icon name="spark" size={19}/></div><strong>Assistant</strong><button className="demo-more" aria-label="About this demo" title="About this demo" onClick={() => setNotice("Guided demo: files stay in your browser and their contents are not processed. Changes reset when you refresh.")}>···</button></div>
+            <div className="demo-chat-scroll">{messages.map((message) => <div className={`demo-message ${message.role}`} key={message.id}><div className="demo-message-avatar">{message.role === "assistant" ? <Icon name="spark" size={15}/> : "Y"}</div><div className="demo-message-body"><div className="demo-bubble">{message.text}{message.files?.map((file) => <div className="demo-message-file" key={file}><Icon name="file" size={15}/>{file}</div>)}</div></div></div>)}<div ref={chatEnd}/></div>
+            {area === "workspace" && <div className="demo-suggestions"><button onClick={() => setModal("invoice")}><Icon name="file" size={14}/> New invoice</button><button onClick={() => setModal("customer")}><Icon name="users" size={14}/> Add CRM entry</button></div>}
+            <div className="demo-composer-wrap">{attachments.length > 0 && <div className="demo-attachments">{attachments.map((file, index) => <span key={`${file.name}-${index}`}><Icon name="file" size={14}/>{file.name}<button aria-label={`Remove ${file.name}`} onClick={() => setAttachments((old) => old.filter((_, i) => i !== index))}><Icon name="close" size={12}/></button></span>)}</div>}<form className="demo-composer" onSubmit={(event) => { event.preventDefault(); sendMessage(); }}><input ref={fileInput} type="file" accept="application/pdf,image/*" multiple hidden onChange={(event) => addFiles(event.target.files)}/><button type="button" className="demo-attach" onClick={() => fileInput.current?.click()} aria-label="Attach PDF or image" title="Attach PDF or image"><Icon name="upload" size={19}/></button><input aria-label="Message" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={area === "onboarding" ? "Website or company details..." : area === "people" ? "Share a person's details..." : "What would you like to create?"}/><button type="submit" className="demo-send" aria-label="Send message"><Icon name="send" size={17}/></button></form></div>
           </section>
 
           {area === "onboarding" ? <OnboardingPanel profile={profile} setProfile={setProfile} branches={branches} setBranches={setBranches} doneCount={doneCount} essentialCount={essentialCount} onNavigate={() => setArea("people")}/> : area === "people" ? <PeoplePanel members={companyMembers} draft={memberDraft} setDraft={setMemberDraft} onSave={saveCompanyMember} onNavigate={() => setArea("workspace")} onNotice={setNotice}/> : <aside className="demo-side"><div className="demo-panel database-panel"><div className="demo-db-top"><div><div className="demo-panel-kicker"><Icon name="database" size={16}/> DATABASE VIEWER</div><h2>Invoice table</h2><p>Live view of demo invoice records</p></div><button onClick={exportCsv} className="demo-icon-button" title="Export visible rows as CSV" aria-label="Export CSV"><Icon name="download" size={17}/></button></div><div className="demo-db-stat"><span className="demo-live-dot"/> di.document <span className="demo-db-total">{invoices.length} rows</span></div><div className="demo-db-tools"><label><Icon name="search" size={16}/><input aria-label="Search invoices" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search invoices..."/></label><select aria-label="Filter invoices" value={filter} onChange={(event) => setFilter(event.target.value)}><option>All records</option><option>Draft</option><option>Issued</option><option>Paid</option></select></div><div className="demo-table-wrap"><table><thead><tr><th>Invoice</th><th>Customer</th><th>Amount</th><th>Status</th></tr></thead><tbody>{filteredInvoices.map((invoice) => <tr key={invoice.id} className={selectedInvoice === invoice.id ? "selected" : ""} onClick={() => setSelectedInvoice(invoice.id)}><td><strong>{invoice.number}</strong><small>{invoice.created}</small></td><td>{invoice.customer}</td><td>{money(invoice.amount, profile.currency)}</td><td><span className={`demo-status ${invoice.status.toLowerCase()}`}>{invoice.status}</span></td></tr>)}</tbody></table>{filteredInvoices.length === 0 && <div className="demo-empty">No matching invoices.</div>}</div>{activeInvoice && <div className="demo-record-detail"><div><span>SELECTED RECORD</span><button onClick={() => setSelectedInvoice(null)} aria-label="Close invoice detail"><Icon name="close" size={14}/></button></div><strong>{activeInvoice.number}</strong><p>{activeInvoice.description}</p><dl><dt>Customer</dt><dd>{activeInvoice.customer}</dd><dt>Due date</dt><dd>{activeInvoice.due}</dd><dt>Total</dt><dd>{money(activeInvoice.amount, profile.currency)}</dd></dl>{activeInvoice.status === "Draft" && <button className="demo-issue" onClick={() => { setInvoices((old) => old.map((invoice) => invoice.id === activeInvoice.id ? { ...invoice, status: "Issued" } : invoice)); setNotice(`${activeInvoice.number} marked as issued`); }}>Mark as issued <Icon name="arrow" size={14}/></button>}</div>}</div><div className="demo-crm-strip"><div><Icon name="users" size={17}/><strong>CRM contacts</strong><span>{customers.length}</span></div><p>{customers.map((customer) => customer.name).join(" · ")}</p><button onClick={() => setModal("customer")}>Add a contact <Icon name="arrow" size={14}/></button></div><div className="demo-crm-strip"><div><Icon name="users" size={17}/><strong>Company people</strong><span>{companyMembers.length}</span></div><p>{companyMembers.length ? companyMembers.map((person) => `${person.name} · ${person.position} (${person.department})`).join(" · ") : "No company people shared yet"}</p><button onClick={() => setArea("people")}>View company people <Icon name="arrow" size={14}/></button></div></aside>}
