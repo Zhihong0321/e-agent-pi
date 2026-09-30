@@ -18,12 +18,13 @@ import {
   isSalesAgent,
   isTnbAgent,
   isOrchestratorAgent,
+  EE_MAIL_AGENT_IDS,
 } from "./paths.mjs";
 import { secret } from "./secrets.mjs";
 import { SEARCH_TOKEN, jinaKeys } from "./web-search.mjs";
 import { DISPATCH_TOKEN } from "./orchestrator.mjs";
 import { diAgentEnv } from "../document_inteligence/host.mjs";
-import { EE_MAIL_DISPATCH_TOKEN, EE_MAIL_AGENT_ID } from "./ee-mail.mjs";
+import { EE_MAIL_DISPATCH_TOKEN } from "./ee-mail.mjs";
 import { fileSharingEnv } from "./file-sharing.mjs";
 
 const ALLOW_EXACT = new Set([
@@ -160,8 +161,8 @@ export function agentEnv(agent, extra = {}, from = process.env) {
   // Document Intelligence micro-agents: per-agent token for /api/internal/di.
   Object.assign(env, diAgentEnv(agent, from.PORT || process.env.PORT || "8080"));
   const agentId = typeof agent === "string" ? agent : agent?.id || agent?.slug || "";
-  if (agentId === EE_MAIL_AGENT_ID) {
-    env.EE_MAIL_AGENT = EE_MAIL_AGENT_ID;
+  if (EE_MAIL_AGENT_IDS.includes(agentId)) {
+    env.EE_MAIL_AGENT = agentId;
     env.EE_MAIL_URL = `http://127.0.0.1:${from.PORT || process.env.PORT || "8080"}`;
     env.EE_MAIL_TOKEN = EE_MAIL_DISPATCH_TOKEN;
   }

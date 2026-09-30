@@ -5,7 +5,7 @@ import { agentEnv } from "./agent-env.mjs";
 import { contextPackSlug, mergeTurns, needsAutoContinue, turnMetrics } from "./context-pack.mjs";
 import { agentWorkspace, WORKSPACE, WORKSPACES_DIR } from "./paths.mjs";
 
-test("agentEnv grants orchestrator only the dispatch token, never specialist secrets", () => {
+test("agentEnv grants orchestrator dispatch and email proxy access, never provider secrets", () => {
   const from = {
     PATH: "/usr/bin",
     HOME: "/root",
@@ -14,6 +14,7 @@ test("agentEnv grants orchestrator only the dispatch token, never specialist sec
     DATABASE_URL: "postgres://studio",
     SALES_PG_PROXY_TOKEN: "sales-secret",
     GOOGLE_ADS_REFRESH_TOKEN: "ads-secret",
+    EE_MAIL_API_KEY: "email-provider-secret",
   };
   const orch = agentEnv({ id: "orchestrator", slug: "orchestrator" }, {}, from);
   assert.equal(orch.DATABASE_URL, undefined);
@@ -21,8 +22,14 @@ test("agentEnv grants orchestrator only the dispatch token, never specialist sec
   assert.equal(orch.GOOGLE_ADS_REFRESH_TOKEN, undefined);
   assert.equal(orch.ORCHESTRATOR_DISPATCH_URL, "http://127.0.0.1:8080");
   assert.ok(orch.ORCHESTRATOR_DISPATCH_TOKEN);
+  assert.equal(orch.EE_MAIL_API_KEY, undefined);
+  assert.equal(orch.EE_MAIL_AGENT, "orchestrator");
+  assert.equal(orch.EE_MAIL_URL, "http://127.0.0.1:8080");
+  assert.ok(orch.EE_MAIL_TOKEN);
   const website = agentEnv({ id: "website", slug: "website" }, {}, from);
   assert.equal(website.ORCHESTRATOR_DISPATCH_TOKEN, undefined);
+  assert.equal(website.EE_MAIL_TOKEN, undefined);
+  assert.equal(website.EE_MAIL_AGENT, undefined);
   const docs = agentEnv({ id: "di-documents", slug: "di-documents" }, {}, from);
   assert.equal(docs.DATABASE_URL, undefined);
   assert.equal(docs.EE_MAIL_API_KEY, undefined);

@@ -1,5 +1,6 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { secret } from "./secrets.mjs";
+import { EE_MAIL_AGENT_IDS } from "./paths.mjs";
 
 export const EE_MAIL_AGENT_ID = "di-documents";
 export const EE_MAIL_DEFAULT_BASE_URL = "https://ee-mail-production.up.railway.app/api";
@@ -77,7 +78,7 @@ export async function sendEmail(input, { fetchImpl = fetch, baseUrl = eeMailBase
 }
 
 function authorized(req, agent) {
-  if (agent !== EE_MAIL_AGENT_ID) return false;
+  if (!EE_MAIL_AGENT_IDS.includes(agent)) return false;
   const supplied = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
   if (!supplied) return false;
   const expected = Buffer.from(EE_MAIL_DISPATCH_TOKEN);

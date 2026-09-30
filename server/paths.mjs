@@ -49,6 +49,7 @@ export const OM_AGENT_ID = "om";
 export const COMPOSIO_AGENT_ID = "composio";
 export const ORCHESTRATOR_AGENT_ID = "orchestrator";
 export const EE_MAIL_AGENT_ID = "di-documents";
+export const EE_MAIL_AGENT_IDS = Object.freeze([EE_MAIL_AGENT_ID, ORCHESTRATOR_AGENT_ID]);
 export const EE_MAIL_MCP_SLUG = "ee-mail";
 export const EE_MAIL_MCP_SERVER = path.join(ROOT, "server", "ee-mail-mcp-server.mjs");
 export const APP_HELPER_AGENT_ID = "app-helper";

@@ -1837,7 +1837,7 @@ async function bootServices() {
   try {
     if (dbReady()) {
       await ensureEeMailMcp();
-      logEvent("info", "ee-mail mcp registered and attached to di-documents");
+      logEvent("info", "ee-mail mcp registered and attached to di-documents and orchestrator");
     }
   } catch (error) {
     logEvent("error", `ee-mail mcp failed: ${sanitizeError(error)}`);
