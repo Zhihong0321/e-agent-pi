@@ -92,7 +92,7 @@ server.registerTool(
   {
     title: "Create a plan",
     description:
-      "Persist an ordered plan of specialist tasks for this chat. Use one task for a simple read; several tasks with dependsOn for a pipeline.",
+      "Legacy manual planning only; does not automatically execute tasks. For new requests use submit_plan, which runs the complete pipeline without another user message.",
     inputSchema: {
       title: z.string().describe("Short plan title"),
       summary: z.string().optional().describe("Optional one-line intent"),
@@ -112,7 +112,7 @@ server.registerTool(
   "update_plan",
   {
     title: "Update a plan",
-    description: "Change plan title/status, cancel pending tasks, or append tasks.",
+    description: "Legacy manual plans only. New submitted jobs are immutable and advance automatically; do not edit or replace their tasks.",
     inputSchema: {
       planId: z.string().describe("Plan id from create_plan"),
       title: z.string().optional(),
@@ -136,7 +136,7 @@ server.registerTool(
   {
     title: "Dispatch a task",
     description:
-      "Run one pending task. Accepts taskId and background only, no prompt override. The specialist receives its planned prompt plus completed dependency results. Use synchronous calls for short work. If a call times out, check task_status once; do not redispatch or poll in a loop. background=true for long coding jobs.",
+      "Legacy manual execution only. For new requests use submit_plan instead: the host runs every dependency automatically without continue messages. Accepts taskId and optional background; no prompt override. Never use for submitted jobs.",
     inputSchema: {
       taskId: z.string().describe("Task id (t1, t2, …) from create_plan"),
       background: z.boolean().optional().describe("Return immediately and let the specialist run in the background"),

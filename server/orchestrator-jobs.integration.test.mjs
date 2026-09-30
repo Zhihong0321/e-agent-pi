@@ -149,5 +149,38 @@ test("submitted jobs execute and completed-job cleanup is selective and atomic",
       assert.equal((await jobs.taskStatus({ planId: recent.id })).status, "done");
       assert.equal((await jobs.completedJobCleanup({ before: "2026-09-30" })).plans, 0);
     });
+    await t.test("slow scrape completes and saves without a continue message or manual dispatch", async () => {
+      const beforeCalls = calls.length;
+      const beforeReports = (await pool.query("SELECT COUNT(*)::int n FROM messages WHERE session_id='parent'")).rows[0].n;
+      reply = async ({ agentId, message }) => {
+        if (agentId === "worker") {
+          // Longer than the MCP script's 30-second limit; the chat turn is gone.
+          await new Promise(resolve => setTimeout(resolve, 31000));
+          return { status: "done", summary: "Observed Eternalgy Sdn Bhd at https://eternalgy.me/about-solar-pv-epc-company" };
+        }
+        assert.match(message, /Observed Eternalgy Sdn Bhd/);
+        return { status: "done", summary: "Saved company legal name: Eternalgy Sdn Bhd" };
+      };
+      const plan = await jobs.submitPlan({
+        title: "visit eternalgy.me ( scrap my company info and fill in )",
+        tasks: [
+          { id: "scrape", agent: "worker", prompt: "Visit https://eternalgy.me and scrape company information" },
+          { id: "save", agent: "worker2", prompt: "Save the observed company information", dependsOn: ["scrape"] },
+        ],
+      });
+      await jobs.startJobRunner();
+      const deadline = Date.now() + 45000;
+      let reports;
+      do {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        reports = await pool.query("SELECT content FROM messages WHERE session_id='parent' ORDER BY id");
+      } while (reports.rows.length === beforeReports && Date.now() < deadline);
+      assert.equal((await jobs.taskStatus({ planId: plan.id })).status, "done");
+      assert.equal(calls.length - beforeCalls, 2);
+      assert.equal(reports.rows.length, beforeReports + 1);
+      assert.match(reports.rows.at(-1).content, /Saved company legal name: Eternalgy Sdn Bhd/);
+      await jobs.runJobTick();
+      assert.equal((await pool.query("SELECT COUNT(*)::int n FROM messages WHERE session_id='parent'")).rows[0].n, beforeReports + 1);
+    });
   } finally { mock.restoreAll(); await db.close(); }
 });

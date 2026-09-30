@@ -120,25 +120,34 @@ export function useStudio() {
   };
 
   useEffect(() => {
-    if (view !== "chat" || !sessionId || !pendingStream) return;
+    // Jobs outlive the initial reply. Keep their stored completion reports visible.
+    if (view !== "chat" || !sessionId || loading || (!pendingStream && selected.id !== "orchestrator")) return;
     let cancelled = false;
+    let fetching = false;
     const tick = async () => {
+      if (fetching) return;
+      fetching = true;
       try {
         const data = await api<{ messages: ChatMessage[] }>(
           `/api/messages?sessionId=${encodeURIComponent(sessionId)}`,
         );
-        if (!cancelled) setHistory(hydrateMessages(data.messages ?? []));
+        if (!cancelled) {
+          const next = hydrateMessages(data.messages ?? []);
+          setHistory(current => JSON.stringify(current) === JSON.stringify(next) ? current : next);
+        }
       } catch {
         /* keep last hydrated history */
+      } finally {
+        fetching = false;
       }
     };
     void tick();
-    const id = window.setInterval(() => void tick(), 1000);
+    const id = window.setInterval(() => void tick(), pendingStream ? 1000 : 5000);
     return () => {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [view, sessionId, pendingStream]);
+  }, [view, sessionId, pendingStream, loading, selected.id]);
 
   useEffect(() => {
     void (async () => {
