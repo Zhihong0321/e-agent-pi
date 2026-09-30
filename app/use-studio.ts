@@ -390,10 +390,10 @@ export function useStudio() {
     }
   };
 
-  const send = async (text = message, opts?: { resume?: boolean; sessionId?: string }) => {
+  const send = async (text = message, opts?: { resume?: boolean; sessionId?: string; files?: PendingFile[]; onSession?: (id: string) => void }) => {
     const resume = Boolean(opts?.resume);
     const trimmed = text.trim();
-    const files = resume ? [] : pendingFiles;
+    const files = resume ? [] : opts?.files ?? pendingFiles;
     if (!resume && ((!trimmed && !files.length) || loading)) return;
     if (resume && abortRef.current?.signal.aborted) return;
     if (!resume) {
@@ -425,6 +425,7 @@ export function useStudio() {
         return;
       }
     }
+    opts?.onSession?.(activeId);
     const ac =
       resume && abortRef.current && !abortRef.current.signal.aborted ? abortRef.current : new AbortController();
     if (!resume) {

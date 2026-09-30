@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { parseTranscript, readSse, type PendingFile } from "../studio";
+import { ChatCopy } from "../chat-markdown";
+import { type PendingFile } from "../studio";
+import { useStudio } from "../use-studio";
 import "./style.css";
 
 type Area = "onboarding" | "people" | "workspace";
 type Thread = "onboarding" | "workspace";
-type Message = { id: number; role: "assistant" | "user"; text: string; files?: string[]; pending?: boolean };
 type Company = Record<string, unknown>;
 type ProfileData = { company: Company; fields: { key: string; label: string; section: string }[]; readiness: { minimum_ready: boolean; missing: { label: string }[] } };
 type Member = { id: string; name: string; position: string | null; department: string | null; email: string | null; phone: string | null };
@@ -17,7 +18,7 @@ const guideLines = [
   "Tell me your company’s official website",
   "I can quickly understand your company within minutes.",
 ];
-const emptyMessages: Record<Thread, Message[]> = { onboarding: [], workspace: [] };
+const DEMO_SESSIONS_KEY = "di-demo-shared-sessions";
 
 async function json<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, { credentials: "same-origin", cache: "no-store", ...init });
@@ -94,23 +95,25 @@ function money(value: string | number, currency: string | null) {
 }
 
 export default function DemoPage() {
+  const studio = useStudio();
   const [area, setArea] = useState<Area>("onboarding");
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState("");
   const [live, setLive] = useState<LiveState | null>(null);
   const [dataError, setDataError] = useState("");
-  const [messages, setMessages] = useState(emptyMessages);
-  const [sessions, setSessions] = useState<Partial<Record<Thread, string>>>({});
+  const [sessions, setSessions] = useState<Partial<Record<Thread, string>>>(() => {
+    try { return JSON.parse(window.sessionStorage.getItem(DEMO_SESSIONS_KEY) || "{}"); }
+    catch { return {}; }
+  });
   const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<File[]>([]);
-  const [busy, setBusy] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
   const chatEnd = useRef<HTMLDivElement>(null);
+  const openedThread = useRef<Thread | null>(null);
   const thread: Thread = area === "workspace" ? "workspace" : "onboarding";
-  const currentMessages = messages[thread];
 
   async function refreshState() {
     try {
@@ -127,26 +130,27 @@ export default function DemoPage() {
   useEffect(() => {
     if (!authed) return;
     void refreshState();
-    try {
-      const saved = JSON.parse(window.sessionStorage.getItem("di-demo-live-sessions") || "{}") as Partial<Record<Thread, string>>;
-      setSessions(saved);
-      for (const key of ["onboarding", "workspace"] as const) {
-        if (!saved[key]) continue;
-        void json<{ messages: { id: number; role: "user" | "assistant"; content: string }[] }>(`/api/messages?sessionId=${encodeURIComponent(saved[key])}`).then((data) => {
-          setMessages((old) => ({ ...old, [key]: data.messages.map((item) => ({ id: item.id, role: item.role, text: item.role === "assistant" ? parseTranscript(item.content)?.text || item.content : item.content })) }));
-        }).catch(() => {});
-      }
-    } catch { /* A fresh session will be created on the next message. */ }
   }, [authed]);
-  useEffect(() => { chatEnd.current?.scrollIntoView({ block: "end" }); }, [currentMessages, area]);
+  useEffect(() => {
+    if (!authed || !studio.inboxReady || !studio.agents.length || openedThread.current === thread) return;
+    openedThread.current = thread;
+    const saved = sessions[thread];
+    if (saved && studio.sessions.some((session) => session.id === saved && session.agentId === "orchestrator")) studio.openSession(saved);
+    else {
+      studio.setSessionId("");
+      studio.setHistory([]);
+      studio.setView("chat");
+      studio.pickAgent("orchestrator");
+    }
+  }, [authed, thread, studio, sessions]);
+  useEffect(() => { chatEnd.current?.scrollIntoView({ block: "end" }); }, [studio.history, area]);
 
   async function unlock(event: FormEvent) {
     event.preventDefault();
     setAuthError("");
     try {
       await json("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) });
-      setPassword("");
-      setAuthed(true);
+      window.location.reload();
     } catch (error) { setAuthError(error instanceof Error ? error.message : "Could not unlock"); }
   }
 
@@ -160,54 +164,24 @@ export default function DemoPage() {
 
   async function sendMessage(text = draft) {
     const content = text.trim();
-    if (!authed || busy || (!content && !attachments.length)) return;
+    if (!authed || studio.loading || studio.selected.id !== "orchestrator" || openedThread.current !== thread || (!content && !attachments.length)) return;
     const key = thread;
     const chosenFiles = attachments;
-    const stamp = Date.now();
-    setBusy(true);
-    setDraft("");
-    setAttachments([]);
-    setMessages((old) => ({ ...old, [key]: [...old[key], { id: stamp, role: "user", text: content, files: chosenFiles.map((file) => file.name) }, { id: stamp + 1, role: "assistant", text: "", pending: true }] }));
-    const updateReply = (change: (message: Message) => Message) => setMessages((old) => ({ ...old, [key]: old[key].map((message) => message.id === stamp + 1 ? change(message) : message) }));
     try {
-      let sessionId = sessions[key];
-      if (!sessionId) {
-        const created = await json<{ session: { id: string } }>("/api/sessions", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ agentId: key === "workspace" ? "orchestrator" : "di-onboarding", engine: "pi" }),
-        });
-        sessionId = created.session.id;
-        const next = { ...sessions, [key]: sessionId };
-        setSessions(next);
-        window.sessionStorage.setItem("di-demo-live-sessions", JSON.stringify(next));
-      }
       const files = await Promise.all(chosenFiles.map(fileData));
-      const response = await fetch("/api/chat", {
-        method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-        body: JSON.stringify({ message: content, sessionId, agentId: key === "workspace" ? "orchestrator" : "di-onboarding", engine: "pi", attachments: files }),
-      });
-      if (!response.ok) {
-        const problem = await response.json().catch(() => ({})) as { error?: string };
-        throw new Error(problem.error || `Agent request failed (${response.status})`);
-      }
-      let done = false;
-      let streamed = "";
-      await readSse(response, (event) => {
-        if (event.type === "text" && event.delta) {
-          streamed += event.delta;
-          updateReply((message) => ({ ...message, text: streamed }));
-        }
-        if (event.type === "done") {
-          done = true;
-          updateReply((message) => ({ ...message, text: event.reply || streamed || "The agent finished without a written reply.", pending: false }));
-        }
-        if (event.type === "error" && event.error) updateReply((message) => ({ ...message, text: event.error || message.text, pending: false }));
-      });
-      if (!done) updateReply((message) => ({ ...message, text: message.text || "The connection ended before the agent replied.", pending: false }));
+      setDraft("");
+      setAttachments([]);
+      await studio.send(content, { files, onSession: (id) => {
+        setSessions((old) => {
+          const next = { ...old, [key]: id };
+          window.sessionStorage.setItem(DEMO_SESSIONS_KEY, JSON.stringify(next));
+          return next;
+        });
+      } });
       await refreshState();
     } catch (error) {
-      updateReply((message) => ({ ...message, text: error instanceof Error ? error.message : "Could not reach the agent.", pending: false }));
-    } finally { setBusy(false); }
+      setDataError(error instanceof Error ? error.message : "Could not prepare the attachment.");
+    }
   }
 
   const company = live?.profile.company;
@@ -220,9 +194,9 @@ export default function DemoPage() {
     <aside className="demo-rail">
       <a href="/demo" className="demo-brand"><span className="demo-brand-mark"><Icon name="spark" size={20}/></span><strong>documentiq</strong></a>
       <nav aria-label="Demo sections">
-        <button className={area === "onboarding" ? "active" : ""} onClick={() => setArea("onboarding")}><Icon name="chat"/> Onboarding</button>
-        <button className={area === "people" ? "active" : ""} onClick={() => setArea("people")}><Icon name="users"/> Company people</button>
-        <button className={area === "workspace" ? "active" : ""} onClick={() => setArea("workspace")}><Icon name="grid"/> Function demo</button>
+        <button className={area === "onboarding" ? "active" : ""} onClick={() => setArea("onboarding")} disabled={studio.loading}><Icon name="chat"/> Onboarding</button>
+        <button className={area === "people" ? "active" : ""} onClick={() => setArea("people")} disabled={studio.loading}><Icon name="users"/> Company people</button>
+        <button className={area === "workspace" ? "active" : ""} onClick={() => setArea("workspace")} disabled={studio.loading}><Icon name="grid"/> Function demo</button>
       </nav>
     </aside>
 
@@ -235,20 +209,29 @@ export default function DemoPage() {
           <div className="demo-live-note"><span className="demo-live-dot"/> Connected to real agents · Changes are saved to your company workspace</div>
           <div className="demo-layout">
             <section className="demo-chat-card" aria-label="Live agent chat">
-              <div className="demo-card-head"><span className="demo-agent-avatar"><Icon name="spark" size={17}/></span><strong>{thread === "workspace" ? "Work assistant" : "Company onboarding"}</strong><span className="demo-live-label">Live</span></div>
-              <div className="demo-chat-scroll">{!currentMessages.length && <p className="demo-chat-empty">{area === "onboarding" ? "Share your company profile PDF or website to begin." : area === "people" ? "Share a person’s name, position, department and work contact." : "Ask me to create an invoice or CRM record."}</p>}{currentMessages.map((message) => <div className={`demo-message ${message.role}`} key={message.id}><div className="demo-bubble">{message.text || (message.pending ? "Working…" : "")}{message.files?.map((file) => <div className="demo-message-file" key={file}>{file}</div>)}</div></div>)}<div ref={chatEnd}/></div>
-              <div className="demo-composer-wrap">{attachments.length > 0 && <div className="demo-attachments">{attachments.map((file, index) => <span key={`${file.name}-${index}`}>{file.name}<button type="button" aria-label={`Remove ${file.name}`} onClick={() => setAttachments((old) => old.filter((_, i) => i !== index))}><Icon name="close" size={12}/></button></span>)}</div>}<form className="demo-composer" onSubmit={(event) => { event.preventDefault(); void sendMessage(); }}><input ref={fileInput} type="file" accept="application/pdf,image/*" multiple hidden onChange={(event) => addFiles(event.target.files)}/><button type="button" className="demo-attach" aria-label="Attach PDF or image" onClick={() => fileInput.current?.click()} disabled={busy}><Icon name="upload" size={18}/></button><input aria-label="Message" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={area === "onboarding" ? "Website or company details…" : area === "people" ? "Share a person’s details…" : "What would you like to create?"} disabled={busy}/><button type="submit" className="demo-send" aria-label="Send message" disabled={busy}><Icon name="send" size={17}/></button></form></div>
+              <div className="demo-card-head"><span className="demo-agent-avatar"><Icon name="spark" size={17}/></span><strong>{studio.selected.name}</strong><button type="button" className="demo-new-chat" onClick={() => {
+                setSessions((old) => {
+                  const next = { ...old };
+                  delete next[thread];
+                  window.sessionStorage.setItem(DEMO_SESSIONS_KEY, JSON.stringify(next));
+                  return next;
+                });
+                studio.setSessionId(""); studio.setHistory([]); studio.pickAgent("orchestrator");
+              }} disabled={studio.loading || !studio.agents.length}>New chat</button><span className="demo-live-label">{studio.loading ? studio.liveStatus || "Working…" : "Live"}</span></div>
+              <div className="demo-chat-scroll">{!studio.history.length && <p className="demo-chat-empty">{area === "onboarding" ? "Share your company profile PDF or website to begin." : area === "people" ? "Share a person’s name, position, department and work contact." : "Ask me to create an invoice or CRM record."}</p>}{studio.history.map((message, index) => <div className={`demo-message ${message.role}`} key={message.id ?? index}><div className="demo-bubble"><ChatCopy text={message.content || (message.streaming ? studio.liveStatus || "Working…" : "")} agentId={studio.selected.id} streaming={message.streaming} onOpen={(src, alt) => studio.setMedia({ src, alt })}/>{message.role === "assistant" && message.blocks?.filter((block) => block.type === "tool" || block.type === "note").map((block, blockIndex) => <div className="demo-agent-activity" key={blockIndex}>{block.type === "tool" ? `${block.running ? "Running" : "Used"} ${block.name}` : block.text}{block.type === "tool" && block.shared_files?.map((file) => <a href={file.url} key={file.id} target="_blank" rel="noopener noreferrer">{file.name}</a>)}</div>)}</div></div>)}{studio.error && <p className="demo-error" role="alert">{studio.error}</p>}<div ref={chatEnd}/></div>
+              <div className="demo-composer-wrap">{attachments.length > 0 && <div className="demo-attachments">{attachments.map((file, index) => <span key={`${file.name}-${index}`}>{file.name}<button type="button" aria-label={`Remove ${file.name}`} onClick={() => setAttachments((old) => old.filter((_, i) => i !== index))}><Icon name="close" size={12}/></button></span>)}</div>}<form className="demo-composer" onSubmit={(event) => { event.preventDefault(); void sendMessage(); }}><input ref={fileInput} type="file" accept="application/pdf,image/*" multiple hidden onChange={(event) => addFiles(event.target.files)}/><button type="button" className="demo-attach" aria-label="Attach PDF or image" onClick={() => fileInput.current?.click()} disabled={studio.loading}><Icon name="upload" size={18}/></button><input aria-label="Message" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={area === "onboarding" ? "Website or company details…" : area === "people" ? "Share a person’s details…" : "What would you like to create?"} disabled={studio.loading}/><button type="submit" className="demo-send" aria-label="Send message" disabled={studio.loading || studio.selected.id !== "orchestrator"}><Icon name="send" size={17}/></button></form></div>
             </section>
             <aside className="demo-side">
               {dataError && <div className="demo-error" role="alert">{dataError}<button type="button" onClick={() => void refreshState()}>Retry</button></div>}
               {area === "onboarding" && <div className="demo-panel"><div className="demo-panel-head"><h2>Company profile</h2><button type="button" onClick={() => void refreshState()} aria-label="Refresh profile"><Icon name="refresh" size={16}/></button></div>{live ? <><div className="demo-record-list">{highlights.length ? highlights.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>) : <p>No company details saved yet.</p>}</div><button className="demo-link-button" onClick={() => setDetailsOpen(true)}>View all details <Icon name="arrow" size={14}/></button><button className="demo-link-button" onClick={() => setArea("people")}>Continue to company people <Icon name="arrow" size={14}/></button></> : <p>Loading live profile…</p>}</div>}
               {area === "people" && <div className="demo-panel"><div className="demo-panel-head"><h2>Company people</h2><button type="button" onClick={() => void refreshState()} aria-label="Refresh company people"><Icon name="refresh" size={16}/></button></div><div className="demo-record-list">{live?.members.length ? live.members.map((member) => <div key={member.id}><strong>{member.name}</strong><span>{[member.position, member.department].filter(Boolean).join(" · ")}</span><small>{member.email || member.phone}</small></div>) : <p>No company people saved yet. Share a contact in chat.</p>}</div><button className="demo-link-button" onClick={() => setArea("workspace")}>Continue to function demo <Icon name="arrow" size={14}/></button></div>}
-              {area === "workspace" && <><div className="demo-panel"><div className="demo-panel-head"><h2>Invoices</h2><button type="button" onClick={() => void refreshState()} aria-label="Refresh invoices"><Icon name="refresh" size={16}/></button></div><div className="demo-actions"><button onClick={() => void sendMessage("I want to create a new invoice. Please guide me through the real invoice workflow and ask for what you need.")} disabled={busy}>Create invoice</button><button onClick={() => void sendMessage("I want to add a new CRM customer. Please guide me through the real customer workflow.")} disabled={busy}>Add CRM entry</button></div><input className="demo-filter" aria-label="Search invoices" placeholder="Search invoices" value={filter} onChange={(event) => setFilter(event.target.value)}/><div className="demo-table-wrap"><table><thead><tr><th>Invoice</th><th>Customer</th><th>Total</th><th>Status</th></tr></thead><tbody>{invoices.map((invoice) => <tr key={invoice.id}><td>{invoice.number || "Draft"}</td><td>{invoice.customer || "—"}</td><td>{money(invoice.total, invoice.currency)}</td><td>{invoice.status}</td></tr>)}</tbody></table>{!invoices.length && <p>No invoices found in your live database.</p>}</div></div><div className="demo-panel"><div className="demo-panel-head"><h2>Recent CRM customers</h2><span>{live?.customers.length || 0}</span></div><div className="demo-record-list">{live?.customers.length ? live.customers.slice(0, 5).map((customer) => <div key={customer.id}><strong>{customer.name}</strong><span>{customer.email}</span></div>) : <p>No customers saved yet.</p>}</div></div></>}
+              {area === "workspace" && <><div className="demo-panel"><div className="demo-panel-head"><h2>Invoices</h2><button type="button" onClick={() => void refreshState()} aria-label="Refresh invoices"><Icon name="refresh" size={16}/></button></div><div className="demo-actions"><button onClick={() => void sendMessage("I want to create a new invoice. Please guide me through the real invoice workflow and ask for what you need.")} disabled={studio.loading || studio.selected.id !== "orchestrator"}>Create invoice</button><button onClick={() => void sendMessage("I want to add a new CRM customer. Please guide me through the real customer workflow.")} disabled={studio.loading || studio.selected.id !== "orchestrator"}>Add CRM entry</button></div><input className="demo-filter" aria-label="Search invoices" placeholder="Search invoices" value={filter} onChange={(event) => setFilter(event.target.value)}/><div className="demo-table-wrap"><table><thead><tr><th>Invoice</th><th>Customer</th><th>Total</th><th>Status</th></tr></thead><tbody>{invoices.map((invoice) => <tr key={invoice.id}><td>{invoice.number || "Draft"}</td><td>{invoice.customer || "—"}</td><td>{money(invoice.total, invoice.currency)}</td><td>{invoice.status}</td></tr>)}</tbody></table>{!invoices.length && <p>No invoices found in your live database.</p>}</div></div><div className="demo-panel"><div className="demo-panel-head"><h2>Recent CRM customers</h2><span>{live?.customers.length || 0}</span></div><div className="demo-record-list">{live?.customers.length ? live.customers.slice(0, 5).map((customer) => <div key={customer.id}><strong>{customer.name}</strong><span>{customer.email}</span></div>) : <p>No customers saved yet.</p>}</div></div></>}
             </aside>
           </div>
         </>}
       </div>
     </main>
     {detailsOpen && live && <div className="demo-drawer-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailsOpen(false); }}><div className="demo-drawer" role="dialog" aria-modal="true" aria-label="Company profile details"><div className="demo-panel-head"><h2>Company profile</h2><button type="button" aria-label="Close profile details" onClick={() => setDetailsOpen(false)}><Icon name="close" size={18}/></button></div><p>{live.profile.readiness.minimum_ready ? "Minimum setup complete" : `Still needed: ${live.profile.readiness.missing.map((item) => item.label).join(", ")}`}</p><div className="demo-record-list">{live.profile.fields.map((field) => <div key={field.key}><span>{field.label}</span><strong>{valueText(live.profile.company[field.key]) || "—"}</strong></div>)}</div><a href="/company-profile/" className="demo-primary">Edit company profile <Icon name="arrow" size={15}/></a></div></div>}
+    {studio.media && <div className="demo-media-viewer" role="dialog" aria-modal="true" aria-label={studio.media.alt || "Image preview"}><button type="button" aria-label="Close image preview" onClick={() => studio.setMedia(null)}><Icon name="close" size={18}/></button><img src={studio.media.src} alt={studio.media.alt || "Attached image"}/></div>}
   </div>;
 }
