@@ -192,7 +192,7 @@ export default function DemoPage() {
 
   return <div className="di-demo">
     <aside className="demo-rail">
-      <a href="/demo" className="demo-brand"><span className="demo-brand-mark"><Icon name="spark" size={20}/></span><strong>documentiq</strong></a>
+      <a href="/demo" className="demo-brand" aria-label="e — Eternalgy Sdn Bhd"><span className="demo-brand-mark"><img src="/branding/e-logo.png" alt=""/></span><span className="demo-brand-copy"><strong>e</strong><small>Eternalgy Sdn Bhd</small></span></a>
       <nav aria-label="Demo sections">
         <button className={area === "onboarding" ? "active" : ""} onClick={() => setArea("onboarding")} disabled={studio.loading}><Icon name="chat"/> Onboarding</button>
         <button className={area === "people" ? "active" : ""} onClick={() => setArea("people")} disabled={studio.loading}><Icon name="users"/> Company people</button>
@@ -209,7 +209,7 @@ export default function DemoPage() {
           <div className="demo-live-note"><span className="demo-live-dot"/> Connected to real agents · Changes are saved to your company workspace</div>
           <div className="demo-layout">
             <section className="demo-chat-card" aria-label="Live agent chat">
-              <div className={`demo-card-head${studio.loading ? " is-working" : ""}`}><div className="demo-agent-identity"><span className="demo-agent-avatar"><Icon name="spark" size={17}/></span><strong>{studio.selected.name}</strong></div><button type="button" className="demo-new-chat" onClick={() => {
+              <div className={`demo-card-head${studio.loading ? " is-working" : ""}`}><div className="demo-agent-identity"><span className="demo-agent-avatar"><img src="/branding/e-logo.png" alt=""/></span><strong>e</strong></div><button type="button" className="demo-new-chat" onClick={() => {
                 setSessions((old) => {
                   const next = { ...old };
                   delete next[thread];
