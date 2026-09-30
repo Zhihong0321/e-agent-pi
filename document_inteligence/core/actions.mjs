@@ -7,6 +7,7 @@ import { withContext } from "./db.mjs";
 import { DiError } from "./common.mjs";
 import { AGENTS, TOOLS, allowed } from "./tools.mjs";
 import { renderDocumentHtml, setPdfPath } from "./documents.mjs";
+import { publishFile, readSharedFile, sharedFileLocation } from "../../server/shared-files.mjs";
 
 function formatZod(error) {
   return error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; ");
@@ -23,6 +24,7 @@ const safeName = (s) => String(s).replace(/[^A-Za-z0-9._-]+/g, "_");
  *   workspace?: (agentId: string) => string,
  *   renderPdf?: (html: string, absPath: string) => Promise<void>,
  *   publicUrl?: string,   base for public form links (https://app.example.com)
+ *   filesRoot?: string,   persistent shared-files root
  * }} deps
  * @param {{ agent: string, tool: string, args?: any }} call
  */
@@ -40,6 +42,26 @@ export async function runTool(deps, { agent, tool, args = {} }) {
   const ctx = { tenantId: await deps.tenantId(), actor: deps.actor || "owner", agent, asRole: deps.asRole };
   let result = await withContext(deps.db, ctx, (tx) => spec.run(tx, parsed.data));
 
+  const sharing = (owner) => ({
+    root: deps.filesRoot || path.join(path.dirname(deps.workspace(owner)), "files"),
+    companyId: ctx.tenantId, workspace: deps.workspace(owner), publicUrl: deps.publicUrl,
+  });
+  const publish = (owner, source) => publishFile({ ...sharing(owner), source });
+
+  if (tool === "get_document" && result.document?.pdf_path && deps.workspace) {
+    const rel = result.document.pdf_path;
+    const stored = sharedFileLocation(rel);
+    const file = stored
+      ? (await readSharedFile({ ...sharing("di-documents"), ...stored })).file
+      : await publish("di-documents", rel);
+    if (!stored) {
+      const href = new URL(file.url, "http://local").pathname;
+      await withContext(deps.db, ctx, (tx) => setPdfPath(tx, result.document.id, href));
+      result.document.pdf_path = href;
+    }
+    result = { ...result, pdf: file, shared_files: [file] };
+  }
+
   if (spec.pdf) {
     const raw = spec.pdf(result);
     const target = typeof raw === "string" ? { id: raw } : raw;
@@ -50,10 +72,11 @@ export async function runTool(deps, { agent, tool, args = {} }) {
     const rel = `documents/${file}`;
     if (deps.renderPdf && deps.workspace) {
       await deps.renderPdf(html, path.join(deps.workspace(agent), rel));
+      const fileRef = await publish(agent, rel);
       if (doc.status !== "draft" && !target.template_id) {
-        await withContext(deps.db, ctx, (tx) => setPdfPath(tx, doc.id, rel));
+        await withContext(deps.db, ctx, (tx) => setPdfPath(tx, doc.id, new URL(fileRef.url, "http://local").pathname));
       }
-      result = { ...result, pdf: { path: rel, link: `[${file}](${rel})` } };
+      result = { ...result, pdf: fileRef, shared_files: [fileRef] };
     } else {
       result = { ...result, pdf: { skipped: "no PDF renderer on this host", html_chars: html.length } };
     }
@@ -61,12 +84,12 @@ export async function runTool(deps, { agent, tool, args = {} }) {
 
   if (spec.saveFile) {
     const { rest, path: rel, content } = spec.saveFile(result);
-    const file = rel.split("/").pop();
     if (deps.workspace) {
       const abs = path.join(deps.workspace(agent), rel);
       await mkdir(path.dirname(abs), { recursive: true });
       await writeFile(abs, content);
-      result = { ...rest, file: { path: rel, link: `[${file}](${rel})` } };
+      const fileRef = await publish(agent, rel);
+      result = { ...rest, file: fileRef, shared_files: [fileRef] };
     } else {
       result = { ...rest, file: { skipped: "no workspace on this host", chars: content.length } };
     }
@@ -81,7 +104,8 @@ export async function runTool(deps, { agent, tool, args = {} }) {
     const rel = `previews/${rest.doc_type}-preview-${Date.now()}.pdf`;
     if (deps.renderPdf && deps.workspace) {
       await deps.renderPdf(html, path.join(deps.workspace(agent), rel));
-      result = { ...rest, pdf: { path: rel, link: `[preview](${rel})` } };
+      const fileRef = await publish(agent, rel);
+      result = { ...rest, pdf: fileRef, shared_files: [fileRef] };
     } else {
       result = { ...rest, pdf: { skipped: "no PDF renderer on this host", html_chars: html.length } };
     }

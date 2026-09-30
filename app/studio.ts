@@ -62,10 +62,12 @@ export type HostStatus = {
   git?: { pushed?: boolean; sha?: string | null; lastError?: string | null };
 };
 
+export type SharedFile = { id: string; name: string; bytes?: number; url: string };
+
 export type TurnBlock =
   | { type: "thinking"; text: string }
   | { type: "text"; text: string }
-  | { type: "tool"; id: string; name: string; detail: string; result?: string; isError?: boolean; running?: boolean }
+  | { type: "tool"; id: string; name: string; detail: string; result?: string; isError?: boolean; running?: boolean; shared_files?: SharedFile[] }
   | { type: "note"; text: string };
 
 export type ChatMessage = {
@@ -105,6 +107,7 @@ export type StreamEvent = {
   status?: string;
   reply?: string;
   blocks?: TurnBlock[];
+  shared_files?: SharedFile[];
   host?: HostStatus;
   session?: ChatSession;
   sessionId?: string;
@@ -123,6 +126,7 @@ export type Agent = {
   engine?: "pi" | "agy" | string;
   liveUrl?: string | null;
   workspaceRepo?: string | null;
+  userFacing?: boolean;
   skills: { id: string; name: string; description: string }[];
   mcp: { id: string; name: string; description: string }[];
 };
@@ -131,16 +135,22 @@ export type PendingFile = { name: string; mime: string; data: string };
 export type SessionFlag = "ask" | "done" | "run" | "";
 
 export const FALLBACK_AGENT: Agent = {
-  id: "",
-  slug: "website",
-  name: "Website Dev Agent",
-  short: "W",
-  headline: "Builds and publishes your site",
-  description: "Edits the workspace and publishes to ee-html. Never touches git.",
-  color: "emerald",
+  id: "orchestrator",
+  slug: "orchestrator",
+  name: "Orchestrator",
+  short: "OR",
+  headline: "Plans and dispatches work to every specialist",
+  description: "The only user-facing agent. Lists specialists live and dispatches each task.",
+  color: "slate",
+  userFacing: true,
   skills: [],
   mcp: [],
 };
+
+export function userFacingAgents(agents: Agent[]) {
+  const facing = (agents || []).filter((agent) => agent.userFacing);
+  return facing.length ? facing : agents || [];
+}
 
 export function agentLiveUrl(agent?: Agent | null, host?: HostStatus | null) {
   if (agent?.liveUrl) return agent.liveUrl;
@@ -256,6 +266,7 @@ export function applyStreamEvent(blocks: TurnBlock[], event: StreamEvent): TurnB
       result: event.result,
       isError: event.isError,
       running: event.phase !== "end",
+      shared_files: event.shared_files,
     };
     if (index === -1) return [...blocks, next];
     const copy = [...blocks];
@@ -267,6 +278,7 @@ export function applyStreamEvent(blocks: TurnBlock[], event: StreamEvent): TurnB
         name: next.name || prev.name,
         detail: next.detail || prev.detail,
         result: next.result ?? prev.result,
+        shared_files: next.shared_files ?? prev.shared_files,
       };
     }
     return copy;

@@ -350,6 +350,7 @@ a:hover { color: var(--green-dark); }
 .avatar.teal { background: linear-gradient(145deg, #14b8a6, #0d7f74); }
 .avatar.green { background: linear-gradient(145deg, #25d366, #008069); }
 .avatar.yellow { background: linear-gradient(145deg, #fde047, #ca8a04); }
+.avatar.slate { background: linear-gradient(145deg, #64748b, #334155); }
 .avatar .online {
   position: absolute;
   right: -3px;
@@ -1882,6 +1883,55 @@ a.file-row { color: inherit; text-decoration: none; }
 .usage-hint { margin: 4px 18px 12px; color: var(--muted); font-size: 11px; line-height: 1.45; }
 .usage-hint a { color: var(--green); font-weight: 700; }
 
+.signin-links { display: flex; gap: 14px; align-items: center; }
+.signin-page .settings-card.signin-wide { max-width: 720px; }
+.signin-row { display: flex; justify-content: space-between; align-items: start; gap: 10px; }
+.signin-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--field);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+.signin-badge.on { background: var(--soft); color: var(--green-dark); }
+.signin-link-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 10px;
+  background: var(--field);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.signin-urlbar { display: flex; gap: 8px; }
+.signin-urlbar input { flex: 1; }
+.signin-frame-btn {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  background: #111;
+  line-height: 0;
+}
+.signin-frame {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #111;
+  cursor: crosshair;
+  display: block;
+  pointer-events: none;
+}
+.signin-live .catalog-actions { margin-top: 8px; }
+
 /* ---- Working presentation: 60% mask over the chat pane + floating live-transcript window ---- */
 .working-layer {
   position: absolute;
@@ -2326,3 +2376,4 @@ a.file-row { color: inherit; text-decoration: none; }
   .working-boot-scan { display: none; }
 }
 @keyframes bootFade { from { opacity: 0; } }
+.shared-file-attachments { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 12px; }

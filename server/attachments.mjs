@@ -1,11 +1,17 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { extractPdf } from "./pdf.mjs";
+import { DOCX_MIME, XLSX_MIME, documentKind, excerpt, extractDocument, legacyOfficeHint } from "./documents.mjs";
+import { renderPdfPages } from "./pdf.mjs";
 
 const MAX_FILES = 6;
 const MAX_BYTES = 8 * 1024 * 1024;
+// How much extracted text goes straight into the prompt. The rest stays in the .txt next to the
+// file, which the agent reads on demand; pasting a whole report into every turn is what costs.
+const INLINE_PER_FILE = 8000;
+const INLINE_TOTAL = 16000;
+const SCAN_PAGES_AS_IMAGES = 3;
 const IMAGE_MIME = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"]);
-const PDF_MIME = new Set(["application/pdf"]);
+const KIND_LABEL = { pdf: "PDF", docx: "Word", xlsx: "Excel" };
 
 function safeName(name) {
   const base = path.basename(String(name || "file")).replace(/[^A-Za-z0-9._-]+/g, "-").slice(0, 80);
@@ -21,6 +27,8 @@ function guessMime(name, mime) {
   if (ext === ".webp") return "image/webp";
   if (ext === ".gif") return "image/gif";
   if (ext === ".pdf") return "application/pdf";
+  if (ext === ".docx") return DOCX_MIME;
+  if (ext === ".xlsx") return XLSX_MIME;
   return "";
 }
 
@@ -33,6 +41,7 @@ function decodeData(data) {
 
 /**
  * Save chat attachments into workspace/_inbox and build a prompt prefix.
+ * Documents (PDF, Word, Excel) are read to text; a scanned PDF is shown to the model as page images.
  * @param {string} workspace
  * @param {unknown} raw
  */
@@ -52,6 +61,7 @@ export async function materializeAttachments(workspace, raw) {
   /** @type {{ type: "image"; data: string; mimeType: string }[]} */
   const images = [];
   const lines = ["The operator attached these files under `_inbox/` (gitignored). Read them before editing."];
+  let inlineLeft = INLINE_TOTAL;
 
   for (const [index, item] of list.entries()) {
     const name = safeName(item?.name || `file-${index + 1}`);
@@ -60,16 +70,16 @@ export async function materializeAttachments(workspace, raw) {
     if (!bytes.length) throw new Error(`Empty attachment: ${name}`);
     if (bytes.length > MAX_BYTES) throw new Error(`${name} is larger than 8 MB.`);
     const isImage = IMAGE_MIME.has(mime) || /^\.(png|jpe?g|webp|gif)$/i.test(path.extname(name));
-    const isPdf = PDF_MIME.has(mime) || path.extname(name).toLowerCase() === ".pdf";
-    if (!isImage && !isPdf) {
-      throw new Error(`Unsupported file type (${mime || path.extname(name) || "unknown"}). Use an image or PDF.`);
+    const kind = isImage ? null : documentKind(name, mime);
+    if (!isImage && !kind) {
+      throw new Error(legacyOfficeHint(name) || `Unsupported file type (${mime || path.extname(name) || "unknown"}). Use an image, PDF, Word (.docx) or Excel (.xlsx) file.`);
     }
 
     const stored = `${stamp}-${index + 1}-${name}`;
     const abs = path.join(inbox, stored);
     await writeFile(abs, bytes);
     const rel = `_inbox/${stored}`;
-    const entry = { name, rel, abs, mime, kind: isPdf ? "pdf" : "image", bytes: bytes.length };
+    const entry = { name, rel, abs, mime, kind: kind || "image", bytes: bytes.length };
     files.push(entry);
 
     if (isImage) {
@@ -79,20 +89,48 @@ export async function materializeAttachments(workspace, raw) {
         mimeType: mime === "image/jpg" ? "image/jpeg" : mime || "image/png",
       });
       lines.push(`- Image: ${rel} (${name})`);
-    } else {
-      const extract = await extractPdf(abs);
-      const txtRel = `${rel}.txt`;
-      if (extract.text) await writeFile(path.join(workspace, txtRel), extract.text, "utf8");
-      lines.push(`- PDF: ${rel} (${name})`);
-      if (extract.text) {
-        lines.push(`- Extract: ${txtRel} (${extract.tool || "text"})`);
-        lines.push("");
-        lines.push("```text");
-        lines.push(extract.text);
-        lines.push("```");
+      continue;
+    }
+
+    const label = KIND_LABEL[kind];
+    const extract = await extractDocument(abs, { kind });
+    lines.push(`- ${label}: ${rel} (${name})`);
+
+    if (extract.scanned) {
+      const shots = await renderPdfPages(abs, inbox, { first: 1, last: SCAN_PAGES_AS_IMAGES });
+      if (shots.ok) {
+        for (const shot of shots.files) {
+          const png = await readFile(shot.path);
+          images.push({ type: "image", data: png.toString("base64"), mimeType: "image/png" });
+        }
+        const last = shots.files[shots.files.length - 1].page;
+        const more = extract.pages > last ? ` Render more with node "$CLOUD_PI_PDF" render ${rel} --pages ${last + 1}-${Math.min(extract.pages, last + SCAN_PAGES_AS_IMAGES)}.` : "";
+        lines.push(`  Scanned PDF with no selectable text (${extract.pages} pages). Pages 1-${last} are attached as images.${more}`);
       } else {
-        lines.push(`- PDF extract failed: ${extract.error || "no text"}. Use node "$CLOUD_PI_PDF" extract ${rel}`);
+        lines.push(`  Scanned PDF with no selectable text (${extract.pages} pages) and it could not be rendered: ${shots.error}`);
       }
+      continue;
+    }
+    if (!extract.ok) {
+      lines.push(`  Could not read it: ${extract.error || "no text"}.`);
+      continue;
+    }
+
+    const txtRel = `${rel}.txt`;
+    await writeFile(path.join(workspace, txtRel), extract.text, "utf8");
+    const size = extract.pages ? `${extract.pages} pages, ` : "";
+    lines.push(`- Text: ${txtRel} (${size}${extract.text.length} chars, ${extract.tool})`);
+    if (extract.imagePages?.length) {
+      lines.push(`  Pages with no selectable text (pictures): ${extract.imagePages.join(", ")}. Render them with node "$CLOUD_PI_PDF" render ${rel} --pages N-M.`);
+    }
+    const shown = excerpt(extract.text, Math.min(INLINE_PER_FILE, inlineLeft));
+    inlineLeft -= shown.shown;
+    if (shown.shown > 0) {
+      lines.push("", "```text", shown.text, "```");
+    }
+    if (shown.truncated || shown.shown === 0) {
+      const more = kind === "pdf" ? ` or node "$CLOUD_PI_PDF" extract ${rel} --pages N-M` : "";
+      lines.push(`  Showing ${shown.shown} of ${shown.total} chars. Read the rest from ${txtRel} (read tool with offset)${more}.`);
     }
   }
 

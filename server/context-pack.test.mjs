@@ -5,6 +5,26 @@ import { agentEnv } from "./agent-env.mjs";
 import { contextPackSlug, mergeTurns, needsAutoContinue, turnMetrics } from "./context-pack.mjs";
 import { agentWorkspace, WORKSPACE, WORKSPACES_DIR } from "./paths.mjs";
 
+test("agentEnv grants orchestrator only the dispatch token, never specialist secrets", () => {
+  const from = {
+    PATH: "/usr/bin",
+    HOME: "/root",
+    USER: "root",
+    PORT: "8080",
+    DATABASE_URL: "postgres://studio",
+    SALES_PG_PROXY_TOKEN: "sales-secret",
+    GOOGLE_ADS_REFRESH_TOKEN: "ads-secret",
+  };
+  const orch = agentEnv({ id: "orchestrator", slug: "orchestrator" }, {}, from);
+  assert.equal(orch.DATABASE_URL, undefined);
+  assert.equal(orch.SALES_PG_PROXY_TOKEN, undefined);
+  assert.equal(orch.GOOGLE_ADS_REFRESH_TOKEN, undefined);
+  assert.equal(orch.ORCHESTRATOR_DISPATCH_URL, "http://127.0.0.1:8080");
+  assert.ok(orch.ORCHESTRATOR_DISPATCH_TOKEN);
+  const website = agentEnv({ id: "website", slug: "website" }, {}, from);
+  assert.equal(website.ORCHESTRATOR_DISPATCH_TOKEN, undefined);
+});
+
 test("agentEnv strips host secrets and does not grant PG_PROXY_TOKEN to website", () => {
   const from = {
     PATH: "/usr/bin",

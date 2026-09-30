@@ -119,7 +119,7 @@ async function loadContext(tx, doc) {
     ? (await tx.query("SELECT * FROM di.customer WHERE id = $1", [doc.customer_id])).rows[0]
     : null;
   const contact = doc.contact_id ? (await tx.query("SELECT * FROM di.contact WHERE id = $1", [doc.contact_id])).rows[0] : null;
-  const tenant = (await tx.query("SELECT * FROM di.tenant WHERE id = di.current_tenant()")).rows[0];
+  const tenant = (await tx.query("SELECT * FROM di.company_profile WHERE tenant_id = di.current_tenant()")).rows[0];
   const template = await pickTemplate(tx, doc.doc_type, doc.template_id);
   return { doc, lines, customer, contact, tenant, template };
 }
@@ -302,7 +302,7 @@ export async function prepareDocument(tx, { doc_type, customer, items = [], vali
       ? { due_date: due_date || addDays(today, customerRow?.payment_terms_days ?? 30) }
       : {}),
   };
-  const tenant = (await tx.query("SELECT * FROM di.tenant WHERE id = di.current_tenant()")).rows[0];
+  const tenant = (await tx.query("SELECT * FROM di.company_profile WHERE tenant_id = di.current_tenant()")).rows[0];
   const template = await pickTemplate(tx, doc_type, null);
   const readiness = evaluate(await rulesFor(tx, doc_type), {
     doc: { doc_type, valid_until, due_date, custom: {} },
@@ -373,16 +373,15 @@ export async function createDraft(tx, args = {}) {
       ])).rows[0]?.id ?? null;
   }
   const issueDate = header.issue_date || todayMY();
-  const dueDate =
-    header.due_date ||
-    (doc_type === "invoice" && customerRow?.payment_terms_days != null ? addDays(issueDate, customerRow.payment_terms_days) : null);
-  const tenant = (await tx.query("SELECT currency FROM di.tenant WHERE id = di.current_tenant()")).rows[0];
+  const tenant = (await tx.query("SELECT currency, payment_terms_days, payment_instructions FROM di.company_profile WHERE tenant_id = di.current_tenant()")).rows[0];
+  const paymentTerms = customerRow?.payment_terms_days ?? tenant?.payment_terms_days;
+  const dueDate = header.due_date || (doc_type === "invoice" && paymentTerms != null ? addDays(issueDate, paymentTerms) : null);
   const { rows } = await tx.query(
     `INSERT INTO di.document (doc_type, customer_id, contact_id, issue_date, valid_until, due_date, currency, reference, notes, terms, template_id, custom)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
     [
       doc_type, customerRow?.id ?? null, contactId, issueDate, header.valid_until ?? null, dueDate,
-      header.currency || tenant?.currency || "MYR", header.reference ?? null, header.notes ?? null, header.terms ?? null,
+      header.currency || tenant?.currency || "MYR", header.reference ?? null, header.notes ?? null, header.terms ?? tenant?.payment_instructions ?? null,
       header.template_id ?? null, JSON.stringify(custom ? await validateCustom(tx, "document", custom) : {}),
     ],
   );
@@ -516,14 +515,16 @@ export async function convertToInvoice(tx, { quotation, due_date }) {
     throw new DiError(`${quote.number} expired on ${isoDate(quote.valid_until)}. Mark it accepted first if the customer confirmed anyway.`);
   }
   const customer = quote.customer_id ? (await tx.query("SELECT payment_terms_days FROM di.customer WHERE id = $1", [quote.customer_id])).rows[0] : null;
+  const company = (await tx.query("SELECT payment_terms_days, payment_instructions FROM di.company_profile WHERE tenant_id=di.current_tenant()")).rows[0];
+  const paymentTerms = customer?.payment_terms_days ?? company?.payment_terms_days;
   const today = todayMY();
   const { rows } = await tx.query(
     `INSERT INTO di.document (doc_type, customer_id, contact_id, issue_date, due_date, currency, reference, notes, terms, source_document_id)
      VALUES ('invoice', $1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
     [
       quote.customer_id, quote.contact_id, today,
-      due_date || (customer?.payment_terms_days != null ? addDays(today, customer.payment_terms_days) : null),
-      quote.currency, quote.reference || quote.number, quote.notes, null, quote.id,
+      due_date || (paymentTerms != null ? addDays(today, paymentTerms) : null),
+      quote.currency, quote.reference || quote.number, quote.notes, company?.payment_instructions ?? null, quote.id,
     ],
   );
   const invoiceId = rows[0].id;

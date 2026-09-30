@@ -13,6 +13,7 @@ import { runTool, describeError } from "../core/actions.mjs";
 import { validateSubmission, checkFields } from "../core/forms.mjs";
 import { publicFormRoute } from "../host.mjs";
 import { allowed } from "../core/tools.mjs";
+import { readSharedFile, sharedFileLocation } from "../../server/shared-files.mjs";
 
 async function setup() {
   const db = pgliteAdapter(new PGlite());
@@ -118,8 +119,10 @@ test("forms", async (t) => {
     assert.equal(pub.published.version, 1);
     assert.equal(pub.public_url, "https://app.example.test/api/forms/solar-enquiry");
     const preview = await designer("preview_form", { form: "solar-enquiry" });
-    assert.match(preview.file.path, /previews\/form-solar-enquiry-v1\.html/);
-    const html = await readFile(path.join(workspace("di-forms"), preview.file.path), "utf8");
+    assert.equal(preview.file.name, "form-solar-enquiry-v1.html");
+    assert.ok(new URL(preview.file.url).pathname.startsWith("/files/"));
+    const stored = await readSharedFile({ root: path.join(path.dirname(workspace("di-forms")), "files"), companyId: tenantA, ...sharedFileLocation(preview.file.url) });
+    const html = await readFile(stored.full, "utf8");
     assert.match(html, /Submitting is disabled/);
     assert.doesNotMatch(html, /<script nonce/, "previews carry no script");
   });

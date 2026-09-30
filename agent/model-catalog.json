@@ -70,11 +70,62 @@
     "vision": true
   },
   {
+    "id": "deepseek-v4.1-flash",
+    "label": "DeepSeek V4.1 Flash (OpenCode GO)",
+    "shortLabel": "DS-V4.1F",
+    "provider": "opencode-go",
+    "model": "deepseek-v4.1-flash",
+    "vaultCredential": "OPENCODE_GO_TOKEN_PLAN",
+    "envPrefix": "OPENCODE_GO",
+    "vision": true
+  },
+  {
+    "id": "mimo-v2.6-flash",
+    "label": "MiMo V2.6 Flash (OpenCode GO)",
+    "shortLabel": "MiMo2.6F",
+    "provider": "opencode-go",
+    "model": "mimo-v2.6-flash",
+    "vaultCredential": "OPENCODE_GO_TOKEN_PLAN",
+    "envPrefix": "OPENCODE_GO",
+    "vision": true
+  },
+  {
+    "id": "muse-spark-1.3-contributor",
+    "label": "Muse Spark 1.3 Contributor (OpenCode GO)",
+    "shortLabel": "Muse1.3",
+    "provider": "opencode-go",
+    "model": "muse-spark-1.3-contributor",
+    "api": "openai-responses",
+    "vaultCredential": "OPENCODE_GO_TOKEN_PLAN",
+    "envPrefix": "OPENCODE_GO",
+    "vision": true
+  },
+  {
     "id": "glm-5.3-flash-yerplan",
     "label": "GLM 5.3 Flash (YerPlan)",
     "shortLabel": "GLM5.3F-Yer",
     "provider": "yerplan",
     "model": "glm-5.3-flash",
+    "vaultCredential": "YERPLAN_TOKEN_PLAN",
+    "envPrefix": "YERPLAN",
+    "vision": true
+  },
+  {
+    "id": "kimi-k3-yerplan",
+    "label": "Kimi K3 (YerPlan)",
+    "shortLabel": "KimiK3-Yer",
+    "provider": "yerplan",
+    "model": "kimi-k3",
+    "vaultCredential": "YERPLAN_TOKEN_PLAN",
+    "envPrefix": "YERPLAN",
+    "vision": false
+  },
+  {
+    "id": "qwen3.8-max-yerplan",
+    "label": "Qwen 3.8 Max (YerPlan)",
+    "shortLabel": "Qwen3.8M-Yer",
+    "provider": "yerplan",
+    "model": "qwen3.8-max",
     "vaultCredential": "YERPLAN_TOKEN_PLAN",
     "envPrefix": "YERPLAN",
     "vision": true

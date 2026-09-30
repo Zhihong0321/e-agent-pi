@@ -83,6 +83,8 @@ export async function connectDb() {
   await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS agent_id TEXT`);
   await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS engine TEXT NOT NULL DEFAULT 'pi'`);
   await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS agy_conversation_id TEXT`);
+  await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS parent_session_id TEXT`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS sessions_parent_session_id_idx ON sessions (parent_session_id)`);
   await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS engine TEXT NOT NULL DEFAULT 'pi'`);
   await pool.query(`ALTER TABLE git_syncs ADD COLUMN IF NOT EXISTS repo TEXT`);
   await pool.query(`CREATE INDEX IF NOT EXISTS messages_session_id_idx ON messages (session_id)`);
@@ -131,7 +133,7 @@ export async function setSetting(key, value) {
 }
 
 /**
- * @param {{ id?: string; title?: string; piSessionId?: string | null; piSessionFile?: string | null; modelId?: string | null; agentId?: string | null; engine?: string | null; agyConversationId?: string | null }} [row]
+ * @param {{ id?: string; title?: string; piSessionId?: string | null; piSessionFile?: string | null; modelId?: string | null; agentId?: string | null; engine?: string | null; agyConversationId?: string | null; parentSessionId?: string | null }} [row]
  */
 export async function createSession(row = {}) {
   const id = row.id || randomUUID();
@@ -139,14 +141,15 @@ export async function createSession(row = {}) {
   const engine = row.engine === "agy" ? "agy" : "pi";
   const agyConversationId = row.agyConversationId ?? (engine === "agy" ? id : null);
   const result = await getPool().query(
-    `INSERT INTO sessions (id, title, pi_session_id, pi_session_file, model_id, agent_id, engine, agy_conversation_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO sessions (id, title, pi_session_id, pi_session_file, model_id, agent_id, engine, agy_conversation_id, parent_session_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING id, title, pi_session_id AS "piSessionId", pi_session_file AS "piSessionFile",
                model_id AS "modelId", agent_id AS "agentId",
                COALESCE(engine, 'pi') AS engine,
                agy_conversation_id AS "agyConversationId",
+               parent_session_id AS "parentSessionId",
                created_at AS "createdAt", updated_at AS "updatedAt"`,
-    [id, title, row.piSessionId ?? null, row.piSessionFile ?? null, row.modelId ?? null, row.agentId ?? null, engine, agyConversationId],
+    [id, title, row.piSessionId ?? null, row.piSessionFile ?? null, row.modelId ?? null, row.agentId ?? null, engine, agyConversationId, row.parentSessionId ?? null],
   );
   return result.rows[0];
 }
@@ -160,6 +163,7 @@ export async function getSession(id) {
             model_id AS "modelId", agent_id AS "agentId",
             COALESCE(engine, 'pi') AS engine,
             agy_conversation_id AS "agyConversationId",
+            parent_session_id AS "parentSessionId",
             created_at AS "createdAt", updated_at AS "updatedAt"
      FROM sessions WHERE id = $1`,
     [id],
@@ -169,7 +173,12 @@ export async function getSession(id) {
 
 export async function listSessions(agentId) {
   const values = [];
-  const where = agentId ? (values.push(agentId), "WHERE s.agent_id = $1") : "";
+  const clauses = ["s.parent_session_id IS NULL"];
+  if (agentId) {
+    values.push(agentId);
+    clauses.push(`s.agent_id = $${values.length}`);
+  }
+  const where = `WHERE ${clauses.join(" AND ")}`;
   const result = await getPool().query(
     `SELECT s.id, s.title,
             s.pi_session_id AS "piSessionId",
@@ -178,6 +187,7 @@ export async function listSessions(agentId) {
             s.agent_id AS "agentId",
             COALESCE(s.engine, 'pi') AS engine,
             s.agy_conversation_id AS "agyConversationId",
+            s.parent_session_id AS "parentSessionId",
             s.created_at AS "createdAt",
             s.updated_at AS "updatedAt",
             (
@@ -201,7 +211,7 @@ export async function lastPiSession() {
   const result = await getPool().query(
     `SELECT agent_id AS "agentId", model_id AS "modelId"
      FROM sessions
-     WHERE COALESCE(engine, 'pi') = 'pi' AND agent_id IS NOT NULL
+     WHERE COALESCE(engine, 'pi') = 'pi' AND agent_id IS NOT NULL AND parent_session_id IS NULL
      ORDER BY updated_at DESC
      LIMIT 1`,
   );
@@ -215,7 +225,7 @@ export async function countSessions() {
 
 /**
  * @param {string} id
- * @param {{ title?: string; piSessionId?: string | null; piSessionFile?: string | null; modelId?: string | null; agentId?: string | null; engine?: string | null; agyConversationId?: string | null }} patch
+ * @param {{ title?: string; piSessionId?: string | null; piSessionFile?: string | null; modelId?: string | null; agentId?: string | null; engine?: string | null; agyConversationId?: string | null; parentSessionId?: string | null }} patch
  */
 export async function updateSession(id, patch) {
   const fields = [];
@@ -249,6 +259,10 @@ export async function updateSession(id, patch) {
     fields.push(`agy_conversation_id = $${i++}`);
     values.push(patch.agyConversationId);
   }
+  if (patch.parentSessionId !== undefined) {
+    fields.push(`parent_session_id = $${i++}`);
+    values.push(patch.parentSessionId);
+  }
   if (!fields.length) return getSession(id);
   fields.push("updated_at = NOW()");
   values.push(id);
@@ -258,6 +272,7 @@ export async function updateSession(id, patch) {
                model_id AS "modelId", agent_id AS "agentId",
                COALESCE(engine, 'pi') AS engine,
                agy_conversation_id AS "agyConversationId",
+               parent_session_id AS "parentSessionId",
                created_at AS "createdAt", updated_at AS "updatedAt"`,
     values,
   );

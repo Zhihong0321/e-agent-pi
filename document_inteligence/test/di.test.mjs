@@ -2,7 +2,7 @@
 // safety guarantees (no hard delete, tenant isolation, frozen documents, per-agent
 // tools) and the two demo flows: name card -> CRM, and quotation -> invoice -> paid.
 import assert from "node:assert/strict";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, unlink } from "node:fs/promises";
 import { mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -14,6 +14,7 @@ import { runTool, describeError } from "../core/actions.mjs";
 import { renderTemplate, checkTemplate } from "../core/templates.mjs";
 import { todayMY } from "../core/common.mjs";
 import { TOOLS, AGENTS } from "../core/tools.mjs";
+import { readSharedFile, sharedFileLocation } from "../../server/shared-files.mjs";
 
 const year = todayMY().slice(0, 4);
 
@@ -38,7 +39,7 @@ async function setup() {
     },
   });
   const as = (agent, tenantId = tenantA) => (tool, args) => runTool(deps(tenantId), { agent, tool, args });
-  return { db, tenantA, tenantB, as, rendered };
+  return { db, tenantA, tenantB, as, rendered, filesRoot: path.join(dir, "files") };
 }
 
 const rejects = async (promise, pattern) => {
@@ -52,7 +53,7 @@ const rejects = async (promise, pattern) => {
 };
 
 test("document intelligence", async (t) => {
-  const { db, tenantA, tenantB, as, rendered } = await setup();
+  const { db, tenantA, tenantB, as, rendered, filesRoot } = await setup();
   const clerk = as("di-records");
   const docs = as("di-documents");
   const tpl = as("di-templates");
@@ -202,10 +203,28 @@ test("document intelligence", async (t) => {
     assert.equal(issued.document.number, `QT-${year}-0001`);
     assert.equal(issued.document.status, "issued");
     assert.match(issued.pdf.link, /QT-\d{4}-0001\.pdf/);
+    const pdfUrl = new URL(issued.pdf.url, "https://test.local");
+    assert.ok(pdfUrl.pathname.startsWith("/files/"));
+    assert.equal(pdfUrl.search, "");
+    const stored = await readSharedFile({ root: filesRoot, companyId: tenantA, ...sharedFileLocation(issued.pdf.url) });
+    assert.equal(await readFile(stored.full, "utf8"), await readFile(rendered.at(-1), "utf8"));
+    assert.deepEqual(issued.shared_files, [issued.pdf]);
+    const retrieved = await tpl("get_document", { ref: issued.document.number });
+    assert.equal(retrieved.pdf.url, issued.pdf.url, "retrieving from another agent preserves the PDF owner");
     const html = await readFile(rendered.at(-1), "utf8");
     assert.match(html, /Eternalgy Sdn Bhd/);
     assert.match(html, /10kWp rooftop package/);
     assert.match(html, /18 × Solar panel 550W/);
+    // Upgrade a pre-shared-storage invoice once, then stop depending on its workspace.
+    await withContext(db, { tenantId: tenantA, asRole: false }, (tx) => tx.query(
+      "UPDATE di.document SET pdf_path = $1 WHERE id = $2", [`documents/${issued.pdf.name}`, issued.document.id],
+    ));
+    const upgraded = await tpl("get_document", { ref: issued.document.number });
+    assert.equal(upgraded.pdf.id, issued.pdf.id);
+    assert.ok(upgraded.document.pdf_path.startsWith("/files/"));
+    await unlink(rendered.at(-1));
+    const withoutSource = await docs("get_document", { ref: issued.document.number });
+    assert.equal(withoutSource.pdf.id, issued.pdf.id);
     quote = issued.document;
   });
 
@@ -280,6 +299,7 @@ test("document intelligence", async (t) => {
     assert.equal(again.template.version, 2);
     const preview = await tpl("preview_template", { id: again.template.id });
     assert.match(preview.pdf.link, /preview/);
+    assert.ok(preview.pdf.url.startsWith("/files/"));
     assert.equal(renderTemplate("{{x}}", { x: "<script>" }), "&lt;script&gt;");
     assert.equal(checkTemplate("{{#if a}}x{{else}}y{{/if}}").ok, true);
     // the invoice issued earlier keeps its original template

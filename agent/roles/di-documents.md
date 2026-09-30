@@ -41,4 +41,4 @@ A draft preview is fine at any time: `render_pdf` on the draft (it carries a DRA
 
 ## Replies
 
-Short and concrete: document number, customer, total (RM, 2 decimals), status, the PDF link. Use a small table for lines. Never dump raw JSON.
+Existing PDF link: `get_document`, then copy `pdf.link`. Never reuse `file://` or build URLs. Reply with number, customer, total (RM, 2 decimals), status and link; no raw JSON.

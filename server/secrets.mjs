@@ -1,5 +1,9 @@
 import { dbReady, getSetting, setSetting } from "./db.mjs";
 
+/** Jina search tokens, used round-robin by server/web-search.mjs. */
+export const JINA_SLOTS = 5;
+export const JINA_KEY_NAMES = Array.from({ length: JINA_SLOTS }, (_, i) => `jina_api_key_${i + 1}`);
+
 const KEYS = [
   "cavoti_api_key",
   "cavoti_base_url",
@@ -46,6 +50,7 @@ const KEYS = [
   "composio_api_key",
   "composio_session_id",
   "composio_session_scope",
+  ...JINA_KEY_NAMES,
 ];
 
 export const DEFAULT_PASSWORD = "eternalgy2026";
@@ -71,10 +76,17 @@ export async function loadSecrets() {
 }
 
 /**
- * @param {Record<string, string | undefined>} patch
+ * @param {Record<string, string | string[] | undefined>} patch
  */
 export async function saveSecrets(patch) {
+  // Secret fields ignore blanks (so "leave empty to keep" works), which means a
+  // slot can only be emptied on request. Only Jina slots may be cleared this way.
+  const clear = Array.isArray(patch.clear_secrets) ? patch.clear_secrets : [];
+  for (const key of clear) {
+    if (JINA_KEY_NAMES.includes(key)) await setSetting(key, "");
+  }
   const secretFields = new Set([
+    ...JINA_KEY_NAMES,
     "cavoti_api_key",
     "kimi_api_key",
     "glm53_api_key",
@@ -148,6 +160,7 @@ export function publicSettings() {
     omApiTokenSet: Boolean(secret("om_api_token")),
     composioApiKeySet: Boolean(secret("composio_api_key")),
     composioSessionId: secret("composio_session_id"),
+    jinaKeysSet: JINA_KEY_NAMES.map((name) => Boolean(secret(name))),
   };
 }
 

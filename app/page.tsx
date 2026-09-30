@@ -277,7 +277,7 @@ export default function Home() {
                   <input
                     ref={fileInput}
                     type="file"
-                    accept="image/*,.pdf,application/pdf"
+                    accept="image/*,.pdf,application/pdf,.docx,.xlsx"
                     multiple
                     hidden
                     onChange={(event) => {

@@ -30,7 +30,7 @@ export function normalizeCavotiBaseUrl(value) {
   return trimmed;
 }
 
-/** @typedef {{ id: string; label: string; shortLabel: string; provider: string; model: string; vaultCredential?: string; envPrefix: string; vision?: boolean; available?: boolean; requiresStream?: boolean }} CatalogEntry */
+/** @typedef {{ id: string; label: string; shortLabel: string; provider: string; model: string; vaultCredential?: string; envPrefix: string; vision?: boolean; available?: boolean; requiresStream?: boolean; api?: "openai-responses" }} CatalogEntry */
 
 /** @type {CatalogEntry[] | null} */
 let catalogCache = null;
@@ -96,7 +96,9 @@ export async function testModelRoundTrip(entry, env) {
   if (!apiKey || !baseUrl) {
     return { id: entry.id, ok: false, latencyMs: 0, error: "Missing API key" };
   }
-  const url = `${String(baseUrl).replace(/\/+$/, "")}/chat/completions`;
+  // Some GO models (e.g. Muse Spark) only speak the OpenAI Responses API.
+  const responses = entry.api === "openai-responses";
+  const url = `${String(baseUrl).replace(/\/+$/, "")}/${responses ? "responses" : "chat/completions"}`;
   const started = Date.now();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
@@ -108,12 +110,16 @@ export async function testModelRoundTrip(entry, env) {
     const res = await fetch(url, {
       method: "POST",
       headers,
-      body: JSON.stringify({
-        model: entry.model,
-        messages: [{ role: "user", content: "ping" }],
-        max_tokens: 8,
-        stream: Boolean(entry.requiresStream),
-      }),
+      body: JSON.stringify(
+        responses
+          ? { model: entry.model, input: "ping", max_output_tokens: 32, stream: Boolean(entry.requiresStream) }
+          : {
+              model: entry.model,
+              messages: [{ role: "user", content: "ping" }],
+              max_tokens: 8,
+              stream: Boolean(entry.requiresStream),
+            },
+      ),
       signal: controller.signal,
     });
     const latencyMs = Date.now() - started;

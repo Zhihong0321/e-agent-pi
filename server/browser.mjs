@@ -5,6 +5,9 @@ import path from "node:path";
 import { DATA_DIR } from "./paths.mjs";
 
 export const BROWSER_PROFILES = path.join(DATA_DIR, "browser", "profiles");
+export const SHARED_PROFILE_SLUG = "shared";
+export const RESERVED_PROFILE_SLUGS = new Set(["newpages"]);
+export const VIEWPORT = { width: 1400, height: 900 };
 
 const LAUNCH_ARGS = [
   "--no-sandbox",
@@ -164,30 +167,59 @@ export async function findChromiumExecutable() {
   return null;
 }
 
-async function launchPersistent(userDataDir, executablePath) {
+export function wantsHeadedLogin() {
+  const flag = process.env.BROWSER_HEADED?.trim();
+  if (flag === "1" || flag === "true") return true;
+  if (flag === "0" || flag === "false") return false;
+  if (process.env.DISPLAY?.trim()) return true;
+  if (process.platform === "win32" && !process.env.RAILWAY_ENVIRONMENT && !process.env.RAILWAY_PUBLIC_DOMAIN) {
+    return true;
+  }
+  return false;
+}
+
+export function profileDir(slug) {
+  return path.join(BROWSER_PROFILES, slug || "default");
+}
+
+async function launchPersistent(userDataDir, executablePath, { headless = true } = {}) {
+  const options = {
+    executablePath,
+    headless,
+    args: LAUNCH_ARGS,
+    viewport: VIEWPORT,
+    ignoreHTTPSErrors: true,
+    timeout: 45_000,
+  };
   await clearStaleChromiumLocks(userDataDir);
   try {
-    return await chromium.launchPersistentContext(userDataDir, {
-      executablePath,
-      headless: true,
-      args: LAUNCH_ARGS,
-      viewport: { width: 1400, height: 900 },
-      ignoreHTTPSErrors: true,
-      timeout: 45_000,
-    });
+    return await chromium.launchPersistentContext(userDataDir, options);
   } catch (error) {
     if (!isProfileBusyError(error)) throw error;
     await clearStaleChromiumLocks(userDataDir);
     await sleep(400);
-    return chromium.launchPersistentContext(userDataDir, {
-      executablePath,
-      headless: true,
-      args: LAUNCH_ARGS,
-      viewport: { width: 1400, height: 900 },
-      ignoreHTTPSErrors: true,
-      timeout: 45_000,
-    });
+    return chromium.launchPersistentContext(userDataDir, options);
   }
+}
+
+/**
+ * Launch a persistent context and leave it open. Caller must close it
+ * (or `closeBrowsers`) — unlike withLockedContext, which always closes.
+ * @param {string} slug
+ * @param {{ headless?: boolean }} [opts]
+ */
+export async function openPersistentContext(slug, { headless = true } = {}) {
+  const userDataDir = profileDir(slug);
+  await mkdir(userDataDir, { recursive: true });
+  const executablePath = await findChromiumExecutable();
+  if (!executablePath) {
+    throw new Error(
+      "No Chromium for site automation. The Docker image must include Playwright browsers (Scrapling install).",
+    );
+  }
+  const context = await launchPersistent(userDataDir, executablePath, { headless });
+  live.add(context);
+  return context;
 }
 
 async function withLockedContext(slug, fn) {

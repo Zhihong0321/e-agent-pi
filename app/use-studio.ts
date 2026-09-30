@@ -147,7 +147,15 @@ export function useStudio() {
         const list = data.agents ?? [];
         setAgents(list);
         const stored = window.localStorage.getItem(AGENT_KEY);
-        const next = list.find((agent) => agent.id === stored)?.id ?? list[0]?.id ?? "";
+        const storedAgent = list.find((agent) => agent.id === stored);
+        const orch = list.find((agent) => agent.slug === "orchestrator" || agent.id === "orchestrator");
+        const facing = list.filter((agent) => agent.userFacing);
+        const next =
+          (storedAgent?.userFacing ? storedAgent.id : undefined) ??
+          orch?.id ??
+          facing[0]?.id ??
+          list[0]?.id ??
+          "";
         setSelectedAgentId(next);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not load agents");
@@ -390,10 +398,10 @@ export function useStudio() {
     }
   };
 
-  const send = async (text = message, opts?: { resume?: boolean; sessionId?: string }) => {
+  const send = async (text = message, opts?: { resume?: boolean; sessionId?: string; files?: PendingFile[] }) => {
     const resume = Boolean(opts?.resume);
     const trimmed = text.trim();
-    const files = resume ? [] : pendingFiles;
+    const files = resume ? [] : opts?.files ?? pendingFiles;
     if (!resume && ((!trimmed && !files.length) || loading)) return;
     if (resume && abortRef.current?.signal.aborted) return;
     if (!resume) {

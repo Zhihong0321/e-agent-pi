@@ -17,9 +17,13 @@ import {
   isPackageAgent,
   isSalesAgent,
   isTnbAgent,
+  isOrchestratorAgent,
 } from "./paths.mjs";
 import { secret } from "./secrets.mjs";
+import { DISPATCH_TOKEN } from "./orchestrator.mjs";
+import { SEARCH_TOKEN, jinaKeys } from "./web-search.mjs";
 import { diAgentEnv } from "../document_inteligence/host.mjs";
+import { fileSharingEnv } from "./file-sharing.mjs";
 
 const ALLOW_EXACT = new Set([
   "PATH",
@@ -71,6 +75,7 @@ export function agentEnv(agent, extra = {}, from = process.env) {
   env.NODE_PATH = from.NODE_PATH || path.join(ROOT, "node_modules");
   env.SCRAPLING_BIN = from.SCRAPLING_BIN || process.env.SCRAPLING_BIN || "/opt/scrapling/bin/scrapling";
   env.CLOUD_PI_ROOT = ROOT;
+  env.CLOUD_PI_SHARE_FILE = path.join(ROOT, "server", "share-file-cli.mjs");
   env.CLOUD_PI_CATALOG = CATALOG_CLI;
   env.CLOUD_PI_IMAGEN = IMAGEN_CLI;
   env.CLOUD_PI_SITES = SITES_CLI;
@@ -78,6 +83,14 @@ export function agentEnv(agent, extra = {}, from = process.env) {
   env.CLOUD_PI_TNB = TNB_CLI;
   env.CLOUD_PI_BLUEPRINT = BLUEPRINT_CLI;
   env.PI_PACKAGE_DIR = from.PI_PACKAGE_DIR || PI_PACKAGE_DIR;
+
+  // Web search runs on the host with the saved Jina tokens. The Web Search MCP
+  // server (server/web-search-mcp-server.mjs) inherits this URL and per-boot
+  // bearer, and only once a token exists.
+  if (jinaKeys().length) {
+    env.CLOUD_PI_SEARCH_URL = `http://127.0.0.1:${from.PORT || process.env.PORT || "8080"}`;
+    env.CLOUD_PI_SEARCH_TOKEN = SEARCH_TOKEN;
+  }
 
   if (isPackageAgent(agent)) {
     const token = secret("pg_proxy_token");
@@ -138,8 +151,14 @@ export function agentEnv(agent, extra = {}, from = process.env) {
     if (token) env.OM_API_TOKEN = token;
   }
 
+  if (isOrchestratorAgent(agent)) {
+    env.ORCHESTRATOR_DISPATCH_URL = `http://127.0.0.1:${from.PORT || process.env.PORT || "8080"}`;
+    env.ORCHESTRATOR_DISPATCH_TOKEN = DISPATCH_TOKEN;
+  }
+
   // Document Intelligence micro-agents: per-agent token for /api/internal/di.
   Object.assign(env, diAgentEnv(agent, from.PORT || process.env.PORT || "8080"));
+  Object.assign(env, fileSharingEnv(agent, from.PORT || process.env.PORT || "8080"));
 
   for (const [key, value] of Object.entries(extra)) {
     if (value == null || value === "") continue;

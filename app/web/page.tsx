@@ -23,7 +23,7 @@ import {
   MediaLightbox,
   WorkingOverlay,
 } from "../chat-parts";
-import { avatarClass, avatarLabel, type Tab } from "../studio";
+import { avatarClass, avatarLabel, userFacingAgents, type Tab } from "../studio";
 import { useStudio } from "../use-studio";
 import "./web.css";
 
@@ -140,6 +140,15 @@ export default function WebHome() {
           <a className="web-rail-btn" href="/db-viewer/" aria-label="Document Intelligence database" title="Document Intelligence database">
             <span className="web-rail-icon">▤</span>
             <small>Database</small>
+          </a>
+          <a className="web-rail-btn" href="/signin" aria-label="Sign-in sessions" title="Sign-in">
+            <span className="web-rail-icon">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <circle cx="12" cy="8" r="3.2" />
+                <path d="M6 19c.6-3.2 3-5 6-5s5.4 1.8 6 5" />
+              </svg>
+            </span>
+            <small>Sign-in</small>
           </a>
           <a className="web-rail-btn" href="/settings" aria-label="Open settings" title="Settings">
             <span className="web-rail-icon">
@@ -283,7 +292,7 @@ export default function WebHome() {
                   <input
                     ref={fileInput}
                     type="file"
-                    accept="image/*,.pdf,application/pdf"
+                    accept="image/*,.pdf,application/pdf,.docx,.xlsx"
                     multiple
                     hidden
                     onChange={(event) => {
@@ -362,7 +371,7 @@ export default function WebHome() {
                 </button>
               </div>
               <div className="web-empty-agents">
-                {agents.slice(0, 6).map((agent) => (
+                {userFacingAgents(agents).slice(0, 6).map((agent) => (
                   <button
                     key={agent.id}
                     type="button"
