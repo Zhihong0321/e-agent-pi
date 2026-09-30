@@ -7,6 +7,7 @@ import { runTool } from '../core/actions.mjs';
 import { previewCompanyReset, resetCompany } from '../core/reset.mjs';
 import { companyDispatchGate } from '../../server/orchestrator.mjs';
 import { handleCompanyProfile } from '../../server/company-profile.mjs';
+import { handleDemoState, loadDemoState } from '../../server/demo-state.mjs';
 import { readFile } from 'node:fs/promises';
 
 test('company onboarding, concurrent updates, isolation and recoverable reset', async () => {
@@ -44,6 +45,14 @@ test('company onboarding, concurrent updates, isolation and recoverable reset', 
     assert.equal(String(draft.document.due_date).slice(0,10),'2026-10-01');
     await call('issue_document',{document:draft.document.id},a,'di-documents');
     await call('save_customer',{name:'Keep Me'},b,'di-records');
+    const liveA=await loadDemoState({db,tenantId:a,asRole:true});
+    const liveB=await loadDemoState({db,tenantId:b,asRole:true});
+    assert.equal(liveA.profile.company.name,'Real Company');
+    assert.equal(liveA.members[0].name,'Aisha Rahman');
+    assert.equal(liveA.customers[0].name,'Demo Customer');
+    assert.equal(liveA.invoices.length,1);
+    assert.equal(liveB.invoices.length,0);
+    assert.deepEqual(liveB.members.map(row=>row.name),['Other Owner']);
     await call('define_custom_field',{entity:'customer',key:'site',label:'Site',type:'text'});
     let preview=await previewCompanyReset(db,a);
     assert.equal(preview.counts.customer,1);
@@ -97,4 +106,10 @@ test('manual company profile and reset endpoints require owner authentication',a
     await handleCompanyProfile({method,headers:{}},{writeHead:s=>{got=s;},end(){}},new URL(path,'http://localhost'),()=>{throw new Error('must not access database');});
     assert.equal(got,status);
   }
+});
+
+test('live demo records require owner authentication',async()=>{
+  let status;
+  await handleDemoState({method:'GET',headers:{}},{writeHead:s=>{status=s;},end(){}});
+  assert.equal(status,401);
 });

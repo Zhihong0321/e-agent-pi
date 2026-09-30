@@ -3,6 +3,7 @@ import { createReadStream } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { handleCompanyProfile } from './company-profile.mjs';
+import { handleDemoState } from './demo-state.mjs';
 import { companyOnboardingStatus, companyHostContext, publicBaseUrl } from '../document_inteligence/host.mjs';
 import { handleFileSharing } from './file-sharing.mjs';
 import { filesFromBlocks } from '../shared/shared-files.mjs';
@@ -1953,6 +1954,7 @@ const server = createServer(async (req, res) => {
   if (pathname === "/db-viewer" || pathname.startsWith("/db-viewer/")) {
     return handleDiViewer(req, res, url);
   }
+  if (pathname === "/api/demo/state") return handleDemoState(req, res);
 
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
