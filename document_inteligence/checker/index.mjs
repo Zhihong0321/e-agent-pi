@@ -46,7 +46,7 @@ function rawTarget(args = {}) {
 }
 
 const KNOWN_GAPS =
-  "No tool exists to edit, reverse, refund or unallocate a recorded payment, edit an issued document, apply a credit note to an invoice, send email, or submit to MyInvois. " +
+  "No tool exists to edit, reverse, refund or unallocate a recorded payment, edit an issued document, apply a credit note to an invoice, or submit to MyInvois. Email delivery is available only through the separately attached ee-mail MCP after explicit confirmation. " +
   "Forms: no tool can send or share a form link (email, WhatsApp, SMS), edit or delete a submitted answer, edit a published form version in place, add custom HTML/JavaScript to a form, raise upload limits above the host limits, or collect passwords, PINs, OTPs or card details.";
 
 function toolList() {
