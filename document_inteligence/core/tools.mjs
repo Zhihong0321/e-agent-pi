@@ -9,6 +9,7 @@ import * as documents from "./documents.mjs";
 import * as admin from "./admin.mjs";
 import * as forms from "./forms.mjs";
 import { renderFormPage } from "./formpage.mjs";
+import { crmDashboard } from "./dashboard.mjs";
 
 export const AGENTS = {
   "di-records": { name: "Records Clerk", short: "RC" },
@@ -322,6 +323,13 @@ export const TOOLS = {
     description: "One document with lines, payments, and (for drafts) what is still missing. ref = number or id.",
     input: { ref: z.string() },
     run: documents.getDocument,
+  },
+  crm_dashboard: {
+    agents: [RECORDS, DOCS, DB],
+    description:
+      "CRM overview as a visual dashboard: receivables, overdue, billed vs collected, aging, quotation pipeline, top customers, items needing attention. Returns a finished ```html block. Paste it into your reply EXACTLY as returned, unedited, then add at most two sentences of commentary.",
+    input: {},
+    run: async (tx) => crmDashboard(tx, (await admin.getCompanyProfile(tx)).company?.name),
   },
   list_documents: {
     agents: [DOCS, DB],

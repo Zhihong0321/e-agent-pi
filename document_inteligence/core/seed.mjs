@@ -2,7 +2,7 @@
 // readiness rules and default templates. Safe to run on every boot.
 import { withContext } from "./db.mjs";
 import { DEFAULT_WORKFLOWS } from "./workflows.mjs";
-import { defaultTemplateHtml } from "./templates.mjs";
+import { DEFAULT_TEMPLATE_REV, defaultTemplateHtml } from "./templates.mjs";
 
 export const DEFAULT_TAX_CODES = [
   { code: "NT", name: "No tax", rate: 0, kind: "none", is_default: true },
@@ -122,15 +122,25 @@ export async function seedTenant(db, tenantId) {
       }
     }
     for (const docType of ["quotation", "invoice"]) {
+      const SEEDED = "Seeded default A4 template";
+      const notes = `${SEEDED} v${DEFAULT_TEMPLATE_REV}`;
       const have = await tx.query(
-        "SELECT 1 FROM di.template WHERE tenant_id = $1 AND doc_type = $2 AND deleted_at IS NULL LIMIT 1",
+        "SELECT notes, is_default FROM di.template WHERE tenant_id = $1 AND doc_type = $2 AND deleted_at IS NULL",
         [tenantId, docType],
       );
-      if (have.rows.length) continue;
+      if (have.rows.some((r) => r.notes === notes)) continue;
+      // A default the tenant wrote or chose is theirs; only an untouched seeded default is upgraded.
+      if (have.rows.some((r) => r.is_default && !r.notes?.startsWith(SEEDED))) continue;
+      await tx.query("UPDATE di.template SET is_default = false WHERE tenant_id = $1 AND doc_type = $2 AND is_default", [tenantId, docType]);
+      const name = `Standard ${docType}`;
+      const { rows: [{ v }] } = await tx.query(
+        "SELECT coalesce(max(version), 0) AS v FROM di.template WHERE tenant_id = $1 AND doc_type = $2 AND name = $3",
+        [tenantId, docType, name],
+      );
       await tx.query(
         `INSERT INTO di.template (tenant_id, doc_type, name, version, html, is_default, notes)
-         VALUES ($1, $2, $3, 1, $4, true, 'Seeded default A4 template')`,
-        [tenantId, docType, `Standard ${docType}`, defaultTemplateHtml(docType)],
+         VALUES ($1, $2, $3, $4, $5, true, $6)`,
+        [tenantId, docType, name, Number(v) + 1, defaultTemplateHtml(docType), notes],
       );
     }
     return tenantId;
