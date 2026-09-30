@@ -42,6 +42,11 @@ test("real stdio MCP returns a readable compact roster and forwards synchronous 
     const result = await client.callTool({ name: "dispatch_task", arguments: { taskId: "t1" } });
     assert.equal(JSON.parse(result.content[0].text).status, "done");
     assert.deepEqual(seen, [{ action: "list_specialists" }, { action: "dispatch_task", taskId: "t1" }]);
+    const tasks = [{ id: "inspect", agent: "web-scraper", prompt: "Find the logo", acceptanceCriteria: ["Include source"],
+      checker: { agent: "reviewer", checks: ["Verify source"] } }];
+    const submitted = await client.callTool({ name: "submit_plan", arguments: { title: "Complete logo job", tasks } });
+    assert.notEqual(submitted.isError, true);
+    assert.deepEqual(seen.at(-1), { action: "submit_plan", title: "Complete logo job", tasks });
   } finally {
     await client.close();
     await new Promise(resolve => host.close(resolve));

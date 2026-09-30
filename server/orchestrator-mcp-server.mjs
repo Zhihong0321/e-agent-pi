@@ -48,9 +48,21 @@ const taskShape = z.object({
   title: z.string().optional().describe("Short task title"),
   prompt: z.string().describe("Self-contained instructions for the specialist"),
   dependsOn: z.array(z.string()).optional().describe("Task ids that must finish first"),
+  acceptanceCriteria: z.array(z.string()).optional().describe("Observable conditions that confirm task success"),
+  checker: z.object({ agent: z.string(), checks: z.array(z.string()).min(1) }).nullable().optional()
+    .describe("Optional independent checker; downstream tasks wait for its passing verdict"),
 });
 
 const server = new McpServer({ name: "orchestrator-dispatch", version: "1.0.0" });
+
+server.registerTool("submit_plan", {
+  title: "Submit and run a complete plan",
+  description: "Validate and atomically queue the entire plan in Postgres. The host automatically runs ready specialists and checkers, passes dependency results, and records outcomes. Do not call dispatch_task for submitted jobs. The returned plan id is used by task_status.",
+  inputSchema: { title: z.string(), summary: z.string().optional(), tasks: z.array(taskShape).min(1).max(100) },
+}, async ({ title, summary, tasks }) => {
+  try { return reply(await callHost("submit_plan", { title, summary, tasks })); }
+  catch (error) { return fail(error); }
+});
 
 server.registerTool(
   "get_company_setup",

@@ -152,6 +152,10 @@ import {
   handleOrchestratorAction,
   orchestratorAuthorized,
   setDispatchRuntime,
+  startJobRunner,
+  completedJobCleanup,
+  listJobs,
+  jobReport,
 } from "./orchestrator.mjs";
 import {
   ensureWhatsappMcp,
@@ -1945,6 +1949,7 @@ async function bootServices() {
     runAgentTurn: runManageTurn,
     maxSlots: () => MAX_PI_SLOTS,
     runningCount: () => [...piPool.values()].filter((slot) => slot.busy).length,
+    agentBusy: (agentId) => [...piPool.values()].some(slot => slot.agentId === agentId && slot.busy),
     activeOrchestratorSessionId: () => {
       for (const slot of piPool.values()) {
         if (slot.agentId === ORCHESTRATOR_AGENT_ID && slot.activeStudioSessionId) return slot.activeStudioSessionId;
@@ -1959,6 +1964,7 @@ async function bootServices() {
   });
 
   boot.step = "ready";
+  await startJobRunner();
   boot.ready = true;
   logEvent("info", "boot complete");
 
@@ -2344,6 +2350,18 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (pathname === "/api/settings/jobs/cleanup" && req.method === "POST") {
+      try {
+        const body = JSON.parse((await readBody(req)) || "{}");
+        json(res, 200, await completedJobCleanup({ before: body.before, remove: body.remove === true, expected: body.expected }));
+      } catch (error) { json(res, 400, { error: sanitizeError(error) }); }
+      return;
+    }
+    if (pathname === "/api/settings/jobs" && req.method === "GET") {
+      const planId = url.searchParams.get("planId");
+      json(res, 200, planId ? await jobReport(planId) : { jobs: await listJobs() });
+      return;
+    }
     if (req.method === "GET" && pathname === "/api/settings") {
       json(res, 200, publicSettings());
       return;

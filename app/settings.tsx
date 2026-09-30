@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import JobsSettings from "./jobs-settings";
 
 type Settings = {
   cavotiApiKeySet: boolean;
@@ -45,8 +46,8 @@ type Settings = {
   jinaKeysSet: boolean[];
 };
 
-type Tab = "keys" | "models" | "agents" | "blueprints" | "sites" | "skills" | "mcp" | "whatsapp" | "display" | "usage";
-const TABS: Tab[] = ["keys", "models", "agents", "blueprints", "sites", "skills", "mcp", "whatsapp", "display", "usage"];
+type Tab = "keys" | "models" | "agents" | "blueprints" | "sites" | "skills" | "mcp" | "whatsapp" | "display" | "usage" | "jobs";
+const TABS: Tab[] = ["keys", "models", "agents", "blueprints", "sites", "skills", "mcp", "whatsapp", "display", "usage", "jobs"];
 
 const AI_REPLY_DARK_KEY = "e-agent-ai-reply-dark";
 const BLUEPRINT_APPROVER_KEY = "e-agent-blueprint-approver";
@@ -998,6 +999,7 @@ export default function SettingsPage() {
             ))}
           </nav>
 
+          {tab === "jobs" && <JobsSettings />}
           {tab === "keys" && (
             <section className="settings-card">
               <p>
