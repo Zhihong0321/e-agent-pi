@@ -386,7 +386,8 @@ async function runSpecialist(task, agent) {
       agentId: agent.id,
       sessionId: session.id,
     });
-    const reply = clipResult(turn?.reply || "");
+    // Preserve the complete task result. Only display previews may be clipped.
+    const reply = String(turn?.reply || "");
     await setTask(task.id, { status: "done", result: reply, shared_files: turn?.shared_files || [], error: null });
     await refreshPlanStatus(task.planId);
     return getTaskRow(task.id);

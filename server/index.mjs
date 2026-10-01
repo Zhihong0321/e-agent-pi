@@ -141,6 +141,9 @@ import { ensureComposioMcp } from "./composio.mjs";
 import { ensureOrchestratorMcp } from "./orchestrator-mcp.mjs";
 import { ensureEeMailMcp } from "./ee-mail-mcp.mjs";
 import { handleEmailRequest } from "./ee-mail.mjs";
+import { ensureWebSourcesMcp } from "./web-sources-mcp.mjs";
+import { webSourceAuthorized, webSourceAction, closeWebSourceBrowser } from "./web-sources.mjs";
+import { sourceStore } from "./temp-sources.mjs";
 import * as catalogApi from "./catalog.mjs";
 import { getPool } from "./db.mjs";
 import {
@@ -355,6 +358,7 @@ function wantsAuth(pathname, method = "GET") {
   if (pathname === "/api/internal/orchestrator") return false;
   if (pathname === "/api/internal/di") return false;
   if (pathname === "/api/internal/ee-mail") return false;
+  if (pathname === "/api/internal/web-sources") return false;
   if (pathname === "/api/internal/web-search") return false;
   if (pathname === "/api/np" || pathname.startsWith("/api/np/")) return true;
   const mutating = method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
@@ -1843,6 +1847,14 @@ async function bootServices() {
     logEvent("error", `ee-mail mcp failed: ${sanitizeError(error)}`);
   }
 
+  boot.step = "web-sources";
+  try {
+    if (dbReady()) {
+      await ensureWebSourcesMcp();
+      logEvent("info", "web sources MCP registered with managed temporary storage");
+    }
+  } catch (error) { logEvent("error", `web sources failed: ${sanitizeError(error)}`); }
+
   boot.step = "whatsapp-sidecar";
   try {
     await startWhatsappSidecar();
@@ -2042,6 +2054,33 @@ const server = createServer(async (req, res) => {
 
     if (req.method === "GET" && pathname === "/api/auth/me") {
       json(res, 200, { ok: hasSession(req) });
+      return;
+    }
+
+    if (pathname === "/api/internal/web-sources" && req.method === "POST") {
+      if (!webSourceAuthorized(req)) { json(res, 401, { error: "Unauthorized" }); return; }
+      try { json(res, 200, { result: await webSourceAction(JSON.parse((await readBody(req)) || "{}")) }); }
+      catch (error) { json(res, 400, { error: sanitizeError(error) }); }
+      return;
+    }
+    if (pathname === "/api/settings/temp") {
+      if (req.method === "GET") { json(res, 200, await sourceStore.list()); return; }
+      if (req.method === "DELETE") {
+        try { json(res, 200, await sourceStore.remove(JSON.parse((await readBody(req)) || "{}").ids)); }
+        catch (error) { json(res, 400, { error: sanitizeError(error) }); }
+        return;
+      }
+    }
+    const tempSourceMatch = pathname.match(/^\/api\/settings\/temp\/([0-9a-f-]+)$/);
+    if (tempSourceMatch && req.method === "GET") {
+      try {
+        const id = tempSourceMatch[1];
+        const metadata = await sourceStore.metadata(id);
+        const chunks = [];
+        for (let offset = 0; offset < metadata.chars; offset += 120000) chunks.push((await sourceStore.read({ id, offset, limit: 120000 })).text);
+        res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8", "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store" });
+        res.end(chunks.join(""));
+      } catch (error) { json(res, 404, { error: sanitizeError(error) }); }
       return;
     }
 
@@ -3103,6 +3142,7 @@ async function shutdown() {
   await Promise.allSettled([...piPool.values()].map((slot) => stopSlot(slot)));
   await stopWhatsappSidecar().catch(() => {});
   await closeBrowsers().catch(() => {});
+  await closeWebSourceBrowser().catch(() => {});
   await closeDb().catch(() => {});
   process.exit(0);
 }

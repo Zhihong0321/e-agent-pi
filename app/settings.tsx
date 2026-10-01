@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import TempStorage from "./temp-storage";
 
 type Settings = {
   cavotiApiKeySet: boolean;
@@ -47,8 +48,8 @@ type Settings = {
   jinaKeysSet: boolean[];
 };
 
-type Tab = "keys" | "models" | "agents" | "blueprints" | "sites" | "skills" | "mcp" | "whatsapp" | "display" | "usage";
-const TABS: Tab[] = ["keys", "models", "agents", "blueprints", "sites", "skills", "mcp", "whatsapp", "display", "usage"];
+type Tab = "keys" | "models" | "agents" | "blueprints" | "sites" | "skills" | "mcp" | "whatsapp" | "display" | "usage" | "temp";
+const TABS: Tab[] = ["keys", "models", "agents", "blueprints", "sites", "skills", "mcp", "whatsapp", "display", "usage", "temp"];
 
 const AI_REPLY_DARK_KEY = "e-agent-ai-reply-dark";
 const BLUEPRINT_APPROVER_KEY = "e-agent-blueprint-approver";
@@ -999,11 +1000,12 @@ export default function SettingsPage() {
           <nav className="settings-tabs">
             {TABS.map((item) => (
               <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => goTab(item)}>
-                {item === "mcp" ? "MCP" : item === "whatsapp" ? "WhatsApp" : item[0].toUpperCase() + item.slice(1)}
+                {item === "mcp" ? "MCP" : item === "whatsapp" ? "WhatsApp" : item === "temp" ? "Temporary storage" : item[0].toUpperCase() + item.slice(1)}
               </button>
             ))}
           </nav>
 
+          {tab === "temp" && <TempStorage />}
           {tab === "keys" && (
             <section className="settings-card">
               <p>

@@ -3,6 +3,7 @@ import { appendFile, cp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { webSourcesPrompt } from "./web-sources-prompt.mjs";
 import { resolveAgyBin } from "./test-agy.mjs";
 import { createTurn } from "./pi-stream.mjs";
 import { FILE_SHARING_PROMPT } from "./file-sharing.mjs";
@@ -116,7 +117,7 @@ export async function materializeAgyWorkspace(agent, { skills = [], modelId } = 
   // 1. Build unified role prompt, host fragments, and the context pack
   const role = String(agent.rolePrompt || "").trim();
   const sharingPrompt = FILE_SHARING_PROMPT.replace("call share_file with its workspace path", 'run node "$CLOUD_PI_SHARE_FILE" "workspace/path"');
-  const extras = [replyStyleSystemPrompt(), sharingPrompt, imagenSystemPrompt()];
+  const extras = [replyStyleSystemPrompt(), sharingPrompt, imagenSystemPrompt(), webSourcesPrompt(agent)];
   if (agent.id === "website" || agent.slug === "website") extras.push(hostSystemPrompt());
   if (isProposalAgent(agent)) extras.push(proposalSystemPrompt(agent));
   const pack = await loadContextPack(agent, { modelId });

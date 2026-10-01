@@ -26,6 +26,7 @@ import { DISPATCH_TOKEN } from "./orchestrator.mjs";
 import { diAgentEnv } from "../document_inteligence/host.mjs";
 import { EE_MAIL_DISPATCH_TOKEN } from "./ee-mail.mjs";
 import { fileSharingEnv } from "./file-sharing.mjs";
+import { WEB_SOURCE_TOKEN } from "./web-sources.mjs";
 
 const ALLOW_EXACT = new Set([
   "PATH",
@@ -167,6 +168,8 @@ export function agentEnv(agent, extra = {}, from = process.env) {
     env.EE_MAIL_TOKEN = EE_MAIL_DISPATCH_TOKEN;
   }
   Object.assign(env, fileSharingEnv(agent, from.PORT || process.env.PORT || "8080"));
+  env.WEB_SOURCE_URL = `http://127.0.0.1:${from.PORT || process.env.PORT || "8080"}`;
+  env.WEB_SOURCE_TOKEN = WEB_SOURCE_TOKEN;
 
   for (const [key, value] of Object.entries(extra)) {
     if (value == null || value === "") continue;

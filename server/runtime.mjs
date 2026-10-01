@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { webSourcesPrompt } from "./web-sources-prompt.mjs";
 import { imagenConfigured, imagenSystemPrompt } from "./imagen.mjs";
 import { replyStyleSystemPrompt } from "./reply-style.mjs";
 import { FILE_SHARING_PROMPT } from "./file-sharing.mjs";
@@ -123,7 +124,7 @@ export function mcpServerConfig(server) {
  */
 export async function buildRoleText(agent, { modelId } = {}) {
   const role = String(agent.rolePrompt || "").trim();
-  const extras = [replyStyleSystemPrompt(), FILE_SHARING_PROMPT, imagenSystemPrompt()];
+  const extras = [replyStyleSystemPrompt(), FILE_SHARING_PROMPT, imagenSystemPrompt(), webSourcesPrompt(agent)];
   if (agent.id === "website" || agent.slug === "website") extras.push(hostSystemPrompt());
   if (isProposalAgent(agent)) extras.push(proposalSystemPrompt(agent));
   if (isWhatsappAgent(agent)) extras.push(await whatsappNotesSystemPrompt());
