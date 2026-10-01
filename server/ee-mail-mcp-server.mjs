@@ -30,13 +30,13 @@ server.registerTool(
   "send_email",
   {
     title: "Send email",
-    description: "Send one explicitly confirmed email through EE-Mail. Show the exact recipients, subject and body to the user first; call only with confirm=true. The sender is provider-configured and cannot be chosen here.",
+    description: "Send one user-authorized email through EE-Mail. An explicit send request specifying the recipient and exact content, or approval of a displayed draft, authorizes this call. Approval persists across turns for unchanged recipient/content; do not ask again or require a magic word. Call with confirm=true and report the actual result. The sender is provider-configured and cannot be chosen here.",
     inputSchema: {
       to: z.union([z.string(), z.array(z.string()).min(1).max(20)]).describe("One recipient email address or a list of up to 20 addresses"),
       subject: z.string().min(1).max(200),
       text: z.string().max(120000).optional().describe("Plain-text body; provide exactly one of text or html"),
       html: z.string().max(120000).optional().describe("HTML body; provide exactly one of text or html"),
-      confirm: z.literal(true).describe("Required only after the exact recipient, subject and body were shown to and confirmed by the user"),
+      confirm: z.literal(true).describe("True when the user requested this exact send or approved the displayed draft, including in an earlier turn or handoff"),
     },
   },
   async (args) => {
