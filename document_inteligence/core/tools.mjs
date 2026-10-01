@@ -1,3 +1,4 @@
+import { USER_TOOLS } from './user-tools.mjs';
 // The single registry of Document Intelligence tools: input shapes, which micro-agent
 // may call each one, and the domain function behind it. The MCP server reads it to
 // advertise tools; the host reads it to authorise and run them. One source of truth,
@@ -12,6 +13,7 @@ import * as members from './members.mjs';
 import * as forms from "./forms.mjs";
 import { renderFormPage } from "./formpage.mjs";
 import { crmDashboard } from "./dashboard.mjs";
+import { readCalendar } from "./calendar.mjs";
 
 export const AGENTS = {
   "di-onboarding": { name: "Company Onboarding", short: "CO" },
@@ -21,9 +23,10 @@ export const AGENTS = {
   "di-db": { name: "DB Manager", short: "DB" },
   "di-forms": { name: "Form Designer", short: "FD" },
   "di-intake": { name: "Form Clerk", short: "FC" },
+  "di-calendar": { name: "Calendar AI", short: "CA" },
 };
 
-const ALL = Object.keys(AGENTS);
+const ALL = Object.keys(AGENTS).filter((id) => id !== "di-calendar");
 const RECORDS = "di-records";
 const DOCS = "di-documents";
 const TPL = "di-templates";
@@ -31,6 +34,7 @@ const DB = "di-db";
 const ONBOARD = "di-onboarding";
 const FORMS = "di-forms";
 const INTAKE = "di-intake";
+const CALENDAR = "di-calendar";
 
 const formField = z
   .object({
@@ -108,6 +112,7 @@ const customerFields = {
 
 /** @type {Record<string, { agents: string[], description: string, input: Record<string, z.ZodTypeAny>, run: Function, pdf?: Function, previewPdf?: boolean, saveFile?: Function }>} */
 export const TOOLS = {
+  ...USER_TOOLS,
   get_onboarding_status: {
     agents: ALL, description: "Live company profile, field definitions, missing minimum setup, invoice profile readiness and manual form link. Re-read after updates; never infer completion from chat history.",
     input: {}, run: company.getCompanyProfile,
@@ -358,6 +363,16 @@ export const TOOLS = {
     description: "One document with lines, payments, and (for drafts) what is still missing. ref = number or id.",
     input: { ref: z.string() },
     run: documents.getDocument,
+  },
+  calendar_events: {
+    agents: [CALENDAR],
+    description: "Read-only company calendar events for a bounded date range. Includes quotation expiry, unpaid invoice due dates, recorded payments, form deadlines, and date-typed custom-field reminders. Returns source provenance and review warnings; never changes records.",
+    input: {
+      from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Visible range start, YYYY-MM-DD"),
+      to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Visible range end, YYYY-MM-DD"),
+      timezone: z.string().optional().describe("IANA timezone; defaults to the company timezone"),
+    },
+    run: readCalendar,
   },
   crm_dashboard: {
     agents: [RECORDS, DOCS, DB],

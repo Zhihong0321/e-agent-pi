@@ -4,6 +4,7 @@ import { getCompanyProfile, updateCompanyProfile } from "../document_inteligence
 import { listCompanyMembers, saveCompanyMember } from "../document_inteligence/core/members.mjs";
 import { findCustomers, saveCustomer } from "../document_inteligence/core/records.mjs";
 import { createDraft, getDocument, issueDocument, listDocuments } from "../document_inteligence/core/documents.mjs";
+import { readCalendar, validateCalendarRange } from "../document_inteligence/core/calendar.mjs";
 
 const profileKeys = new Set([
   "name", "legal_name", "reg_no", "country", "business_type", "business_activity",
@@ -13,6 +14,11 @@ const profileKeys = new Set([
 function scope(fn) {
   const ctx = companyHostContext();
   return withContext(ctx.db, { ...ctx, actor: "owner", agent: "demo-form" }, fn);
+}
+
+export async function demoCalendar(query = {}) {
+  const range = validateCalendarRange({ from: query.from, to: query.to, timezone: query.timezone });
+  return scope((tx) => readCalendar(tx, range));
 }
 
 export async function demoState() {

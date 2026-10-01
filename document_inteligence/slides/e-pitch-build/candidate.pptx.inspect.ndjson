@@ -1,0 +1,220 @@
+{"kind":"deck","id":"pr/oiek0y","name":"Deck"}
+{"kind":"layout","layoutId":"a4bae7e0-6e4e-444f-89d4-bac13fbb3ba8","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"b4b5b4f5-bdfb-4e73-b763-135420011ffc","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/0deblj","slide":1,"title":"01","textShapes":5}
+{"kind":"textbox","id":"sh/l4veho72","slide":1,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[1170,662,48,30]}
+{"kind":"textbox","id":"sh/y14vm98r","slide":1,"text":"e","textPreview":"e","textChars":1,"textLines":1,"bbox":[72,90,270,220]}
+{"kind":"textbox","id":"sh/z2dwfepw","slide":1,"text":"by eternalgy","textPreview":"by eternalgy","textChars":12,"textLines":1,"bbox":[82,305,510,70]}
+{"kind":"textbox","id":"sh/87mxs3qt","slide":1,"text":"为团队打造的 AI","textPreview":"为团队打造的 AI","textChars":9,"textLines":1,"bbox":[72,445,790,85]}
+{"kind":"textbox","id":"sh/98vel87e","slide":1,"text":"Let it know, Let it Work.","textPreview":"Let it know, Let it Work.","textChars":25,"textLines":1,"bbox":[76,555,900,65]}
+{"kind":"image","id":"im/f6hsrytc","slide":1,"name":"","alt":"Eternalgy e 原始品牌标志","bbox":[880,160,290,290]}
+{"kind":"notes","id":"nt/0deblj","slide":1,"text":"开场：e by Eternalgy 是为团队打造的 AI。核心理念是把 AI 的工作能力与公司的资料、设定和工作流程绑定。本阶段产品以 Document Intelligence 为切入点。团队定位描述产品方向，当前 host 仍为单一操作员、默认公司。\n\n依据：创始人于本次对话提供的产品理念。定位和愿景不代表已发布的全部能力。\n资料日期：2026-10-01。"}
+{"kind":"slide","id":"sl/djvg01","slide":2,"title":"团队工作，需要共同的公司上下文","textShapes":4}
+{"kind":"textbox","id":"sh/gbu1o76t","slide":2,"text":"团队工作，需要共同的公司上下文","textPreview":"团队工作，需要共同的公司上下文","textChars":15,"textLines":1,"bbox":[72,58,1136,105]}
+{"kind":"textbox","id":"sh/va10v258","slide":2,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[1170,662,48,30]}
+{"kind":"textbox","id":"sh/u9szmxon","slide":2,"text":"成员知道的事，\n应成为 e 工作的依据","textPreview":"成员知道的事， | 应成为 e 工作的依据","textChars":19,"textLines":2,"bbox":[72,200,1080,160]}
+{"kind":"textbox","id":"sh/5g3i1cna","slide":2,"text":"公司资料散落在旧文件与成员经验中\n重复解释背景，重复录入资料，交接依赖个人\n团队需要延续前一次工作的记录与规则","textPreview":"公司资料散落在旧文件与成员经验中 | 重复解释背景，重复录入资料，交接依赖个人 | 团队需要延续前一次工作的记录与规则","textChars":55,"textLines":3,"bbox":[76,414,1080,190]}
+{"kind":"notes","id":"nt/djvg01","slide":2,"text":"痛点是公司信息常分散在旧文件、表单与不同成员手里。我们提出的产品命题是：每一次 AI 工作都应使用同一套经过确认的公司资料和规则。这是创始人的问题定义，不是对全部竞品的事实判断。\n\n依据：创始人于本次对话提供的产品理念。定位和愿景不代表已发布的全部能力。\n资料日期：2026-10-01。"}
+{"kind":"slide","id":"sl/4obipm","slide":3,"title":"AI 变现的水坝原理","textShapes":5}
+{"kind":"textbox","id":"sh/vet4jel0","slide":3,"text":"AI 变现的水坝原理","textPreview":"AI 变现的水坝原理","textChars":10,"textLines":1,"bbox":[72,58,1136,105]}
+{"kind":"textbox","id":"sh/wf2lsj2l","slide":3,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[1170,662,48,30]}
+{"kind":"textbox","id":"sh/hgbmlo3q","slide":3,"text":"AI 能力像水源\n使用门槛像一道坝","textPreview":"AI 能力像水源 | 使用门槛像一道坝","textChars":17,"textLines":2,"bbox":[72,190,1100,160]}
+{"kind":"textbox","id":"sh/ihk3u9kb","slide":3,"text":"搭建门槛       使用门槛       稳定门槛","textPreview":"搭建门槛       使用门槛       稳定门槛","textChars":26,"textLines":1,"bbox":[76,411,1110,75]}
+{"kind":"textbox","id":"sh/jid4nelw","slide":3,"text":"AI 变现的最后一里路：\n公司搭得起，成员用得上，工作交付值得信任","textPreview":"AI 变现的最后一里路： | 公司搭得起，成员用得上，工作交付值得信任","textChars":33,"textLines":2,"bbox":[76,530,1110,120]}
+{"kind":"notes","id":"nt/4obipm","slide":3,"text":"创始人的水坝原理是商业化比喻，而非经外部研究证实的行业结论：大模型能力像水源，使用门槛像拦水的坝。最后一里路是让公司实际搭建、成员实际使用并持续可靠完成工作。三个门槛为搭建、使用和稳定。这里的水源并无具体 model 性能比较，避免未经核实的模型名称与前沿基准。\n\n依据：创始人于本次对话提供的产品理念。定位和愿景不代表已发布的全部能力。\n资料日期：2026-10-01。"}
+{"kind":"slide","id":"sl/n38onm","slide":4,"title":"e 围绕三道门槛设计","textShapes":9}
+{"kind":"textbox","id":"sh/725w3uxw","slide":4,"text":"e 围绕三道门槛设计","textPreview":"e 围绕三道门槛设计","textChars":10,"textLines":1,"bbox":[72,58,1136,105]}
+{"kind":"textbox","id":"sh/s3edwzeh","slide":4,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[1170,662,48,30]}
+{"kind":"textbox","id":"sh/t4ne54f2","slide":4,"text":"搭建","textPreview":"搭建","textChars":2,"textLines":1,"bbox":[72,205,175,70]}
+{"kind":"textbox","id":"sh/idcvq5gf","slide":4,"text":"分享公司资料，配置已有流程与业务结构","textPreview":"分享公司资料，配置已有流程与业务结构","textChars":18,"textLines":1,"bbox":[285,205,900,70]}
+{"kind":"textbox","id":"sh/jylwzaxk","slide":4,"text":"使用","textPreview":"使用","textChars":2,"textLines":1,"bbox":[72,330,175,70]}
+{"kind":"textbox","id":"sh/kzudsfy5","slide":4,"text":"聊天就是入口，像交代内部 admin clerk 一样交代工作","textPreview":"聊天就是入口，像交代内部 admin clerk 一样交代工作","textChars":31,"textLines":1,"bbox":[285,330,900,100]}
+{"kind":"textbox","id":"sh/503e1kfq","slide":4,"text":"稳定","textPreview":"稳定","textChars":2,"textLines":1,"bbox":[72,478,175,70]}
+{"kind":"textbox","id":"sh/29gf29wj","slide":4,"text":"细胞级专职 AI 各守职责，以 SOP、权限与测试约束流程","textPreview":"细胞级专职 AI 各守职责，以 SOP、权限与测试约束流程","textChars":29,"textLines":1,"bbox":[285,478,900,110]}
+{"kind":"textbox","id":"sh/3upwbex4","slide":4,"text":"设计目标：更快搭建、更少学习负担、更一致的交付","textPreview":"设计目标：更快搭建、更少学习负担、更一致的交付","textChars":23,"textLines":1,"bbox":[76,630,1110,40]}
+{"kind":"notes","id":"nt/n38onm","slide":4,"text":"快速搭建是目标，依靠公司资料 onboarding、常用业务数据结构和流程知识，并仍需要用户确认。零使用门槛是创始人的设计目标，具体实现为聊天入口和内勤助理使用方式，并非已验证的零培训或无限制可用性。稳定门槛由 scope、SOP、工具权限、数据库约束和测试来降低，不代表 harness 已达到零错误。细胞/器官比喻解释可组合性，整体还需要 orchestration、交接与集成验证。\n\n依据：ONBOARDING.md; core/company.mjs; README.md; core/tools.mjs:16-24; host.mjs:26-70; core/documents.mjs:210-339,353-392,467-493,504-549,568-602; core/actions.mjs:31-114\n资料日期：2026-10-01。"}
+{"kind":"slide","id":"sl/xiwfaq","slide":5,"title":"Let it know, Let it Work.","textShapes":6}
+{"kind":"textbox","id":"sh/uhgrelc7","slide":5,"text":"Let it know, Let it Work.","textPreview":"Let it know, Let it Work.","textChars":25,"textLines":1,"bbox":[72,58,1136,105]}
+{"kind":"textbox","id":"sh/h47apgvi","slide":5,"text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1170,662,48,30]}
+{"kind":"textbox","id":"sh/w3y9gbux","slide":5,"text":"让 e 知道","textPreview":"让 e 知道","textChars":6,"textLines":1,"bbox":[72,215,520,80]}
+{"kind":"textbox","id":"sh/7e58j6dg","slide":5,"text":"公司是谁\n客户与商品是什么\n文件怎样做，流程怎样走","textPreview":"公司是谁 | 客户与商品是什么 | 文件怎样做，流程怎样走","textChars":25,"textLines":3,"bbox":[72,328,530,230]}
+{"kind":"textbox","id":"sh/mdwra1cv","slide":5,"text":"让 e 工作","textPreview":"让 e 工作","textChars":6,"textLines":1,"bbox":[680,215,520,80]}
+{"kind":"textbox","id":"sh/9gnqlgvm","slide":5,"text":"按公司资料准备文件\n发现缺项，先询问再处理\n把成果与业务记录连接起来","textPreview":"按公司资料准备文件 | 发现缺项，先询问再处理 | 把成果与业务记录连接起来","textChars":34,"textLines":3,"bbox":[680,328,530,230]}
+{"kind":"notes","id":"nt/xiwfaq","slide":5,"text":"让 e 知道：公司的身份、客户与商品、模板、付款条件和流程规则。让 e 工作：查找记录、询问缺项、完成文件、保存关联数据。这里的公司理解指明确保存并在任务中调用的业务上下文，不是模型自动训练。\n\n依据：ONBOARDING.md; core/company.mjs; README.md; core/documents.mjs:210-339,353-392,467-493,504-549,568-602; core/actions.mjs:31-114\n资料日期：2026-10-01。"}
+{"kind":"slide","id":"sl/v4xs82","slide":6,"title":"像新同事一样，先了解公司","textShapes":5}
+{"kind":"textbox","id":"sh/9wnalw3u","slide":6,"text":"像新同事一样，先了解公司","textPreview":"像新同事一样，先了解公司","textChars":12,"textLines":1,"bbox":[72,58,1136,105]}
+{"kind":"textbox","id":"sh/m9wrahkj","slide":6,"text":"06","textPreview":"06","textChars":2,"textLines":1,"bbox":[1170,662,48,30]}
+{"kind":"textbox","id":"sh/na5sjml4","slide":6,"text":"旧文件与公司资料\n成为入职材料","textPreview":"旧文件与公司资料 | 成为入职材料","textChars":15,"textLines":2,"bbox":[72,200,640,135]}
+{"kind":"textbox","id":"sh/wzetgr2l","slide":6,"text":"Invoice / Quotation\nCompany Profile / 官网内容","textPreview":"Invoice / Quotation | Company Profile / 官网内容","textChars":42,"textLines":2,"bbox":[76,366,610,110]}
+{"kind":"textbox","id":"sh/x0napwj6","slide":6,"text":"读取资料，提取核心信息\n用户确认后保存公司设定\n预览模板，核对实际工作结果","textPreview":"读取资料，提取核心信息 | 用户确认后保存公司设定 | 预览模板，核对实际工作结果","textChars":37,"textLines":3,"bbox":[76,500,655,132]}
+{"kind":"image","id":"im/7mxwf610","slide":6,"name":"","alt":"现有报价单预览，作为 onboarding 文件示例","bbox":[845,178,338,458]}
+{"kind":"notes","id":"nt/v4xs82","slide":6,"text":"保留创始人的拟人学习比喻。用已有 invoice、quotation、company profile 和官网内容作为背景材料，提取信息后请用户确认，写入公司资料并预览模板。当前没有在此 repo 新增独立 OCR 或爬虫服务。官网与文件的可读性取决于 host 工具，不能承诺只看几张文件就完全自动完成设置。\n\n依据：ONBOARDING.md; core/company.mjs; README.md\n资料日期：2026-10-01。"}
+{"kind":"slide","id":"sl/fl25e1","slide":7,"title":"天下武功，殊途同归","textShapes":5}
+{"kind":"textbox","id":"sh/h8z21c7q","slide":7,"text":"天下武功，殊途同归","textPreview":"天下武功，殊途同归","textChars":9,"textLines":1,"bbox":[72,58,1136,105]}
+{"kind":"textbox","id":"sh/ul8jqx8f","slide":7,"text":"07","textPreview":"07","textChars":2,"textLines":1,"bbox":[1170,662,48,30]}
+{"kind":"textbox","id":"sh/vmhkz2pk","slide":7,"text":"不同公司的工作，\n共享许多相同的业务结构","textPreview":"不同公司的工作， | 共享许多相同的业务结构","textChars":20,"textLines":2,"bbox":[72,205,1110,150]}
+{"kind":"textbox","id":"sh/4ba1wrqh","slide":7,"text":"客户与联系人      产品与服务      业务文件\n表单与提交记录    公司设定与流程规则","textPreview":"客户与联系人      产品与服务      业务文件 | 表单与提交记录    公司设定与流程规则","textChars":48,"textLines":2,"bbox":[76,405,1100,135]}
+{"kind":"textbox","id":"sh/5cj25w72","slide":7,"text":"e 用常用数据结构承接这些工作，再适应公司的字段、模板与流程","textPreview":"e 用常用数据结构承接这些工作，再适应公司的字段、模板与流程","textChars":30,"textLines":1,"bbox":[76,581,1100,60]}
+{"kind":"notes","id":"nt/fl25e1","slide":7,"text":"创始人的判断是：很多公司虽有不同的行业语言，常见业务底层仍涉及客户、商品、文件、数据采集和工作规则。e 当前预置常用业务 schema，可通过字段、模板和 readiness rules 做公司配置。这不是任意自动设计数据库或支持所有行业的承诺。\n\n依据：core/tools.mjs:16-24; host.mjs:26-70; README.md\n资料日期：2026-10-01。"}
+{"kind":"slide","id":"sl/lkej37","slide":8,"title":"同一个开票请求，两种处理方式","textShapes":13}
+{"kind":"textbox","id":"sh/ah03qp4r","slide":8,"text":"同一个开票请求，两种处理方式","textPreview":"同一个开票请求，两种处理方式","textChars":14,"textLines":1,"bbox":[72,58,1136,105]}
+{"kind":"textbox","id":"sh/xkrmlkni","slide":8,"text":"08","textPreview":"08","textChars":2,"textLines":1,"bbox":[1170,662,48,30]}
+{"kind":"textbox","id":"sh/wjilsfmx","slide":8,"text":"“Create 1 invoice for Acme…”","textPreview":"“Create 1 invoice for Acme…”","textChars":28,"textLines":1,"bbox":[72,161,1120,55]}
+{"kind":"textbox","id":"sh/jm94nu5o","slide":8,"text":"单次文件生成","textPreview":"单次文件生成","textChars":6,"textLines":1,"bbox":[78,239,390,50]}
+{"kind":"textbox","id":"sh/5obmp43e","slide":8,"text":"1 PDF Invoice","textPreview":"1 PDF Invoice","textChars":13,"textLines":1,"bbox":[104,581,330,50]}
+{"kind":"textbox","id":"sh/kni5wzm9","slide":8,"text":"VS","textPreview":"VS","textChars":2,"textLines":1,"bbox":[430,414,100,65]}
+{"kind":"textbox","id":"sh/zqp4bq54","slide":8,"text":"e：按业务流程处理","textPreview":"e：按业务流程处理","textChars":9,"textLines":1,"bbox":[588,239,620,50]}
+{"kind":"shape","id":"sh/ypg3i54z","slide":8,"bbox":[740,365,145,70]}
+{"kind":"shape","id":"sh/o32ps7y1","slide":8,"bbox":[885,365,145,70]}
+{"kind":"shape","id":"sh/94b61czm","slide":8,"bbox":[740,435,145,85]}
+{"kind":"shape","id":"sh/m1knqx0v","slide":8,"bbox":[885,435,145,85]}
+{"kind":"shape","id":"sh/n2toz2hg","slide":8,"bbox":[658,295,160,160]}
+{"kind":"shape","id":"sh/wrmpwryx","slide":8,"bbox":[685.2,322.2,105.6,105.6]}
+{"kind":"textbox","id":"sh/xsv65wzi","slide":8,"text":"Schema\n数据结构","textPreview":"Schema | 数据结构","textChars":11,"textLines":2,"bbox":[669.2,343,137.6,64]}
+{"kind":"shape","id":"sh/a5k7uhgr","slide":8,"bbox":[952,295,160,160]}
+{"kind":"shape","id":"sh/bqto3mhc","slide":8,"bbox":[979.2,322.2,105.6,105.6]}
+{"kind":"textbox","id":"sh/cvi5knit","slide":8,"text":"Workflow\n流程","textPreview":"Workflow | 流程","textChars":11,"textLines":2,"bbox":[963.2,343,137.6,64]}
+{"kind":"shape","id":"sh/dwr6tsze","slide":8,"bbox":[658,452,160,160]}
+{"kind":"shape","id":"sh/tgzu1knq","slide":8,"bbox":[685.2,479.2,105.6,105.6]}
+{"kind":"textbox","id":"sh/8fqd8f65","slide":8,"text":"SOP\n工作规范","textPreview":"SOP | 工作规范","textChars":8,"textLines":2,"bbox":[669.2,500,137.6,64]}
+{"kind":"shape","id":"sh/7ehcza50","slide":8,"bbox":[952,452,160,160]}
+{"kind":"shape","id":"sh/6d8v6pof","slide":8,"bbox":[979.2,479.2,105.6,105.6]}
+{"kind":"textbox","id":"sh/hkje54n2","slide":8,"text":"Template\n模板","textPreview":"Template | 模板","textChars":11,"textLines":2,"bbox":[963.2,500,137.6,64]}
+{"kind":"shape","id":"sh/gjadcz6h","slide":8,"bbox":[796,351,180,180]}
+{"kind":"shape","id":"sh/vihc3u5w","slide":8,"bbox":[826.6,381.6,118.8,118.8]}
+{"kind":"textbox","id":"sh/uh8vapob","slide":8,"text":"DB\n业务记录","textPreview":"DB | 业务记录","textChars":7,"textLines":2,"bbox":[808.6,405,154.8,72]}
+{"kind":"textbox","id":"sh/58je94ny","slide":8,"text":"查记录、补缺项、发行 PDF、保存关联、追踪付款","textPreview":"查记录、补缺项、发行 PDF、保存关联、追踪付款","textChars":24,"textLines":1,"bbox":[588,625,620,45]}
+{"kind":"image","id":"im/nul8fatk","slide":8,"name":"","alt":"单次文件输出：invoice PDF 示例","bbox":[132,315,195,257]}
+{"kind":"notes","id":"nt/lkej37","slide":8,"text":"本页以单次文件生成方式与 e 的业务流程方式做概念对比，并非声称全部其他 AI 只会 PDF。齿轮代表相互配合的现有结构：Schema 是预置的业务数据模型，DB 保存记录，Workflow 管理文档生命周期，SOP 与工具授权约束 specialist，Template 渲染文件。齿轮是概念关系图，不表示运行时物理依赖或自动创建任意 schema。\n\n依据：core/documents.mjs:210-339,353-392,467-493,504-549,568-602; core/actions.mjs:31-114; core/tools.mjs:16-24; host.mjs:26-70\n资料日期：2026-10-01。"}
+{"kind":"slide","id":"sl/mj4zz7","slide":9,"title":"Form 收集数据，e 延续后面的工作","textShapes":8}
+{"kind":"textbox","id":"sh/0fmhk7ad","slide":9,"text":"Form 收集数据，e 延续后面的工作","textPreview":"Form 收集数据，e 延续后面的工作","textChars":19,"textLines":1,"bbox":[72,58,1136,105]}
+{"kind":"textbox","id":"sh/fet0r29s","slide":9,"text":"09","textPreview":"09","textChars":2,"textLines":1,"bbox":[1170,662,48,30]}
+{"kind":"textbox","id":"sh/edkzixs7","slide":9,"text":"工程报告 / 客户订单 / 问卷 / 每日打卡","textPreview":"工程报告 / 客户订单 / 问卷 / 每日打卡","textChars":23,"textLines":1,"bbox":[72,184,1136,60]}
+{"kind":"shape","id":"sh/dcbipsrm","slide":9,"bbox":[72,315,225,170]}
+{"kind":"textbox","id":"sh/sb2hgna1","slide":9,"text":"Form\n收集与校验","textPreview":"Form | 收集与校验","textChars":10,"textLines":2,"bbox":[80,323,209,154]}
+{"kind":"shape","id":"sh/rat0n29g","slide":9,"bbox":[375,315,225,170]}
+{"kind":"textbox","id":"sh/q9kzexsb","slide":9,"text":"DB\n保存提交","textPreview":"DB | 保存提交","textChars":7,"textLines":2,"bbox":[383,323,209,154]}
+{"kind":"shape","id":"sh/58bylsrq","slide":9,"bbox":[678,315,225,170]}
+{"kind":"textbox","id":"sh/472hcna5","slide":9,"text":"专职 AI\n审阅与处理","textPreview":"专职 AI | 审阅与处理","textChars":11,"textLines":2,"bbox":[686,323,209,154]}
+{"kind":"shape","id":"sh/6d83ad8n","slide":9,"bbox":[980,315,225,170]}
+{"kind":"textbox","id":"sh/reh4jip8","slide":9,"text":"工作成果\n记录 / 摘要 / CSV","textPreview":"工作成果 | 记录 / 摘要 / CSV","textChars":18,"textLines":2,"bbox":[988,323,209,154]}
+{"kind":"shape","id":"sh/sfqlcnqd","slide":9,"bbox":[0,0,0,0]}
+{"kind":"shape","id":"sh/tgzmls7y","slide":9,"bbox":[0,0,0,0]}
+{"kind":"shape","id":"sh/i9o36d8b","slide":9,"bbox":[0,0,0,0]}
+{"kind":"textbox","id":"sh/jahkfipw","slide":9,"text":"先把信息收进来，再关联客户、文件与下一步工作","textPreview":"先把信息收进来，再关联客户、文件与下一步工作","textChars":22,"textLines":1,"bbox":[76,578,1110,65]}
+{"kind":"notes","id":"nt/mj4zz7","slide":9,"text":"现有 Form Designer 可建立与发布表单，Form Clerk 可 review、标记 spam、summary 与 export。带语义绑定的客户表单和 order form 可进入客户记录及报价草稿流程。工程日报和每日打卡属于可配置采集场景，不代表完整工单、考勤或薪资系统。任意问题分析是方向，当前以已有统计、摘要和导出工具为准。\n\n依据：core/forms.mjs:418-481,552-574,754-797,830-884,991-1060,1084-1178\n资料日期：2026-10-01。"}
+{"kind":"slide","id":"sl/y6f9tz","slide":10,"title":"业务记录，让团队看见工作状态","textShapes":5}
+{"kind":"textbox","id":"sh/mhc3q1sf","slide":10,"text":"业务记录，让团队看见工作状态","textPreview":"业务记录，让团队看见工作状态","textChars":14,"textLines":1,"bbox":[72,58,1136,105]}
+{"kind":"textbox","id":"sh/9k3m1wr6","slide":10,"text":"10","textPreview":"10","textChars":2,"textLines":1,"bbox":[1170,662,48,30]}
+{"kind":"textbox","id":"sh/8julsbal","slide":10,"text":"哪些款项未收？\n哪些 invoice 已逾期？\n哪些 quotation 待跟进？","textPreview":"哪些款项未收？ | 哪些 invoice 已逾期？ | 哪些 quotation 待跟进？","textChars":41,"textLines":3,"bbox":[72,218,550,225]}
+{"kind":"textbox","id":"sh/ze14vm9o","slide":10,"text":"文件背后的数据\n可以汇总成业务概览","textPreview":"文件背后的数据 | 可以汇总成业务概览","textChars":17,"textLines":2,"bbox":[76,486,570,125]}
+{"kind":"textbox","id":"sh/lgjmxwru","slide":10,"text":"现有界面预览，图中金额与数量为演示数据","textPreview":"现有界面预览，图中金额与数量为演示数据","textChars":19,"textLines":1,"bbox":[722,615,484,45]}
+{"kind":"image","id":"im/76dcjmts","slide":10,"name":"","alt":"CRM 演示界面局部，所有金额和数量均为演示数据","bbox":[720,186,490,418]}
+{"kind":"notes","id":"nt/y6f9tz","slide":10,"text":"图像来自 repo 中的 CRM dashboard preview，数值为演示数据，不能解读为 Eternalgy 的真实经营表现或客户业绩。代码实现了 outstanding、overdue、billed/collected、quotation pipeline 与 recent documents 等指标。本页用 UI 图像展示输出示例，避免宣称已验证的收益。\n\n依据：core/dashboard.mjs:23-128; preview/crm-desktop.png\n资料日期：2026-10-01。"}
+{"kind":"slide","id":"sl/loo7jz","slide":11,"title":"一个 Orchestrator，一组专职 AI","textShapes":11}
+{"kind":"textbox","id":"sh/rmxcrqpg","slide":11,"text":"一个 Orchestrator，一组专职 AI","textPreview":"一个 Orchestrator，一组专职 AI","textChars":23,"textLines":1,"bbox":[72,58,1136,105]}
+{"kind":"textbox","id":"sh/s76t0vq1","slide":11,"text":"11","textPreview":"11","textChars":2,"textLines":1,"bbox":[1170,662,48,30]}
+{"kind":"shape","id":"sh/d8fut07m","slide":11,"bbox":[430,176,420,106]}
+{"kind":"textbox","id":"sh/e9ob258r","slide":11,"text":"Orchestrator\n理解需求，安排工作","textPreview":"Orchestrator | 理解需求，安排工作","textChars":22,"textLines":2,"bbox":[438,184,404,90]}
+{"kind":"shape","id":"sh/faxcvapc","slide":11,"bbox":[640,282,0,53]}
+{"kind":"shape","id":"sh/0b6t4vqx","slide":11,"bbox":[148,335,984,0]}
+{"kind":"shape","id":"sh/1cfux07i","slide":11,"bbox":[148,335,0,51]}
+{"kind":"shape","id":"sh/udkbq18n","slide":11,"bbox":[72,386,152,150]}
+{"kind":"textbox","id":"sh/vedsj6p8","slide":11,"text":"资料\n专员","textPreview":"资料 | 专员","textChars":5,"textLines":2,"bbox":[80,394,136,134]}
+{"kind":"shape","id":"sh/7q9sn2ls","slide":11,"bbox":[312,335,0,51]}
+{"kind":"shape","id":"sh/mp0bux47","slide":11,"bbox":[236,386,152,150]}
+{"kind":"textbox","id":"sh/9crapc3i","slide":11,"text":"文件\n专员","textPreview":"文件 | 专员","textChars":5,"textLines":2,"bbox":[244,394,136,134]}
+{"kind":"shape","id":"sh/8bitw7mx","slide":11,"bbox":[476,335,0,51]}
+{"kind":"shape","id":"sh/zmpsj2lg","slide":11,"bbox":[400,386,152,150]}
+{"kind":"textbox","id":"sh/ylgbqx4v","slide":11,"text":"表单\n设计","textPreview":"表单 | 设计","textChars":5,"textLines":2,"bbox":[408,394,136,134]}
+{"kind":"shape","id":"sh/lorals3m","slide":11,"bbox":[640,335,0,51]}
+{"kind":"shape","id":"sh/knytsnm1","slide":11,"bbox":[564,386,152,150]}
+{"kind":"textbox","id":"sh/bipsfi5k","slide":11,"text":"表单\n审阅","textPreview":"表单 | 审阅","textChars":5,"textLines":2,"bbox":[572,394,136,134]}
+{"kind":"shape","id":"sh/ahgbmd4z","slide":11,"bbox":[804,335,0,51]}
+{"kind":"shape","id":"sh/etwbydor","slide":11,"bbox":[728,386,152,150]}
+{"kind":"textbox","id":"sh/fe5c7ipc","slide":11,"text":"公司\n入职","textPreview":"公司 | 入职","textChars":5,"textLines":2,"bbox":[736,394,136,134]}
+{"kind":"shape","id":"sh/0fet0n6x","slide":11,"bbox":[968,335,0,51]}
+{"kind":"shape","id":"sh/1gnu9s7i","slide":11,"bbox":[892,386,152,150]}
+{"kind":"textbox","id":"sh/2hgb2xon","slide":11,"text":"模板\n设计","textPreview":"模板 | 设计","textChars":5,"textLines":2,"bbox":[900,394,136,134]}
+{"kind":"shape","id":"sh/nipcbip8","slide":11,"bbox":[1132,335,0,51]}
+{"kind":"shape","id":"sh/ojyt4n6t","slide":11,"bbox":[1056,386,152,150]}
+{"kind":"textbox","id":"sh/pk7uds7e","slide":11,"text":"数据库\n管理","textPreview":"数据库 | 管理","textChars":6,"textLines":2,"bbox":[1064,394,136,134]}
+{"kind":"textbox","id":"sh/algb6xoz","slide":11,"text":"每位 specialist 只使用获授权的工具，共享同一套业务记录","textPreview":"每位 specialist 只使用获授权的工具，共享同一套业务记录","textChars":33,"textLines":1,"bbox":[76,617,1110,48]}
+{"kind":"notes","id":"nt/loo7jz","slide":11,"text":"Orchestrator 接收需求并派发给 specialist。当前 DI registry 有七个 specialist。Record 与 Document agent 用于主要业务，Forms 与 Intake 用于采集和处理，Onboarding、Templates 和 DB 用于公司设置。所有 agent 共享业务记录，但工具按角色授权。Orchestrator 的外围实现属于 UIv2 host，不把当前子目录说成独立完整 host。\n\n依据：core/tools.mjs:16-24; host.mjs:26-70; README.md\n资料日期：2026-10-01。"}
+{"kind":"slide","id":"sl/r1blk4","slide":12,"title":"Stupid = Smart：细胞级 AI","textShapes":5}
+{"kind":"textbox","id":"sh/dcbu58zm","slide":12,"text":"Stupid = Smart：细胞级 AI","textPreview":"Stupid = Smart：细胞级 AI","textChars":21,"textLines":1,"bbox":[72,58,1136,105]}
+{"kind":"textbox","id":"sh/cr2dc3i1","slide":12,"text":"12","textPreview":"12","textChars":2,"textLines":1,"bbox":[1170,662,48,30]}
+{"kind":"textbox","id":"sh/3m9czy14","slide":12,"text":"聪明的人，\n需要每个细胞都聪明吗？","textPreview":"聪明的人， | 需要每个细胞都聪明吗？","textChars":17,"textLines":2,"bbox":[72,190,740,150]}
+{"kind":"textbox","id":"sh/2l0b6t0j","slide":12,"text":"“聪明的红血球？”\n“聪明的大肠细胞？”","textPreview":"“聪明的红血球？” | “聪明的大肠细胞？”","textChars":20,"textLines":2,"bbox":[76,394,680,120]}
+{"kind":"textbox","id":"sh/poru1oza","slide":12,"text":"整体的能力，来自分工与协作","textPreview":"整体的能力，来自分工与协作","textChars":13,"textLines":1,"bbox":[76,603,690,65]}
+{"kind":"image","id":"im/vqh0bqdg","slide":12,"name":"","alt":"ImageGen abstract cellular AI visual metaphor","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/r1blk4","slide":12,"text":"创始人的细胞比喻：聪明的人是否要求每个细胞都像人一样聪明？用红血球和大肠细胞作修辞，引出分工与组织产生整体能力。图像是艺术比喻，不对细胞是否具有认知能力作科学断言。e 的目标是把 specialist 限制在可检查的明确任务中，再通过 orchestration 和集成验证形成可靠系统。整体可靠性并不能只由单个单元可靠性推导。\n\n依据：创始人本次提供的细胞级 AI 比喻；core/tools.mjs:16-24; host.mjs:26-70\n图像：内置 ImageGen 生成的抽象架构比喻，并非生物学结构或实物照片。标题与文字保持原生可编辑。\n资料日期：2026-10-01。"}
+{"kind":"slide","id":"sl/otdf34","slide":13,"title":"聪明的系统，可以由简单的单元组成","textShapes":13}
+{"kind":"textbox","id":"sh/f294fqp0","slide":13,"text":"聪明的系统，可以由简单的单元组成","textPreview":"聪明的系统，可以由简单的单元组成","textChars":16,"textLines":1,"bbox":[72,58,1136,105]}
+{"kind":"textbox","id":"sh/u103ml8f","slide":13,"text":"13","textPreview":"13","textChars":2,"textLines":1,"bbox":[1170,662,48,30]}
+{"kind":"textbox","id":"sh/psbml072","slide":13,"text":"扩大一个 AI 的职责","textPreview":"扩大一个 AI 的职责","textChars":11,"textLines":1,"bbox":[112,154,490,55]}
+{"kind":"textbox","id":"sh/or2lsvqh","slide":13,"text":"e：组合细胞级 AI","textPreview":"e：组合细胞级 AI","textChars":10,"textLines":1,"bbox":[716,154,490,55]}
+{"kind":"textbox","id":"sh/3qt4jqpw","slide":13,"text":"一个 AI\n包办所有工作","textPreview":"一个 AI | 包办所有工作","textChars":12,"textLines":2,"bbox":[166,304,270,115]}
+{"kind":"textbox","id":"sh/2pk3ql8b","slide":13,"text":"VS","textPreview":"VS","textChars":2,"textLines":1,"bbox":[583,345,80,65]}
+{"kind":"textbox","id":"sh/dwvmpk7y","slide":13,"text":"资料","textPreview":"资料","textChars":2,"textLines":1,"bbox":[739,226,110,58]}
+{"kind":"textbox","id":"sh/cvmlwfqd","slide":13,"text":"模板","textPreview":"模板","textChars":2,"textLines":1,"bbox":[1057,226,110,58]}
+{"kind":"textbox","id":"sh/u9s7qpwj","slide":13,"text":"文件","textPreview":"文件","textChars":2,"textLines":1,"bbox":[739,443,110,58]}
+{"kind":"textbox","id":"sh/va1ojud4","slide":13,"text":"表单","textPreview":"表单","textChars":2,"textLines":1,"bbox":[1057,443,110,58]}
+{"kind":"textbox","id":"sh/wbapsfep","slide":13,"text":"调度\n协作","textPreview":"调度 | 协作","textChars":5,"textLines":2,"bbox":[866,319,160,98]}
+{"kind":"textbox","id":"sh/hcj6lkva","slide":13,"text":"职责越广，验证组合越多","textPreview":"职责越广，验证组合越多","textChars":11,"textLines":1,"bbox":[104,611,495,48]}
+{"kind":"textbox","id":"sh/ixs7upwv","slide":13,"text":"每个单元：明确任务、SOP、权限与测试","textPreview":"每个单元：明确任务、SOP、权限与测试","textChars":19,"textLines":1,"bbox":[682,611,545,48]}
+{"kind":"image","id":"im/d4ry1cfm","slide":13,"name":"","alt":"ImageGen abstract cellular AI visual metaphor","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/otdf34","slide":13,"text":"本页为两种架构思路的概念对比，不将所有竞品归为单一模式。左侧表示持续扩大单个 AI 的职责，右侧表示 e 的 specialist architecture。资料、文件、模板、表单是当前 specialist 职责示例，不是声称每个微任务都有独立 agent。Minimal scope、SOP、工具权限与测试让单元更容易约束，但整体可靠性仍依赖调度、信息交接和系统测试。可靠性为目标，没有已验证的零错误率或速度数值。\n\n依据：core/tools.mjs:16-24,729-737; core/actions.mjs:31-44; core/tools.mjs:16-24; host.mjs:26-70\n图像：内置 ImageGen 生成的抽象架构比喻，并非生物学结构或实物照片。标题与文字保持原生可编辑。\n资料日期：2026-10-01。"}
+{"kind":"slide","id":"sl/0bc62w","slide":14,"title":"公司上下文，连接每一次工作","textShapes":7}
+{"kind":"textbox","id":"sh/i9o3a1gv","slide":14,"text":"公司上下文，连接每一次工作","textPreview":"公司上下文，连接每一次工作","textChars":13,"textLines":1,"bbox":[72,58,1136,105]}
+{"kind":"textbox","id":"sh/5cf25gzm","slide":14,"text":"14","textPreview":"14","textChars":2,"textLines":1,"bbox":[1170,662,48,30]}
+{"kind":"textbox","id":"sh/4b6lcby1","slide":14,"text":"公司资料决定内容","textPreview":"公司资料决定内容","textChars":8,"textLines":1,"bbox":[72,210,1000,65]}
+{"kind":"textbox","id":"sh/v6xkf6hk","slide":14,"text":"公司名称、客户、价格与付款条件来自已保存记录","textPreview":"公司名称、客户、价格与付款条件来自已保存记录","textChars":22,"textLines":1,"bbox":[76,293,1110,65]}
+{"kind":"textbox","id":"sh/u5o361gz","slide":14,"text":"公司规则决定流程","textPreview":"公司规则决定流程","textChars":8,"textLines":1,"bbox":[72,394,1000,65]}
+{"kind":"textbox","id":"sh/h8f2hwza","slide":14,"text":"哪些字段必须补齐、何时发行、谁能使用哪些工具","textPreview":"哪些字段必须补齐、何时发行、谁能使用哪些工具","textChars":22,"textLines":1,"bbox":[76,477,1110,65]}
+{"kind":"textbox","id":"sh/g76l8ryp","slide":14,"text":"这套上下文可以延续到下一张文件与下一次任务","textPreview":"这套上下文可以延续到下一张文件与下一次任务","textChars":21,"textLines":1,"bbox":[76,591,1110,55]}
+{"kind":"notes","id":"nt/0bc62w","slide":14,"text":"本页表达产品的差异化设计选择，避免把一般 AI 都只做模板当作经市场研究证实的事实。公司上下文存在数据与配置中，后续任务可继续用。流程与权限是系统设计选择。不能保证任意任务、任意公司都能自动接入，也不能宣称自动创建任意数据库。\n\n依据：core/documents.mjs:210-339,353-392,467-493,504-549,568-602; core/actions.mjs:31-114; core/tools.mjs:16-24; host.mjs:26-70\n资料日期：2026-10-01。"}
+{"kind":"slide","id":"sl/zu7w7i","slide":15,"title":"Document Intelligence 是当前切入点","textShapes":7}
+{"kind":"textbox","id":"sh/fuxsjmh0","slide":15,"text":"Document Intelligence 是当前切入点","textPreview":"Document Intelligence 是当前切入点","textChars":28,"textLines":1,"bbox":[72,58,1136,105]}
+{"kind":"textbox","id":"sh/0v6tsril","slide":15,"text":"15","textPreview":"15","textChars":2,"textLines":1,"bbox":[1170,662,48,30]}
+{"kind":"textbox","id":"sh/1wzalcz6","slide":15,"text":"现有 MVP","textPreview":"现有 MVP","textChars":6,"textLines":1,"bbox":[72,215,510,65]}
+{"kind":"textbox","id":"sh/q5obmx0j","slide":15,"text":"客户、商品与文档流程\n付款记录与业务概览\n表单、模板与公司规则\n数据库按 tenant 分隔","textPreview":"客户、商品与文档流程 | 付款记录与业务概览 | 表单、模板与公司规则 | 数据库按 tenant 分隔","textChars":46,"textLines":4,"bbox":[72,300,510,250]}
+{"kind":"textbox","id":"sh/rqxsf2ho","slide":15,"text":"下一步产品方向","textPreview":"下一步产品方向","textChars":7,"textLines":1,"bbox":[680,215,510,65]}
+{"kind":"textbox","id":"sh/sr6to7i9","slide":15,"text":"多人账号与团队权限\n更多重复业务流程\n更自动化的资料 onboarding\n更广泛的业务问答分析","textPreview":"多人账号与团队权限 | 更多重复业务流程 | 更自动化的资料 onboarding | 更广泛的业务问答分析","textChars":48,"textLines":4,"bbox":[680,300,510,250]}
+{"kind":"textbox","id":"sh/dsfahczu","slide":15,"text":"当前 host：单一操作员、默认公司。MyInvois 尚未整合提交。","textPreview":"当前 host：单一操作员、默认公司。MyInvois 尚未整合提交。","textChars":35,"textLines":1,"bbox":[76,613,1120,55]}
+{"kind":"notes","id":"nt/zu7w7i","slide":15,"text":"必须明确 today vs future。Repo 文档定义 MVP/working demo，host 单一操作员/default company。数据库 tenant-aware 不等于当前支持完整团队用户权限或 tenant switching。MyInvois 只有预备字段，未提交整合。自主判断文档类型、自动扩展 schema、任意问题分析属于待验证方向。\n\n依据：checker/index.mjs:48-50; ONBOARDING.md; README.md; ONBOARDING.md; core/company.mjs; README.md\n资料日期：2026-10-01。"}
+{"kind":"slide","id":"sl/afqzj8","slide":16,"title":"客户试点：先完成一条真实工作流程","textShapes":6}
+{"kind":"textbox","id":"sh/o725sj2d","slide":16,"text":"客户试点：先完成一条真实工作流程","textPreview":"客户试点：先完成一条真实工作流程","textChars":16,"textLines":1,"bbox":[72,58,1136,105]}
+{"kind":"textbox","id":"sh/n6toze1s","slide":16,"text":"16","textPreview":"16","textChars":2,"textLines":1,"bbox":[1170,662,48,30]}
+{"kind":"textbox","id":"sh/25knq9k7","slide":16,"text":"已有文件与规则","textPreview":"已有文件与规则","textChars":7,"textLines":1,"bbox":[72,205,1100,65]}
+{"kind":"textbox","id":"sh/14r6x43m","slide":16,"text":"用你的 quotation、invoice、客户与商品资料配置 e","textPreview":"用你的 quotation、invoice、客户与商品资料配置 e","textChars":33,"textLines":1,"bbox":[76,291,1090,65]}
+{"kind":"textbox","id":"sh/03i5oj21","slide":16,"text":"真实工作与明确验收","textPreview":"真实工作与明确验收","textChars":9,"textLines":1,"bbox":[72,410,1100,65]}
+{"kind":"textbox","id":"sh/f29ovelg","slide":16,"text":"完成一次准备、发行与付款记录，或一次表单采集与处理\n比较准备时间、返工次数和数据完整性","textPreview":"完成一次准备、发行与付款记录，或一次表单采集与处理 | 比较准备时间、返工次数和数据完整性","textChars":43,"textLines":2,"bbox":[76,496,1110,125]}
+{"kind":"notes","id":"nt/afqzj8","slide":16,"text":"这是建议的试点设计，不是已存在的套餐、价格、期限或客户成果。选 quotation/invoice 或 form intake 其中一条，以现有文件与少量真实记录开始，在 owner 确认后运行。验收比较准备时间、返工、字段完整性和追踪便利程度，不宣称特定节省百分比。多成员使用取决于后续权限能力。\n\n依据：创始人于本次对话提供的产品理念。定位和愿景不代表已发布的全部能力。\n资料日期：2026-10-01。"}
+{"kind":"slide","id":"sl/7x9d5f","slide":17,"title":"投资命题：从重复工作验证团队 AI","textShapes":8}
+{"kind":"textbox","id":"sh/94ny1kby","slide":17,"text":"投资命题：从重复工作验证团队 AI","textPreview":"投资命题：从重复工作验证团队 AI","textChars":17,"textLines":1,"bbox":[72,58,1136,105]}
+{"kind":"textbox","id":"sh/mhwf6ps7","slide":17,"text":"17","textPreview":"17","textChars":2,"textLines":1,"bbox":[1170,662,48,30]}
+{"kind":"textbox","id":"sh/7i5gzats","slide":17,"text":"切入","textPreview":"切入","textChars":2,"textLines":1,"bbox":[72,210,180,70]}
+{"kind":"textbox","id":"sh/kfux4fa1","slide":17,"text":"Invoice、quotation 与表单等重复工作","textPreview":"Invoice、quotation 与表单等重复工作","textChars":26,"textLines":1,"bbox":[290,210,900,70]}
+{"kind":"textbox","id":"sh/lgnyxkbm","slide":17,"text":"扩展","textPreview":"扩展","textChars":2,"textLines":1,"bbox":[72,337,180,70]}
+{"kind":"textbox","id":"sh/ydcf25sb","slide":17,"text":"围绕共同公司上下文，增加可验证的 specialist","textPreview":"围绕共同公司上下文，增加可验证的 specialist","textChars":27,"textLines":1,"bbox":[290,337,900,85]}
+{"kind":"textbox","id":"sh/zelgvatg","slide":17,"text":"验证","textPreview":"验证","textChars":2,"textLines":1,"bbox":[72,482,180,70]}
+{"kind":"textbox","id":"sh/4byhgzal","slide":17,"text":"三道门槛是否降低，是否带来持续使用与付费意愿","textPreview":"三道门槛是否降低，是否带来持续使用与付费意愿","textChars":22,"textLines":1,"bbox":[290,482,900,110]}
+{"kind":"notes","id":"nt/7x9d5f","slide":17,"text":"这是投资讨论框架，不是经验证的商业表现。切入场景是常见文件与数据采集，扩展依赖 specialist 和公司上下文。待验证项包括 onboarding 成本、真实任务可靠性、持续使用、付费意愿。没有 supplied traction、收入、市场规模、募资额、成本或估值，不能虚构。本 deck 是产品与技术命题介绍，并不是完整融资财务 deck。\n\n依据：创始人于本次对话提供的产品理念。定位和愿景不代表已发布的全部能力。\n资料日期：2026-10-01。"}
+{"kind":"slide","id":"sl/z12w0n","slide":18,"title":"18","textShapes":4}
+{"kind":"textbox","id":"sh/i1snipwv","slide":18,"text":"18","textPreview":"18","textChars":2,"textLines":1,"bbox":[1170,662,48,30]}
+{"kind":"textbox","id":"sh/54jmd4fm","slide":18,"text":"e by eternalgy","textPreview":"e by eternalgy","textChars":14,"textLines":1,"bbox":[72,105,1100,105]}
+{"kind":"textbox","id":"sh/43a5kze1","slide":18,"text":"Let it know,\nLet it Work.","textPreview":"Let it know, | Let it Work.","textChars":25,"textLines":2,"bbox":[72,270,1120,190]}
+{"kind":"textbox","id":"sh/vyh47uxk","slide":18,"text":"客户：带一条真实工作流程来试点\n投资者：一起验证团队 AI 的产品路径","textPreview":"客户：带一条真实工作流程来试点 | 投资者：一起验证团队 AI 的产品路径","textChars":35,"textLines":2,"bbox":[76,555,1120,100]}
+{"kind":"notes","id":"nt/z12w0n","slide":18,"text":"结尾给两种听众一个清楚的下一步。客户：选一条真实流程做试点。投资者：共同评估 repeat workflow adoption 和实际交付可靠性。产品 slogan 保留创始人原文。\n\n依据：创始人于本次对话提供的产品理念。定位和愿景不代表已发布的全部能力。\n资料日期：2026-10-01。"}
+{"kind":"slide","id":"sl/a98e7o","slide":19,"title":"资料与产品边界","textShapes":9}
+{"kind":"textbox","id":"sh/vmpwvy5o","slide":19,"text":"资料与产品边界","textPreview":"资料与产品边界","textChars":7,"textLines":1,"bbox":[72,58,1136,105]}
+{"kind":"textbox","id":"sh/gnyd43m9","slide":19,"text":"19","textPreview":"19","textChars":2,"textLines":1,"bbox":[1170,662,48,30]}
+{"kind":"textbox","id":"sh/horex8ne","slide":19,"text":"产品理念","textPreview":"产品理念","textChars":4,"textLines":1,"bbox":[72,192,240,55]}
+{"kind":"textbox","id":"sh/6hgvyt4r","slide":19,"text":"创始人提供的六个核心理念与团队 AI 定位","textPreview":"创始人提供的六个核心理念与团队 AI 定位","textChars":21,"textLines":1,"bbox":[352,192,810,70]}
+{"kind":"textbox","id":"sh/7ipwre5c","slide":19,"text":"实现依据","textPreview":"实现依据","textChars":4,"textLines":1,"bbox":[72,290,240,55]}
+{"kind":"textbox","id":"sh/8jyd0jmx","slide":19,"text":"README.md / ONBOARDING.md / host.mjs\ncore/tools.mjs / documents.mjs / forms.mjs / dashboard.mjs","textPreview":"README.md / ONBOARDING.md / host.mjs | core/tools.mjs / documents.mjs / forms.mjs / dashboard.mjs","textChars":95,"textLines":2,"bbox":[352,290,810,140]}
+{"kind":"textbox","id":"sh/tk7etoni","slide":19,"text":"证据边界","textPreview":"证据边界","textChars":4,"textLines":1,"bbox":[72,448,240,55]}
+{"kind":"textbox","id":"sh/ytwvu94v","slide":19,"text":"代码与现有预览支持功能说明，不代表部署验收或客户业绩\n截图为演示数据，可靠性和商业指标需在试点中验证","textPreview":"代码与现有预览支持功能说明，不代表部署验收或客户业绩 | 截图为演示数据，可靠性和商业指标需在试点中验证","textChars":50,"textLines":2,"bbox":[352,448,810,120]}
+{"kind":"textbox","id":"sh/ju5wne5g","slide":19,"text":"资料日期：2026-10-01","textPreview":"资料日期：2026-10-01","textChars":15,"textLines":1,"bbox":[76,623,1110,40]}
+{"kind":"notes","id":"nt/a98e7o","slide":19,"text":"来源附录便于 Q&A。所有代码依据均为本地 repo，非 public website。演示截图数据仅展示界面。产品理念来自创始人本次对话。自动 onboarding、任意 schema 和 team access 不混同现有实现。资料截至 2026-10-01。\n\n依据：core/tools.mjs:16-24; host.mjs:26-70\ncore/documents.mjs:210-339,353-392,467-493,504-549,568-602; core/actions.mjs:31-114\ncore/forms.mjs:418-481,552-574,754-797,830-884,991-1060,1084-1178\ncore/dashboard.mjs:23-128; preview/crm-desktop.png\nONBOARDING.md; core/company.mjs; README.md\nchecker/index.mjs:48-50; ONBOARDING.md; README.md\n资料日期：2026-10-01。"}

@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>E 文档智能</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400..700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#05080d;overflow:hidden}
+#stage{position:fixed;left:50%;top:50%;width:1920px;height:1080px;transform-origin:center center}
+#stage>section{position:absolute;left:0;top:0;width:1920px;height:1080px;overflow:hidden;visibility:hidden}
+#stage>section.on{visibility:visible}
+#stage h1,#stage h2,#stage h3,#stage p,#stage ul,#stage ol,#stage li{margin:0}
+#stage ul,#stage ol{padding-left:1.1em}
+#stage p{line-height:1.4}
+#stage h1{line-height:1.1}
+#stage h2{line-height:1.15}
+#stage h3{line-height:1.2}
+#stage aside{display:none}
+x-shape{display:block}
+x-shape[kind="ellipse"]{border-radius:50%}
+#hud{position:fixed;right:16px;bottom:12px;font:14px/1 system-ui,sans-serif;color:#8a97a8;opacity:.7;user-select:none}
+#notes{position:fixed;left:0;right:0;bottom:0;max-height:34vh;overflow:auto;padding:16px 24px;background:rgba(5,8,13,.94);color:#e7ecf1;font:16px/1.6 'Noto Sans SC',system-ui,sans-serif;display:none}
+#notes.show{display:block}
+@page{size:1920px 1080px;margin:0}
+@media print{
+  html,body{height:auto;overflow:visible;background:none}
+  #stage{position:static;transform:none!important;width:1920px;height:auto}
+  #stage>section{position:relative;visibility:visible;break-after:page;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #hud,#notes{display:none!important}
+}
+</style>
+</head>
+<body>
+<div id="stage">
+<section id="cover" data-transition="fade" style="background:#0F1B2D; color:#E7ECF1; font-family:'DM Sans','Noto Sans SC',sans-serif; padding:128px; display:flex; flex-direction:column; justify-content:center; gap:32px">
+<x-shape kind="ellipse" style="position:absolute; left:1240px; top:280px; width:520px; height:520px; background:#4FD8C4; opacity:0.12"></x-shape>
+<x-shape kind="ellipse" style="position:absolute; left:1320px; top:360px; width:360px; height:360px; border:2px solid #4FD8C4; opacity:0.6"></x-shape>
+<p style="position:absolute; left:1240px; top:456px; width:520px; text-align:center; font-size:120px; font-weight:700; color:#4FD8C4">E</p>
+<p style="font-size:24px; font-weight:700; letter-spacing:3px; color:#4FD8C4">DOCUMENT INTELLIGENCE · 企业文档智能</p>
+<h1 style="font-size:64px; font-weight:700; line-height:1.15; color:#F5F4EE">Easy, Efficient, Ever Ready.</h1>
+<p style="font-size:44px; font-weight:500; color:#E7ECF1">企业文档工作，交给各司其职的 AI 数字工人</p>
+<p style="font-size:32px; color:#A9B6C6">E 演化自 Eternalgy 内部 3 年打磨的工具人 AI</p>
+<aside>开场。E = Easy, Efficient, Ever Ready。这一份介绍的是 E 里的 Document Intelligence：一组围绕同一个 Postgres 数据库工作的 6 个 micro-agent。</aside>
+</section>
+<section id="why" data-transition="fade" style="background:#0A6B60; color:#F5F4EE; font-family:'DM Sans','Noto Sans SC',sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; justify-content:center; gap:48px">
+<p style="font-size:24px; font-weight:700; letter-spacing:2px; color:#F5F4EE">为什么</p>
+<h2 style="font-size:64px; font-weight:700; line-height:1.3; color:#F5F4EE">AI 每三个月就有新突破，为什么稳定、高效的 AI 数字工人迟迟没有出现？</h2>
+<p style="font-size:44px; font-weight:500; color:#F5F4EE">我们的答案：化繁为简 · 化简为元</p>
+<aside>AI 进步神速，几乎每三个月就有颠覆性的新能力。但稳定、高效的数字工人迟迟没有出现。经过内部多年打磨和使用，我们定制出一个“化繁为简”的 AI Agent 框架：核心是 micro-agent。接下来先讲“化繁为简”，再讲“化简为元”。</aside>
+</section>
+<section id="agents" data-transition="fade" style="background:#F5F4EE; color:#334155; font-family:'DM Sans','Noto Sans SC',sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:700; letter-spacing:2px; color:#0A6B60">化繁为简</p>
+<h2 style="font-size:64px; font-weight:700; line-height:1.2; color:#0F1B2D">不造全能 Agent，造“单细胞”Agent</h2>
+</div>
+<div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:32px">
+<div style="background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:8px">
+<p style="font-size:24px; font-weight:700; color:#0A6B60">Records Clerk</p>
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">客户与产品档案</h3>
+<p style="font-size:32px; line-height:1.4; color:#334155">客户、联系人、产品与套餐；名片入库先查重</p>
+</div>
+<div style="background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:8px">
+<p style="font-size:24px; font-weight:700; color:#0A6B60">Document Agent</p>
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">报价单与发票</h3>
+<p style="font-size:32px; line-height:1.4; color:#334155">先问清缺什么，再开单；一路管到收款</p>
+</div>
+<div style="background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:8px">
+<p style="font-size:24px; font-weight:700; color:#0A6B60">Template Designer</p>
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">文件模板</h3>
+<p style="font-size:32px; line-height:1.4; color:#334155">报价单、发票的版式，版本化管理，可预览</p>
+</div>
+<div style="background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:8px">
+<p style="font-size:24px; font-weight:700; color:#0A6B60">DB Manager</p>
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">公司设置与规则</h3>
+<p style="font-size:32px; line-height:1.4; color:#334155">公司资料、自定义字段、开单规则、编号与税码</p>
+</div>
+<div style="background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:8px">
+<p style="font-size:24px; font-weight:700; color:#0A6B60">Form Designer</p>
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">表单设计</h3>
+<p style="font-size:32px; line-height:1.4; color:#334155">设计并发布公开表单，先检查同意声明与敏感字段</p>
+</div>
+<div style="background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:8px">
+<p style="font-size:24px; font-weight:700; color:#0A6B60">Form Clerk</p>
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">表单收件</h3>
+<p style="font-size:32px; line-height:1.4; color:#334155">审阅提交、标记垃圾、汇总统计、导出 CSV</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1000px; font-size:24px; color:#5B6672">E · Document Intelligence · 化繁为简</p>
+<aside>把工作拆成多个 workflow，每个 micro-agent 只负责一个小类别或一条特定流程。类似单细胞：处理更严谨，也更容易被 Harness 规范。这里是 Document Intelligence 里的 6 个 agent。设计原则：按“权限”拆分，而不是按动词拆分——创建和修改单据共享同一份知识，所以是同一个 agent；改公司规则是另一种权限，所以是另一个 agent。</aside>
+</section>
+<section id="harness" data-transition="fade" style="background:#F5F4EE; color:#334155; font-family:'DM Sans','Noto Sans SC',sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:700; letter-spacing:2px; color:#0A6B60">化繁为简</p>
+<h2 style="font-size:64px; font-weight:700; line-height:1.2; color:#0F1B2D">更好管：Harness 加 Checker</h2>
+</div>
+<div style="display:flex; gap:32px; align-items:stretch">
+<div style="flex:1; background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:16px">
+<p style="font-size:24px; font-weight:700; color:#0A6B60">HARNESS</p>
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">把边界写死</h3>
+<ul style="font-size:32px; line-height:1.5; color:#334155">
+<li>只能通过指定工具工作：没有文件、没有 Shell、没有 SQL</li>
+<li>只看得到自己的工具，借不到别人的；主机再校验一次</li>
+<li>不持有数据库密码，所有操作由主机代为执行</li>
+</ul>
+</div>
+<div style="flex:1; background:#0F1B2D; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:16px">
+<p style="font-size:24px; font-weight:700; color:#4FD8C4">CHECKER AI</p>
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#F5F4EE">对照输入与结果</h3>
+<ul style="font-size:32px; line-height:1.5; color:#E7ECF1">
+<li>开单、收款、作废、发布等不可逆操作，先核对用户是否真的这样要求</li>
+<li>回复后核对单号、金额、状态是否与数据库一致</li>
+<li>不达标就退回原 Agent 重做，最多 2 次</li>
+</ul>
+<p style="align-self:flex-start; font-size:24px; font-weight:700; background:#E9A23B; color:#1F2A37; padding:8px 20px; border-radius:999px">评测环境已验证 · 接入线上对话为下一步</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1000px; font-size:24px; color:#5B6672">E · Document Intelligence · 化繁为简</p>
+<aside>Harness：agent 运行在 assistant 权限下，没有文件、Shell、SQL，唯一能力是 MCP 工具，且每个 agent 只看到自己的工具；主机会再校验一次，每个 agent 的令牌不能冒充别的 agent。Checker：一个独立的模型（与工作模型不同家族），只在不可逆写入前和回复后介入；不达标退回原 agent，最多重试 2 次，之后带着“Checker 未能确认”的提示发出。判断出错时放行，不阻塞工作。诚实说明：目前 Checker 在评测环境中运行并验证，尚未接入线上聊天。</aside>
+</section>
+<section id="speed" data-transition="fade" style="background:#F5F4EE; color:#334155; font-family:'DM Sans','Noto Sans SC',sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:700; letter-spacing:2px; color:#0A6B60">化繁为简</p>
+<h2 style="font-size:64px; font-weight:700; line-height:1.2; color:#0F1B2D">小而专，所以更快、更稳</h2>
+</div>
+<div style="display:flex; gap:32px; align-items:stretch">
+<div style="flex:1.2; display:flex; flex-direction:column; gap:32px; justify-content:center">
+<div style="display:flex; gap:24px; align-items:flex-start">
+<p style="width:72px; font-size:44px; font-weight:700; color:#0A6B60">01</p>
+<p style="flex:1; font-size:32px; line-height:1.4; color:#334155">指令更短：每个 Agent 的角色指令控制在 4,000 字以内</p>
+</div>
+<div style="display:flex; gap:24px; align-items:flex-start">
+<p style="width:72px; font-size:44px; font-weight:700; color:#0A6B60">02</p>
+<p style="flex:1; font-size:32px; line-height:1.4; color:#334155">工具更少：只带自己需要的那几个，选错的机会更少</p>
+</div>
+<div style="display:flex; gap:24px; align-items:flex-start">
+<p style="width:72px; font-size:44px; font-weight:700; color:#0A6B60">03</p>
+<p style="flex:1; font-size:32px; line-height:1.4; color:#334155">路径更短：一个 Agent，一类工作，一条流程</p>
+</div>
+</div>
+<div style="flex:1; background:#0F1B2D; border-radius:20px; padding:48px; display:flex; flex-direction:column; justify-content:center; gap:16px">
+<p style="font-size:24px; font-weight:700; color:#4FD8C4">真实场景实测</p>
+<p style="font-size:64px; font-weight:700; line-height:1.2; color:#E9A23B">[填入实测数据]</p>
+<p style="font-size:32px; line-height:1.4; color:#A9B6C6">[对比场景：____ → ____]</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1000px; font-size:24px; color:#5B6672">E · Document Intelligence · 化繁为简</p>
+<aside>TODO：右侧卡片请填入真实场景的速度实测数据（例如：完成一份报价单，从 ___ 缩短到 ___；或与全能型 agent 的对比）。仓库里没有速度数据，所以这里刻意留空，没有编造。左侧三点是设计层面的原因：角色指令有测试守住不超过 4,000 字符；每个 agent 只带自己的工具；一个 agent 只走一条流程。</aside>
+</section>
+<section id="principle" data-transition="fade" style="background:#0F1B2D; color:#E7ECF1; font-family:'DM Sans','Noto Sans SC',sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:700; letter-spacing:2px; color:#4FD8C4">化简为元</p>
+<h2 style="font-size:64px; font-weight:700; line-height:1.2; color:#F5F4EE">先理解任务的核心原理，再造 Agent</h2>
+</div>
+<div style="display:flex; gap:32px; align-items:stretch">
+<div style="flex:1; background:#16263B; border:1px solid #2A3D57; border-radius:20px; padding:40px; display:flex; flex-direction:column; gap:16px">
+<p style="font-size:24px; font-weight:700; color:#4FD8C4">案例一 · 表单</p>
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#F5F4EE">表单 = 发布表单 + 数据入库</h3>
+<p style="font-size:32px; line-height:1.4; color:#A9B6C6">考勤、工作报告、客户订单……很多资料收集，本质都是表单加数据库。</p>
+</div>
+<div style="flex:1; background:#16263B; border:1px solid #2A3D57; border-radius:20px; padding:40px; display:flex; flex-direction:column; gap:16px">
+<p style="font-size:24px; font-weight:700; color:#4FD8C4">案例二 · 发票</p>
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#F5F4EE">发票 = 客户 + 产品 + 收款</h3>
+<p style="font-size:32px; line-height:1.4; color:#A9B6C6">发票是公司的高频数据：先有客户、产品、收款这些表，才谈得上开发票。</p>
+</div>
+</div>
+<p style="font-size:32px; line-height:1.4; color:#E7ECF1">共同点：Agent 先想“这项工作的数据是什么”，再在数据库层面操作。</p>
+<p style="position:absolute; left:128px; bottom:64px; width:1000px; font-size:24px; color:#A9B6C6">E · Document Intelligence · 化简为元</p>
+<aside>化简为元：不是先堆功能，而是先弄懂每项任务的“核心原理”，再据此打造 micro-agent。表单：企业里很多资料收集（考勤、工作报告、客户订单表单）都是 Form + Database，即发布表单并把数据收进数据库。发票：属于公司高频使用的数据，所以先要有 customer、product、package、payment 这些表，再谈 invoice。所以每个文档任务，agent 都先从数据库层面思考。</aside>
+</section>
+<section id="forms" data-transition="fade" style="background:#F5F4EE; color:#334155; font-family:'DM Sans','Noto Sans SC',sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:700; letter-spacing:2px; color:#0A6B60">化简为元 · 表单</p>
+<h2 style="font-size:64px; font-weight:700; line-height:1.2; color:#0F1B2D">表单 = 发布表单 + 数据入库</h2>
+</div>
+<div style="display:flex; align-items:stretch; gap:12px">
+<div style="flex:1; background:#FCFBF7; border:1px solid #DAD8CC; border-radius:16px; padding:28px; display:flex; flex-direction:column; gap:8px">
+<p style="font-size:24px; font-weight:700; color:#0A6B60">01</p>
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">设计</h3>
+<p style="font-size:24px; line-height:1.4; color:#5B6672">用固定字段库搭建，先检查再保存</p>
+</div>
+<p style="font-size:32px; color:#0A6B60; align-self:center">→</p>
+<div style="flex:1; background:#FCFBF7; border:1px solid #DAD8CC; border-radius:16px; padding:28px; display:flex; flex-direction:column; gap:8px">
+<p style="font-size:24px; font-weight:700; color:#0A6B60">02</p>
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">发布</h3>
+<p style="font-size:24px; line-height:1.4; color:#5B6672">生成公开链接，可随时关闭</p>
+</div>
+<p style="font-size:32px; color:#0A6B60; align-self:center">→</p>
+<div style="flex:1; background:#FCFBF7; border:1px solid #DAD8CC; border-radius:16px; padding:28px; display:flex; flex-direction:column; gap:8px">
+<p style="font-size:24px; font-weight:700; color:#0A6B60">03</p>
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">提交</h3>
+<p style="font-size:24px; line-height:1.4; color:#5B6672">服务器校验每一份答案</p>
+</div>
+<p style="font-size:32px; color:#0A6B60; align-self:center">→</p>
+<div style="flex:1; background:#FCFBF7; border:1px solid #DAD8CC; border-radius:16px; padding:28px; display:flex; flex-direction:column; gap:8px">
+<p style="font-size:24px; font-weight:700; color:#0A6B60">04</p>
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">入库</h3>
+<p style="font-size:24px; line-height:1.4; color:#5B6672">按表单版本存档，答案不可改写</p>
+</div>
+<p style="font-size:32px; color:#0A6B60; align-self:center">→</p>
+<div style="flex:1; background:#FCFBF7; border:1px solid #DAD8CC; border-radius:16px; padding:28px; display:flex; flex-direction:column; gap:8px">
+<p style="font-size:24px; font-weight:700; color:#0A6B60">05</p>
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">处理</h3>
+<p style="font-size:24px; line-height:1.4; color:#5B6672">审阅、汇总、导出 CSV</p>
+</div>
+</div>
+<div style="display:flex; gap:32px; align-items:stretch">
+<p style="flex:1; font-size:32px; line-height:1.4; color:#334155; background:#E6F0EC; border-left:6px solid #0A6B60; border-radius:16px; padding:24px 28px">不收集密码、PIN、验证码、银行卡号</p>
+<p style="flex:1; font-size:32px; line-height:1.4; color:#334155; background:#E6F0EC; border-left:6px solid #0A6B60; border-radius:16px; padding:24px 28px">涉及个人资料，须先设定同意声明才能发布</p>
+<p style="flex:1; font-size:32px; line-height:1.4; color:#334155; background:#E6F0EC; border-left:6px solid #0A6B60; border-radius:16px; padding:24px 28px">已发布的版本冻结，修改即产生新版本</p>
+</div>
+<p style="font-size:32px; line-height:1.4; color:#5B6672">已实测：工作报告 · 订单表单 · 客户问卷 · 咨询登记。同一原理可延伸到考勤等资料收集。</p>
+<p style="position:absolute; left:128px; bottom:64px; width:1000px; font-size:24px; color:#5B6672">E · Document Intelligence · 化简为元</p>
+<aside>表单没有 agent 写的代码：表单只是固定字段库里的一份字段清单，由同一个固定页面渲染，同一份字段清单在服务器端校验每一份提交。公开链接有请求大小上限、按 IP 限流和蜜罐字段。已实测的场景：工作报告、订单表单、客户问卷、咨询登记；考勤等同类资料收集是同一原理的延伸，尚未单独测试。软化后的说法是“常见的资料收集”，而不是“任何”：目前字段类型有限，上传仅限图片和 PDF，暂无条件字段和新提交通知。</aside>
+</section>
+<section id="invoice" data-transition="fade" style="background:#F5F4EE; color:#334155; font-family:'DM Sans','Noto Sans SC',sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:700; letter-spacing:2px; color:#0A6B60">化简为元 · 发票</p>
+<h2 style="font-size:64px; font-weight:700; line-height:1.2; color:#0F1B2D">开发票之前，先想清楚数据库</h2>
+</div>
+<div style="display:flex; align-items:stretch; gap:12px">
+<div style="flex:1; background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:32px; display:flex; flex-direction:column; gap:8px">
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">基础资料</h3>
+<p style="font-size:32px; line-height:1.4; color:#334155">客户、联系人、产品、套餐、税码</p>
+</div>
+<p style="font-size:32px; color:#0A6B60; align-self:center">→</p>
+<div style="flex:1; background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:32px; display:flex; flex-direction:column; gap:8px">
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">单据</h3>
+<p style="font-size:32px; line-height:1.4; color:#334155">报价单、发票及明细；价格税额开单时固化</p>
+</div>
+<p style="font-size:32px; color:#0A6B60; align-self:center">→</p>
+<div style="flex:1; background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:32px; display:flex; flex-direction:column; gap:8px">
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">收款</h3>
+<p style="font-size:32px; line-height:1.4; color:#334155">按发票分配，部分付款自动更新状态</p>
+</div>
+</div>
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:700; color:#0A6B60">一张单据的一生</p>
+<div style="display:flex; align-items:center; gap:16px">
+<p style="font-size:32px; font-weight:500; background:#E6F0EC; color:#0F1B2D; padding:12px 24px; border-radius:999px">草稿</p>
+<p style="font-size:32px; color:#0A6B60">→</p>
+<p style="font-size:32px; font-weight:500; background:#E6F0EC; color:#0F1B2D; padding:12px 24px; border-radius:999px">发出</p>
+<p style="font-size:32px; color:#0A6B60">→</p>
+<p style="font-size:32px; font-weight:500; background:#E6F0EC; color:#0F1B2D; padding:12px 24px; border-radius:999px">接受</p>
+<p style="font-size:32px; color:#0A6B60">→</p>
+<p style="font-size:32px; font-weight:500; background:#E6F0EC; color:#0F1B2D; padding:12px 24px; border-radius:999px">转成发票</p>
+<p style="font-size:32px; color:#0A6B60">→</p>
+<p style="font-size:32px; font-weight:500; background:#E6F0EC; color:#0F1B2D; padding:12px 24px; border-radius:999px">发出</p>
+<p style="font-size:32px; color:#0A6B60">→</p>
+<p style="font-size:32px; font-weight:500; background:#E6F0EC; color:#0F1B2D; padding:12px 24px; border-radius:999px">收款结清</p>
+</div>
+</div>
+<div style="display:flex; gap:24px; align-items:stretch">
+<div style="width:6px; background:#0A6B60; border-radius:3px"></div>
+<p style="flex:1; font-size:32px; line-height:1.5; color:#334155">先思考，后动手：起草前先做只读预检——识别客户、匹配产品、按开单规则找出缺项，一次问清。</p>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1000px; font-size:24px; color:#5B6672">E · Document Intelligence · 化简为元</p>
+<aside>数据库结构：tenant → customer / contact，product / package / tax_code，document（报价单、发票、信用票据类型）和 document_line，payment 和 payment_allocation。价格、税额和客户资料在开单时复制到单据上，日后改目录不影响旧单。发出时才分配编号，并冻结内容。“先思考，后动手”指 prepare_document：它不写任何东西，只是解析客户和产品、按开单规则找出缺项、给出建议（如有效期）和价格估算，Document Agent 把所有问题合并在一条消息里问用户。</aside>
+</section>
+<section id="custom" data-transition="fade" style="background:#F5F4EE; color:#334155; font-family:'DM Sans','Noto Sans SC',sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:700; letter-spacing:2px; color:#0A6B60">化简为元 · 定制</p>
+<h2 style="font-size:64px; font-weight:700; line-height:1.2; color:#0F1B2D">标准结构稳固，公司习惯可调</h2>
+</div>
+<div style="display:flex; gap:32px; align-items:stretch">
+<div style="flex:1; background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:700; color:#0A6B60">预设</p>
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">预设的标准结构</h3>
+<ul style="font-size:32px; line-height:1.5; color:#334155">
+<li>CRM：客户与联系人</li>
+<li>产品、套餐与 SST 税码</li>
+<li>报价单、发票与明细</li>
+<li>收款与分配</li>
+<li>表单与提交</li>
+</ul>
+</div>
+<div style="flex:1; background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:700; color:#0A6B60">可调</p>
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">按公司习惯调整</h3>
+<ul style="font-size:32px; line-height:1.5; color:#334155">
+<li>自定义字段（文字、数字、日期、是非、选项）</li>
+<li>开单前必须满足的规则</li>
+<li>编号格式与年度重置</li>
+<li>税码与公司资料</li>
+<li>文件模板的版式</li>
+</ul>
+</div>
+</div>
+<div style="display:flex; gap:24px; align-items:stretch">
+<div style="width:6px; background:#0A6B60; border-radius:3px"></div>
+<p style="flex:1; font-size:32px; line-height:1.5; color:#334155">Agent 调整的是数据里的设定，不是表结构。数据库账号没有建表、改表权限，所以调整安全、有记录，删除也只是归档。</p>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1000px; font-size:24px; color:#5B6672">E · Document Intelligence · 化简为元</p>
+<aside>软化后的说法：不是“Agent 随意改 schema”，而是“标准结构 + 按公司调整的设定”。自定义字段存放在每条记录的 custom（JSONB）里并在每次保存时校验；开单规则、编号、税码都是数据。字段类型设定后不能更改。需要真正的索引列或类型列的重度定制，未来会走“生成迁移文件、由人审核执行”的提案流程，绝不由 agent 直接改表。</aside>
+</section>
+<section id="safety" data-transition="fade" style="background:#0F1B2D; color:#E7ECF1; font-family:'DM Sans','Noto Sans SC',sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:700; letter-spacing:2px; color:#4FD8C4">数据库守底线</p>
+<h2 style="font-size:64px; font-weight:700; line-height:1.2; color:#F5F4EE">安全由数据库保证，不靠提示词</h2>
+</div>
+<div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:32px">
+<div style="background:#16263B; border:1px solid #2A3D57; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:12px">
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#F5F4EE">不可硬删除</h3>
+<p style="font-size:32px; line-height:1.4; color:#A9B6C6">数据库层直接拦截；移除只是归档，可恢复</p>
+</div>
+<div style="background:#16263B; border:1px solid #2A3D57; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:12px">
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#F5F4EE">公司之间互相隔离</h3>
+<p style="font-size:32px; line-height:1.4; color:#A9B6C6">行级安全，按公司隔离每一行数据</p>
+</div>
+<div style="background:#16263B; border:1px solid #2A3D57; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:12px">
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#F5F4EE">已发出的单据被冻结</h3>
+<p style="font-size:32px; line-height:1.4; color:#A9B6C6">发出后只能改状态与收款，内容不可改；错了就作废重开</p>
+</div>
+<div style="background:#16263B; border:1px solid #2A3D57; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:12px">
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#F5F4EE">编号不断号</h3>
+<p style="font-size:32px; line-height:1.4; color:#A9B6C6">单号在开单的同一事务内分配，不留空号</p>
+</div>
+<div style="background:#16263B; border:1px solid #2A3D57; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:12px">
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#F5F4EE">每次改动可追溯</h3>
+<p style="font-size:32px; line-height:1.4; color:#A9B6C6">记录谁、哪个 Agent 改了什么，前后值都在</p>
+</div>
+<div style="background:#0A6B60; border-radius:20px; padding:36px; display:flex; flex-direction:column; justify-content:center">
+<p style="font-size:44px; font-weight:700; line-height:1.2; color:#F5F4EE">提示词可以被绕过；权限、触发器和行级安全不能。</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1000px; font-size:24px; color:#A9B6C6">E · Document Intelligence · 数据库守底线</p>
+<aside>这是原有介绍里没有提到、但已经实现的最强卖点。全部由数据库强制执行：delete/truncate 触发器（连表的拥有者角色也被拦住），每张表的行级安全策略 tenant_id = 当前公司，issued 单据的 guard 触发器，编号在开单事务里用 SELECT ... FOR UPDATE 分配，audit 触发器记录 actor、agent 与前后值，且 di_app 角色不能改或删审计日志。代理还有另一层：工具不广播 + 主机拒绝 + 每个 agent 的 HMAC 令牌不可重放。</aside>
+</section>
+<section id="details" data-transition="fade" style="background:#F5F4EE; color:#334155; font-family:'DM Sans','Noto Sans SC',sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:700; letter-spacing:2px; color:#0A6B60">数据库守底线 · 细节</p>
+<h2 style="font-size:64px; font-weight:700; line-height:1.2; color:#0F1B2D">懂马来西亚的做法，也防得住脏数据</h2>
+</div>
+<div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:32px">
+<div style="background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:40px; display:flex; flex-direction:column; gap:12px">
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">客户去重</h3>
+<p style="font-size:32px; line-height:1.4; color:#334155">按 SSM 号、邮箱、电话、名称打分；号码按马来西亚格式规范化</p>
+</div>
+<div style="background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:40px; display:flex; flex-direction:column; gap:12px">
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">名片入库</h3>
+<p style="font-size:32px; line-height:1.4; color:#334155">公司成客户、个人成联系人；已有客户只补空白，不覆盖</p>
+</div>
+<div style="background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:40px; display:flex; flex-direction:column; gap:12px">
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">SST 与 MyInvois 预留</h3>
+<p style="font-size:32px; line-height:1.4; color:#334155">按行计 SST 税码；TIN、MSIC 等字段已预留，提交对接尚未做</p>
+</div>
+<div style="background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:40px; display:flex; flex-direction:column; gap:12px">
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">表单内容当作不可信</h3>
+<p style="font-size:32px; line-height:1.4; color:#334155">公开表单的答案只当数据，不当指令；一份提交不会变成两条记录</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1000px; font-size:24px; color:#5B6672">E · Document Intelligence · 数据库守底线</p>
+<aside>客户去重的打分：SSM 号或 TIN 100，邮箱 90，电话 75，名称 80，同公司邮箱域名 60，名称相似 55 或 30，已是联系人再加 15。90 分以上视为已存在，40–89 为可能，需要用户确认。压力测试里有一份工作报告藏了一句指令，Form Clerk 把它当作不可信数据，没有照做。MyInvois：TIN、MSIC、SST 号、e-invoice 字段已预留，缺 TIN 只是警告；LHDN API 对接尚未做。</aside>
+</section>
+<section id="proof" data-transition="fade" style="background:#F5F4EE; color:#334155; font-family:'DM Sans','Noto Sans SC',sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:700; letter-spacing:2px; color:#0A6B60">现状 · 评测</p>
+<h2 style="font-size:64px; font-weight:700; line-height:1.2; color:#0F1B2D">评测结果：真实工具，隔离数据库</h2>
+</div>
+<div style="display:flex; gap:32px; align-items:stretch">
+<div style="flex:1; background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:8px">
+<p style="font-size:120px; font-weight:700; line-height:1.1; color:#0A6B60">28/30</p>
+<p style="font-size:32px; line-height:1.4; color:#334155">30 项场景重测通过（另 1 项部分、1 项未通过）</p>
+</div>
+<div style="flex:1; background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:8px">
+<p style="font-size:120px; font-weight:700; line-height:1.1; color:#0A6B60">14/16</p>
+<p style="font-size:32px; line-height:1.4; color:#334155">表单场景通过（2 项未通过）</p>
+</div>
+<div style="flex:1; background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:8px">
+<p style="font-size:120px; font-weight:700; line-height:1.1; color:#0A6B60">0</p>
+<p style="font-size:32px; line-height:1.4; color:#334155">第 3 轮回复中出现的内部思考文本</p>
+</div>
+</div>
+<p style="font-size:32px; line-height:1.4; color:#334155">部分通过与未通过的项，问题都在回复措辞或过度谨慎，数据库状态保持正确。每个新问题都变成 Checker 的一项检查，而不是加长提示词。</p>
+<p style="font-size:24px; line-height:1.4; color:#5B6672">评测在隔离的内存数据库和真实工具上进行；线上端到端验证是下一步。</p>
+<p style="position:absolute; left:128px; bottom:64px; width:1000px; font-size:24px; color:#5B6672">E · Document Intelligence · 现状与下一步</p>
+<aside>数据来源：all-test-results.md 与 form-test-result.md。30 项重测：28 通过、1 部分（转换后仍报“已接受”而不是“已转换”）、1 未通过（承诺了工具做不到的信用票据）；这两项都是回复措辞问题，数据库状态受到保护。表单 16 项：14 通过，2 项未通过（一次是 Checker 误拦发布，一次是设计 Agent 过于犹豫），都没有写入错误数据。注意：各轮用的模型、提示词和初始数据不同，不是严格的模型对比；评测在隔离的内存数据库上进行，没有经过线上界面加生产数据库的端到端验证。</aside>
+</section>
+<section id="roadmap" data-transition="fade" style="background:#F5F4EE; color:#334155; font-family:'DM Sans','Noto Sans SC',sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:700; letter-spacing:2px; color:#0A6B60">现状与下一步</p>
+<h2 style="font-size:64px; font-weight:700; line-height:1.2; color:#0F1B2D">已经做好的，与正在路上的</h2>
+</div>
+<div style="display:flex; gap:32px; align-items:stretch">
+<div style="flex:1; background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:16px">
+<p style="align-self:flex-start; font-size:24px; font-weight:700; background:#0A6B60; color:#F5F4EE; padding:8px 20px; border-radius:999px">已具备</p>
+<ul style="font-size:32px; line-height:1.6; color:#334155">
+<li>CRM：客户与联系人，名片入库</li>
+<li>产品、套餐与 SST 税码</li>
+<li>报价单 → 发票 → 收款，全流程</li>
+<li>版本化文件模板与 PDF</li>
+<li>表单：设计、发布、收集、汇总</li>
+<li>数据库级安全与审计</li>
+<li>6 个 Agent + 评测环境的 Checker</li>
+</ul>
+</div>
+<div style="flex:1; background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:16px">
+<p style="align-self:flex-start; font-size:24px; font-weight:700; background:#E9A23B; color:#1F2A37; padding:8px 20px; border-radius:999px">下一步</p>
+<ul style="font-size:32px; line-height:1.6; color:#334155">
+<li>用户账号与角色权限</li>
+<li>更多标准结构（如仓库、用户）</li>
+<li>信用票据与收款更正</li>
+<li>MyInvois 提交对接</li>
+<li>业务报表（账龄、销售分析）</li>
+<li>Checker 接入线上对话</li>
+<li>表单：条件字段、新提交通知</li>
+</ul>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1000px; font-size:24px; color:#5B6672">E · Document Intelligence · 现状与下一步</p>
+<aside>这一页把原来的“预设 CRM、发票、仓库、报价、用户、客户”等 schema 说得更准确：CRM、产品目录、报价单、发票、收款、表单已经有；仓库和用户（含角色权限）还没有，是路线图。目前所有操作都以单一操作员 owner 身份运行，数据库已经是多公司结构。信用票据只有类型、编号和模板位置，还没有专门的开信用票据工具。业务报表（账龄、按客户或产品的销售）尚未建，目前只有表单提交的汇总与 CSV 导出。</aside>
+</section>
+<section id="closing" data-transition="fade" style="background:#0F1B2D; color:#E7ECF1; font-family:'DM Sans','Noto Sans SC',sans-serif; padding:128px; display:flex; flex-direction:column; justify-content:center; gap:32px">
+<x-shape kind="ellipse" style="position:absolute; left:1240px; top:280px; width:520px; height:520px; background:#4FD8C4; opacity:0.12"></x-shape>
+<h1 style="font-size:64px; font-weight:700; line-height:1.15; color:#F5F4EE">Easy, Efficient, Ever Ready.</h1>
+<p style="font-size:44px; font-weight:500; color:#E7ECF1"><span style="color:#4FD8C4">化繁为简</span> — 一个 Agent，只做一件事</p>
+<p style="font-size:44px; font-weight:500; color:#E7ECF1"><span style="color:#4FD8C4">化简为元</span> — 先懂原理，再造 Agent</p>
+<p style="font-size:44px; font-weight:500; color:#E7ECF1"><span style="color:#4FD8C4">数据库守底线</span> — 安全不靠提示词</p>
+<p style="font-size:32px; color:#A9B6C6">[联系方式 / 预约演示]</p>
+<aside>收尾：三句话。TODO：请填入联系方式或预约演示的方式。</aside>
+</section>
+</div>
+<div id="hud"></div>
+<div id="notes"></div>
+<script>
+(function () {
+  var stage = document.getElementById('stage');
+  var slides = Array.prototype.slice.call(stage.children).filter(function (n) { return n.tagName === 'SECTION'; });
+  var hud = document.getElementById('hud');
+  var notes = document.getElementById('notes');
+  var i = 0;
+  function show(n) {
+    i = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach(function (s, k) { s.classList.toggle('on', k === i); });
+    hud.textContent = (i + 1) + ' / ' + slides.length + '   ← → 翻页 · F 全屏 · N 讲稿';
+    var a = slides[i].querySelector('aside');
+    notes.textContent = a ? a.textContent : '';
+    try { history.replaceState(null, '', '#' + (i + 1)); } catch (e) {}
+  }
+  function fit() {
+    var s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    stage.style.transform = 'translate(-50%,-50%) scale(' + s + ')';
+  }
+  window.addEventListener('resize', fit);
+  window.addEventListener('keydown', function (e) {
+    var k = e.key;
+    if (k === 'ArrowRight' || k === 'PageDown' || k === ' ' || k === 'Enter') { e.preventDefault(); show(i + 1); }
+    else if (k === 'ArrowLeft' || k === 'PageUp' || k === 'Backspace') { e.preventDefault(); show(i - 1); }
+    else if (k === 'Home') show(0);
+    else if (k === 'End') show(slides.length - 1);
+    else if (k === 'f' || k === 'F') { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); }
+    else if (k === 'n' || k === 'N') notes.classList.toggle('show');
+  });
+  window.addEventListener('click', function (e) { show(e.clientX < window.innerWidth / 3 ? i - 1 : i + 1); });
+  fit();
+  show(Math.max(0, (parseInt(location.hash.slice(1), 10) || 1) - 1));
+})();
+</script>
+</body>
+</html>

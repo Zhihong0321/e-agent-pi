@@ -6,6 +6,7 @@ import { FILE_SHARING_PROMPT } from "./file-sharing.mjs";
 import { hostSystemPrompt } from "./ee-html.mjs";
 import { proposalSystemPrompt } from "./github.mjs";
 import { loadContextPack } from "./context-pack.mjs";
+import { getAgentSop } from "./sops.mjs";
 import { interpolatePiModels } from "./models.mjs";
 import {
   DEFAULT_TOOL_PROFILE,
@@ -127,6 +128,10 @@ export async function buildRoleText(agent, { modelId } = {}) {
   if (agent.id === "website" || agent.slug === "website") extras.push(hostSystemPrompt());
   if (isProposalAgent(agent)) extras.push(proposalSystemPrompt(agent));
   if (isWhatsappAgent(agent)) extras.push(await whatsappNotesSystemPrompt());
+  const sop = await getAgentSop(agent.id).catch(() => null);
+  if (sop?.content) {
+    extras.push(`## Mandatory agent SOP\n\nRead and follow this SOP for every task. It is the agent-specific operating procedure.\n\n${sop.content}`);
+  }
   const pack = await loadContextPack(agent, { modelId });
   const extraText = [...extras.filter(Boolean), pack].filter(Boolean).join("\n\n");
   return extraText ? `${role}\n\n${extraText}`.trim() + "\n" : `${role}\n`;
@@ -144,6 +149,12 @@ export async function materializeAgentRuntime(agent, mcpServers, modelsJson, { m
   await mkdir(dir, { recursive: true });
   const roleText = await buildRoleText(agent, { modelId });
   await writeFile(path.join(dir, "ROLE.md"), roleText, "utf8");
+  const sop = await getAgentSop(agent.id).catch(() => null);
+  await writeFile(
+    path.join(dir, "SOP.md"),
+    `${sop?.content?.trim() || "# Agent SOP\n\nNo custom SOP has been set for this agent yet."}\n`,
+    "utf8",
+  );
   await writeFile(path.join(dir, "models.json"), interpolatePiModels(modelsJson));
   /** @type {Record<string, unknown>} */
   const mcp = {};

@@ -1,12 +1,46 @@
 # Document Intelligence
 
-A corporate admin/document assistant for UIv2, built as **four Pi micro-agents** over one
+A corporate admin/document assistant for UIv2, built as focused **Pi micro-agents** over one
 standard Postgres schema (`di`). The goal is agents that don't just "make an invoice PDF"
 but run the proper workflow: recognise the customer, check the catalogue, ask what's
 missing, draft, issue with a gap-free number, render, and track payment.
 
 Status: **MVP / working demo**. Single operator (no user management yet), multi-tenant
 ready in the database, closed system (no external services besides the LLM).
+
+## Files created for users
+
+**Agents create files. The host publishes files. Chat displays the returned attachment.**
+
+Use one persistent shared-files folder, one publisher, and one download route. Agent
+workspaces are working directories, not the permanent address of a shared file.
+
+```text
+Storage: /storage/files/<company-id>/<file-id>/<filename>
+Link:    https://<app-host>/files/<file-id>/<filename>
+```
+
+- Every Pi agent has `share_file({ path: "workspace/file.pdf" })`. Shell-capable engines
+  use `node "$CLOUD_PI_SHARE_FILE" "workspace/file.pdf"`, which calls the same publisher.
+- Invoices, quotations, PDF previews, form previews and CSV exports publish automatically.
+  `get_document` returns the existing PDF's `pdf.link`; legacy workspace PDFs are copied
+  into shared storage on lookup without reissuing. Only the saved PDF reference changes.
+- The host returns `shared_files` references containing `id`, `name`, `bytes`, `url`, and
+  `link`. Chat renders these directly. Orchestrator saves and passes the references with
+  the task result; it does not reconstruct URLs from filenames or agent IDs.
+- Files persist on the mounted `/storage` volume. A file ID hashes the filename and copied
+  contents: sharing the same version returns the same link; changed contents get a new
+  link. Publishing never overwrites a previous version.
+- Downloads use the existing owner login and the host-selected company. The current host
+  is still single-operator/default-company; this change does not add user management.
+- Shared files remain until explicitly deleted. Company onboarding reset does not remove
+  them. Old `/api/files/raw` URLs remain supported for historical workspace links.
+
+Never give users `file://`, `/storage/`, or relative workspace paths as new download links.
+Never add an agent/session parameter to a shared-file URL. Existing files should be looked
+up or published using the same function, rather than repaired by rewriting agent prose.
+
+Implementation and extension rules: [about-file-system.md](about-file-system.md).
 
 ---
 
@@ -54,9 +88,10 @@ Three design rules drive everything:
 | **Form Designer** (`di-forms`) | Designs forms from a fixed field vocabulary, previews, publishes/closes public links, versions live forms. Never sees submissions. | Yes (home tile) |
 | **Form Clerk** (`di-intake`) | Reviews submissions per form, marks spam, links job reports to customers/invoices, summarises, exports CSV. Treats answers as untrusted. | Yes (home tile) |
 
-All run on the `assistant` tool profile: **no files, no shell, no SQL**. Their only
-capability is the `document-intelligence` MCP server, which shows each agent only its own
-tools. Role prompts: `agent/roles/di-*.md`.
+All run on the `assistant` tool profile: **no general file editing, shell or SQL**.
+Business operations use the `document-intelligence` MCP server, which shows each agent
+only its own tools. The common `share_file` tool can publish an existing workspace file.
+Role prompts: `agent/roles/di-*.md`.
 
 The tool ↔ agent matrix is the `agents` array on each entry in
 [`core/tools.mjs`](core/tools.mjs). That one registry is read by both the MCP server

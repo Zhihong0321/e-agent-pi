@@ -1,0 +1,399 @@
+{"kind":"deck","id":"pr/osqzrs","name":"Deck"}
+{"kind":"layout","layoutId":"b00f1c62-a865-4d35-a83d-ea402b19a30a","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"d7d98c61-82fa-4851-a422-5e45d61b2fc7","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/avoa6n","slide":1,"title":"e by eternalgy","textShapes":5}
+{"kind":"textbox","id":"sh/4zq5gf2x","slide":1,"text":"e by eternalgy","textPreview":"e by eternalgy","textChars":14,"textLines":1,"bbox":[147,84,490,60]}
+{"kind":"textbox","id":"sh/50zmpk3i","slide":1,"text":"为团队打造的 AI","textPreview":"为团队打造的 AI","textChars":9,"textLines":1,"bbox":[72,277,732,115]}
+{"kind":"textbox","id":"sh/u9o3a5kv","slide":1,"text":"让公司资料，成为 AI 的工作依据","textPreview":"让公司资料，成为 AI 的工作依据","textChars":17,"textLines":1,"bbox":[76,414,685,72]}
+{"kind":"textbox","id":"sh/vah4jalg","slide":1,"text":"Let it know, Let it Work.","textPreview":"Let it know, Let it Work.","textChars":25,"textLines":1,"bbox":[76,520,690,65]}
+{"kind":"textbox","id":"sh/hczmlk36","slide":1,"text":"Document Intelligence","textPreview":"Document Intelligence","textChars":21,"textLines":1,"bbox":[76,658,690,40]}
+{"kind":"image","id":"im/ihwrulwr","slide":1,"name":"","alt":"Original e brand mark","bbox":[74,76,55,55]}
+{"kind":"image","id":"im/hgna1gv6","slide":1,"name":"","alt":"ImageGen brand sculpture: shared structured company information","bbox":[832,78,376,558]}
+{"kind":"notes","id":"nt/avoa6n","slide":1,"text":"e by Eternalgy 是为团队设计的 AI，当前以 Document Intelligence 切入。公司上下文与流程是产品定位。现有 host 仍为单一操作员与默认公司。\n\n资料依据：ONBOARDING.md; README.md\n日期：2026-10-01。生成图为抽象示意，不作为事实证据。"}
+{"kind":"slide","id":"sl/ph35fe","slide":2,"title":"团队工作，需要共同的公司上下文","textShapes":10}
+{"kind":"textbox","id":"sh/1kju5kj6","slide":2,"text":"团队工作，需要共同的公司上下文","textPreview":"团队工作，需要共同的公司上下文","textChars":15,"textLines":1,"bbox":[72,58,1136,102]}
+{"kind":"textbox","id":"sh/exsbupkf","slide":2,"text":"e by eternalgy","textPreview":"e by eternalgy","textChars":14,"textLines":1,"bbox":[76,672,300,25]}
+{"kind":"textbox","id":"sh/fy1c3u10","slide":2,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[1170,669,42,28]}
+{"kind":"textbox","id":"sh/svqtsf2p","slide":2,"text":"每个成员带来任务\n公司提供共同依据","textPreview":"每个成员带来任务 | 公司提供共同依据","textChars":17,"textLines":2,"bbox":[76,199,610,155]}
+{"kind":"textbox","id":"sh/dwju1kja","slide":2,"text":"成员经验与旧文件中的信息，\n需要延续到下一次工作","textPreview":"成员经验与旧文件中的信息， | 需要延续到下一次工作","textChars":24,"textLines":2,"bbox":[76,440,550,110]}
+{"kind":"shape","id":"sh/qt8bq5kj","slide":2,"bbox":[694,222,180,76]}
+{"kind":"textbox","id":"sh/ruhcza14","slide":2,"text":"销售任务","textPreview":"销售任务","textChars":4,"textLines":1,"bbox":[704,230,160,60]}
+{"kind":"shape","id":"sh/4rqtof2d","slide":2,"bbox":[694,343,180,76]}
+{"kind":"textbox","id":"sh/5szux0jy","slide":2,"text":"行政任务","textPreview":"行政任务","textChars":4,"textLines":1,"bbox":[704,351,160,60]}
+{"kind":"shape","id":"sh/lsny9kvy","slide":2,"bbox":[694,464,180,76]}
+{"kind":"textbox","id":"sh/kreh0fud","slide":2,"text":"财务任务","textPreview":"财务任务","textChars":4,"textLines":1,"bbox":[704,472,160,60]}
+{"kind":"shape","id":"sh/jq5g7ads","slide":2,"bbox":[960,312,230,180]}
+{"kind":"textbox","id":"sh/ypwzypc7","slide":2,"text":"共同的\n公司上下文","textPreview":"共同的 | 公司上下文","textChars":9,"textLines":2,"bbox":[970,320,210,164]}
+{"kind":"shape","id":"sh/xony5kvm","slide":2,"bbox":[874,260,86,142]}
+{"kind":"shape","id":"sh/wnuhwfuh","slide":2,"bbox":[874,381,86,21]}
+{"kind":"shape","id":"sh/bmlg3adw","slide":2,"bbox":[874,402,86,100]}
+{"kind":"textbox","id":"sh/alcfu5cb","slide":2,"text":"产品方向：团队协作。多人账号与权限仍待完善。","textPreview":"产品方向：团队协作。多人账号与权限仍待完善。","textChars":22,"textLines":1,"bbox":[76,616,1100,37]}
+{"kind":"notes","id":"nt/ph35fe","slide":2,"text":"这是问题定义与设计方向。团队角色示意不表示当前 host 已具有多成员账号或团队权限。\n\n资料依据：ONBOARDING.md; README.md; core/tools.mjs:16-24,729-737; host.mjs:26-70\n日期：2026-10-01。生成图为抽象示意，不作为事实证据。"}
+{"kind":"slide","id":"sl/iwou32","slide":3,"title":"AI 变现的最后一里路，是使用门槛","textShapes":10}
+{"kind":"textbox","id":"sh/dobu5gbm","slide":3,"text":"AI 变现的最后一里路，是使用门槛","textPreview":"AI 变现的最后一里路，是使用门槛","textChars":17,"textLines":1,"bbox":[72,58,1136,102]}
+{"kind":"textbox","id":"sh/q10bu1sv","slide":3,"text":"e by eternalgy","textPreview":"e by eternalgy","textChars":14,"textLines":1,"bbox":[76,672,300,25]}
+{"kind":"textbox","id":"sh/rm9c36tg","slide":3,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[1170,669,42,28]}
+{"kind":"textbox","id":"sh/0r2t0bad","slide":3,"text":"模型能力像水源，真正的价值需要跨过三道门槛","textPreview":"模型能力像水源，真正的价值需要跨过三道门槛","textChars":21,"textLines":1,"bbox":[76,168,1110,60]}
+{"kind":"textbox","id":"sh/epkbyls7","slide":3,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[486,603,62,38]}
+{"kind":"textbox","id":"sh/zqtc76ts","slide":3,"text":"搭建门槛","textPreview":"搭建门槛","textChars":4,"textLines":1,"bbox":[550,597,188,46]}
+{"kind":"textbox","id":"sh/ovmd4va9","slide":3,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[710,603,62,38]}
+{"kind":"textbox","id":"sh/9wvud0bu","slide":3,"text":"使用门槛","textPreview":"使用门槛","textChars":4,"textLines":1,"bbox":[774,597,188,46]}
+{"kind":"textbox","id":"sh/9sj6d4zu","slide":3,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[914,603,62,38]}
+{"kind":"textbox","id":"sh/87a54zi9","slide":3,"text":"稳定门槛","textPreview":"稳定门槛","textChars":4,"textLines":1,"bbox":[978,597,188,46]}
+{"kind":"image","id":"im/s7mpcnu5","slide":3,"name":"","alt":"ImageGen three gates metaphor","bbox":[72,242,1136,350]}
+{"kind":"notes","id":"nt/iwou32","slide":3,"text":"水坝是创始人的商业化比喻，不是行业研究结论。搭建、使用、稳定三道门槛是产品设计与试点验证重点。\n\n资料依据：创始人于本次对话提供的六个核心理念与定位。\n日期：2026-10-01。生成图为抽象示意，不作为事实证据。"}
+{"kind":"slide","id":"sl/pqkdk4","slide":4,"title":"Let it know, Let it Work.","textShapes":8}
+{"kind":"textbox","id":"sh/bqtkz2xo","slide":4,"text":"Let it know, Let it Work.","textPreview":"Let it know, Let it Work.","textChars":25,"textLines":1,"bbox":[72,58,1136,102]}
+{"kind":"textbox","id":"sh/cr2ls7e9","slide":4,"text":"e by eternalgy","textPreview":"e by eternalgy","textChars":14,"textLines":1,"bbox":[76,672,300,25]}
+{"kind":"textbox","id":"sh/dsb21cfu","slide":4,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[1170,669,42,28]}
+{"kind":"textbox","id":"sh/2l03mxw7","slide":4,"text":"让 e 知道","textPreview":"让 e 知道","textChars":6,"textLines":1,"bbox":[76,207,490,70]}
+{"kind":"textbox","id":"sh/3m9kv2xs","slide":4,"text":"公司是谁\n客户与商品是什么\n文件与规则怎样运作","textPreview":"公司是谁 | 客户与商品是什么 | 文件与规则怎样运作","textChars":23,"textLines":3,"bbox":[76,325,520,220]}
+{"kind":"textbox","id":"sh/onilo7ed","slide":4,"text":"让 e 工作","textPreview":"让 e 工作","textChars":6,"textLines":1,"bbox":[702,207,490,70]}
+{"kind":"textbox","id":"sh/pob2xsfi","slide":4,"text":"查记录，准备文件\n发现缺项，先询问\n保存成果，延续后续工作","textPreview":"查记录，准备文件 | 发现缺项，先询问 | 保存成果，延续后续工作","textChars":29,"textLines":3,"bbox":[702,325,506,220]}
+{"kind":"shape","id":"sh/mh43yhwb","slide":4,"bbox":[640,204,0,0]}
+{"kind":"shape","id":"sh/nid47mxw","slide":4,"bbox":[639,215,0,341]}
+{"kind":"textbox","id":"sh/3adkru1w","slide":4,"text":"公司资料与规则，决定每一次工作怎样完成","textPreview":"公司资料与规则，决定每一次工作怎样完成","textChars":19,"textLines":1,"bbox":[76,609,1110,50]}
+{"kind":"notes","id":"nt/pqkdk4","slide":4,"text":"公司理解指明确保存并被任务调用的公司上下文，不是模型自动训练。\n\n资料依据：ONBOARDING.md; README.md; core/documents.mjs:210-339,353-392,467-493,504-549,568-602; core/actions.mjs:31-114\n日期：2026-10-01。生成图为抽象示意，不作为事实证据。"}
+{"kind":"slide","id":"sl/4qx8i9","slide":5,"title":"为公司入职一位数字文档专家","textShapes":18}
+{"kind":"textbox","id":"sh/psr6x4be","slide":5,"text":"为公司入职一位数字文档专家","textPreview":"为公司入职一位数字文档专家","textChars":13,"textLines":1,"bbox":[72,58,1136,102]}
+{"kind":"textbox","id":"sh/2p07mpsn","slide":5,"text":"e by eternalgy","textPreview":"e by eternalgy","textChars":14,"textLines":1,"bbox":[76,672,300,25]}
+{"kind":"textbox","id":"sh/3q9ovut8","slide":5,"text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1170,669,42,28]}
+{"kind":"textbox","id":"sh/gnipkzah","slide":5,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[72,205,65,51]}
+{"kind":"textbox","id":"sh/1or6tkb2","slide":5,"text":"了解你的公司","textPreview":"了解你的公司","textChars":6,"textLines":1,"bbox":[72,282,336,62]}
+{"kind":"textbox","id":"sh/elg7ipsr","slide":5,"text":"Know your\ncompany","textPreview":"Know your | company","textChars":17,"textLines":2,"bbox":[72,360,336,85]}
+{"kind":"shape","id":"sh/fmporutw","slide":5,"bbox":[72,467,332,0]}
+{"kind":"textbox","id":"sh/szy5gfal","slide":5,"text":"公司资料、旧文件\n业务规则与工作习惯","textPreview":"公司资料、旧文件 | 业务规则与工作习惯","textChars":18,"textLines":2,"bbox":[72,499,336,105]}
+{"kind":"textbox","id":"sh/t076pkb6","slide":5,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[472,205,65,51]}
+{"kind":"textbox","id":"sh/lszmdk36","slide":5,"text":"结合数字化专业能力","textPreview":"结合数字化专业能力","textChars":9,"textLines":1,"bbox":[472,282,336,62]}
+{"kind":"textbox","id":"sh/0rq54fml","slide":5,"text":"Expertise in\nData Digitalisation","textPreview":"Expertise in | Data Digitalisation","textChars":32,"textLines":2,"bbox":[472,360,336,85]}
+{"kind":"shape","id":"sh/zqh4bal0","slide":5,"bbox":[472,467,332,0]}
+{"kind":"textbox","id":"sh/ep8n254f","slide":5,"text":"数据建模与关系设计\n文件、表单与业务流程","textPreview":"数据建模与关系设计 | 文件、表单与业务流程","textChars":20,"textLines":2,"bbox":[472,499,336,105]}
+{"kind":"textbox","id":"sh/dofm903u","slide":5,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[872,205,65,51]}
+{"kind":"textbox","id":"sh/cn650fmp","slide":5,"text":"为公司入职文档专家","textPreview":"为公司入职文档专家","textChars":9,"textLines":1,"bbox":[872,282,336,62]}
+{"kind":"textbox","id":"sh/r2x47al4","slide":5,"text":"Digital Document\nExpert","textPreview":"Digital Document | Expert","textChars":23,"textLines":2,"bbox":[872,360,336,85]}
+{"kind":"shape","id":"sh/q1ony54j","slide":5,"bbox":[872,467,332,0]}
+{"kind":"textbox","id":"sh/p0fm503y","slide":5,"text":"理解公司设定\n按公司规则处理工作","textPreview":"理解公司设定 | 按公司规则处理工作","textChars":16,"textLines":2,"bbox":[872,499,336,105]}
+{"kind":"textbox","id":"sh/4z65wvmd","slide":5,"text":"+","textPreview":"+","textChars":1,"textLines":1,"bbox":[422,365,42,73]}
+{"kind":"textbox","id":"sh/gfad8zyl","slide":5,"text":"=","textPreview":"=","textChars":1,"textLines":1,"bbox":[822,365,42,73]}
+{"kind":"textbox","id":"sh/hg3e14f6","slide":5,"text":"公司理解与数字化专业能力，共同构成 e 的入职基础","textPreview":"公司理解与数字化专业能力，共同构成 e 的入职基础","textChars":25,"textLines":1,"bbox":[76,614,1130,45]}
+{"kind":"notes","id":"nt/4qx8i9","slide":5,"text":"按用户提供的解释流程：Know your company，结合 e 的 Expertise in Data Digitalisation，为公司 onboard 一位 Digital Document Expert。这是 AI 专家定位，不是实际人员招聘。公司资料、旧 invoice/quotation 与可读官网内容提供上下文，抽取事实与配置仍需用户确认。通过预置 schema、自定义字段、规则与模板适应公司工作。\n\n资料依据：ONBOARDING.md; README.md; core/company.mjs:21-27; core/admin.mjs:57-82; core/documents.mjs:127-136\n日期：2026-10-01。生成图为抽象示意，不作为事实证据。"}
+{"kind":"slide","id":"sl/a79tz3","slide":6,"title":"天下武功，殊途同归","textShapes":11}
+{"kind":"textbox","id":"sh/wjadob6l","slide":6,"text":"天下武功，殊途同归","textPreview":"天下武功，殊途同归","textChars":9,"textLines":1,"bbox":[72,58,1136,102]}
+{"kind":"textbox","id":"sh/bi1wf650","slide":6,"text":"e by eternalgy","textPreview":"e by eternalgy","textChars":14,"textLines":1,"bbox":[76,672,300,25]}
+{"kind":"textbox","id":"sh/ahsvm1ov","slide":6,"text":"06","textPreview":"06","textChars":2,"textLines":1,"bbox":[1170,669,42,28]}
+{"kind":"textbox","id":"sh/lojelgni","slide":6,"text":"不同业务，\n共享许多相同的结构","textPreview":"不同业务， | 共享许多相同的结构","textChars":15,"textLines":2,"bbox":[76,224,608,155]}
+{"kind":"textbox","id":"sh/knaxsb6x","slide":6,"text":"Expert of Digitalization","textPreview":"Expert of Digitalization","textChars":24,"textLines":1,"bbox":[76,395,608,57]}
+{"kind":"textbox","id":"sh/jm1wjq5c","slide":6,"text":"以常用数据结构承接工作，\n再适应公司的设定","textPreview":"以常用数据结构承接工作， | 再适应公司的设定","textChars":21,"textLines":2,"bbox":[76,470,570,110]}
+{"kind":"shape","id":"sh/ylsfqlor","slide":6,"bbox":[858,340,210,130]}
+{"kind":"textbox","id":"sh/1sze9wny","slide":6,"text":"业务记录","textPreview":"业务记录","textChars":4,"textLines":1,"bbox":[868,348,190,114]}
+{"kind":"shape","id":"sh/0rqdgr6d","slide":6,"bbox":[710,214,108,75]}
+{"kind":"textbox","id":"sh/698nmh8j","slide":6,"text":"客户","textPreview":"客户","textChars":2,"textLines":1,"bbox":[720,222,88,59]}
+{"kind":"shape","id":"sh/7ah4vm94","slide":6,"bbox":[818,251.5,40,153.5]}
+{"kind":"shape","id":"sh/sbq5orqp","slide":6,"bbox":[1100,214,108,75]}
+{"kind":"textbox","id":"sh/tczmxwra","slide":6,"text":"产品","textPreview":"产品","textChars":2,"textLines":1,"bbox":[1110,222,88,59]}
+{"kind":"shape","id":"sh/ud8nq18v","slide":6,"bbox":[1068,251.5,32,153.5]}
+{"kind":"shape","id":"sh/feh4z69g","slide":6,"bbox":[710,506,108,75]}
+{"kind":"textbox","id":"sh/gfq5sbq1","slide":6,"text":"文件","textPreview":"文件","textChars":2,"textLines":1,"bbox":[720,514,88,59]}
+{"kind":"shape","id":"sh/hgzm1gr6","slide":6,"bbox":[818,405,40,138.5]}
+{"kind":"shape","id":"sh/21snu18r","slide":6,"bbox":[1100,506,108,75]}
+{"kind":"textbox","id":"sh/321o369c","slide":6,"text":"表单","textPreview":"表单","textChars":2,"textLines":1,"bbox":[1110,514,88,59]}
+{"kind":"shape","id":"sh/z614b65k","slide":6,"bbox":[1068,405,32,138.5]}
+{"kind":"notes","id":"nt/a79tz3","slide":6,"text":"常见业务共享客户、商品、文件、采集与规则等结构。e 当前使用预置业务 schema，可按公司配置字段、模板和规则，不是自动创建任意数据库。\n\n资料依据：ONBOARDING.md; README.md; core/tools.mjs:16-24,729-737; host.mjs:26-70\n日期：2026-10-01。生成图为抽象示意，不作为事实证据。"}
+{"kind":"slide","id":"sl/l3ye4d","slide":7,"title":"数字化：让 DATA 在计算世界里活起来","textShapes":10}
+{"kind":"textbox","id":"sh/jy9sbmtw","slide":7,"text":"数字化：让 DATA 在计算世界里活起来","textPreview":"数字化：让 DATA 在计算世界里活起来","textChars":20,"textLines":1,"bbox":[72,58,1136,102]}
+{"kind":"textbox","id":"sh/4zi94ruh","slide":7,"text":"e by eternalgy","textPreview":"e by eternalgy","textChars":14,"textLines":1,"bbox":[76,672,300,25]}
+{"kind":"textbox","id":"sh/50radwb2","slide":7,"text":"07","textPreview":"07","textChars":2,"textLines":1,"bbox":[1170,669,42,28]}
+{"kind":"textbox","id":"sh/u9gryhcf","slide":7,"text":"Paperless","textPreview":"Paperless","textChars":9,"textLines":1,"bbox":[76,195,480,60]}
+{"kind":"textbox","id":"sh/va9s7md0","slide":7,"text":"纸张变成 PDF\n方便保存与传递","textPreview":"纸张变成 PDF | 方便保存与传递","textChars":16,"textLines":2,"bbox":[76,274,490,96]}
+{"kind":"textbox","id":"sh/wbi907ul","slide":7,"text":"Computer-meaningful Data","textPreview":"Computer-meaningful Data","textChars":24,"textLines":1,"bbox":[656,198,552,60]}
+{"kind":"textbox","id":"sh/hwra9cb6","slide":7,"text":"客户、商品、金额、时间\n成为可关联、可计算的数据","textPreview":"客户、商品、金额、时间 | 成为可关联、可计算的数据","textChars":24,"textLines":2,"bbox":[656,274,552,96]}
+{"kind":"shape","id":"sh/m5gruxc3","slide":7,"bbox":[608,206,0,366]}
+{"kind":"shape","id":"sh/76ps32do","slide":7,"bbox":[161,397,282,154]}
+{"kind":"textbox","id":"sh/ju1kv2pc","slide":7,"text":"Invoice\nPDF","textPreview":"Invoice | PDF","textChars":11,"textLines":2,"bbox":[171,405,262,138]}
+{"kind":"shape","id":"sh/yts32xor","slide":7,"bbox":[784,397,298,154]}
+{"kind":"textbox","id":"sh/lwj2xc7i","slide":7,"text":"PostgreSQL\n关系数据","textPreview":"PostgreSQL | 关系数据","textChars":15,"textLines":2,"bbox":[794,405,278,138]}
+{"kind":"textbox","id":"sh/kval476x","slide":7,"text":"e 在交付文件的同时，将业务信息保存为结构化记录","textPreview":"e 在交付文件的同时，将业务信息保存为结构化记录","textChars":24,"textLines":1,"bbox":[76,610,1130,55]}
+{"kind":"notes","id":"nt/l3ye4d","slide":7,"text":"Expert of Digitalization 是创始人补充的定位。单次生成 PDF 并不自动建立关联业务记录。数字化的定义是将业务信息转为计算机可理解、可关联、可计算的数据。此页比较输出方式，不概括所有竞品。\n\n资料依据：core/documents.mjs:210-339,353-392,467-493,504-549,568-602; core/actions.mjs:31-114; core/documents.mjs:67-78,353-392\n日期：2026-10-01。生成图为抽象示意，不作为事实证据。"}
+{"kind":"slide","id":"sl/bjksps","slide":8,"title":"一张 Invoice，成为可持续计算的数据","textShapes":21}
+{"kind":"textbox","id":"sh/r6x4zy9k","slide":8,"text":"一张 Invoice，成为可持续计算的数据","textPreview":"一张 Invoice，成为可持续计算的数据","textChars":21,"textLines":1,"bbox":[72,58,1136,102]}
+{"kind":"textbox","id":"sh/c765s3q5","slide":8,"text":"e by eternalgy","textPreview":"e by eternalgy","textChars":14,"textLines":1,"bbox":[76,672,300,25]}
+{"kind":"textbox","id":"sh/d8fm18rq","slide":8,"text":"08","textPreview":"08","textChars":2,"textLines":1,"bbox":[1170,669,42,28]}
+{"kind":"textbox","id":"sh/y9onud8b","slide":8,"text":"Relational schema","textPreview":"Relational schema","textChars":17,"textLines":1,"bbox":[76,167,550,54]}
+{"kind":"textbox","id":"sh/zux43i9w","slide":8,"text":"分析示例：依实际字段与公司计算口径","textPreview":"分析示例：依实际字段与公司计算口径","textChars":17,"textLines":1,"bbox":[656,169,552,54]}
+{"kind":"shape","id":"sh/0vq5wnqh","slide":8,"bbox":[72,265,202,138]}
+{"kind":"textbox","id":"sh/lwzm5srm","slide":8,"text":"Customer","textPreview":"Customer","textChars":8,"textLines":1,"bbox":[84,277,178,41]}
+{"kind":"shape","id":"sh/ud43i987","slide":8,"bbox":[84,322,178,0]}
+{"kind":"textbox","id":"sh/fyd4re9c","slide":8,"text":"id\nname","textPreview":"id | name","textChars":7,"textLines":2,"bbox":[84,333,178,61]}
+{"kind":"shape","id":"sh/j2lwf6t0","slide":8,"bbox":[346,243,255,181]}
+{"kind":"textbox","id":"sh/y1cv61cf","slide":8,"text":"Invoice","textPreview":"Invoice","textChars":7,"textLines":1,"bbox":[358,255,231,41]}
+{"kind":"shape","id":"sh/lo3ehwbq","slide":8,"bbox":[358,300,231,0]}
+{"kind":"textbox","id":"sh/knud8ru5","slide":8,"text":"customer_id\nissue_date / total\n人员归属（配置）","textPreview":"customer_id | issue_date / total | 人员归属（配置）","textChars":39,"textLines":3,"bbox":[358,311,231,104]}
+{"kind":"shape","id":"sh/by1wbmto","slide":8,"bbox":[72,471,202,138]}
+{"kind":"textbox","id":"sh/axsv2hc3","slide":8,"text":"Product","textPreview":"Product","textChars":7,"textLines":1,"bbox":[84,483,178,41]}
+{"kind":"shape","id":"sh/x0jedwbu","slide":8,"bbox":[84,528,178,0]}
+{"kind":"textbox","id":"sh/wzad4ru9","slide":8,"text":"id\nname","textPreview":"id | name","textChars":7,"textLines":2,"bbox":[84,539,178,61]}
+{"kind":"shape","id":"sh/nu1w7mds","slide":8,"bbox":[346,455,255,181]}
+{"kind":"textbox","id":"sh/2tsvyhc7","slide":8,"text":"Invoice Line","textPreview":"Invoice Line","textChars":12,"textLines":1,"bbox":[358,467,231,41]}
+{"kind":"shape","id":"sh/qp8fqhwz","slide":8,"bbox":[358,512,231,0]}
+{"kind":"textbox","id":"sh/rqhwj2xk","slide":8,"text":"document_id\nproduct_id / quantity\ndiscount_amount","textPreview":"document_id | product_id / quantity | discount_amount","textChars":49,"textLines":3,"bbox":[358,523,231,104]}
+{"kind":"shape","id":"sh/srqxs7e5","slide":8,"bbox":[274,333.5,72,0.5]}
+{"kind":"shape","id":"sh/dszelcfq","slide":8,"bbox":[274,540,72,5.5]}
+{"kind":"shape","id":"sh/et8fuhwv","slide":8,"bbox":[473.5,424,0,31]}
+{"kind":"textbox","id":"sh/fu1wnmxg","slide":8,"text":"每位销售人员的收入","textPreview":"每位销售人员的收入","textChars":9,"textLines":1,"bbox":[656,243,552,49]}
+{"kind":"textbox","id":"sh/0vaxwre1","slide":8,"text":"关联人员归属与收入确认口径","textPreview":"关联人员归属与收入确认口径","textChars":13,"textLines":1,"bbox":[656,291,552,48]}
+{"kind":"textbox","id":"sh/1wjepwfm","slide":8,"text":"每月业绩","textPreview":"每月业绩","textChars":4,"textLines":1,"bbox":[656,343,552,49]}
+{"kind":"textbox","id":"sh/mxsfy1w7","slide":8,"text":"按月份汇总开票与收款","textPreview":"按月份汇总开票与收款","textChars":10,"textLines":1,"bbox":[656,391,552,48]}
+{"kind":"textbox","id":"sh/ny1grmxs","slide":8,"text":"热门商品","textPreview":"热门商品","textChars":4,"textLines":1,"bbox":[656,443,552,49]}
+{"kind":"textbox","id":"sh/x4nqdk36","slide":8,"text":"按商品汇总数量或金额","textPreview":"按商品汇总数量或金额","textChars":10,"textLines":1,"bbox":[656,491,552,48]}
+{"kind":"textbox","id":"sh/w3e94f2l","slide":8,"text":"每位销售人员的折扣比例","textPreview":"每位销售人员的折扣比例","textChars":11,"textLines":1,"bbox":[656,543,552,49]}
+{"kind":"textbox","id":"sh/v258bal0","slide":8,"text":"关联人员与折扣明细，按统一口径比较","textPreview":"关联人员与折扣明细，按统一口径比较","textChars":17,"textLines":1,"bbox":[656,591,552,48]}
+{"kind":"notes","id":"nt/bjksps","slide":8,"text":"关系示意简化自现有 schema：di.document(customer_id,issue_date,total,custom)、di.document_line(document_id,product_id,quantity,discount_amount)、di.customer、di.product。人员归属可配置为 custom 字段，不是默认 sales-agent 外键。右侧为可扩展分析示例，不是已交付的报表。收入需公司定义确认口径；热门商品需选数量或金额；折扣比例需定义分母与汇总口径。\n\n资料依据：core/documents.mjs:210-339,353-392,467-493,504-549,568-602; core/actions.mjs:31-114; core/documents.mjs:67-78,353-392; core/admin.mjs:57-82; core/dashboard.mjs:23-128\n日期：2026-10-01。生成图为抽象示意，不作为事实证据。"}
+{"kind":"slide","id":"sl/99d06s","slide":9,"title":"e 的数字化工作方式与工具","textShapes":17}
+{"kind":"textbox","id":"sh/94n2p4ba","slide":9,"text":"e 的数字化工作方式与工具","textPreview":"e 的数字化工作方式与工具","textChars":13,"textLines":1,"bbox":[72,58,1136,102]}
+{"kind":"textbox","id":"sh/m1c3e9sz","slide":9,"text":"e by eternalgy","textPreview":"e by eternalgy","textChars":14,"textLines":1,"bbox":[76,672,300,25]}
+{"kind":"textbox","id":"sh/n2lknetk","slide":9,"text":"09","textPreview":"09","textChars":2,"textLines":1,"bbox":[1170,669,42,28]}
+{"kind":"textbox","id":"sh/wrelkja1","slide":9,"text":"数字化专业知识，落实到每一步数据处理","textPreview":"数字化专业知识，落实到每一步数据处理","textChars":18,"textLines":1,"bbox":[76,168,1130,65]}
+{"kind":"textbox","id":"sh/xsn2tobm","slide":9,"text":"采集","textPreview":"采集","textChars":2,"textLines":1,"bbox":[72,302,246,60]}
+{"kind":"shape","id":"sh/a5w3i9sv","slide":9,"bbox":[72,383,232,0]}
+{"kind":"textbox","id":"sh/bq5kretg","slide":9,"text":"Publishable Site","textPreview":"Publishable Site","textChars":16,"textLines":1,"bbox":[72,410,252,59]}
+{"kind":"textbox","id":"sh/cva18zax","slide":9,"text":"HTML 表单\n订单、工作报告","textPreview":"HTML 表单 | 订单、工作报告","textChars":15,"textLines":2,"bbox":[72,493,252,113]}
+{"kind":"shape","id":"sh/dwj2hkb2","slide":9,"bbox":[323,335,33,0]}
+{"kind":"textbox","id":"sh/p87yhwba","slide":9,"text":"建模","textPreview":"建模","textChars":2,"textLines":1,"bbox":[372,302,246,60]}
+{"kind":"shape","id":"sh/o7yxorup","slide":9,"bbox":[372,383,232,0]}
+{"kind":"textbox","id":"sh/36pgfmt4","slide":9,"text":"Schema\nReference","textPreview":"Schema | Reference","textChars":16,"textLines":2,"bbox":[372,410,252,59]}
+{"kind":"textbox","id":"sh/25gfmhcj","slide":9,"text":"理解字段与关系\n按公司设定校验","textPreview":"理解字段与关系 | 按公司设定校验","textChars":15,"textLines":2,"bbox":[372,493,252,113]}
+{"kind":"shape","id":"sh/dcrylgb6","slide":9,"bbox":[623,335,33,0]}
+{"kind":"textbox","id":"sh/cbixsbul","slide":9,"text":"记录","textPreview":"记录","textChars":2,"textLines":1,"bbox":[672,302,246,60]}
+{"kind":"shape","id":"sh/ba9gj6t0","slide":9,"bbox":[672,383,232,0]}
+{"kind":"textbox","id":"sh/q90fq1cv","slide":9,"text":"PostgreSQL","textPreview":"PostgreSQL","textChars":10,"textLines":1,"bbox":[672,410,252,59]}
+{"kind":"textbox","id":"sh/l0bypgbi","slide":9,"text":"保存关联业务记录\n承接查询与计算","textPreview":"保存关联业务记录 | 承接查询与计算","textChars":16,"textLines":2,"bbox":[672,493,252,113]}
+{"kind":"shape","id":"sh/0zixwbax","slide":9,"bbox":[923,335,33,0]}
+{"kind":"textbox","id":"sh/kva98jm5","slide":9,"text":"交付","textPreview":"交付","textChars":2,"textLines":1,"bbox":[972,302,246,60]}
+{"kind":"shape","id":"sh/5gjqhonq","slide":9,"bbox":[972,383,232,0]}
+{"kind":"textbox","id":"sh/itsr694z","slide":9,"text":"Cloud Storage","textPreview":"Cloud Storage","textChars":13,"textLines":1,"bbox":[972,410,252,59]}
+{"kind":"textbox","id":"sh/ju18fe5k","slide":9,"text":"文件保存与分享\n云存储依部署配置","textPreview":"文件保存与分享 | 云存储依部署配置","textChars":16,"textLines":2,"bbox":[972,493,252,113]}
+{"kind":"textbox","id":"sh/sju9cjmh","slide":9,"text":"表单发布、schema 与数据记录已有实现；云端文件存储取决于部署配置。","textPreview":"表单发布、schema 与数据记录已有实现；云端文件存储取决于部署配置。","textChars":36,"textLines":1,"bbox":[76,625,1130,37]}
+{"kind":"notes","id":"nt/99d06s","slide":9,"text":"创始人将 e 定位为 Expert of Digitalization。PostgreSQL、schema 查询和自定义字段、公开 HTML 表单发布、文件存储与分享为 repo 可证实的能力。Cloud Storage 为用户指定的部署方向，当前 repo 通过宿主 filesRoot/workspace 与 publicUrl 存储和发布，不代表已整合某一云对象存储服务。订单表单、工作报告表单是可配置采集用途，不是完整订单或工单产品。\n\n资料依据：core/tools.mjs:16-24,729-737; host.mjs:26-70; core/admin.mjs:57-82; core/actions.mjs:31-114; core/forms.mjs:552-574; host.mjs:197-242\n日期：2026-10-01。生成图为抽象示意，不作为事实证据。"}
+{"kind":"slide","id":"sl/bshlhn","slide":10,"title":"同一个开票请求，两种处理方式","textShapes":14}
+{"kind":"textbox","id":"sh/9kbqd0re","slide":10,"text":"同一个开票请求，两种处理方式","textPreview":"同一个开票请求，两种处理方式","textChars":14,"textLines":1,"bbox":[72,58,1136,102]}
+{"kind":"textbox","id":"sh/mh0r25sn","slide":10,"text":"e by eternalgy","textPreview":"e by eternalgy","textChars":14,"textLines":1,"bbox":[76,672,300,25]}
+{"kind":"textbox","id":"sh/7it8ba98","slide":10,"text":"10","textPreview":"10","textChars":2,"textLines":1,"bbox":[1170,669,42,28]}
+{"kind":"textbox","id":"sh/wn298fqp","slide":10,"text":"“Create 1 invoice for Acme…”","textPreview":"“Create 1 invoice for Acme…”","textChars":28,"textLines":1,"bbox":[76,163,1130,55]}
+{"kind":"textbox","id":"sh/hobahkra","slide":10,"text":"单次文件输出","textPreview":"单次文件输出","textChars":6,"textLines":1,"bbox":[79,238,370,48]}
+{"kind":"textbox","id":"sh/vmt8fa94","slide":10,"text":"1 PDF Invoice","textPreview":"1 PDF Invoice","textChars":13,"textLines":1,"bbox":[117,576,330,48]}
+{"kind":"textbox","id":"sh/4bm9czq1","slide":10,"text":"VS","textPreview":"VS","textChars":2,"textLines":1,"bbox":[458,404,80,60]}
+{"kind":"textbox","id":"sh/5cvalkr6","slide":10,"text":"e：文档是一条业务流程","textPreview":"e：文档是一条业务流程","textChars":11,"textLines":1,"bbox":[624,238,584,48]}
+{"kind":"shape","id":"sh/9wf2pkfe","slide":10,"bbox":[741,360,148,77]}
+{"kind":"shape","id":"sh/ov6lwfyt","slide":10,"bbox":[889,360,148,77]}
+{"kind":"shape","id":"sh/nuxknax8","slide":10,"bbox":[741,437,148,87]}
+{"kind":"shape","id":"sh/mto3u5g3","slide":10,"bbox":[889,437,148,87]}
+{"kind":"shape","id":"sh/xkzmt4fq","slide":10,"bbox":[665,289,152,152]}
+{"kind":"shape","id":"sh/wzql0zy5","slide":10,"bbox":[690.84,314.84,100.32,100.32]}
+{"kind":"textbox","id":"sh/byhkruxk","slide":10,"text":"Schema\n数据结构","textPreview":"Schema | 数据结构","textChars":11,"textLines":2,"bbox":[671.08,334.6,139.84,60.8]}
+{"kind":"shape","id":"sh/ax83ypgz","slide":10,"bbox":[961,289,152,152]}
+{"kind":"shape","id":"sh/d4v2h0f6","slide":10,"bbox":[986.84,314.84,100.32,100.32]}
+{"kind":"textbox","id":"sh/c3mlovyl","slide":10,"text":"Workflow\n流程","textPreview":"Workflow | 流程","textChars":11,"textLines":2,"bbox":[967.08,334.6,139.84,60.8]}
+{"kind":"shape","id":"sh/47ql4v6h","slide":10,"bbox":[665,450,152,152]}
+{"kind":"shape","id":"sh/58z2x0n2","slide":10,"bbox":[690.84,475.84,100.32,100.32]}
+{"kind":"textbox","id":"sh/i58325or","slide":10,"text":"SOP\n工作规范","textPreview":"SOP | 工作规范","textChars":8,"textLines":2,"bbox":[671.08,495.6,139.84,60.8]}
+{"kind":"shape","id":"sh/36hkvq5w","slide":10,"bbox":[961,450,152,152]}
+{"kind":"shape","id":"sh/sbal8f6t","slide":10,"bbox":[986.84,475.84,100.32,100.32]}
+{"kind":"textbox","id":"sh/dcjm1kne","slide":10,"text":"Template\n模板","textPreview":"Template | 模板","textChars":11,"textLines":2,"bbox":[967.08,495.6,139.84,60.8]}
+{"kind":"shape","id":"sh/q98365on","slide":10,"bbox":[804,350,174,174]}
+{"kind":"shape","id":"sh/ra14za58","slide":10,"bbox":[833.58,379.58,114.84,114.84]}
+{"kind":"textbox","id":"sh/0falcf6p","slide":10,"text":"DB\n业务记录","textPreview":"DB | 业务记录","textChars":7,"textLines":2,"bbox":[810.96,402.2,160.08,69.6]}
+{"kind":"textbox","id":"sh/10jm5kna","slide":10,"text":"查记录、补缺项、发行文件、保存关联、追踪付款","textPreview":"查记录、补缺项、发行文件、保存关联、追踪付款","textChars":22,"textLines":1,"bbox":[620,622,588,44]}
+{"kind":"image","id":"im/ne50rmtk","slide":10,"name":"","alt":"Existing invoice PDF example","bbox":[147,304,175,250]}
+{"kind":"notes","id":"nt/bshlhn","slide":10,"text":"单次文件输出与 e 的流程方式做概念对比，不将所有其他 AI 归为只会 PDF。五个齿轮代表预置 schema、数据库记录、文档生命周期、SOP 与模板。\n\n资料依据：core/documents.mjs:210-339,353-392,467-493,504-549,568-602; core/actions.mjs:31-114; core/tools.mjs:16-24,729-737; host.mjs:26-70\n日期：2026-10-01。生成图为抽象示意，不作为事实证据。"}
+{"kind":"slide","id":"sl/85s3yc","slide":11,"title":"文件与业务记录，延续到付款之后","textShapes":16}
+{"kind":"textbox","id":"sh/tsv2hsr2","slide":11,"text":"文件与业务记录，延续到付款之后","textPreview":"文件与业务记录，延续到付款之后","textChars":15,"textLines":1,"bbox":[72,58,1136,102]}
+{"kind":"textbox","id":"sh/6p43mdsr","slide":11,"text":"e by eternalgy","textPreview":"e by eternalgy","textChars":14,"textLines":1,"bbox":[76,672,300,25]}
+{"kind":"textbox","id":"sh/7qdkfi9w","slide":11,"text":"11","textPreview":"11","textChars":2,"textLines":1,"bbox":[1170,669,42,28]}
+{"kind":"textbox","id":"sh/gvmls7at","slide":11,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[72,222,65,55]}
+{"kind":"shape","id":"sh/hwfmlcre","slide":11,"bbox":[72,310,232,85]}
+{"kind":"textbox","id":"sh/ut43qxsn","slide":11,"text":"准备","textPreview":"准备","textChars":2,"textLines":1,"bbox":[82,318,212,69]}
+{"kind":"textbox","id":"sh/fud4j298","slide":11,"text":"识别客户与商品\n检查缺项与规则","textPreview":"识别客户与商品 | 检查缺项与规则","textChars":15,"textLines":2,"bbox":[72,442,242,130]}
+{"kind":"textbox","id":"sh/4j6lw7ap","slide":11,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[372,222,65,55]}
+{"kind":"shape","id":"sh/pkfmpcra","slide":11,"bbox":[372,310,232,85]}
+{"kind":"textbox","id":"sh/9oryl8ve","slide":11,"text":"草稿","textPreview":"草稿","textChars":2,"textLines":1,"bbox":[382,318,212,69]}
+{"kind":"textbox","id":"sh/8nixcnut","slide":11,"text":"核对内容与金额\n确认后再发行","textPreview":"核对内容与金额 | 确认后再发行","textChars":14,"textLines":2,"bbox":[372,442,242,130]}
+{"kind":"textbox","id":"sh/nm9wjid8","slide":11,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[672,222,65,55]}
+{"kind":"shape","id":"sh/ml0fadcn","slide":11,"bbox":[672,310,232,85]}
+{"kind":"textbox","id":"sh/hsbypsva","slide":11,"text":"发行","textPreview":"发行","textChars":2,"textLines":1,"bbox":[682,318,212,69]}
+{"kind":"textbox","id":"sh/wr2xgnup","slide":11,"text":"编号与历史快照\nPDF 与业务关联","textPreview":"编号与历史快照 | PDF 与业务关联","textChars":17,"textLines":2,"bbox":[672,442,242,130]}
+{"kind":"textbox","id":"sh/vqtgnid4","slide":11,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[972,222,65,55]}
+{"kind":"shape","id":"sh/apkfedcj","slide":11,"bbox":[972,310,232,85]}
+{"kind":"textbox","id":"sh/dw7edov6","slide":11,"text":"付款","textPreview":"付款","textChars":2,"textLines":1,"bbox":[982,318,212,69]}
+{"kind":"textbox","id":"sh/cvyx43ul","slide":11,"text":"记录分配与余额\n追踪应收状态","textPreview":"记录分配与余额 | 追踪应收状态","textChars":14,"textLines":2,"bbox":[972,442,242,130]}
+{"kind":"shape","id":"sh/4f2xk3mh","slide":11,"bbox":[304,352.5,68,0]}
+{"kind":"shape","id":"sh/p0byt832","slide":11,"bbox":[604,352.5,68,0]}
+{"kind":"shape","id":"sh/2dkfit4b","slide":11,"bbox":[904,352.5,68,0]}
+{"kind":"textbox","id":"sh/3etgrylw","slide":11,"text":"下一次工作，从已有记录继续","textPreview":"下一次工作，从已有记录继续","textChars":13,"textLines":1,"bbox":[76,614,1110,49]}
+{"kind":"notes","id":"nt/85s3yc","slide":11,"text":"准备不写记录，草稿可以修改，issue 时验证并编号，保存 snapshots，PDF 与付款记录进入持续流程。\n\n资料依据：core/documents.mjs:210-339,353-392,467-493,504-549,568-602; core/actions.mjs:31-114\n日期：2026-10-01。生成图为抽象示意，不作为事实证据。"}
+{"kind":"slide","id":"sl/cudnsd","slide":12,"title":"Form 收集信息，e 处理后续工作","textShapes":9}
+{"kind":"textbox","id":"sh/5kny50vy","slide":12,"text":"Form 收集信息，e 处理后续工作","textPreview":"Form 收集信息，e 处理后续工作","textChars":18,"textLines":1,"bbox":[72,58,1136,102]}
+{"kind":"textbox","id":"sh/yxcfulc7","slide":12,"text":"e by eternalgy","textPreview":"e by eternalgy","textChars":14,"textLines":1,"bbox":[76,672,300,25]}
+{"kind":"textbox","id":"sh/jilw3qds","slide":12,"text":"12","textPreview":"12","textChars":2,"textLines":1,"bbox":[1170,669,42,28]}
+{"kind":"textbox","id":"sh/snex0fup","slide":12,"text":"工程报告 / 客户订单 / 问卷 / 每日打卡","textPreview":"工程报告 / 客户订单 / 问卷 / 每日打卡","textChars":23,"textLines":1,"bbox":[76,172,1130,60]}
+{"kind":"shape","id":"sh/tony90vu","slide":12,"bbox":[72,302,224,174]}
+{"kind":"textbox","id":"sh/6lwfy5cj","slide":12,"text":"Form\n收集与校验","textPreview":"Form | 收集与校验","textChars":10,"textLines":2,"bbox":[82,310,204,158]}
+{"kind":"shape","id":"sh/7m5g7ad4","slide":12,"bbox":[376,302,224,174]}
+{"kind":"textbox","id":"sh/oraxobe5","slide":12,"text":"DB\n保存提交","textPreview":"DB | 保存提交","textChars":7,"textLines":2,"bbox":[386,310,204,158]}
+{"kind":"shape","id":"sh/9s3exgvq","slide":12,"bbox":[680,302,224,174]}
+{"kind":"textbox","id":"sh/94zm94na","slide":12,"text":"专职 AI\n审阅与处理","textPreview":"专职 AI | 审阅与处理","textChars":11,"textLines":2,"bbox":[690,310,204,158]}
+{"kind":"shape","id":"sh/o3ql0z65","slide":12,"bbox":[984,302,224,174]}
+{"kind":"textbox","id":"sh/n2h47e5k","slide":12,"text":"工作成果\n记录 / 摘要 / CSV","textPreview":"工作成果 | 记录 / 摘要 / CSV","textChars":18,"textLines":2,"bbox":[994,310,204,158]}
+{"kind":"shape","id":"sh/m1o3y9oz","slide":12,"bbox":[296,389,80,0]}
+{"kind":"shape","id":"sh/xszmdonm","slide":12,"bbox":[600,389,80,0]}
+{"kind":"shape","id":"sh/wrql4j61","slide":12,"bbox":[904,389,80,0]}
+{"kind":"textbox","id":"sh/b6h4be5g","slide":12,"text":"按字段绑定，关联客户、文件与下一步工作","textPreview":"按字段绑定，关联客户、文件与下一步工作","textChars":19,"textLines":1,"bbox":[76,587,1100,65]}
+{"kind":"notes","id":"nt/cudnsd","slide":12,"text":"表单、review、stats 与 CSV 是现有工具。工程报告、每日打卡是可配置的数据采集例子，不代表完整工单、考勤或薪资系统。\n\n资料依据：core/forms.mjs:418-481,552-574,830-884,991-1060,1084-1178\n日期：2026-10-01。生成图为抽象示意，不作为事实证据。"}
+{"kind":"slide","id":"sl/7go2xl","slide":13,"title":"业务记录，让工作状态可见","textShapes":6}
+{"kind":"textbox","id":"sh/fy14nilw","slide":13,"text":"业务记录，让工作状态可见","textPreview":"业务记录，让工作状态可见","textChars":12,"textLines":1,"bbox":[72,58,1136,102]}
+{"kind":"textbox","id":"sh/gzalgnmh","slide":13,"text":"e by eternalgy","textPreview":"e by eternalgy","textChars":14,"textLines":1,"bbox":[76,672,300,25]}
+{"kind":"textbox","id":"sh/h0jmps32","slide":13,"text":"13","textPreview":"13","textChars":2,"textLines":1,"bbox":[1170,669,42,28]}
+{"kind":"textbox","id":"sh/21s3ix4n","slide":13,"text":"未收款项\n逾期 invoice\n待跟进 quotation","textPreview":"未收款项 | 逾期 invoice | 待跟进 quotation","textChars":29,"textLines":3,"bbox":[76,248,480,235]}
+{"kind":"textbox","id":"sh/3ml4r2l8","slide":13,"text":"已有数据，形成业务概览","textPreview":"已有数据，形成业务概览","textChars":11,"textLines":1,"bbox":[76,535,480,73]}
+{"kind":"textbox","id":"sh/po3mts3y","slide":13,"text":"现有界面预览。图中金额与数量为演示数据。","textPreview":"现有界面预览。图中金额与数量为演示数据。","textChars":20,"textLines":1,"bbox":[587,624,620,35]}
+{"kind":"image","id":"im/ts3ixkzi","slide":13,"name":"","alt":"Existing CRM dashboard preview, illustrative data only","bbox":[583,181,625,424]}
+{"kind":"notes","id":"nt/7go2xl","slide":13,"text":"截图来自 CRM preview，金额与数量为演示数据。代码实现应收、逾期、开票与收款趋势、报价pipeline，截图不代表经营业绩。\n\n资料依据：core/dashboard.mjs:23-128; preview/crm-desktop.png\n日期：2026-10-01。生成图为抽象示意，不作为事实证据。"}
+{"kind":"slide","id":"sl/59k87x","slide":14,"title":"一个 Orchestrator，一组专职 AI","textShapes":12}
+{"kind":"textbox","id":"sh/4rq5o72t","slide":14,"text":"一个 Orchestrator，一组专职 AI","textPreview":"一个 Orchestrator，一组专职 AI","textChars":23,"textLines":1,"bbox":[72,58,1136,102]}
+{"kind":"textbox","id":"sh/jqh4v2l8","slide":14,"text":"e by eternalgy","textPreview":"e by eternalgy","textChars":14,"textLines":1,"bbox":[76,672,300,25]}
+{"kind":"textbox","id":"sh/ip8nmx4n","slide":14,"text":"14","textPreview":"14","textChars":2,"textLines":1,"bbox":[1170,669,42,28]}
+{"kind":"shape","id":"sh/dwz61w3a","slide":14,"bbox":[438,187,404,91]}
+{"kind":"textbox","id":"sh/svq5sr2p","slide":14,"text":"Orchestrator\n需求分配与结果协调","textPreview":"Orchestrator | 需求分配与结果协调","textChars":22,"textLines":2,"bbox":[448,195,384,75]}
+{"kind":"shape","id":"sh/ruhozmlk","slide":14,"bbox":[640,278,0,49]}
+{"kind":"shape","id":"sh/qt8nqhkz","slide":14,"bbox":[148,327,984,0]}
+{"kind":"shape","id":"sh/90fmps36","slide":14,"bbox":[148,327,0,37]}
+{"kind":"textbox","id":"sh/8z65gnml","slide":14,"text":"资料\n专员","textPreview":"资料 | 专员","textChars":5,"textLines":2,"bbox":[72,379,152,102]}
+{"kind":"shape","id":"sh/it4b6dsf","slide":14,"bbox":[148,482,0,24]}
+{"kind":"shape","id":"sh/3udczi90","slide":14,"bbox":[312,327,0,37]}
+{"kind":"textbox","id":"sh/4vmt83al","slide":14,"text":"文件\n专员","textPreview":"文件 | 专员","textChars":5,"textLines":2,"bbox":[236,379,152,102]}
+{"kind":"shape","id":"sh/5wvu18r6","slide":14,"bbox":[312,482,0,24]}
+{"kind":"shape","id":"sh/qhobadsr","slide":14,"bbox":[476,327,0,37]}
+{"kind":"textbox","id":"sh/rixc3i9c","slide":14,"text":"表单\n设计","textPreview":"表单 | 设计","textChars":5,"textLines":2,"bbox":[400,379,152,102]}
+{"kind":"shape","id":"sh/sj6tcnax","slide":14,"bbox":[476,482,0,24]}
+{"kind":"shape","id":"sh/dkfu5sr2","slide":14,"bbox":[640,327,0,37]}
+{"kind":"textbox","id":"sh/elobex8n","slide":14,"text":"表单\n审阅","textPreview":"表单 | 审阅","textChars":5,"textLines":2,"bbox":[564,379,152,102]}
+{"kind":"shape","id":"sh/fmxc7298","slide":14,"bbox":[640,482,0,24]}
+{"kind":"shape","id":"sh/bqhsv2pg","slide":14,"bbox":[804,327,0,37]}
+{"kind":"textbox","id":"sh/ap8b2xov","slide":14,"text":"公司\n入职","textPreview":"公司 | 入职","textChars":5,"textLines":2,"bbox":[728,379,152,102]}
+{"kind":"shape","id":"sh/xszaxc7m","slide":14,"bbox":[804,482,0,24]}
+{"kind":"shape","id":"sh/wrqt4761","slide":14,"bbox":[968,327,0,37]}
+{"kind":"textbox","id":"sh/nmxsrip4","slide":14,"text":"模板\n设计","textPreview":"模板 | 设计","textChars":5,"textLines":2,"bbox":[892,379,152,102]}
+{"kind":"shape","id":"sh/2lobydoz","slide":14,"bbox":[968,482,0,24]}
+{"kind":"shape","id":"sh/9ozats7a","slide":14,"bbox":[1132,327,0,37]}
+{"kind":"textbox","id":"sh/on6t0n6p","slide":14,"text":"数据库\n管理","textPreview":"数据库 | 管理","textChars":6,"textLines":2,"bbox":[1056,379,152,102]}
+{"kind":"shape","id":"sh/fyxsnip8","slide":14,"bbox":[1132,482,0,24]}
+{"kind":"shape","id":"sh/exorudon","slide":14,"bbox":[148,506,984,0]}
+{"kind":"shape","id":"sh/432p4jml","slide":14,"bbox":[640,506,0,30]}
+{"kind":"shape","id":"sh/54vqxon6","slide":14,"bbox":[449,538,382,72]}
+{"kind":"textbox","id":"sh/i1k7294f","slide":14,"text":"共同的业务记录","textPreview":"共同的业务记录","textChars":7,"textLines":1,"bbox":[459,546,362,56]}
+{"kind":"notes","id":"nt/59k87x","slide":14,"text":"当前 registry 七个 DI specialist。Orchestrator 所在外围 UIv2 host 接收需求与派发任务，specialist 共享记录但工具各有授权范围。\n\n资料依据：core/tools.mjs:16-24,729-737; host.mjs:26-70; ONBOARDING.md; README.md\n日期：2026-10-01。生成图为抽象示意，不作为事实证据。"}
+{"kind":"slide","id":"sl/i9mtn9","slide":15,"title":"Stupid = Smart：细胞级 AI","textShapes":5}
+{"kind":"textbox","id":"sh/jql03ul8","slide":15,"text":"Stupid = Smart：细胞级 AI","textPreview":"Stupid = Smart：细胞级 AI","textChars":21,"textLines":1,"bbox":[72,58,1136,102]}
+{"kind":"textbox","id":"sh/ypszap4n","slide":15,"text":"15","textPreview":"15","textChars":2,"textLines":1,"bbox":[1170,669,42,28]}
+{"kind":"textbox","id":"sh/tg3i943a","slide":15,"text":"聪明的人，\n需要每个细胞都聪明吗？","textPreview":"聪明的人， | 需要每个细胞都聪明吗？","textChars":17,"textLines":2,"bbox":[72,190,740,151]}
+{"kind":"textbox","id":"sh/8fu1gz2p","slide":15,"text":"“聪明的红血球？”\n“聪明的大肠细胞？”","textPreview":"“聪明的红血球？” | “聪明的大肠细胞？”","textChars":20,"textLines":2,"bbox":[76,394,680,120]}
+{"kind":"textbox","id":"sh/7el07ulk","slide":15,"text":"整体的能力，来自分工与协作","textPreview":"整体的能力，来自分工与协作","textChars":13,"textLines":1,"bbox":[76,603,690,65]}
+{"kind":"image","id":"im/5wrml0vi","slide":15,"name":"","alt":"ImageGen abstract cellular metaphor","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/i9mtn9","slide":15,"text":"用细胞比喻说明分工与协作产生系统能力。修辞不对细胞认知能力作科学断言，也不等于仅靠单个 agent 就能保证整体可靠性。\n依据：core/tools.mjs:16-24,729-737; host.mjs:26-70\n视觉由内置 ImageGen 生成，文字为原生可编辑。日期：2026-10-01。"}
+{"kind":"slide","id":"sl/xbm3yk","slide":16,"title":"细胞级 AI 的协作方式","textShapes":13}
+{"kind":"textbox","id":"sh/jeh0zqhc","slide":16,"text":"细胞级 AI 的协作方式","textPreview":"细胞级 AI 的协作方式","textChars":12,"textLines":1,"bbox":[72,58,1136,102]}
+{"kind":"textbox","id":"sh/id8jqlg7","slide":16,"text":"16","textPreview":"16","textChars":2,"textLines":1,"bbox":[1170,669,42,28]}
+{"kind":"textbox","id":"sh/hczixgzm","slide":16,"text":"扩大一个 AI 的职责","textPreview":"扩大一个 AI 的职责","textChars":11,"textLines":1,"bbox":[112,154,490,55]}
+{"kind":"textbox","id":"sh/wb61oby1","slide":16,"text":"e：组合细胞级 AI","textPreview":"e：组合细胞级 AI","textChars":10,"textLines":1,"bbox":[716,154,490,55]}
+{"kind":"textbox","id":"sh/vax0v6hg","slide":16,"text":"一个 AI\n包办所有工作","textPreview":"一个 AI | 包办所有工作","textChars":12,"textLines":2,"bbox":[166,304,270,115]}
+{"kind":"textbox","id":"sh/u9ozm1gv","slide":16,"text":"VS","textPreview":"VS","textChars":2,"textLines":1,"bbox":[583,345,80,65]}
+{"kind":"textbox","id":"sh/98fitgza","slide":16,"text":"资料","textPreview":"资料","textChars":2,"textLines":1,"bbox":[739,226,110,58]}
+{"kind":"textbox","id":"sh/876hkbyp","slide":16,"text":"模板","textPreview":"模板","textChars":2,"textLines":1,"bbox":[1057,226,110,58]}
+{"kind":"textbox","id":"sh/elgzu9g3","slide":16,"text":"文件","textPreview":"文件","textChars":2,"textLines":1,"bbox":[739,443,110,58]}
+{"kind":"textbox","id":"sh/fmp03exo","slide":16,"text":"表单","textPreview":"表单","textChars":2,"textLines":1,"bbox":[1057,443,110,58]}
+{"kind":"textbox","id":"sh/gnyhwzy9","slide":16,"text":"调度\n协作","textPreview":"调度 | 协作","textChars":5,"textLines":2,"bbox":[866,319,160,98]}
+{"kind":"textbox","id":"sh/1o7i54fe","slide":16,"text":"职责越广，验证组合越多","textPreview":"职责越广，验证组合越多","textChars":11,"textLines":1,"bbox":[104,611,495,48]}
+{"kind":"textbox","id":"sh/6xwzqpgr","slide":16,"text":"明确任务、SOP、权限与测试","textPreview":"明确任务、SOP、权限与测试","textChars":14,"textLines":1,"bbox":[728,611,495,48]}
+{"kind":"image","id":"im/9wjad4zi","slide":16,"name":"","alt":"ImageGen abstract cellular metaphor","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/xbm3yk","slide":16,"text":"两种架构思路的概念对比，不概括全部竞品。资料、模板、文件、表单为当前 specialist 职责例子。单元、调度与交接都需验证。\n依据：core/tools.mjs:16-24,729-737; host.mjs:26-70; core/documents.mjs:210-339,353-392,467-493,504-549,568-602; core/actions.mjs:31-114\n视觉由内置 ImageGen 生成，文字为原生可编辑。日期：2026-10-01。"}
+{"kind":"slide","id":"sl/456hco","slide":17,"title":"可靠性，来自可检查的边界设计","textShapes":13}
+{"kind":"textbox","id":"sh/f6hkzy9o","slide":17,"text":"可靠性，来自可检查的边界设计","textPreview":"可靠性，来自可检查的边界设计","textChars":14,"textLines":1,"bbox":[72,58,1136,102]}
+{"kind":"textbox","id":"sh/g7q1s3at","slide":17,"text":"e by eternalgy","textPreview":"e by eternalgy","textChars":14,"textLines":1,"bbox":[76,672,300,25]}
+{"kind":"textbox","id":"sh/18z218re","slide":17,"text":"17","textPreview":"17","textChars":2,"textLines":1,"bbox":[1170,669,42,28]}
+{"kind":"textbox","id":"sh/2tsjudsz","slide":17,"text":"任务范围","textPreview":"任务范围","textChars":4,"textLines":1,"bbox":[76,206,225,58]}
+{"kind":"textbox","id":"sh/3u1kni9k","slide":17,"text":"每位专员只使用获授权的工具","textPreview":"每位专员只使用获授权的工具","textChars":13,"textLines":1,"bbox":[354,206,850,60]}
+{"kind":"textbox","id":"sh/ova1wna5","slide":17,"text":"越权请求，由系统拒绝","textPreview":"越权请求，由系统拒绝","textChars":10,"textLines":1,"bbox":[354,268,850,49]}
+{"kind":"shape","id":"sh/pwj2p8rq","slide":17,"bbox":[76,324,1132,0]}
+{"kind":"textbox","id":"sh/qxsjydsb","slide":17,"text":"发行规则","textPreview":"发行规则","textChars":4,"textLines":1,"bbox":[76,347,225,58]}
+{"kind":"textbox","id":"sh/by1kri9g","slide":17,"text":"发行前检查必填信息与公司规则","textPreview":"发行前检查必填信息与公司规则","textChars":14,"textLines":1,"bbox":[354,347,850,60]}
+{"kind":"textbox","id":"sh/r6xw7edg","slide":17,"text":"资料未补齐，不能发行","textPreview":"资料未补齐，不能发行","textChars":10,"textLines":1,"bbox":[354,409,850,49]}
+{"kind":"shape","id":"sh/q54vy9cv","slide":17,"bbox":[76,465,1132,0]}
+{"kind":"textbox","id":"sh/dsfe94vm","slide":17,"text":"记录约束","textPreview":"记录约束","textChars":4,"textLines":1,"bbox":[76,488,225,58]}
+{"kind":"textbox","id":"sh/c76d0zu1","slide":17,"text":"发行后冻结内容，并保存历史快照","textPreview":"发行后冻结内容，并保存历史快照","textChars":15,"textLines":1,"bbox":[354,488,850,60]}
+{"kind":"textbox","id":"sh/32dw3ud4","slide":17,"text":"后续修改，不改写旧文件","textPreview":"后续修改，不改写旧文件","textChars":11,"textLines":1,"bbox":[354,550,850,49]}
+{"kind":"textbox","id":"sh/214vupcz","slide":17,"text":"单元测试、调度与集成验证，共同检验整体交付","textPreview":"单元测试、调度与集成验证，共同检验整体交付","textChars":21,"textLines":1,"bbox":[76,630,1130,35]}
+{"kind":"notes","id":"nt/456hco","slide":17,"text":"可检查机制是代码事实，不等于已验证成功率、低错误率或零错误。RLS 隔离在 di_app 角色可用时生效，数据库角色 unavailable 时有降级限制。\n\n资料依据：core/documents.mjs:210-339,353-392,467-493,504-549,568-602; core/actions.mjs:31-114; core/tools.mjs:16-24,729-737; host.mjs:26-70; checker/index.mjs:48-50; ONBOARDING.md; README.md\n日期：2026-10-01。生成图为抽象示意，不作为事实证据。"}
+{"kind":"slide","id":"sl/spo5fh","slide":18,"title":"Document Intelligence 是当前切入点","textShapes":8}
+{"kind":"textbox","id":"sh/90juxkje","slide":18,"text":"Document Intelligence 是当前切入点","textPreview":"Document Intelligence 是当前切入点","textChars":28,"textLines":1,"bbox":[72,58,1136,102]}
+{"kind":"textbox","id":"sh/mx8b25kn","slide":18,"text":"e by eternalgy","textPreview":"e by eternalgy","textChars":14,"textLines":1,"bbox":[76,672,300,25]}
+{"kind":"textbox","id":"sh/nyhsva18","slide":18,"text":"18","textPreview":"18","textChars":2,"textLines":1,"bbox":[1170,669,42,28]}
+{"kind":"textbox","id":"sh/w3at8f2p","slide":18,"text":"现有 MVP","textPreview":"现有 MVP","textChars":6,"textLines":1,"bbox":[76,212,520,65]}
+{"kind":"textbox","id":"sh/xoju1kja","slide":18,"text":"客户与商品记录\nQuotation、invoice 与付款流程\n表单、模板与业务概览","textPreview":"客户与商品记录 | Quotation、invoice 与付款流程 | 表单、模板与业务概览","textChars":42,"textLines":3,"bbox":[76,328,540,220]}
+{"kind":"textbox","id":"sh/a1sb6pkz","slide":18,"text":"产品方向","textPreview":"产品方向","textChars":4,"textLines":1,"bbox":[702,212,490,65]}
+{"kind":"textbox","id":"sh/b21cza14","slide":18,"text":"多人账号与团队权限\n更自动化的资料 onboarding\n更多可验证的业务流程与分析","textPreview":"多人账号与团队权限 | 更自动化的资料 onboarding | 更多可验证的业务流程与分析","textChars":42,"textLines":3,"bbox":[702,328,506,220]}
+{"kind":"shape","id":"sh/krutcz21","slide":18,"bbox":[639,219,0,344]}
+{"kind":"textbox","id":"sh/ls3u54jm","slide":18,"text":"当前 host：单一操作员、默认公司。MyInvois 尚未整合提交。","textPreview":"当前 host：单一操作员、默认公司。MyInvois 尚未整合提交。","textChars":35,"textLines":1,"bbox":[76,619,1130,40]}
+{"kind":"notes","id":"nt/spo5fh","slide":18,"text":"README 定义 MVP/working demo。当前 host 单操作员/default company，数据库 tenant-aware 不表示已有团队用户权限。MyInvois 尚无提交整合。\n\n资料依据：ONBOARDING.md; README.md; checker/index.mjs:48-50; ONBOARDING.md; README.md\n日期：2026-10-01。生成图为抽象示意，不作为事实证据。"}
+{"kind":"slide","id":"sl/vi9p9q","slide":19,"title":"客户试点，以一条真实流程开始","textShapes":15}
+{"kind":"textbox","id":"sh/k7mxgna5","slide":19,"text":"客户试点，以一条真实流程开始","textPreview":"客户试点，以一条真实流程开始","textChars":14,"textLines":1,"bbox":[72,58,1136,102]}
+{"kind":"textbox","id":"sh/z6dg7it0","slide":19,"text":"e by eternalgy","textPreview":"e by eternalgy","textChars":14,"textLines":1,"bbox":[76,672,300,25]}
+{"kind":"textbox","id":"sh/y54fedsf","slide":19,"text":"19","textPreview":"19","textChars":2,"textLines":1,"bbox":[1170,669,42,28]}
+{"kind":"textbox","id":"sh/9wfydsb2","slide":19,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[76,204,94,61]}
+{"kind":"textbox","id":"sh/8v6hknah","slide":19,"text":"选流程","textPreview":"选流程","textChars":3,"textLines":1,"bbox":[217,204,362,61]}
+{"kind":"textbox","id":"sh/7udgbitw","slide":19,"text":"开票，或表单采集与处理","textPreview":"开票，或表单采集与处理","textChars":11,"textLines":1,"bbox":[674,208,534,58]}
+{"kind":"shape","id":"sh/mt4fidsb","slide":19,"bbox":[217,285,991,0]}
+{"kind":"textbox","id":"sh/h0fyhsby","slide":19,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[76,313,94,61]}
+{"kind":"textbox","id":"sh/wz6ho7ad","slide":19,"text":"用资料配置","textPreview":"用资料配置","textChars":5,"textLines":1,"bbox":[217,313,362,61]}
+{"kind":"textbox","id":"sh/ql8vmx4r","slide":19,"text":"旧文件、规则与客户记录","textPreview":"旧文件、规则与客户记录","textChars":11,"textLines":1,"bbox":[674,317,534,58]}
+{"kind":"shape","id":"sh/rmhcf2lc","slide":19,"bbox":[217,394,991,0]}
+{"kind":"textbox","id":"sh/snqdo7mx","slide":19,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[76,422,94,61]}
+{"kind":"textbox","id":"sh/dozuhc32","slide":19,"text":"运行真实工作","textPreview":"运行真实工作","textChars":6,"textLines":1,"bbox":[217,422,362,61]}
+{"kind":"textbox","id":"sh/epsvqh4n","slide":19,"text":"确认输入，检查交付","textPreview":"确认输入，检查交付","textChars":9,"textLines":1,"bbox":[674,426,534,58]}
+{"kind":"shape","id":"sh/fq1wjml8","slide":19,"bbox":[217,503,991,0]}
+{"kind":"textbox","id":"sh/0rads7mt","slide":19,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[76,531,94,61]}
+{"kind":"textbox","id":"sh/1cjelc3e","slide":19,"text":"对照指标验收","textPreview":"对照指标验收","textChars":6,"textLines":1,"bbox":[217,531,362,61]}
+{"kind":"textbox","id":"sh/utoved4j","slide":19,"text":"时间、返工与数据完整性","textPreview":"时间、返工与数据完整性","textChars":11,"textLines":1,"bbox":[674,535,534,58]}
+{"kind":"notes","id":"nt/vi9p9q","slide":19,"text":"这是建议试点方法，不是正式套餐、价格、承诺期限或已取得客户成果。由客户选一条适合现有功能的流程，使用其真实资料并确认后运行。\n\n资料依据：创始人于本次对话提供的六个核心理念与定位。\n日期：2026-10-01。生成图为抽象示意，不作为事实证据。"}
+{"kind":"slide","id":"sl/b3cbsm","slide":20,"title":"投资验证：门槛降低能否带来付费使用","textShapes":12}
+{"kind":"textbox","id":"sh/4ni5gjml","slide":20,"text":"投资验证：门槛降低能否带来付费使用","textPreview":"投资验证：门槛降低能否带来付费使用","textChars":17,"textLines":1,"bbox":[72,58,1136,102]}
+{"kind":"textbox","id":"sh/jm947el0","slide":20,"text":"e by eternalgy","textPreview":"e by eternalgy","textChars":14,"textLines":1,"bbox":[76,672,300,25]}
+{"kind":"textbox","id":"sh/il0ne94f","slide":20,"text":"20","textPreview":"20","textChars":2,"textLines":1,"bbox":[1170,669,42,28]}
+{"kind":"textbox","id":"sh/hkrm543u","slide":20,"text":"以重复文件工作切入，\n围绕公司上下文扩展","textPreview":"以重复文件工作切入， | 围绕公司上下文扩展","textChars":20,"textLines":2,"bbox":[76,194,1120,147]}
+{"kind":"textbox","id":"sh/wji5czm9","slide":20,"text":"配置成本","textPreview":"配置成本","textChars":4,"textLines":1,"bbox":[76,393,510,56]}
+{"kind":"textbox","id":"sh/vi943elo","slide":20,"text":"能否更快进入实际工作？","textPreview":"能否更快进入实际工作？","textChars":11,"textLines":1,"bbox":[76,456,510,65]}
+{"kind":"textbox","id":"sh/uhgna943","slide":20,"text":"任务可靠性","textPreview":"任务可靠性","textChars":5,"textLines":1,"bbox":[694,393,510,56]}
+{"kind":"textbox","id":"sh/9g7m143i","slide":20,"text":"能否持续交付可检查的结果？","textPreview":"能否持续交付可检查的结果？","textChars":13,"textLines":1,"bbox":[694,456,510,65]}
+{"kind":"textbox","id":"sh/8fy58zmd","slide":20,"text":"持续使用","textPreview":"持续使用","textChars":4,"textLines":1,"bbox":[76,534,510,56]}
+{"kind":"textbox","id":"sh/ehknixwz","slide":20,"text":"是否成为重复工作的习惯？","textPreview":"是否成为重复工作的习惯？","textChars":12,"textLines":1,"bbox":[76,597,510,65]}
+{"kind":"textbox","id":"sh/zitob2xk","slide":20,"text":"付费意愿","textPreview":"付费意愿","textChars":4,"textLines":1,"bbox":[694,534,510,56]}
+{"kind":"textbox","id":"sh/0j25k7e5","slide":20,"text":"价值是否足以支持商业化？","textPreview":"价值是否足以支持商业化？","textChars":12,"textLines":1,"bbox":[694,597,510,65]}
+{"kind":"notes","id":"nt/b3cbsm","slide":20,"text":"投资命题是待验证的假设。没有 supplied traction、收入、市场规模、投资额、估值或财务数据，本页不虚构这些指标。\n\n资料依据：创始人于本次对话提供的六个核心理念与定位。\n日期：2026-10-01。生成图为抽象示意，不作为事实证据。"}
+{"kind":"slide","id":"sl/3v3ut5","slide":21,"title":"e by eternalgy","textShapes":3}
+{"kind":"textbox","id":"sh/gjul8ral","slide":21,"text":"e by eternalgy","textPreview":"e by eternalgy","textChars":14,"textLines":1,"bbox":[76,80,780,70]}
+{"kind":"textbox","id":"sh/filkfmt0","slide":21,"text":"Let it know,\nLet it Work.","textPreview":"Let it know, | Let it Work.","textChars":25,"textLines":2,"bbox":[72,233,1110,200]}
+{"kind":"textbox","id":"sh/ehcj6hsf","slide":21,"text":"客户：带一条真实工作流程来试点\n投资者：共同验证团队 AI 的产品路径","textPreview":"客户：带一条真实工作流程来试点 | 投资者：共同验证团队 AI 的产品路径","textChars":35,"textLines":2,"bbox":[76,554,1000,109]}
+{"kind":"image","id":"im/kjetofuh","slide":21,"name":"","alt":"Original e brand mark","bbox":[1024,486,170,170]}
+{"kind":"notes","id":"nt/3v3ut5","slide":21,"text":"下一步：客户选一条真实流程试点，投资者共同验证商业化路径。不是报价、合同或募资条件。\n\n资料依据：创始人于本次对话提供的六个核心理念与定位。\n日期：2026-10-01。生成图为抽象示意，不作为事实证据。"}
+{"kind":"slide","id":"sl/7p9yf0","slide":22,"title":"资料与产品边界","textShapes":10}
+{"kind":"textbox","id":"sh/rep03u5s","slide":22,"text":"资料与产品边界","textPreview":"资料与产品边界","textChars":7,"textLines":1,"bbox":[72,58,1136,102]}
+{"kind":"textbox","id":"sh/szyhwzmd","slide":22,"text":"e by eternalgy","textPreview":"e by eternalgy","textChars":14,"textLines":1,"bbox":[76,672,300,25]}
+{"kind":"textbox","id":"sh/t07i54ny","slide":22,"text":"22","textPreview":"22","textChars":2,"textLines":1,"bbox":[1170,669,42,28]}
+{"kind":"textbox","id":"sh/e1gzy94j","slide":22,"text":"产品定位","textPreview":"产品定位","textChars":4,"textLines":1,"bbox":[76,213,234,55]}
+{"kind":"textbox","id":"sh/f2p07e54","slide":22,"text":"创始人提供的六个核心理念与团队 AI 方向","textPreview":"创始人提供的六个核心理念与团队 AI 方向","textChars":21,"textLines":1,"bbox":[356,213,850,108]}
+{"kind":"shape","id":"sh/03ih0jm9","slide":22,"bbox":[76,329,1132,0]}
+{"kind":"textbox","id":"sh/14ri9onu","slide":22,"text":"实现依据","textPreview":"实现依据","textChars":4,"textLines":1,"bbox":[76,355,234,55]}
+{"kind":"textbox","id":"sh/250z2t4f","slide":22,"text":"README.md / ONBOARDING.md / host.mjs\ncore/tools.mjs / documents.mjs / forms.mjs / dashboard.mjs","textPreview":"README.md / ONBOARDING.md / host.mjs | core/tools.mjs / documents.mjs / forms.mjs / dashboard.mjs","textChars":95,"textLines":2,"bbox":[356,355,850,108]}
+{"kind":"shape","id":"sh/n690be50","slide":22,"bbox":[76,471,1132,0]}
+{"kind":"textbox","id":"sh/natgby9c","slide":22,"text":"证据边界","textPreview":"证据边界","textChars":4,"textLines":1,"bbox":[76,497,234,55]}
+{"kind":"textbox","id":"sh/mpkf2t8r","slide":22,"text":"代码与预览支持功能说明，不代表部署验收或客户业绩\n可靠性、使用与商业指标，需要在真实试点中验证","textPreview":"代码与预览支持功能说明，不代表部署验收或客户业绩 | 可靠性、使用与商业指标，需要在真实试点中验证","textChars":47,"textLines":2,"bbox":[356,497,850,108]}
+{"kind":"textbox","id":"sh/9cvyd8r2","slide":22,"text":"资料日期：2026-10-01","textPreview":"资料日期：2026-10-01","textChars":15,"textLines":1,"bbox":[76,636,1110,34]}
+{"kind":"notes","id":"nt/7p9yf0","slide":22,"text":"所有产品实现依据为本地 repo。生成图仅作视觉比喻，截图为演示数据。资料截至 2026-10-01。\n\n资料依据：core/tools.mjs:16-24,729-737; host.mjs:26-70\ncore/documents.mjs:210-339,353-392,467-493,504-549,568-602; core/actions.mjs:31-114\ncore/forms.mjs:418-481,552-574,830-884,991-1060,1084-1178\nONBOARDING.md; README.md\ncore/dashboard.mjs:23-128; preview/crm-desktop.png\nchecker/index.mjs:48-50; ONBOARDING.md; README.md\n日期：2026-10-01。生成图为抽象示意，不作为事实证据。"}

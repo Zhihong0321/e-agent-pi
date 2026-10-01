@@ -79,3 +79,12 @@
 .demo-brand-mark,.demo-agent-avatar,.demo-message.assistant .demo-message-avatar{background:transparent}
 .demo-brand-mark img,.demo-agent-avatar img,.demo-message-avatar img{display:block;width:100%;height:100%;object-fit:contain}
 .demo-brand small{font-size:10px;letter-spacing:0;text-transform:none}
+
+.demo-login { min-height: 100dvh; display: grid; place-items: center; background: #f5f6f8; padding: 24px; color: #182234; }
+.demo-login form { width: min(100%, 380px); padding: 32px; background: white; border: 1px solid #e2e6ed; border-radius: 20px; box-shadow: 0 12px 40px #1822340a; }
+.demo-login img { width: 48px; height: 48px; object-fit: contain; }
+.demo-login h1 { margin: 20px 0 8px; }
+.demo-login label { display: grid; gap: 8px; margin: 20px 0; font-size: 14px; }
+.demo-login input { padding: 12px; border: 1px solid #d7dce5; border-radius: 8px; font: inherit; width: 100%; box-sizing: border-box; }
+.demo-login button { width: 100%; justify-content: center; }
+.demo-login [role=alert] { color: #b42318; }

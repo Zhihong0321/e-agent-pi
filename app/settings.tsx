@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import JobsSettings from "./jobs-settings";
+import ActivityLog from "./activity-log";
 
 type Settings = {
   cavotiApiKeySet: boolean;
@@ -48,8 +49,8 @@ type Settings = {
   jinaKeysSet: boolean[];
 };
 
-type Tab = "keys" | "models" | "agents" | "blueprints" | "sites" | "skills" | "mcp" | "whatsapp" | "display" | "usage" | "jobs";
-const TABS: Tab[] = ["keys", "models", "agents", "blueprints", "sites", "skills", "mcp", "whatsapp", "display", "usage", "jobs"];
+type Tab = "keys" | "models" | "agents" | "sops" | "blueprints" | "sites" | "skills" | "mcp" | "whatsapp" | "display" | "usage" | "jobs" | "activity";
+const TABS: Tab[] = ["keys", "models", "agents", "sops", "blueprints", "sites", "skills", "mcp", "whatsapp", "display", "usage", "jobs", "activity"];
 
 const AI_REPLY_DARK_KEY = "e-agent-ai-reply-dark";
 const BLUEPRINT_APPROVER_KEY = "e-agent-blueprint-approver";
@@ -126,6 +127,15 @@ type AgentItem = {
   mcp: McpItem[];
 };
 
+type SopItem = {
+  id: string;
+  agentId: string;
+  agentSlug: string;
+  agentName: string;
+  content: string;
+  createdBy?: string | null;
+  updatedAt: string;
+};
 type BlueprintStatus = "draft" | "approved" | "shelved";
 type BlueprintItem = {
   id: string;
@@ -302,6 +312,9 @@ export default function SettingsPage() {
   const [blueprintBusy, setBlueprintBusy] = useState("");
   const [blueprintExpanded, setBlueprintExpanded] = useState("");
   const [blueprintVersions, setBlueprintVersions] = useState<Record<string, BlueprintItem[]>>({});
+  const [sops, setSops] = useState<SopItem[]>([]);
+  const [sopDrafts, setSopDrafts] = useState<Record<string, { content: string }>>({});
+  const [sopBusy, setSopBusy] = useState("");
   const [approverName, setApproverName] = useState(() => {
     try {
       return window.localStorage.getItem(BLUEPRINT_APPROVER_KEY) || "";
@@ -373,6 +386,29 @@ export default function SettingsPage() {
   const loadSites = async () => {
     const data = await authedJson<{ sites: SiteItem[] }>("/api/sites");
     setSites(data.sites ?? []);
+  };
+
+  const loadSops = async () => {
+    const data = await authedJson<{ sops: SopItem[] }>("/api/sops");
+    setSops(data.sops ?? []);
+    setSopDrafts(Object.fromEntries((data.sops ?? []).map((sop) => [sop.agentId, { content: sop.content }])));
+  };
+
+  const saveSop = async (agent: AgentItem) => {
+    const draft = sopDrafts[agent.id] ?? { content: "" };
+    setSopBusy(agent.id);
+    try {
+      const current = sops.find((sop) => sop.agentId === agent.id);
+      await authedJson(`/api/agents/${encodeURIComponent(agent.id)}/sop`, {
+        method: current ? "PATCH" : "POST",
+        body: JSON.stringify({ content: draft.content }),
+      });
+      await loadSops();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save SOP");
+    } finally {
+      setSopBusy("");
+    }
   };
 
   const loadBlueprints = async (status: "" | BlueprintStatus) => {
@@ -496,6 +532,11 @@ export default function SettingsPage() {
     return () => {
       cancelled = true;
     };
+  }, [authed, tab]);
+
+  useEffect(() => {
+    if (!authed || tab !== "sops") return;
+    void loadSops().catch((err) => setError(err instanceof Error ? err.message : "Could not load SOPs"));
   }, [authed, tab]);
 
   useEffect(() => {
@@ -1007,6 +1048,7 @@ export default function SettingsPage() {
           </nav>
 
           {tab === "jobs" && <JobsSettings />}
+          {tab === "activity" && <ActivityLog />}
           {tab === "keys" && (
             <section className="settings-card">
               <p>
@@ -1773,6 +1815,38 @@ export default function SettingsPage() {
                     New agent
                   </button>
                 ) : null}
+              </div>
+            </section>
+          )}
+
+          {tab === "sops" && (
+            <section className="settings-card">
+              <p>Each persisted agent has one plain SOP. Save it here; the server stores it in Postgres, writes <code>SOP.md</code> into the agent workspace, and loads it into every runtime.</p>
+              <div className="catalog-list">
+                {agents.map((agent) => {
+                  const sop = sops.find((item) => item.agentId === agent.id);
+                  const draft = sopDrafts[agent.id] ?? { content: "" };
+                  return (
+                    <div className="catalog-item" key={agent.id} style={{ display: "block" }}>
+                      <h2>{agent.name}</h2>
+                      <small>{sop ? `saved ${new Date(sop.updatedAt).toLocaleString()} · enforced` : "No SOP yet · not enforced"}</small>
+                      <label>
+                        SOP.md
+                        <textarea
+                          rows={8}
+                          value={draft.content}
+                          onChange={(event) => setSopDrafts((prev) => ({ ...prev, [agent.id]: { content: event.target.value } }))}
+                          placeholder="Write the simple operating procedure this agent must follow."
+                        />
+                      </label>
+                      <div className="catalog-actions">
+                        <button type="button" onClick={() => void saveSop(agent)} disabled={sopBusy === agent.id || !draft.content.trim()}>
+                          {sopBusy === agent.id ? "Saving…" : sop ? "Save SOP" : "Create SOP"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </section>
           )}

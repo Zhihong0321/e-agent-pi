@@ -3,8 +3,9 @@
     "graft": {
       "type": "local",
       "command": [
-        "node",
-        "C:/Users/Eternalgy/AppData/Roaming/npm/node_modules/@nanonets/graft/dist/cli.js",
+        "npx",
+        "-y",
+        "@nanonets/graft",
         "mcp"
       ],
       "enabled": true

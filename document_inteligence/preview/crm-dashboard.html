@@ -1,0 +1,138 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    color: #10211b;
+    font-size: 14px;
+    line-height: 1.4;
+    padding: 12px 14px 14px;
+  }
+  .report { display: grid; gap: 12px; }
+  .report-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .report-head h1 { font-size: 15px; margin: 0; font-weight: 700; color: #16352a; }
+  .report-eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #687a73; margin: 0 0 2px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+  .note { padding: 8px 10px; border-radius: 10px; font-size: 12.5px; }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+  .stat { background: #f1f4f2; border: 1px solid #e7edea; border-radius: 10px; padding: 8px 10px; min-width: 0; }
+  /* Money runs long (RM 42,843,578.96); let it wrap and shrink rather than run off a phone. */
+  .stat-value { font-size: 17px; font-weight: 700; color: #16352a; overflow-wrap: anywhere; }
+  @media (max-width: 380px) { .stat-value { font-size: 15px; } }
+  .stat-label { font-size: 11px; color: #687a73; margin-top: 1px; }
+  .section h2 { font-size: 12.5px; font-weight: 700; color: #16352a; margin: 0 0 6px; }
+  .table-wrap { width: 100%; }
+  table { width: 100%; border-collapse: collapse; }
+  thead { display: none; }
+  tbody tr {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 2px 8px;
+    padding: 7px 0;
+    border-bottom: 1px solid #e7edea;
+  }
+  tbody tr:last-child { border-bottom: none; }
+  td { display: block; padding: 0; border: 0; }
+  td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #8a978f;
+  }
+  td:first-child { grid-column: 1 / 2; }
+  .empty { color: #8a978f; font-size: 12.5px; font-style: italic; }
+  @media (min-width: 460px) {
+    thead { display: table-header-group; }
+    thead th {
+      text-align: left;
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: #8a978f;
+      padding: 0 8px 6px 0;
+      font-weight: 600;
+    }
+    tbody tr { display: table-row; padding: 0; }
+    td { display: table-cell; padding: 6px 8px 6px 0; vertical-align: top; }
+    td[data-label]::before { content: none; }
+  }
+</style></head><body><div class="crm"><style>
+.crm { --ink:#12302a; --body:#3f524b; --muted:#6b7d76; --line:#e2eae6; --card:#fff; --soft:#f4f8f6; --accent:#1c7a5c; --accent2:#8fd0b5; --red:#c23a2f; --amber:#c78414; --blue:#2f6fd6;
+  display:grid; gap:12px; color:var(--body); font-size:13px; }
+.crm * { box-sizing:border-box; }
+.crm b { color:var(--ink); font-weight:700; }
+.crm-hero { display:flex; justify-content:space-between; align-items:flex-end; gap:10px; flex-wrap:wrap; padding:16px 18px; border-radius:14px; color:#fff;
+  background:linear-gradient(135deg,#12302a 0%,#1c7a5c 100%); }
+.crm-hero .eyebrow { font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; opacity:.7; margin:0 0 3px; }
+.crm-hero h1 { margin:0; font-size:21px; font-weight:700; letter-spacing:-.01em; color:#fff; }
+.crm-hero .asat { font-size:11.5px; padding:4px 11px; border-radius:999px; background:rgba(255,255,255,.16); white-space:nowrap; }
+.crm-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(190px,46%),1fr)); gap:10px; }
+.crm-kpi { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 13px; border-top:3px solid var(--accent2); min-width:0; }
+.crm-kpi.red { border-top-color:var(--red); } .crm-kpi.amber { border-top-color:var(--amber); } .crm-kpi.blue { border-top-color:var(--blue); } .crm-kpi.dark { border-top-color:var(--ink); }
+.crm-kpi-label { font-size:10.5px; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); font-weight:600; }
+.crm-kpi-value { font-size:21px; font-weight:700; color:var(--ink); margin:3px 0 4px; letter-spacing:-.01em; overflow-wrap:anywhere; }
+.crm-kpi.red .crm-kpi-value { color:var(--red); }
+.crm-kpi-sub { display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:11.5px; color:var(--muted); }
+.crm-chip { font-size:10.5px; font-weight:700; padding:1px 7px; border-radius:999px; }
+.crm-chip.up { background:#dcf5e8; color:#0d6b43; } .crm-chip.down { background:#fde4e1; color:#9f2a20; } .crm-chip.flat { background:#eef2f0; color:#5c6d66; }
+.crm-cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(290px,1fr)); gap:12px; }
+.crm-panel { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 15px; min-width:0; }
+.crm-panel.wide { grid-column:1 / -1; }
+.crm-panel-head { display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:10px; }
+.crm-panel-head h2 { margin:0; font-size:13px; font-weight:700; color:var(--ink); }
+.crm-panel-head span { font-size:11px; color:var(--muted); }
+.crm-svg { width:100%; height:auto; display:block; }
+.crm-grid-line { stroke:var(--line); stroke-width:1; }
+.crm-axis { font-size:10px; fill:var(--muted); }
+.crm-bar-billed { fill:var(--ink); } .crm-bar-collected { fill:var(--accent2); }
+.crm-legend { display:flex; gap:14px; justify-content:center; margin-top:4px; font-size:11.5px; color:var(--muted); }
+.crm-dot { display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:6px; vertical-align:baseline; }
+.crm-dot.billed { background:var(--ink); } .crm-dot.collected { background:var(--accent2); }
+.a0{background:#8fd0b5}.a1{background:#e7c65c}.a2{background:#e79a3c}.a3{background:#dd6a3a}.a4{background:#b3261e}
+.crm-stack { display:flex; height:14px; border-radius:7px; overflow:hidden; gap:2px; margin-bottom:12px; }
+.crm-seg { min-width:4px; }
+.crm-age-row { display:grid; grid-template-columns:auto 1fr auto auto; align-items:center; gap:6px; padding:5px 0; border-bottom:1px solid var(--line); }
+.crm-age-row:last-child { border-bottom:0; } .crm-age-row .crm-dot { margin-right:0; }
+.crm-age-pct { color:var(--muted); font-size:11.5px; min-width:34px; text-align:right; }
+.crm-fun { margin-bottom:9px; }
+.crm-fun-head { display:grid; grid-template-columns:1fr auto auto; gap:10px; align-items:baseline; margin-bottom:4px; }
+.crm-fun-head em { font-style:normal; color:var(--muted); font-size:11.5px; min-width:64px; text-align:right; }
+.crm-track { height:9px; background:var(--soft); border-radius:5px; overflow:hidden; } .crm-track.thin { height:6px; }
+.crm-fill { display:block; height:100%; border-radius:5px; }
+.f0{background:#c4d6cf}.f1{background:var(--accent)}.f2{background:#d98b83}.f3{background:var(--blue)}
+.crm-foot { margin-top:6px; padding-top:9px; border-top:1px solid var(--line); font-size:12px; color:var(--muted); }
+.crm-cust { display:flex; gap:10px; align-items:flex-start; padding:7px 0; border-bottom:1px solid var(--line); }
+.crm-cust:last-child { border-bottom:0; }
+.crm-av { flex:none; width:30px; height:30px; border-radius:9px; background:var(--accent); color:#fff; font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+.crm-cust-body { flex:1; min-width:0; }
+.crm-cust-top { display:flex; justify-content:space-between; gap:8px; margin-bottom:5px; }
+.crm-cust-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink); font-weight:600; }
+.crm-cust-owe { font-size:11px; color:var(--amber); margin-top:3px; font-weight:600; }
+.crm-att { display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:10px; margin-bottom:6px; background:var(--soft); }
+.crm-pin { flex:none; width:8px; height:30px; border-radius:4px; background:var(--muted); }
+.crm-att.red .crm-pin { background:var(--red); } .crm-att.amber .crm-pin { background:var(--amber); } .crm-att.blue .crm-pin { background:var(--blue); }
+.crm-att-body { flex:1; min-width:0; } .crm-att-title { color:var(--ink); font-weight:600; } .crm-att-meta { font-size:11.5px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.crm-att-amt { flex:none; }
+.crm-doc { display:flex; gap:10px; align-items:center; padding:7px 0; border-bottom:1px solid var(--line); } .crm-doc:last-child { border-bottom:0; }
+.crm-kind { flex:none; width:34px; height:28px; border-radius:8px; background:var(--soft); border:1px solid var(--line); color:var(--muted); font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+.crm-doc-body { flex:1; min-width:0; }
+.crm-doc-top, .crm-doc-meta { display:flex; justify-content:space-between; gap:8px; align-items:center; }
+.crm-doc-meta { font-size:11.5px; color:var(--muted); margin-top:1px; } .crm-doc-meta > span:first-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.crm-tag { flex:none; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:1px 8px; border-radius:999px; }
+.crm-tag.green{background:#dcf5e8;color:#0d6b43}.crm-tag.blue{background:#dfe9fb;color:#1f4fa8}.crm-tag.amber{background:#fdf0d2;color:#8a5a08}.crm-tag.red{background:#fde4e1;color:#9f2a20}.crm-tag.grey{background:#eef2f0;color:#5c6d66}
+.crm-empty { color:var(--muted); font-style:italic; padding:8px 0; } .crm-empty.ok { color:#0d6b43; font-style:normal; background:#eaf7f0; border-radius:10px; padding:11px 12px; }
+</style>
+  <div class="crm-hero"><div><p class="eyebrow">Eternalgy Sdn Bhd · CRM</p><h1>Business overview</h1></div><span class="asat">As at 30 Sep 2026</span></div>
+  <div class="crm-kpis"><div class="crm-kpi dark"><div class="crm-kpi-label">Outstanding</div><div class="crm-kpi-value">RM 184.3k</div><div class="crm-kpi-sub"><span>11 open invoices</span></div></div><div class="crm-kpi red"><div class="crm-kpi-label">Overdue</div><div class="crm-kpi-value">RM 62,450</div><div class="crm-kpi-sub"><span>4 late · oldest 47d</span></div></div><div class="crm-kpi "><div class="crm-kpi-label">Billed this month</div><div class="crm-kpi-value">RM 96,800</div><div class="crm-kpi-sub"><span class="crm-chip up">▲ 19%</span><span>vs last month</span></div></div><div class="crm-kpi "><div class="crm-kpi-label">Collected this month</div><div class="crm-kpi-value">RM 74,250</div><div class="crm-kpi-sub"><span class="crm-chip down">▼ 16%</span><span>vs last month</span></div></div><div class="crm-kpi blue"><div class="crm-kpi-label">Open quotations</div><div class="crm-kpi-value">RM 412.5k</div><div class="crm-kpi-sub"><span>9 open · 64% win</span></div></div><div class="crm-kpi amber"><div class="crm-kpi-label">Customers</div><div class="crm-kpi-value">128</div><div class="crm-kpi-sub"><span>+6 this month</span></div></div></div>
+  <div class="crm-cols">
+    <section class="crm-panel wide"><div class="crm-panel-head"><h2>Billed vs collected</h2><span>last 6 months</span></div><svg viewBox="0 0 540 200" class="crm-svg" role="img" aria-label="Billed versus collected, last six months"><line x1="40" x2="532" y1="174" y2="174" class="crm-grid-line"/><text x="34" y="177.5" text-anchor="end" class="crm-axis">0</text><line x1="40" x2="532" y1="133" y2="133" class="crm-grid-line"/><text x="34" y="136.5" text-anchor="end" class="crm-axis">25k</text><line x1="40" x2="532" y1="92" y2="92" class="crm-grid-line"/><text x="34" y="95.5" text-anchor="end" class="crm-axis">50k</text><line x1="40" x2="532" y1="51" y2="51" class="crm-grid-line"/><text x="34" y="54.5" text-anchor="end" class="crm-axis">75k</text><line x1="40" x2="532" y1="10" y2="10" class="crm-grid-line"/><text x="34" y="13.5" text-anchor="end" class="crm-axis">100k</text><rect x="57.5" y="78.552" width="22" height="95.448" rx="3" class="crm-bar-billed"><title>Apr: RM 58,200.00</title></rect><rect x="82.5" y="90.36" width="22" height="83.64" rx="3" class="crm-bar-collected"><title>Apr: RM 51,000.00</title></rect><text x="81" y="192" text-anchor="middle" class="crm-axis">Apr</text><rect x="139.5" y="55.26400000000001" width="22" height="118.73599999999999" rx="3" class="crm-bar-billed"><title>May: RM 72,400.00</title></rect><rect x="164.5" y="75.436" width="22" height="98.564" rx="3" class="crm-bar-collected"><title>May: RM 60,100.00</title></rect><text x="163" y="192" text-anchor="middle" class="crm-axis">May</text><rect x="221.5" y="64.28399999999999" width="22" height="109.71600000000001" rx="3" class="crm-bar-billed"><title>Jun: RM 66,900.00</title></rect><rect x="246.5" y="58.70800000000001" width="22" height="115.29199999999999" rx="3" class="crm-bar-collected"><title>Jun: RM 70,300.00</title></rect><text x="245" y="192" text-anchor="middle" class="crm-axis">Jun</text><rect x="303.5" y="29.51599999999999" width="22" height="144.484" rx="3" class="crm-bar-billed"><title>Jul: RM 88,100.00</title></rect><rect x="328.5" y="67.728" width="22" height="106.272" rx="3" class="crm-bar-collected"><title>Jul: RM 64,800.00</title></rect><text x="327" y="192" text-anchor="middle" class="crm-axis">Jul</text><rect x="385.5" y="40.831999999999994" width="22" height="133.168" rx="3" class="crm-bar-billed"><title>Aug: RM 81,200.00</title></rect><rect x="410.5" y="28.204000000000008" width="22" height="145.796" rx="3" class="crm-bar-collected"><title>Aug: RM 88,900.00</title></rect><text x="409" y="192" text-anchor="middle" class="crm-axis">Aug</text><rect x="467.5" y="15.24799999999999" width="22" height="158.752" rx="3" class="crm-bar-billed"><title>Sep: RM 96,800.00</title></rect><rect x="492.5" y="52.22999999999999" width="22" height="121.77000000000001" rx="3" class="crm-bar-collected"><title>Sep: RM 74,250.00</title></rect><text x="491" y="192" text-anchor="middle" class="crm-axis">Sep</text></svg>
+    <div class="crm-legend"><span><i class="crm-dot billed"></i>Billed</span><span><i class="crm-dot collected"></i>Collected</span></div></section>
+    <section class="crm-panel "><div class="crm-panel-head"><h2>Needs attention</h2></div><div class="crm-att red"><i class="crm-pin"></i><div class="crm-att-body"><div class="crm-att-title">INV-2026-0031 is 47 days overdue</div><div class="crm-att-meta">Harmoni Renewables</div></div><b class="crm-att-amt">RM 28,500</b></div><div class="crm-att red"><i class="crm-pin"></i><div class="crm-att-body"><div class="crm-att-title">INV-2026-0036 is 22 days overdue</div><div class="crm-att-meta">Kilang Maju Sdn Bhd</div></div><b class="crm-att-amt">RM 19,750</b></div><div class="crm-att amber"><i class="crm-pin"></i><div class="crm-att-body"><div class="crm-att-title">Quotation QT-2026-0052 expires in 3 days</div><div class="crm-att-meta">Bintang Logistik</div></div><b class="crm-att-amt">RM 56,000</b></div><div class="crm-att blue"><i class="crm-pin"></i><div class="crm-att-body"><div class="crm-att-title">5 new form submissions to review</div><div class="crm-att-meta">Solar site survey request</div></div></div></section>
+    <section class="crm-panel "><div class="crm-panel-head"><h2>Receivables aging</h2><span>RM 184,320.50 open</span></div><div class="crm-stack"><span class="crm-seg a0" style="flex:121870.5" title="Not yet due: RM 121,870.50"></span><span class="crm-seg a1" style="flex:38400" title="1–30 days: RM 38,400.00"></span><span class="crm-seg a2" style="flex:14200" title="31–60 days: RM 14,200.00"></span><span class="crm-seg a3" style="flex:6850" title="61–90 days: RM 6,850.00"></span><span class="crm-seg a4" style="flex:3000" title="90+ days: RM 3,000.00"></span></div><div class="crm-age"><div class="crm-age-row"><i class="crm-dot a0"></i><span class="crm-age-label">Not yet due</span><span class="crm-age-pct">66%</span><b>RM 121,870.50</b></div><div class="crm-age-row"><i class="crm-dot a1"></i><span class="crm-age-label">1–30 days</span><span class="crm-age-pct">21%</span><b>RM 38,400.00</b></div><div class="crm-age-row"><i class="crm-dot a2"></i><span class="crm-age-label">31–60 days</span><span class="crm-age-pct">8%</span><b>RM 14,200.00</b></div><div class="crm-age-row"><i class="crm-dot a3"></i><span class="crm-age-label">61–90 days</span><span class="crm-age-pct">4%</span><b>RM 6,850.00</b></div><div class="crm-age-row"><i class="crm-dot a4"></i><span class="crm-age-label">90+ days</span><span class="crm-age-pct">2%</span><b>RM 3,000.00</b></div></div></section>
+    <section class="crm-panel "><div class="crm-panel-head"><h2>Quotation pipeline</h2><span>last 12 months</span></div><div class="crm-fun"><div class="crm-fun-head"><span>Sent</span><b>42</b><em>RM 1.28M</em></div><div class="crm-track"><span class="crm-fill f0" style="width:100%"></span></div></div><div class="crm-fun"><div class="crm-fun-head"><span>Won</span><b>21</b><em>RM 706.0k</em></div><div class="crm-track"><span class="crm-fill f1" style="width:50%"></span></div></div><div class="crm-fun"><div class="crm-fun-head"><span>Lost / expired</span><b>12</b><em>RM 161.5k</em></div><div class="crm-track"><span class="crm-fill f2" style="width:28.57142857142857%"></span></div></div><div class="crm-fun"><div class="crm-fun-head"><span>Open now</span><b>9</b><em>RM 412.5k</em></div><div class="crm-track"><span class="crm-fill f3" style="width:21.428571428571427%"></span></div></div>
+    <div class="crm-foot">Win rate <b>64%</b> of 33 decided</div></section>
+    <section class="crm-panel "><div class="crm-panel-head"><h2>Top customers</h2><span>billed, 12 months</span></div><div class="crm-cust"><span class="crm-av">KM</span><div class="crm-cust-body"><div class="crm-cust-top"><span class="crm-cust-name">Kilang Maju Sdn Bhd</span><b>RM 214.5k</b></div><div class="crm-track thin"><span class="crm-fill f1" style="width:100%"></span></div><div class="crm-cust-owe">RM 32,000 outstanding</div></div></div><div class="crm-cust"><span class="crm-av">SP</span><div class="crm-cust-body"><div class="crm-cust-top"><span class="crm-cust-name">Sri Petaling Trading</span><b>RM 168.2k</b></div><div class="crm-track thin"><span class="crm-fill f1" style="width:78.41491841491842%"></span></div></div></div><div class="crm-cust"><span class="crm-av">HR</span><div class="crm-cust-body"><div class="crm-cust-top"><span class="crm-cust-name">Harmoni Renewables</span><b>RM 121.9k</b></div><div class="crm-track thin"><span class="crm-fill f1" style="width:56.829836829836836%"></span></div><div class="crm-cust-owe">RM 48,250 outstanding</div></div></div><div class="crm-cust"><span class="crm-av">DL</span><div class="crm-cust-body"><div class="crm-cust-top"><span class="crm-cust-name">Dr. Lim Wei Han</span><b>RM 64,300</b></div><div class="crm-track thin"><span class="crm-fill f1" style="width:29.976689976689975%"></span></div></div></div><div class="crm-cust"><span class="crm-av">BL</span><div class="crm-cust-body"><div class="crm-cust-top"><span class="crm-cust-name">Bintang Logistik</span><b>RM 41,800</b></div><div class="crm-track thin"><span class="crm-fill f1" style="width:19.48717948717949%"></span></div><div class="crm-cust-owe">RM 6,400 outstanding</div></div></div></section>
+    <section class="crm-panel wide"><div class="crm-panel-head"><h2>Recent documents</h2></div><div class="crm-doc"><span class="crm-kind">INV</span><div class="crm-doc-body"><div class="crm-doc-top"><b>INV-2026-0044</b><span class="crm-doc-amt">RM 27,128</span></div><div class="crm-doc-meta"><span>Kilang Maju Sdn Bhd · 29 Sep</span><span class="crm-tag blue">issued</span></div></div></div><div class="crm-doc"><span class="crm-kind">QT</span><div class="crm-doc-body"><div class="crm-doc-top"><b>QT-2026-0055</b><span class="crm-doc-amt">RM 84,500</span></div><div class="crm-doc-meta"><span>Sri Petaling Trading · 28 Sep</span><span class="crm-tag green">accepted</span></div></div></div><div class="crm-doc"><span class="crm-kind">INV</span><div class="crm-doc-body"><div class="crm-doc-top"><b>INV-2026-0043</b><span class="crm-doc-amt">RM 12,400</span></div><div class="crm-doc-meta"><span>Dr. Lim Wei Han · 26 Sep</span><span class="crm-tag green">paid</span></div></div></div><div class="crm-doc"><span class="crm-kind">INV</span><div class="crm-doc-body"><div class="crm-doc-top"><b>INV-2026-0042</b><span class="crm-doc-amt">RM 41,200</span></div><div class="crm-doc-meta"><span>Harmoni Renewables · 24 Sep</span><span class="crm-tag amber">partially paid</span></div></div></div><div class="crm-doc"><span class="crm-kind">QT</span><div class="crm-doc-body"><div class="crm-doc-top"><b>QT-2026-0054</b><span class="crm-doc-amt">RM 56,000</span></div><div class="crm-doc-meta"><span>Bintang Logistik · 23 Sep</span><span class="crm-tag blue">issued</span></div></div></div><div class="crm-doc"><span class="crm-kind">INV</span><div class="crm-doc-body"><div class="crm-doc-top"><b>Draft</b><span class="crm-doc-amt">RM 9,800</span></div><div class="crm-doc-meta"><span>Bintang Logistik · 22 Sep</span><span class="crm-tag grey">draft</span></div></div></div></section>
+  </div></div></body></html>

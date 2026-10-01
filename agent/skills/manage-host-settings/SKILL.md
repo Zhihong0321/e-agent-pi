@@ -133,6 +133,22 @@ node "$CLOUD_PI_CATALOG" agents update website --role-file /tmp/ROLE.md
 
 Do **not** attach `manage-host-settings` to other agents. Keep Settings Agent as the only one that can change the catalog.
 
+## Write an agent SOP
+
+Each agent has one plain Markdown SOP stored in Postgres and mirrored to that agent's `SOP.md` workspace file. First discuss the agent's role, attached tools, and cloud workspace with the user. Draft a short procedure that stays within those capabilities, show it for confirmation, then save it:
+
+```bash
+node "$CLOUD_PI_CATALOG" agents sop-set <agent-id-or-slug> --file /tmp/SOP.md
+```
+
+Read the current SOP with:
+
+```bash
+node "$CLOUD_PI_CATALOG" agents sop-get <agent-id-or-slug>
+```
+
+Never invent capabilities. The SOP must be plain operating guidance, not a second permission system. Saving it restarts the target agent's runtime on its next turn.
+
 ## After a change
 
-Say what you installed, which agent it is attached to, and that the **next message** in that agent's chat loads it. Do not claim it is live in the current Website Dev Agent turn.
+Say what you changed and which agent it affects. Do not claim an SOP is active until the save command returned `ok: true`. Do not send cold outreach email. EE-Mail is only for explicitly confirmed transactional messages to internal `@eternalgy.me` recipients.

@@ -1,3 +1,4 @@
+import { requestUser, loginUser, logoutUser, sessionCookie as userSessionCookie, userManagementPrompt, manageUsers } from './users.mjs';
 import { createHash, randomBytes } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
@@ -7,7 +8,7 @@ import { companyOnboardingStatus, companyHostContext, publicBaseUrl } from '../d
 import { handleFileSharing } from './file-sharing.mjs';
 import { filesFromBlocks } from '../shared/shared-files.mjs';
 import { handleDiViewer } from "./di-viewer.mjs";
-import { demoAction, demoState } from "./demo-api.mjs";
+import { demoAction, demoCalendar, demoState } from "./demo-api.mjs";
 import path from "node:path";
 import { RpcClient } from "@earendil-works/pi-coding-agent";
 import {
@@ -41,6 +42,12 @@ import {
   setBlueprintStatus,
 } from "./blueprints.mjs";
 import {
+  ensureSopSchema,
+  getAgentSop,
+  listAgentSops,
+  saveAgentSop,
+} from "./sops.mjs";
+import {
   getGitStatus,
   getGitWorkspaceStatus,
   initGitWorkspace,
@@ -60,6 +67,7 @@ import { findModel, normalizeCavotiBaseUrl, resolveModelCredentials, testModelRo
 import { hasApiAuth, hasSession, hasStockAuth, sessionCookie, sessionToken, checkPassword } from "./auth.mjs";
 import { searchAuthorized, searchWeb, testJinaKeys } from "./web-search.mjs";
 import { loadSecrets, publicSettings, rememberSecret, saveSecrets, secret, secretFlags } from "./secrets.mjs";
+import { listActivity, recordActivity } from "./activity.mjs";
 import {
   adjustStockItem,
   ensureStockSchema,
@@ -356,8 +364,10 @@ function readBody(req) {
 }
 
 function wantsAuth(pathname, method = "GET") {
-  if (pathname === "/api/demo/state" || pathname === "/api/demo/action") return true;
+  if (pathname === "/api/sops" || pathname.startsWith("/api/sops/") || pathname.match(/^\/api\/agents\/[^/]+\/sop(?:\/status)?$/)) return true;
+  if (pathname.startsWith("/api/demo/")) return false;
   if (pathname === "/api/settings" || pathname.startsWith("/api/settings/")) return true;
+  if (pathname === "/api/activity") return true;
   if (pathname === "/api/manage" || pathname.startsWith("/api/manage/")) return true;
   if (pathname === "/api/sites" || pathname.startsWith("/api/sites/")) return true;
   if (pathname === "/api/browser" || pathname.startsWith("/api/browser/")) return true;
@@ -377,7 +387,10 @@ function wantsAuth(pathname, method = "GET") {
     pathname.startsWith("/api/skills/") ||
     pathname === "/api/mcp" ||
     pathname.startsWith("/api/mcp/") ||
-    pathname.startsWith("/api/blueprints/")
+    pathname.startsWith("/api/blueprints/") ||
+    pathname === "/api/sops" ||
+    pathname.startsWith("/api/sops/") ||
+    pathname.startsWith("/api/agents/")
   );
 }
 
@@ -1727,10 +1740,11 @@ async function bootServices() {
   try {
     if (dbReady()) {
       await ensureBlueprintSchema();
-      logEvent("info", "blueprints table ready");
+      await ensureSopSchema();
+      logEvent("info", "blueprints and agent SOP tables ready");
     }
   } catch (error) {
-    logEvent("error", `blueprint schema failed: ${sanitizeError(error)}`);
+    logEvent("error", `blueprint/SOP schema failed: ${sanitizeError(error)}`);
   }
 
   boot.step = "impeccable";
@@ -2021,8 +2035,42 @@ const server = createServer(async (req, res) => {
   }
 
   try {
+    const user = dbReady() ? await requestUser(req) : null;
+    const accountRoute = pathname.startsWith("/api/demo/");
+    const conversationRoute = pathname === "/api/chat" || pathname === "/api/messages" || pathname === "/api/sessions" || pathname.startsWith("/api/sessions/");
+    if ((accountRoute || conversationRoute) && req.method !== "GET" && req.headers["sec-fetch-site"] === "cross-site") return json(res, 403, { error: "Open this app to continue" });
+    if (pathname === "/api/demo/login" && req.method === "POST") {
+      if (!dbReady()) return json(res, 503, { error: "Database is not connected" });
+      try {
+        const login = await loginUser(req, JSON.parse((await readBody(req)) || "{}"));
+        return json(res, 200, { user: login.user }, { "Set-Cookie": userSessionCookie(req, login.token) });
+      } catch (error) { return json(res, 401, { error: error.message }); }
+    }
+    if (accountRoute && !user) return json(res, 401, { error: "Please sign in" });
+    if (pathname === "/api/demo/me" && req.method === "GET") return json(res, 200, { user });
+    if (pathname === "/api/demo/logout" && req.method === "POST") {
+      await logoutUser(req);
+      return json(res, 200, { ok: true }, { "Set-Cookie": userSessionCookie(req, "", 0) });
+    }
+    if (conversationRoute && !user && !authorized(req)) return json(res, 401, { error: "Please sign in" });
+    if (conversationRoute && user) {
+      const id = pathname.startsWith("/api/sessions/") ? decodeURIComponent(pathname.slice("/api/sessions/".length)) : url.searchParams.get("sessionId");
+      if (id && (await getSession(id))?.userId !== user.id) return json(res, 404, { error: "Session not found" });
+    }
     if (req.method === "GET" && pathname === "/api/demo/state") {
       json(res, 200, await demoState());
+      return;
+    }
+    if (req.method === "GET" && pathname === "/api/demo/calendar") {
+      try {
+        json(res, 200, await demoCalendar({
+          from: url.searchParams.get("from"),
+          to: url.searchParams.get("to"),
+          timezone: url.searchParams.get("timezone") || undefined,
+        }));
+      } catch (error) {
+        json(res, 400, { error: error instanceof Error ? error.message : String(error) });
+      }
       return;
     }
     if (req.method === "POST" && pathname === "/api/demo/action") {
@@ -2053,7 +2101,9 @@ const server = createServer(async (req, res) => {
         return;
       }
       const body = JSON.parse((await readBody(req)) || "{}");
-      const outcome = await handleOrchestratorAction(body);
+      const outcome = ["list_users", "create_user", "update_user"].includes(body.action)
+        ? await manageUsers(body.action, body).then(result => ({ ok: true, result: JSON.stringify(result) })).catch(error => ({ ok: false, error: error.message }))
+        : await handleOrchestratorAction(body);
       json(res, outcome.ok ? 200 : 400, outcome);
       return;
     }
@@ -2370,6 +2420,27 @@ const server = createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "GET" && pathname === "/api/activity") {
+      try {
+        const data = await listActivity({
+          limit: url.searchParams.get("limit"),
+          before: url.searchParams.get("before"),
+          userId: user?.role === "admin" ? (url.searchParams.get("userId") || undefined) : (user?.id || undefined),
+          isAdmin: user?.role === "admin" || !user,
+          agentId: url.searchParams.get("agentId"),
+          eventType: url.searchParams.get("eventType"),
+          toolName: url.searchParams.get("toolName"),
+          status: url.searchParams.get("status"),
+          sessionId: url.searchParams.get("sessionId"),
+          since: url.searchParams.get("since"),
+          until: url.searchParams.get("until"),
+        });
+        return json(res, 200, data);
+      } catch (error) {
+        return json(res, 400, { error: sanitizeError(error) });
+      }
+    }
+
     if (pathname === "/api/settings/jobs/cleanup" && req.method === "POST") {
       try {
         const body = JSON.parse((await readBody(req)) || "{}");
@@ -2460,6 +2531,33 @@ const server = createServer(async (req, res) => {
       });
       json(res, 200, body);
       return;
+    }
+
+    if (req.method === "GET" && pathname === "/api/sops") {
+      if (!dbReady()) return json(res, 503, { error: "Database is not connected" });
+      json(res, 200, { sops: await listAgentSops({ status: url.searchParams.get("status") || null }) });
+      return;
+    }
+
+    {
+      const sopCollectionMatch = pathname.match(/^\/api\/agents\/([^/]+)\/sop$/);
+      const sopStatusMatch = pathname.match(/^\/api\/agents\/([^/]+)\/sop\/status$/);
+      if ((sopCollectionMatch || sopStatusMatch) && dbReady()) {
+        const agentId = decodeURIComponent((sopCollectionMatch || sopStatusMatch)[1]);
+        const existingAgent = await getAgent(agentId);
+        if (!existingAgent) return json(res, 404, { error: "Agent not found" });
+        try {
+          if (sopCollectionMatch && req.method === "GET") return json(res, 200, { sop: await getAgentSop(agentId) });
+          if (sopCollectionMatch && ["POST", "PUT", "PATCH"].includes(req.method)) {
+            const body = JSON.parse((await readBody(req)) || "{}");
+            const sop = await saveAgentSop(agentId, body.content, user?.id || user?.username || "settings");
+            await resetPiPool({ agentId });
+            return json(res, 200, { sop });
+          }
+        } catch (error) {
+          return json(res, 400, { error: sanitizeError(error) });
+        }
+      }
     }
 
     if (req.method === "GET" && pathname === "/api/blueprints") {
@@ -2763,7 +2861,7 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && pathname === "/api/sessions") {
       const agentId = url.searchParams.get("agentId")?.trim() || undefined;
       json(res, 200, {
-        sessions: dbReady() ? (await listSessions(agentId)).map((row) => publicSession(row)) : [],
+        sessions: dbReady() ? (await listSessions(agentId)).filter(row => !user || row.userId === user.id).map((row) => publicSession(row)) : [],
       });
       return;
     }
@@ -2796,6 +2894,7 @@ const server = createServer(async (req, res) => {
         engine: requestedEngine,
         agyConversationId: typeof body.agyConversationId === "string" ? body.agyConversationId : undefined,
       });
+      if (user) await getPool().query("UPDATE sessions SET user_id=$1 WHERE id=$2", [user.id, session.id]);
       logEvent("info", `session created ${session.id} (engine=${session.engine || "pi"})`);
       json(res, 201, { session: publicSession(session) });
       return;
@@ -2927,6 +3026,7 @@ const server = createServer(async (req, res) => {
         typeof requestedSessionId === "string" && requestedSessionId.trim()
           ? await getSession(requestedSessionId.trim())
           : null;
+      if (session && user && session.userId !== user.id) return json(res, 404, { error: "Session not found" });
       if (requestedSessionId && !session) {
         json(res, 404, { error: "Session not found" });
         return;
@@ -2955,7 +3055,17 @@ const server = createServer(async (req, res) => {
         });
       }
 
+      if (user) await getPool().query("UPDATE sessions SET user_id=$1 WHERE id=$2 AND user_id IS NULL", [user.id, session.id]);
       const profile = await resolveAgentProfile(session.agentId);
+      const activityBase = {
+        userId: user?.id || null,
+        sessionId: session.id,
+        parentSessionId: session.parentSessionId || null,
+        agentId: profile.id || session.agentId || null,
+        agentName: profile.name || profile.slug || profile.id || session.agentId || null,
+        engine: session.engine || "pi",
+        modelId: typeof modelId === "string" ? modelId : session.modelId || defaultModelId,
+      };
       let packed = { prompt: "", images: [], files: [] };
       try {
         packed = await materializeAttachments(agentWorkspace(profile), attachments);
@@ -2966,11 +3076,13 @@ const server = createServer(async (req, res) => {
       const prompt = packed.prompt
         ? `${packed.prompt}\n${trimmed || attachFallback(profile)}`
         : trimmed;
-      const chatPrompt = await enrichRestartPrompt(prompt, profile);
+      const chatPrompt = await enrichRestartPrompt(prompt, profile) + (user ? userManagementPrompt(req, user) : "");
       const storedUser =
         [trimmed, attachmentChatMarkup(packed.files)].filter(Boolean).join("\n\n") ||
         (packed.files.length ? `Attached: ${attachmentSummary(packed.files)}` : prompt);
       const turnStartedAt = Date.now();
+      const toolStartedAt = new Map();
+      void recordActivity({ ...activityBase, eventType: "turn_started", status: "running", metadata: { hasAttachments: hasFiles } });
 
       logEvent("info", `chat session=${session.id} (engine=${session.engine || "pi"}): ${storedUser.slice(0, 120)}`);
       await insertMessage({
@@ -3017,6 +3129,28 @@ const server = createServer(async (req, res) => {
       try {
         const onEvent = (event, liveTurn) => {
           if (liveTurn) lastTurn = liveTurn;
+          if (event?.type === "tool") {
+            const key = event.id || `${event.name}:${liveTurn?.blocks?.length || 0}`;
+            if (event.phase === "start") {
+              if (!toolStartedAt.has(key)) {
+                toolStartedAt.set(key, Date.now());
+                void recordActivity({ ...activityBase, eventType: "tool_call", toolName: event.name, toolCallId: event.id, detail: event.detail, status: "running" });
+              }
+            } else if (event.phase === "end") {
+              void recordActivity({
+                ...activityBase,
+                eventType: "tool_result",
+                toolName: event.name,
+                toolCallId: event.id,
+                detail: event.detail,
+                result: event.result,
+                status: event.isError ? "error" : "completed",
+                durationMs: toolStartedAt.has(key) ? Date.now() - toolStartedAt.get(key) : null,
+                metadata: { sharedFiles: Array.isArray(event.shared_files) ? event.shared_files.length : 0 },
+              });
+              toolStartedAt.delete(key);
+            }
+          }
           if (!res.writableEnded) writeSse(res, event);
           if (liveTurn) persister.schedule(liveTurn, true);
         };
@@ -3124,15 +3258,24 @@ const server = createServer(async (req, res) => {
               }
             }
           }
+          const wallMs = Date.now() - turnStartedAt;
+          void recordActivity({
+            ...activityBase,
+            eventType: "turn_completed",
+            status: "completed",
+            durationMs: wallMs,
+            metadata: { ...turnMetrics(turn, { autoContinues, timing }) },
+          });
           logEvent("info", "turn metrics", {
             ...turnMetrics(turn, { autoContinues, timing }),
-            wallMs: Date.now() - turnStartedAt,
+            wallMs,
             agent: profile.slug,
             engine: session.engine || "pi",
           });
         });
       } catch (error) {
         await persister.finish(lastTurn, false).catch(() => {});
+        void recordActivity({ ...activityBase, eventType: "turn_failed", status: "error", error: sanitizeError(error), durationMs: Date.now() - turnStartedAt });
         logEvent("error", sanitizeError(error));
         if (!res.writableEnded) writeSse(res, { type: "error", error: sanitizeError(error) });
       } finally {

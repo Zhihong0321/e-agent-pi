@@ -1,0 +1,18 @@
+{
+  "v": 4,
+  "createdOnFiles": { "v": 1, "at": "2026-09-29T08:00:00Z" },
+  "title": "E 文档智能",
+  "order": ["cover", "why", "agents", "harness", "speed", "principle", "forms", "invoice", "custom", "safety", "details", "proof", "roadmap", "closing"],
+  "sections": {
+    "s1": { "description": "开场：E 是什么，以及我们的答案", "start": "cover" },
+    "s2": { "description": "化繁为简：micro-agent、Harness、Checker 与速度", "start": "agents" },
+    "s3": { "description": "化简为元：从表单与发票看核心原理", "start": "principle" },
+    "s4": { "description": "数据库守底线：安全与可靠性", "start": "safety" },
+    "s5": { "description": "现状与下一步", "start": "proof" }
+  },
+  "faces": {
+    "dm-sans": { "family": "DM Sans", "href": "https://fonts.googleapis.com/css2?family=DM+Sans:wght@400..700&display=swap" },
+    "noto-sans-sc": { "family": "Noto Sans SC", "href": "https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap" }
+  },
+  "designSystems": []
+}

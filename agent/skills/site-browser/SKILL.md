@@ -1,13 +1,18 @@
 ---
 name: site-browser
-description: Drive a persistent headless browser for operator sites. Use when asked to log into a site, run NEWPAGES merchant news CRUD, or reuse a saved session. Credentials live on Settings → Sites, not in chat.
+description: Drive a persistent headless browser for operator sites. Use when asked to log into a site, run NEWPAGES merchant news CRUD, reuse a saved Google/OAuth session, or browse while signed in. Credentials live on /signin and Settings → Sites, not in chat.
 ---
 
 # Site browser (host)
 
-The operator saves **username/password per site** on Settings → Sites. Chromium runs headless on this host with a **persistent profile** under `/storage/browser/profiles/<slug>`. Login once; localStorage and cookies stay on the volume.
+Two persistent browsers exist on this host. Do **not** mix them.
 
-Do **not** ask the human to paste the site password in chat. Do **not** write credentials into the workspace.
+1. **Shared profile** (`/storage/browser/profiles/shared`) — Google and other OAuth sessions. Drive it with the **Persistent Browser MCP** (`browser_navigate`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_auth_status`). The owner signs in at **/signin**. Cookies survive restarts.
+2. **NEWPAGES profile** — merchant username/password. Drive it with `$CLOUD_PI_SITES` below.
+
+Do **not** ask the human to paste passwords in chat. Do **not** write credentials into the workspace. Do **not** log out of Google. If `browser_auth_status` says signed out, tell them to open `/signin` and complete Google (including 2FA) there.
+
+Prefer the Browser MCP over Scrapling when the page requires being signed in. Scrapling starts a fresh anonymous browser.
 
 ```bash
 node "$CLOUD_PI_SITES" status

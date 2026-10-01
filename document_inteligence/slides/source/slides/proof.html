@@ -1,0 +1,24 @@
+<section id="proof" data-transition="fade" style="background:#F5F4EE; color:#334155; font-family:'DM Sans','Noto Sans SC',sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:40px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:700; letter-spacing:2px; color:#0A6B60">现状 · 评测</p>
+<h2 style="font-size:64px; font-weight:700; line-height:1.2; color:#0F1B2D">评测结果：真实工具，隔离数据库</h2>
+</div>
+<div style="display:flex; gap:32px; align-items:stretch">
+<div style="flex:1; background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:8px">
+<p style="font-size:120px; font-weight:700; line-height:1.1; color:#0A6B60">28/30</p>
+<p style="font-size:32px; line-height:1.4; color:#334155">30 项场景重测通过（另 1 项部分、1 项未通过）</p>
+</div>
+<div style="flex:1; background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:8px">
+<p style="font-size:120px; font-weight:700; line-height:1.1; color:#0A6B60">14/16</p>
+<p style="font-size:32px; line-height:1.4; color:#334155">表单场景通过（2 项未通过）</p>
+</div>
+<div style="flex:1; background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:8px">
+<p style="font-size:120px; font-weight:700; line-height:1.1; color:#0A6B60">0</p>
+<p style="font-size:32px; line-height:1.4; color:#334155">第 3 轮回复中出现的内部思考文本</p>
+</div>
+</div>
+<p style="font-size:32px; line-height:1.4; color:#334155">部分通过与未通过的项，问题都在回复措辞或过度谨慎，数据库状态保持正确。每个新问题都变成 Checker 的一项检查，而不是加长提示词。</p>
+<p style="font-size:24px; line-height:1.4; color:#5B6672">评测在隔离的内存数据库和真实工具上进行；线上端到端验证是下一步。</p>
+<p style="position:absolute; left:128px; bottom:64px; width:1000px; font-size:24px; color:#5B6672">E · Document Intelligence · 现状与下一步</p>
+<aside>数据来源：all-test-results.md 与 form-test-result.md。30 项重测：28 通过、1 部分（转换后仍报“已接受”而不是“已转换”）、1 未通过（承诺了工具做不到的信用票据）；这两项都是回复措辞问题，数据库状态受到保护。表单 16 项：14 通过，2 项未通过（一次是 Checker 误拦发布，一次是设计 Agent 过于犹豫），都没有写入错误数据。注意：各轮用的模型、提示词和初始数据不同，不是严格的模型对比；评测在隔离的内存数据库上进行，没有经过线上界面加生产数据库的端到端验证。</aside>
+</section>

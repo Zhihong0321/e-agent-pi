@@ -1,0 +1,33 @@
+<section id="safety" data-transition="fade" style="background:#0F1B2D; color:#E7ECF1; font-family:'DM Sans','Noto Sans SC',sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:700; letter-spacing:2px; color:#4FD8C4">数据库守底线</p>
+<h2 style="font-size:64px; font-weight:700; line-height:1.2; color:#F5F4EE">安全由数据库保证，不靠提示词</h2>
+</div>
+<div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:32px">
+<div style="background:#16263B; border:1px solid #2A3D57; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:12px">
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#F5F4EE">不可硬删除</h3>
+<p style="font-size:32px; line-height:1.4; color:#A9B6C6">数据库层直接拦截；移除只是归档，可恢复</p>
+</div>
+<div style="background:#16263B; border:1px solid #2A3D57; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:12px">
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#F5F4EE">公司之间互相隔离</h3>
+<p style="font-size:32px; line-height:1.4; color:#A9B6C6">行级安全，按公司隔离每一行数据</p>
+</div>
+<div style="background:#16263B; border:1px solid #2A3D57; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:12px">
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#F5F4EE">已发出的单据被冻结</h3>
+<p style="font-size:32px; line-height:1.4; color:#A9B6C6">发出后只能改状态与收款，内容不可改；错了就作废重开</p>
+</div>
+<div style="background:#16263B; border:1px solid #2A3D57; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:12px">
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#F5F4EE">编号不断号</h3>
+<p style="font-size:32px; line-height:1.4; color:#A9B6C6">单号在开单的同一事务内分配，不留空号</p>
+</div>
+<div style="background:#16263B; border:1px solid #2A3D57; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:12px">
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#F5F4EE">每次改动可追溯</h3>
+<p style="font-size:32px; line-height:1.4; color:#A9B6C6">记录谁、哪个 Agent 改了什么，前后值都在</p>
+</div>
+<div style="background:#0A6B60; border-radius:20px; padding:36px; display:flex; flex-direction:column; justify-content:center">
+<p style="font-size:44px; font-weight:700; line-height:1.2; color:#F5F4EE">提示词可以被绕过；权限、触发器和行级安全不能。</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1000px; font-size:24px; color:#A9B6C6">E · Document Intelligence · 数据库守底线</p>
+<aside>这是原有介绍里没有提到、但已经实现的最强卖点。全部由数据库强制执行：delete/truncate 触发器（连表的拥有者角色也被拦住），每张表的行级安全策略 tenant_id = 当前公司，issued 单据的 guard 触发器，编号在开单事务里用 SELECT ... FOR UPDATE 分配，audit 触发器记录 actor、agent 与前后值，且 di_app 角色不能改或删审计日志。代理还有另一层：工具不广播 + 主机拒绝 + 每个 agent 的 HMAC 令牌不可重放。</aside>
+</section>

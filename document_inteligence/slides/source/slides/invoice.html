@@ -1,0 +1,44 @@
+<section id="invoice" data-transition="fade" style="background:#F5F4EE; color:#334155; font-family:'DM Sans','Noto Sans SC',sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:700; letter-spacing:2px; color:#0A6B60">化简为元 · 发票</p>
+<h2 style="font-size:64px; font-weight:700; line-height:1.2; color:#0F1B2D">开发票之前，先想清楚数据库</h2>
+</div>
+<div style="display:flex; align-items:stretch; gap:12px">
+<div style="flex:1; background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:32px; display:flex; flex-direction:column; gap:8px">
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">基础资料</h3>
+<p style="font-size:32px; line-height:1.4; color:#334155">客户、联系人、产品、套餐、税码</p>
+</div>
+<p style="font-size:32px; color:#0A6B60; align-self:center">→</p>
+<div style="flex:1; background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:32px; display:flex; flex-direction:column; gap:8px">
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">单据</h3>
+<p style="font-size:32px; line-height:1.4; color:#334155">报价单、发票及明细；价格税额开单时固化</p>
+</div>
+<p style="font-size:32px; color:#0A6B60; align-self:center">→</p>
+<div style="flex:1; background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:32px; display:flex; flex-direction:column; gap:8px">
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">收款</h3>
+<p style="font-size:32px; line-height:1.4; color:#334155">按发票分配，部分付款自动更新状态</p>
+</div>
+</div>
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:700; color:#0A6B60">一张单据的一生</p>
+<div style="display:flex; align-items:center; gap:16px">
+<p style="font-size:32px; font-weight:500; background:#E6F0EC; color:#0F1B2D; padding:12px 24px; border-radius:999px">草稿</p>
+<p style="font-size:32px; color:#0A6B60">→</p>
+<p style="font-size:32px; font-weight:500; background:#E6F0EC; color:#0F1B2D; padding:12px 24px; border-radius:999px">发出</p>
+<p style="font-size:32px; color:#0A6B60">→</p>
+<p style="font-size:32px; font-weight:500; background:#E6F0EC; color:#0F1B2D; padding:12px 24px; border-radius:999px">接受</p>
+<p style="font-size:32px; color:#0A6B60">→</p>
+<p style="font-size:32px; font-weight:500; background:#E6F0EC; color:#0F1B2D; padding:12px 24px; border-radius:999px">转成发票</p>
+<p style="font-size:32px; color:#0A6B60">→</p>
+<p style="font-size:32px; font-weight:500; background:#E6F0EC; color:#0F1B2D; padding:12px 24px; border-radius:999px">发出</p>
+<p style="font-size:32px; color:#0A6B60">→</p>
+<p style="font-size:32px; font-weight:500; background:#E6F0EC; color:#0F1B2D; padding:12px 24px; border-radius:999px">收款结清</p>
+</div>
+</div>
+<div style="display:flex; gap:24px; align-items:stretch">
+<div style="width:6px; background:#0A6B60; border-radius:3px"></div>
+<p style="flex:1; font-size:32px; line-height:1.5; color:#334155">先思考，后动手：起草前先做只读预检——识别客户、匹配产品、按开单规则找出缺项，一次问清。</p>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1000px; font-size:24px; color:#5B6672">E · Document Intelligence · 化简为元</p>
+<aside>数据库结构：tenant → customer / contact，product / package / tax_code，document（报价单、发票、信用票据类型）和 document_line，payment 和 payment_allocation。价格、税额和客户资料在开单时复制到单据上，日后改目录不影响旧单。发出时才分配编号，并冻结内容。“先思考，后动手”指 prepare_document：它不写任何东西，只是解析客户和产品、按开单规则找出缺项、给出建议（如有效期）和价格估算，Document Agent 把所有问题合并在一条消息里问用户。</aside>
+</section>

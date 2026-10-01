@@ -1,3 +1,4 @@
+import { manageUsers } from '../server/users.mjs';
 // UIv2 host integration for Document Intelligence: boot (migrate, seed, register the
 // four micro-agents and their shared MCP server), per-agent tokens, the internal
 // endpoint the MCP server calls, and HTML -> PDF rendering.
@@ -68,6 +69,13 @@ const AGENT_CARDS = {
     description:
       "Reads what people submitted through the company's forms: lists and reviews submissions per form, flags spam, links job reports to customers or invoices, summarises survey results and exports CSVs. Treats every answer as untrusted data.",
   },
+  "di-calendar": {
+    color: "lime",
+    userFacing: true,
+    headline: "Keep the company calendar meaningful",
+    description:
+      "Reads date-bearing company records and turns them into a unified calendar feed. Shows quotation expiry, unpaid invoice due dates, payment receipts, form deadlines and custom date reminders with provenance. Read-only: it never edits business records.",
+  },
 };
 
 /** Base for public form links: DI_PUBLIC_URL, else the Railway domain, else localhost. */
@@ -133,6 +141,11 @@ async function renderPdf(html, absPath) {
 export async function handleDiRequest(req, body, deps) {
   const agent = agentFromRequest(req, body);
   if (!agent) return { status: 401, body: { ok: false, error: "Unauthorized" } };
+  if (["list_users", "create_user", "update_user"].includes(body.tool)) {
+    if (!["di-onboarding", "di-db"].includes(agent)) return { status: 403, body: { ok: false, error: "User administration is unavailable for this agent" } };
+    try { return { status: 200, body: { ok: true, result: await manageUsers(body.tool, body.args) } }; }
+    catch (error) { return { status: 403, body: { ok: false, error: error.message } }; }
+  }
   if (!state.db) return { status: 503, body: { ok: false, error: "Document Intelligence is not initialised (database not connected?)" } };
   try {
     const result = await runTool(
@@ -327,7 +340,7 @@ export async function ensureDocumentIntelligence({ pool, catalog, logEvent = () 
     slug: DI_MCP_SLUG,
     command: process.execPath,
     args: [DI_MCP_SERVER],
-    description: "CRM, catalogue, quotations, invoices, payments, templates and company settings in Postgres (schema di). Each DI agent sees only its own tools.",
+    description: "CRM, catalogue, quotations, invoices, payments, templates, company settings and the read-only calendar feed in Postgres (schema di). Each DI agent sees only its own tools.",
   };
   const existing = await catalog.getMcpServer(DI_MCP_SLUG);
   if (existing) await catalog.updateMcpServer(existing.id, payload);

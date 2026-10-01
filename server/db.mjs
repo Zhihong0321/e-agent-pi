@@ -1,3 +1,5 @@
+import { ensureUsers } from './users.mjs';
+import { ensureActivitySchema } from './activity.mjs';
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 
@@ -89,6 +91,8 @@ export async function connectDb() {
   await pool.query(`ALTER TABLE git_syncs ADD COLUMN IF NOT EXISTS repo TEXT`);
   await pool.query(`CREATE INDEX IF NOT EXISTS messages_session_id_idx ON messages (session_id)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS resource_samples_created_at_idx ON resource_samples (created_at)`);
+  await ensureUsers(pool);
+  await ensureActivitySchema(pool);
   await migrateLegacyMessages();
 }
 
@@ -147,7 +151,7 @@ export async function createSession(row = {}) {
                model_id AS "modelId", agent_id AS "agentId",
                COALESCE(engine, 'pi') AS engine,
                agy_conversation_id AS "agyConversationId",
-               parent_session_id AS "parentSessionId",
+               user_id AS "userId", parent_session_id AS "parentSessionId",
                created_at AS "createdAt", updated_at AS "updatedAt"`,
     [id, title, row.piSessionId ?? null, row.piSessionFile ?? null, row.modelId ?? null, row.agentId ?? null, engine, agyConversationId, row.parentSessionId ?? null],
   );
@@ -163,7 +167,7 @@ export async function getSession(id) {
             model_id AS "modelId", agent_id AS "agentId",
             COALESCE(engine, 'pi') AS engine,
             agy_conversation_id AS "agyConversationId",
-            parent_session_id AS "parentSessionId",
+            user_id AS "userId", parent_session_id AS "parentSessionId",
             created_at AS "createdAt", updated_at AS "updatedAt"
      FROM sessions WHERE id = $1`,
     [id],
@@ -187,7 +191,7 @@ export async function listSessions(agentId) {
             s.agent_id AS "agentId",
             COALESCE(s.engine, 'pi') AS engine,
             s.agy_conversation_id AS "agyConversationId",
-            s.parent_session_id AS "parentSessionId",
+            s.user_id AS "userId", parent_session_id AS "parentSessionId",
             s.created_at AS "createdAt",
             s.updated_at AS "updatedAt",
             (
@@ -272,7 +276,7 @@ export async function updateSession(id, patch) {
                model_id AS "modelId", agent_id AS "agentId",
                COALESCE(engine, 'pi') AS engine,
                agy_conversation_id AS "agyConversationId",
-               parent_session_id AS "parentSessionId",
+               user_id AS "userId", parent_session_id AS "parentSessionId",
                created_at AS "createdAt", updated_at AS "updatedAt"`,
     values,
   );

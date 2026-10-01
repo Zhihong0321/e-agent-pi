@@ -1,9 +1,10 @@
 {
   "mcpServers": {
     "graft": {
-      "command": "node",
+      "command": "npx",
       "args": [
-        "C:/Users/Eternalgy/AppData/Roaming/npm/node_modules/@nanonets/graft/dist/cli.js",
+        "-y",
+        "@nanonets/graft",
         "mcp"
       ]
     }

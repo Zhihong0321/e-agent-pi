@@ -10,6 +10,11 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_SUBJECT = 200;
 const MAX_BODY = 120_000;
 const REQUEST_TIMEOUT_MS = 15_000;
+const ORGANIZATION_DOMAIN = "eternalgy.me";
+
+function isOrganizationAddress(address) {
+  return String(address).trim().toLowerCase().endsWith(`@${ORGANIZATION_DOMAIN}`);
+}
 
 export function eeMailBaseUrl() {
   return secret("ee_mail_base_url") || process.env.EE_MAIL_BASE_URL || EE_MAIL_DEFAULT_BASE_URL;
@@ -33,6 +38,9 @@ function emailList(value, field = "to") {
 export function validateEmailRequest(input = {}) {
   if (input.confirm !== true) throw new Error("Sending email requires confirm=true after showing the recipient, subject and body to the user.");
   const to = emailList(input.to);
+  if (to.some((address) => !isOrganizationAddress(address))) {
+    throw new Error(`EE-Mail only sends transactional email to @${ORGANIZATION_DOMAIN} recipients.`);
+  }
   const subject = typeof input.subject === "string" ? input.subject.trim() : "";
   if (!subject || subject.length > MAX_SUBJECT) throw new Error(`subject must be between 1 and ${MAX_SUBJECT} characters`);
   const text = typeof input.text === "string" ? input.text : "";

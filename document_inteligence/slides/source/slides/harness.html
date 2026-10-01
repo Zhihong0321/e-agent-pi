@@ -1,0 +1,29 @@
+<section id="harness" data-transition="fade" style="background:#F5F4EE; color:#334155; font-family:'DM Sans','Noto Sans SC',sans-serif; padding:128px 128px 160px; display:flex; flex-direction:column; gap:48px">
+<div style="display:flex; flex-direction:column; gap:12px">
+<p style="font-size:24px; font-weight:700; letter-spacing:2px; color:#0A6B60">化繁为简</p>
+<h2 style="font-size:64px; font-weight:700; line-height:1.2; color:#0F1B2D">更好管：Harness 加 Checker</h2>
+</div>
+<div style="display:flex; gap:32px; align-items:stretch">
+<div style="flex:1; background:#FCFBF7; border:1px solid #DAD8CC; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:16px">
+<p style="font-size:24px; font-weight:700; color:#0A6B60">HARNESS</p>
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#0F1B2D">把边界写死</h3>
+<ul style="font-size:32px; line-height:1.5; color:#334155">
+<li>只能通过指定工具工作：没有文件、没有 Shell、没有 SQL</li>
+<li>只看得到自己的工具，借不到别人的；主机再校验一次</li>
+<li>不持有数据库密码，所有操作由主机代为执行</li>
+</ul>
+</div>
+<div style="flex:1; background:#0F1B2D; border-radius:20px; padding:36px; display:flex; flex-direction:column; gap:16px">
+<p style="font-size:24px; font-weight:700; color:#4FD8C4">CHECKER AI</p>
+<h3 style="font-size:44px; font-weight:700; line-height:1.2; color:#F5F4EE">对照输入与结果</h3>
+<ul style="font-size:32px; line-height:1.5; color:#E7ECF1">
+<li>开单、收款、作废、发布等不可逆操作，先核对用户是否真的这样要求</li>
+<li>回复后核对单号、金额、状态是否与数据库一致</li>
+<li>不达标就退回原 Agent 重做，最多 2 次</li>
+</ul>
+<p style="align-self:flex-start; font-size:24px; font-weight:700; background:#E9A23B; color:#1F2A37; padding:8px 20px; border-radius:999px">评测环境已验证 · 接入线上对话为下一步</p>
+</div>
+</div>
+<p style="position:absolute; left:128px; bottom:64px; width:1000px; font-size:24px; color:#5B6672">E · Document Intelligence · 化繁为简</p>
+<aside>Harness：agent 运行在 assistant 权限下，没有文件、Shell、SQL，唯一能力是 MCP 工具，且每个 agent 只看到自己的工具；主机会再校验一次，每个 agent 的令牌不能冒充别的 agent。Checker：一个独立的模型（与工作模型不同家族），只在不可逆写入前和回复后介入；不达标退回原 agent，最多重试 2 次，之后带着“Checker 未能确认”的提示发出。判断出错时放行，不阻塞工作。诚实说明：目前 Checker 在评测环境中运行并验证，尚未接入线上聊天。</aside>
+</section>

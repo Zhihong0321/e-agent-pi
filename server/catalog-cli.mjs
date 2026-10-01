@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { readFile } from "node:fs/promises";
 import { closeDb, connectDb } from "./db.mjs";
+import { ensureSopSchema, getAgentSop, saveAgentSop } from "./sops.mjs";
 import {
   attachAgentResources,
   createAgent,
@@ -31,6 +32,8 @@ const USAGE = `Cloud Pi catalog CLI. Prints JSON.
   node $CLOUD_PI_CATALOG agents update <id> [--name ...] [--role TEXT | --role-file PATH]
   node $CLOUD_PI_CATALOG agents attach <id> [--skill slug] [--mcp slug]
   node $CLOUD_PI_CATALOG agents detach <id> [--skill slug] [--mcp slug]
+  node $CLOUD_PI_CATALOG agents sop-get <id-or-slug>
+  node $CLOUD_PI_CATALOG agents sop-set <id-or-slug> --file PATH
   node $CLOUD_PI_CATALOG agents delete <id>
 
   node $CLOUD_PI_CATALOG skills list
@@ -106,6 +109,7 @@ async function run(argv) {
   }
 
   await connectDb();
+  await ensureSopSchema();
 
   if (group === "agents") {
     if (action === "list") return { ok: true, agents: (await listAgents()).map((row) => dumpAgent(row)) };
@@ -146,6 +150,18 @@ async function run(argv) {
       if (rolePrompt) patch.rolePrompt = rolePrompt;
       const agent = await updateAgent(current.id, patch);
       return { ok: true, agent: dumpAgent(agent) };
+    }
+    if (action === "sop-get") {
+      const sop = await getAgentSop(target);
+      if (!sop) throw new Error(`SOP not found for agent: ${target}`);
+      return { ok: true, sop };
+    }
+    if (action === "sop-set") {
+      const file = flag(opts, "file");
+      if (!file) throw new Error("--file is required");
+      const content = await readFile(file, "utf8");
+      const sop = await saveAgentSop(target, content, "catalog-cli");
+      return { ok: true, sop };
     }
     if (action === "attach" || action === "detach") {
       const agent = await attachAgentResources(target, {

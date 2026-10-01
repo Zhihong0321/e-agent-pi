@@ -1,0 +1,15 @@
+# Business Premium ImageGen assets
+
+## Brand sculpture
+
+Use case: productivity-visual. Premium business brand keynote background, widescreen 16:9, ideally 2560x1440. No text. The LEFT 60% must be completely quiet dark forest green #092D26 with subtle tonal atmosphere and very generous negative space for brand typography. On the RIGHT 40%, create an exquisite architectural sculpture suggesting a coordinated enterprise operating system: five elegant interlocking layers of dark emerald optical glass and finely brushed champagne titanium, like precision-crafted document planes orbiting a shared vertical core. Monolithic but airy, elegant asymmetry, physical realism, nuanced reflections and refractions, believable materials, gallery installation photographed for a luxury corporate brand. Planes evoke structured information, workflow and shared company knowledge, not machines or gears. Low-key softbox studio lighting, barely visible atmospheric gradient, subtle warm highlights on metal edges. The sculpture sits within frame, does not obstruct left text space. Premium editorial 3D product photography, richly tactile and calm. No circuitry, no neon, no holograms, no stars, no robot, no human, no screens, no icons, no UI panels, no labels, no logo. No excessive gold. Restrained forest green, nearly black green, mineral emerald, champagne titanium palette. No watermark.
+
+Output: brand-sculpture.png
+
+## Three barriers
+
+Use case: productivity-visual. Create a premium business keynote illustration for the "AI monetization dam" metaphor, widescreen 16:9. A cinematic architectural miniature, dark forest-green studio background #092D26. NO TEXT. Keep the top 25% and bottom 21% completely quiet dark green for editable presentation typography. Main visual spans horizontally across the middle of the frame y=31%-73%: on the left a generous translucent emerald glass reservoir filled with still water, representing available intelligence. Water attempts to pass to the right through THREE distinct successive precision-crafted champagne-titanium gate walls at x=44%, x=61%, x=78%. The first two gates visibly obstruct flow, the third partially opens and allows a narrow elegant water stream into the receiving basin on the far right. Clearly show three thresholds. The whole system is a clean sculptural horizontal water channel model rather than a real dam or industrial building. Editorial architectural photography, meticulously realistic emerald water refraction, restrained champagne-brushed metal, minimal luxurious material palette, soft studio rim lighting, deep cinematic shadows, generous whitespace. Calm, authoritative, premium corporate design. Do not use people, city, nature landscape, robots, circuitry, coins, symbols, icons, glowing neon, labels, UI cards or writing. Do not add decorative particles. No watermark. This is a conceptual business metaphor, not an engineering diagram.
+
+Output: three-barriers.png
+
+These images are abstract visual metaphors. All slide copy and diagrams remain editable PowerPoint objects.

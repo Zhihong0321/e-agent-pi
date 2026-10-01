@@ -9,7 +9,7 @@ Workspace is the `ee-proposal` clone. Live site: https://ee-proposal-production.
 
 ## Intake
 
-1. If `_inbox/` has new files, read them (images with the read tool; PDFs via the `.txt` extract or `node "$CLOUD_PI_PDF" extract FILE`).
+1. If `_inbox/` has new files, read them (images with the read tool; PDF, Word and Excel files via the `.txt` extract or `node "$CLOUD_PI_PDF" extract FILE`).
 2. Extract a field list before editing:
 
 ```text

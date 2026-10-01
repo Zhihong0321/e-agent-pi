@@ -15,8 +15,11 @@ Agent-specific HOST.md files add to this; they do not repeat it.
 ## Attachments
 
 - Uploads land in `_inbox/` inside your folder, prefixed with a timestamp.
-- Every PDF gets a sibling `.txt` extract. Read the `.txt` first. Re-extract with
-  `node "$CLOUD_PI_PDF" extract <file.pdf>` (prints JSON `{ok,text,pages}`).
+- PDF, Word (.docx) and Excel (.xlsx) uploads get a sibling `.txt` with the full text; the prompt shows
+  only the first part. Read the `.txt` (read tool, with offset) for the rest, or
+  `node "$CLOUD_PI_PDF" extract <file> [--pages 5-9] [--offset N]` (JSON `{ok,text,nextOffset}`).
+- A scanned PDF has no text: its first pages arrive as images. See more with
+  `node "$CLOUD_PI_PDF" render <file.pdf> --pages 4-6` and open the PNGs it lists.
 - Copy keepers out of `_inbox/` with a stable filename. `_inbox/` is never published.
 
 ## Toolbox (what exists on this container)
@@ -36,7 +39,7 @@ or Scrapling (`scrapling extract get URL --ai-targeted`). Scrape output goes to 
 
 | Var | Use |
 |-----|-----|
-| `$CLOUD_PI_PDF` | `extract <pdf>` |
+| `$CLOUD_PI_PDF` | `extract <pdf/docx/xlsx>`, `render <pdf>` |
 | `$CLOUD_PI_IMAGEN` | `generate --prompt "..." --out assets/x.png [--aspect 16:9]` (only if HOST.md says imaging is on) |
 | `$CLOUD_PI_SITES` | site logins + NEWPAGES CRUD (NEWPAGES agent only) |
 | `$CLOUD_PI_CATALOG` | host catalog (Settings Agent only) |

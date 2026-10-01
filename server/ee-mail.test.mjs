@@ -18,9 +18,10 @@ test("email host authorizes documents and orchestrator, while requiring confirma
 
 test("validateEmailRequest requires explicit confirmation and one body", () => {
   assert.throws(() => validateEmailRequest({ to: "a@example.com", subject: "Hi", text: "Hello" }), /confirm=true/);
-  assert.throws(() => validateEmailRequest({ confirm: true, to: "a@example.com", subject: "Hi", text: "Hello", html: "<p>Hello</p>" }), /exactly one/);
-  assert.deepEqual(validateEmailRequest({ confirm: true, to: " a@example.com ", subject: " Hi ", text: "Hello" }), {
-    to: ["a@example.com"],
+  assert.throws(() => validateEmailRequest({ confirm: true, to: "staff@eternalgy.me", subject: "Hi", text: "Hello", html: "<p>Hello</p>" }), /exactly one/);
+  assert.throws(() => validateEmailRequest({ confirm: true, to: "a@example.com", subject: "Hi", text: "Hello" }), /only sends transactional email/);
+  assert.deepEqual(validateEmailRequest({ confirm: true, to: " staff@eternalgy.me ", subject: " Hi ", text: "Hello" }), {
+    to: ["staff@eternalgy.me"],
     subject: "Hi",
     text: "Hello",
   });
@@ -38,10 +39,10 @@ test("sendEmail posts to the service root /send and omits sender", async () => {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
     const base = `http://127.0.0.1:${server.address().port}/api`;
-    const result = await sendEmail({ confirm: true, to: "a@example.com", subject: "Hi", text: "Hello" }, { baseUrl: base });
+    const result = await sendEmail({ confirm: true, to: "staff@eternalgy.me", subject: "Hi", text: "Hello" }, { baseUrl: base });
     assert.equal(request.method, "POST");
     assert.equal(request.url, "/send");
-    assert.deepEqual(request.body, { to: ["a@example.com"], subject: "Hi", text: "Hello" });
+    assert.deepEqual(request.body, { to: ["staff@eternalgy.me"], subject: "Hi", text: "Hello" });
     assert.equal(request.body.from, undefined);
     assert.deepEqual(result.provider, { messageId: "msg-1", status: "queued" });
   } finally {
@@ -52,7 +53,7 @@ test("sendEmail posts to the service root /send and omits sender", async () => {
 test("sendEmail reports provider rejection without exposing headers", async () => {
   const fetchImpl = async (_url, options) => ({ ok: false, status: 401, json: async () => ({ error: "bad key" }), options });
   await assert.rejects(
-    sendEmail({ confirm: true, to: "a@example.com", subject: "Hi", text: "Hello" }, { fetchImpl, apiKey: "secret" }),
+    sendEmail({ confirm: true, to: "staff@eternalgy.me", subject: "Hi", text: "Hello" }, { fetchImpl, apiKey: "secret" }),
     /HTTP 401.*bad key/,
   );
 });
