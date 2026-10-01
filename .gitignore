@@ -63,3 +63,7 @@ new-template/
 /sidecar/*.pid
 /sidecar/*.exe
 /sidecar/*.exe~
+
+# Generated slide decks, previews, and source artifacts are kept locally only.
+/slide/
+/document_inteligence/slides/

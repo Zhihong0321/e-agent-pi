@@ -1,8 +1,0 @@
-{
-  "agents": "core/tools.mjs:16-24; host.mjs:26-70",
-  "docs": "core/documents.mjs:210-339,353-392,467-493,504-549,568-602; core/actions.mjs:31-114",
-  "forms": "core/forms.mjs:418-481,552-574,754-797,830-884,991-1060,1084-1178",
-  "dashboard": "core/dashboard.mjs:23-128; preview/crm-desktop.png",
-  "setup": "ONBOARDING.md; core/company.mjs; README.md",
-  "limits": "checker/index.mjs:48-50; ONBOARDING.md; README.md"
-}
