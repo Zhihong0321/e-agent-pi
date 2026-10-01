@@ -50,3 +50,25 @@ test("web source fetch rejects local addresses and embedded credentials", async 
   await assert.rejects(publicSourceUrl("https://internal.example", async () => [{ address: "10.0.0.1" }]));
   assert.equal(await publicSourceUrl("https://example.com/#heading", async () => [{ address: "93.184.216.34" }]), "https://example.com/");
 });
+
+test("scraper output imports by ID without model text round-tripping; pending sources remain cleanable", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "scraper-file-test-"));
+  try {
+    const store = createSourceStore(root);
+    const pending = await store.allocate({ url: "https://example.com/template", title: "Full template" });
+    await assert.rejects(store.read({ id: pending.id }), /not imported/);
+    const text = `${"verbatim terms\n".repeat(2000)}THE FINAL TERM`;
+    await writeFile(pending.outputPath, text);
+    assert.equal((await store.list()).bytes, Buffer.byteLength(text));
+    const completed = await store.importFile({ id: pending.id });
+    assert.equal(completed.chars, text.length);
+    assert.equal(completed.storedInFull, true);
+    assert.equal((await store.read({ id: pending.id, limit: 120000 })).text, text);
+    await assert.rejects(readFile(pending.outputPath), /ENOENT/);
+    assert.equal((await store.importFile({ id: pending.id })).reused, true);
+    const abandoned = await store.allocate({ title: "Abandoned scrape" });
+    assert.equal((await store.list()).sources.length, 2);
+    await store.remove([abandoned.id]);
+    assert.equal((await store.list()).sources.length, 1);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

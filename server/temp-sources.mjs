@@ -37,7 +37,13 @@ export function createSourceStore(root = TEMP_SOURCE_ROOT) {
       if (!info.isFile() || info.isSymbolicLink()) throw new Error("Unsafe temporary source file");
     }
     const metadata = JSON.parse(await readFile(path.join(folder, "metadata.json"), "utf8"));
-    return { folder, metadata: { ...metadata, id } };
+    let bytes = (await lstat(path.join(folder, "source.txt"))).size;
+    try {
+      const raw = await lstat(path.join(folder, "raw.md"));
+      if (!raw.isFile() || raw.isSymbolicLink()) throw new Error("Unsafe scraper output file");
+      bytes += raw.size;
+    } catch (error) { if (error.code !== "ENOENT") throw error; }
+    return { folder, metadata: { ...metadata, id, bytes } };
   };
   const list = async () => {
     const parent = await base();
@@ -78,6 +84,7 @@ export function createSourceStore(root = TEMP_SOURCE_ROOT) {
   });
   const read = async ({ id, offset = 0, limit = 12000, section, find }) => {
     const { folder, metadata } = await load(id);
+    if (!metadata.storedInFull) throw new Error("Scraper output is not imported yet; finish import_web_source before reading it");
     const text = await readFile(path.join(folder, "source.txt"), "utf8");
     if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 1 || limit > 120000) throw new Error("offset must be non-negative and limit must be 1–120000 characters");
     let end = text.length;
@@ -104,7 +111,33 @@ export function createSourceStore(root = TEMP_SOURCE_ROOT) {
     for (const target of targets) await rm(target.folder, { recursive: true });
     return { removed: targets.length, bytes: targets.reduce((sum, item) => sum + item.metadata.bytes, 0) };
   });
-  return { list, save, read, remove, metadata: async id => (await load(id)).metadata };
+  const allocate = async ({ url = "", title = "Scraper output awaiting import" }) => exclusive(async () => {
+    const id = randomUUID();
+    const folder = path.join(await base(), id);
+    if ((await list()).bytes >= MAX_STORAGE_BYTES) throw new Error("Temporary storage is full");
+    await mkdir(folder);
+    const metadata = { id, url, finalUrl: url, title, bytes: 0, chars: 0, createdAt: new Date().toISOString(), fetchedAt: new Date().toISOString(), sections: [], storedInFull: false, temporary: true, extraction: "pending-scrape" };
+    await writeFile(path.join(folder, "source.txt"), "");
+    await writeFile(path.join(folder, "metadata.json"), JSON.stringify(metadata));
+    return { ...metadata, outputPath: path.join(folder, "raw.md") };
+  });
+  const importFile = async ({ id }) => exclusive(async () => {
+    const { folder, metadata } = await load(id);
+    if (metadata.storedInFull) return { ...metadata, reused: true };
+    const rawPath = path.join(folder, "raw.md");
+    const info = await lstat(rawPath);
+    if (!info.isFile() || info.isSymbolicLink()) throw new Error("Unsafe scraper output file");
+    if (info.size > MAX_SOURCE_BYTES) throw new Error("Scraper output exceeds 5 MB; no truncated copy was imported");
+    if ((await list()).bytes > MAX_STORAGE_BYTES) throw new Error("Temporary storage is full. Clear unused sources before importing.");
+    const text = await readFile(rawPath, "utf8");
+    if (!text.trim()) throw new Error("Scraper produced an empty file");
+    const completed = { ...metadata, bytes: Buffer.byteLength(text), chars: text.length, storedInFull: true, extraction: "scraper-file", sha256: createHash("sha256").update(text).digest("hex"), fetchedAt: new Date().toISOString() };
+    await writeFile(path.join(folder, "source.txt"), text);
+    await writeFile(path.join(folder, "metadata.json"), JSON.stringify(completed));
+    await rm(rawPath);
+    return completed;
+  });
+  return { list, save, read, remove, allocate, importFile, metadata: async id => (await load(id)).metadata };
 }
 
 export const sourceStore = createSourceStore();

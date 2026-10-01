@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-type Source = { id: string; title: string; url: string; bytes: number; chars: number; createdAt: string };
+type Source = { id: string; title: string; url: string; bytes: number; chars: number; createdAt: string; storedInFull: boolean };
 type Inventory = { sources: Source[]; bytes: number; limitBytes: number; folder: string };
 const size = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1048576).toFixed(1)} MB`;
 async function request(body?: { ids: string[] }) {
@@ -61,7 +61,7 @@ export default function TempStorage() {
         </label>
         <p style={{ overflowWrap: "anywhere" }}>{source.url}</p>
         <p>{size(source.bytes)} · {source.chars.toLocaleString()} characters · {new Date(source.createdAt).toLocaleString("en-MY", { timeZone: "Asia/Kuala_Lumpur" })}</p>
-        <a href={`/api/settings/temp/${source.id}`} target="_blank" rel="noreferrer">Open complete saved text</a>
+        {source.storedInFull ? <a href={`/api/settings/temp/${source.id}`} target="_blank" rel="noreferrer">Open complete saved text</a> : <p>Scraper output awaiting import. This temporary allocation can also be deleted if no longer needed.</p>}
       </article>)}
     </>}
     {message && <p role="status">{message}</p>}

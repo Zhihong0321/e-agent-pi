@@ -83,7 +83,7 @@ async function extractPage(url) {
 export async function fetchWebSource({ url, fresh = false }, { store = sourceStore, extract = extractPage, validate = publicSourceUrl } = {}) {
   const normalized = await validate(url);
   if (!fresh) {
-    const cached = (await store.list()).sources.find(item => item.url === normalized && Date.now() - Date.parse(item.fetchedAt) < 24 * 60 * 60 * 1000);
+    const cached = (await store.list()).sources.find(item => item.storedInFull && item.url === normalized && Date.now() - Date.parse(item.fetchedAt) < 24 * 60 * 60 * 1000);
     if (cached) return { ...cached, reused: true };
   }
   if (inFlight.has(normalized)) return inFlight.get(normalized);
@@ -107,5 +107,7 @@ export async function webSourceAction(body) {
   if (body.action === "read") return sourceStore.read(body);
   if (body.action === "metadata") return sourceStore.metadata(body.id);
   if (body.action === "save") return sourceStore.save(body);
+  if (body.action === "allocate") return sourceStore.allocate(body);
+  if (body.action === "import") return sourceStore.importFile(body);
   throw new Error("Unknown web source action");
 }
