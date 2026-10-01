@@ -1,3 +1,13 @@
+# 🚨🚨🚨 SUPER WARNING — REPOSITORY-WIDE RULE 🚨🚨🚨
+
+**This rule applies to this entire folder and repository, including every subfolder and file:**
+
+- **ONLY commit changes on the `main` branch.**
+- **NEVER create a branch under any circumstances.**
+- **NEVER switch to or commit on a non-`main` branch.**
+- If the current branch is not `main`, do not commit; stop and report the branch mismatch.
+- Preserve unrelated user changes. Do not reset, stash, discard, or overwrite them without explicit authorization.
+
 <!-- graft:start -->
 ## Graft — repo context graph
 

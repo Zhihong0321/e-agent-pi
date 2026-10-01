@@ -57,7 +57,7 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
 
-function CalendarPanel() {
+export function CalendarPanel() {
   const [cursor, setCursor] = useState(() => { const now = new Date(); return new Date(now.getFullYear(), now.getMonth(), 1); });
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -293,7 +293,7 @@ function profileFromDb(raw: Record<string, unknown>): Profile {
 
 type DemoUser = { id: string; username: string; display_name: string; role: string; tier: string };
 
-export default function DemoPage() {
+export default function DemoPage({ initialArea = "onboarding" }: { initialArea?: Area } = {}) {
   const [user, setUser] = useState<DemoUser | null>(null);
   const [checking, setChecking] = useState(true);
   const [username, setUsername] = useState("");
@@ -309,12 +309,12 @@ export default function DemoPage() {
   };
   if (checking) return <div className="demo-login"><p role="status">Checking login…</p></div>;
   if (!user) return <div className="demo-login"><form onSubmit={login}><img src="/branding/e-logo.png" alt="e"/><h1>Sign in</h1><p>Open your AI workspace.</p><label>Username<input autoComplete="username" required value={username} onChange={event => setUsername(event.target.value)}/></label><label>Password<input type="password" autoComplete="current-password" required value={password} onChange={event => setPassword(event.target.value)}/></label>{error && <p role="alert">{error}</p>}<button className="demo-primary" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button></form></div>;
-  return <DemoWorkspace key={user.id} user={user} onLogout={async () => { await demoJson("/api/demo/logout", {}); window.sessionStorage.removeItem("di-demo-session"); window.location.assign("/demo"); }}/ >;
+  return <DemoWorkspace key={user.id} user={user} initialArea={initialArea} onLogout={async () => { await demoJson("/api/demo/logout", {}); window.sessionStorage.removeItem(`di-demo-session-${user.id}`); window.location.assign("/demo"); }}/ >;
 }
 
-function DemoWorkspace({ user, onLogout }: { user: DemoUser; onLogout: () => Promise<void> }) {
+function DemoWorkspace({ user, initialArea = "onboarding", onLogout }: { user: DemoUser; initialArea?: Area; onLogout: () => Promise<void> }) {
   const studio = useStudio();
-  const [area, setArea] = useState<Area>("onboarding");
+  const [area, setArea] = useState<Area>(initialArea);
   const [profile, setProfile] = useState<Profile>(initialProfile);
   const [companyMembers, setCompanyMembers] = useState<CompanyMember[]>([]);
   const [memberDraft, setMemberDraft] = useState<Omit<CompanyMember, "id">>(emptyMember);

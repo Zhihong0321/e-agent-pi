@@ -127,6 +127,9 @@ export default function Home() {
                   <IconInstall />
                 </button>
               )}
+              <a className="calendar-link" href="/calendar" aria-label="Open company calendar">
+                Calendar
+              </a>
               <a className="icon-btn" href="/settings" aria-label="Open settings">
                 <IconSettings />
               </a>
