@@ -8,27 +8,32 @@ const badge = status => `<span class="badge ${['confirmed', 'corroborated', 'sel
 const valueText = value => typeof value === 'object' && value !== null ? Object.entries(value).filter(([, v]) => v != null).map(([k, v]) => `${label(k)}: ${v}`).join(' · ') : String(value);
 
 export function renderCompanyReport(d) {
-  const sources = new Map();
+  const sources = new Map(), sourcePages = new Map();
+  const addSource = e => {
+    if (!sourcePages.has(e.url)) sourcePages.set(e.url, { ...e, quotes: new Set(), index: sourcePages.size + 1 });
+    sources.set(e.id, sourcePages.get(e.url));
+  };
   const collect = item => {
     if (!item || typeof item !== 'object') return;
     if (Array.isArray(item.evidence)) for (const e of item.evidence) {
-      if (!sources.has(e.id)) sources.set(e.id, { ...e, quotes: new Set(), index: sources.size + 1 });
+      if (!sources.has(e.id)) addSource(e);
       if (e.quote) sources.get(e.id).quotes.add(e.quote);
     }
     for (const [key, child] of Object.entries(item)) if (key !== 'evidence') collect(child);
   };
   for (const key of ['identity', 'business', 'scale', 'people', 'clients', 'signals', 'risks']) collect(d[key]);
   for (const e of d.sources || []) {
-    if (!sources.has(e.id)) sources.set(e.id, { ...e, quotes: new Set(), index: sources.size + 1 });
+    if (!sources.has(e.id)) addSource(e);
     for (const q of e.quotes || []) sources.get(e.id).quotes.add(q);
   }
-  const refs = evidence => [...new Set((evidence || []).map(e => e.id || e))].filter(id => sources.has(id)).map(id => `<a class="ref" href="#source-${sources.get(id).index}" aria-label="Source ${sources.get(id).index}">[${sources.get(id).index}]</a>`).join(' ');
-  const fact = (title, f) => `<div class="fact"><div class="fact-head"><span>${escape(title)}</span>${badge(f?.status)}</div><div class="fact-value ${f?.value == null ? 'muted' : ''}">${f?.value == null ? (f?.status === 'conflicting' ? 'Conflicting evidence' : 'Not established') : escape(valueText(f.value))} ${refs(f?.evidence)}</div>${f?.conflicts?.length ? `<details><summary>View conflicting claims</summary>${f.conflicts.map(c => `<p>${escape(valueText(c.value))} ${refs([c.evidenceId])}</p>`).join('')}</details>` : ''}</div>`;
+  const refs = evidence => [...new Set((evidence || []).map(e => sources.get(e.id || e)?.index).filter(Boolean))].map(index => `<a class="ref" href="#source-${index}" aria-label="Source ${index}">[${index}]</a>`).join(' ');
+  const reported = f => [f?.reportedValue, ...(f?.reportedValues || [])].filter(v => v !== undefined).map(v => `<small>Source reports: ${escape(valueText(v))}. Independent confirmation pending.</small>`).join('');
+  const fact = (title, f) => `<div class="fact"><div class="fact-head"><span>${escape(title)}</span>${badge(f?.status)}</div><div class="fact-value ${f?.value == null ? 'muted' : ''}">${f?.value == null ? (f?.status === 'conflicting' ? 'Conflicting evidence' : 'Not established') : escape(valueText(f.value))} ${refs(f?.evidence)}</div>${reported(f)}${f?.conflicts?.length ? `<details><summary>View conflicting claims</summary>${f.conflicts.map(c => `<p>${escape(valueText(c.value))} ${refs([c.evidenceId])}</p>`).join('')}</details>` : ''}</div>`;
   const cards = (items, kind, empty) => items?.length ? `<div class="cards">${items.map(f => {
-    const v = f.value;
-    const title = v ? v.name || v.what || v.risk || valueText(v) : 'Conflicting evidence';
+    const v = f.value || f.reportedValue;
+    const title = v ? v.name || v.what || v.risk || valueText(v) : f.status === 'conflicting' ? 'Conflicting evidence' : 'Not established';
     const body = v && kind === 'people' ? [v.role, v.contact].filter(Boolean).join(' · ') : v && kind === 'clients' ? [v.delivered, v.year].filter(Boolean).join(' · ') : v?.date || '';
-    return `<article class="finding">${badge(f.status)}<h3>${escape(title)}</h3>${body ? `<p>${escape(body)}</p>` : ''}<div>${refs(f.evidence)}</div>${f.conflicts?.length ? `<details><summary>Conflicting claims</summary>${f.conflicts.map(c => `<p>${escape(valueText(c.value))}</p>`).join('')}</details>` : ''}</article>`;
+    return `<article class="finding">${badge(f.status)}<h3>${escape(title)}</h3>${body ? `<p>${escape(body)}</p>` : ''}${f.value == null && f.reportedValue !== undefined ? '<p class="muted">Source claim; independent confirmation pending.</p>' : ''}<div>${refs(f.evidence)}</div>${f.conflicts?.length ? `<details><summary>Conflicting claims</summary>${f.conflicts.map(c => `<p>${escape(valueText(c.value))}</p>`).join('')}</details>` : ''}</article>`;
   }).join('')}</div>` : `<p class="empty">${escape(empty)}</p>`;
   const section = (id, number, title, subtitle, body) => `<section id="${id}" class="section"><header class="section-heading"><span class="section-number">${number}</span><div><h2>${title}</h2><p>${subtitle}</p></div></header>${body}</section>`;
   const score = Math.max(0, Math.min(100, Number(d.scores?.legitimacy) || 0));
@@ -44,7 +49,7 @@ export function renderCompanyReport(d) {
     quoteWords.set(e.url, (quoteWords.get(e.url) || 0) + shown.length);
     return `<blockquote>${escape(shown.join(' '))}${shown.length < words.length ? ' …' : ''}</blockquote>`;
   }).join('');
-  const sourceList = [...sources.values()].map(e => `<article class="source" id="source-${e.index}"><span class="source-index">${e.index.toString().padStart(2, '0')}</span><div><h3>${link(e.url, (() => { try { return new URL(e.url).hostname; } catch { return e.id; } })())}</h3><p class="source-url">${link(e.url, e.url)}</p>${excerpts(e)}</div></article>`).join('');
+  const sourceList = [...sourcePages.values()].map(e => `<article class="source" id="source-${e.index}"><span class="source-index">${e.index.toString().padStart(2, '0')}</span><div><h3>${link(e.url, (() => { try { return new URL(e.url).hostname; } catch { return e.id; } })())}</h3><p class="source-url">${link(e.url, e.url)}</p>${excerpts(e)}</div></article>`).join('');
   const contacts = [
     ...(d.contacts?.phones || []).map(p => `<div class="contact"><span class="eyebrow">${p.whatsapp ? 'Phone · WhatsApp link observed' : 'Phone'}</span><a href="tel:${escape(p.e164.replace(/[^+\d]/g, ''))}">${escape(p.e164)}</a><small>Published contact · ${refs(p.sources)}</small></div>`),
     ...(d.contacts?.emails || []).map(e => `<div class="contact"><span class="eyebrow">${escape(label(e.kind))} email</span><a href="mailto:${escape(encodeURIComponent(e.address))}">${escape(e.address)}</a><small>${e.mxOk === true ? 'MX check passed' : 'Delivery not verified'} · ${refs(e.sources)}</small></div>`),
@@ -61,7 +66,7 @@ export function renderCompanyReport(d) {
 <div class="top"><div class="wrap"><div class="brand"><i>◈</i> E AGENT <span style="font-weight:400;opacity:.6">/ Intelligence</span></div><span class="edition">Company research · ${escape(d.meta?.version || 'v2')}</span></div></div>
 <main class="wrap"><header class="mast"><span class="eyebrow">Company intelligence report</span><div class="mast-line"><h1>${escape(name)}</h1><span class="report-tag">${escape(label(identity.match?.status || 'needs_review'))} identity</span></div><p class="domain">${d.seed.website ? link(d.seed.website, identity.domain || d.seed.website) : 'Website not established'} <span aria-hidden="true">&nbsp; / &nbsp;</span> Malaysia</p><p class="summary">${escape(d.summary || 'Research evidence is being reviewed.')}</p></header>
 ${identity.match?.status !== 'locked' ? '<div class="notice"><strong>Identity review required.</strong> Supply a corroborating website, phone or full address before relying on company-specific findings.</div>' : ''}
-<div class="overview"><div class="metric score"><div class="ring" role="img" aria-label="Legitimacy score ${score} out of 100"><div class="ring-inner">${score}</div></div><div><span class="eyebrow">Legitimacy / 100</span><strong>${escape(label(verdict))}</strong><small>Read alongside coverage</small></div></div><div class="metric"><span class="eyebrow">Evidence coverage</span><strong>${coverage}%</strong><small>Weighted criteria evaluated</small></div><div class="metric"><span class="eyebrow">Cited sources</span><strong>${sources.size.toString().padStart(2, '0')}</strong><small>Linked to accepted findings</small></div><div class="metric"><span class="eyebrow">Published contacts</span><strong>${contactCount.toString().padStart(2, '0')}</strong><small>Phone and email records</small></div></div>
+<div class="overview"><div class="metric score"><div class="ring" role="img" aria-label="Legitimacy score ${score} out of 100"><div class="ring-inner">${score}</div></div><div><span class="eyebrow">Legitimacy / 100</span><strong>${escape(label(verdict))}</strong><small>Read alongside coverage</small></div></div><div class="metric"><span class="eyebrow">Evidence coverage</span><strong>${coverage}%</strong><small>Weighted criteria evaluated</small></div><div class="metric"><span class="eyebrow">Cited sources</span><strong>${sourcePages.size.toString().padStart(2, '0')}</strong><small>Linked to accepted findings</small></div><div class="metric"><span class="eyebrow">Published contacts</span><strong>${contactCount.toString().padStart(2, '0')}</strong><small>Phone and email records</small></div></div>
 <nav class="nav" aria-label="Report sections"><a href="#identity">Company profile</a><a href="#business">Business</a><a href="#people">People</a><a href="#signals">Signals & risks</a><a href="#contacts">Contacts</a><a href="#sources">Sources</a></nav>
 <div class="layout"><div>
 ${section('identity', '01', 'Company profile', 'Registry facts and identity anchors', `<div class="facts">${[['Legal name', identity.legalName], ['SSM registration', identity.ssmNo], ['Company status', identity.status], ['Incorporated on', identity.incorporatedOn], ['Registered address', identity.registeredAddress], ['Paid-up capital', identity.paidUpCapital], ['MSIC classification', identity.msic]].map(([k, v]) => fact(k, v)).join('')}<div class="fact"><div class="fact-head">Company age</div><div class="fact-value">${identity.ageYears == null ? 'Not established' : `${escape(identity.ageYears)} years`}</div><small>Calculated from the accepted incorporation date</small></div></div>`)}

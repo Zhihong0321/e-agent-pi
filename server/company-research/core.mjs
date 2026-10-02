@@ -136,6 +136,7 @@ export function fact(items, evidence) {
   const domains = new Set(refs.filter(e => e.tier === 2).map(e => domain(e.url)));
   const status = unique.size > 1 ? 'conflicting' : refs.some(e => e.tier === 1) ? 'confirmed' : domains.size >= 2 ? 'corroborated' : refs.every(e => e.tier === 3) ? 'self_reported' : 'unknown';
   const out = { value: status === 'unknown' || status === 'conflicting' ? null : verified[0].value, status, confidence: { confirmed: 0.95, corroborated: 0.8, self_reported: 0.5, conflicting: 0, unknown: 0 }[status], evidence: refs };
+  if (status === 'unknown' && unique.size === 1) out.reportedValue = verified[0].value;
   if (unique.size > 1) out.conflicts = verified.map(i => ({ value: i.value, evidenceId: i.evidence_id }));
   return out;
 }
@@ -188,7 +189,7 @@ export function reconcile({ seed, identity, evidence, runs, startedAt, webState 
     const visible = groups.filter(f => f.value !== null);
     if (!visible.length) return fact(rows, evidence);
     const status = visible.every(trusted) ? (visible.every(f => f.status === 'confirmed') ? 'confirmed' : 'corroborated') : 'self_reported';
-    return { value: visible.map(f => f.value).join('; '), status, confidence: Math.min(...visible.map(f => f.confidence)), evidence: [...new Map(groups.flatMap(f => f.evidence).map(e => [e.id, e])).values()] };
+    return { value: visible.map(f => f.value).join('; '), status, confidence: Math.min(...visible.map(f => f.confidence)), evidence: [...new Map(groups.flatMap(f => f.evidence).map(e => [e.id, e])).values()], reportedValues: groups.filter(f => f.status === 'unknown' && f.reportedValue !== undefined).map(f => f.reportedValue) };
   };
   const list = (key, keys) => {
     const grouped = new Map();
