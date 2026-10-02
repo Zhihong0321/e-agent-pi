@@ -45,7 +45,7 @@ function decodeData(data) {
  * @param {string} workspace
  * @param {unknown} raw
  */
-export async function materializeAttachments(workspace, raw) {
+export async function materializeAttachments(workspace, raw, { complete = false } = {}) {
   const list = Array.isArray(raw) ? raw : [];
   if (!list.length) {
     return { prompt: "", images: [], files: [] };
@@ -61,7 +61,7 @@ export async function materializeAttachments(workspace, raw) {
   /** @type {{ type: "image"; data: string; mimeType: string }[]} */
   const images = [];
   const lines = ["The operator attached these files under `_inbox/` (gitignored). Read them before editing."];
-  let inlineLeft = INLINE_TOTAL;
+  let inlineLeft = complete ? Infinity : INLINE_TOTAL;
 
   for (const [index, item] of list.entries()) {
     const name = safeName(item?.name || `file-${index + 1}`);
@@ -96,6 +96,22 @@ export async function materializeAttachments(workspace, raw) {
     const extract = await extractDocument(abs, { kind });
     lines.push(`- ${label}: ${rel} (${name})`);
 
+    // MCP-only clerks cannot read the saved text or render omitted pages later.
+    // Fail closed if complete evidence cannot be delivered to the model.
+    if (complete && kind === "pdf" && extract.imagePages?.length) {
+      const shots = await renderPdfPages(abs, inbox, { first: 1, last: extract.pages });
+      if (!shots.ok) throw new Error(`Could not prepare all pages of ${name}: ${shots.error}`);
+      for (const page of extract.imagePages) {
+        const shot = shots.files.find(file => file.page === page);
+        if (!shot) throw new Error(`Missing page ${page} of ${name}`);
+        const pageRel = path.posix.join("_inbox", path.basename(shot.path));
+        images.push({ type: "image", data: (await readFile(shot.path)).toString("base64"), mimeType: "image/png" });
+        lines.push(`  Image ${images.length}: ${name}, page ${page} of ${extract.pages}. Receipt attachment: ${pageRel}`);
+      }
+      lines.push(`  Original receipt attachment (all ${extract.pages} pages): ${rel}`);
+      if (extract.scanned) continue;
+    }
+
     if (extract.scanned) {
       const shots = await renderPdfPages(abs, inbox, { first: 1, last: SCAN_PAGES_AS_IMAGES });
       if (shots.ok) {
@@ -112,6 +128,7 @@ export async function materializeAttachments(workspace, raw) {
       continue;
     }
     if (!extract.ok) {
+      if (complete) throw new Error(`Could not read ${name}: ${extract.error || "no text"}`);
       lines.push(`  Could not read it: ${extract.error || "no text"}.`);
       continue;
     }
@@ -120,10 +137,10 @@ export async function materializeAttachments(workspace, raw) {
     await writeFile(path.join(workspace, txtRel), extract.text, "utf8");
     const size = extract.pages ? `${extract.pages} pages, ` : "";
     lines.push(`- Text: ${txtRel} (${size}${extract.text.length} chars, ${extract.tool})`);
-    if (extract.imagePages?.length) {
+    if (!complete && extract.imagePages?.length) {
       lines.push(`  Pages with no selectable text (pictures): ${extract.imagePages.join(", ")}. Render them with node "$CLOUD_PI_PDF" render ${rel} --pages N-M.`);
     }
-    const shown = excerpt(extract.text, Math.min(INLINE_PER_FILE, inlineLeft));
+    const shown = excerpt(extract.text, complete ? extract.text.length : Math.min(INLINE_PER_FILE, inlineLeft));
     inlineLeft -= shown.shown;
     if (shown.shown > 0) {
       lines.push("", "```text", shown.text, "```");

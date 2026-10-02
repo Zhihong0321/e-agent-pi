@@ -227,6 +227,8 @@ import {
 } from "./context-pack.mjs";
 import { healWebsiteWorkspace } from "./workspace-heal.mjs";
 import { attachmentChatMarkup, attachmentSummary, materializeAttachments } from "./attachments.mjs";
+import { expenseEvidenceModel, prepareExpenseDelegation } from "./delegated-attachments.mjs";
+import { publishFile } from "./shared-files.mjs";
 import { ensureAgyEnvironment, handleTestAgy } from "./test-agy.mjs";
 import { chatAgy, AGY_MODELS } from "./agy-stream.mjs";
 
@@ -1491,22 +1493,44 @@ async function runManageTurn({ message, agentId, sessionId, modelId }) {
   });
 
   const profile = await resolveAgentProfile(session.agentId);
+  let preparedMessage = trimmed;
+  let delegatedImages = [];
+  let delegatedModelId = typeof modelId === "string" ? modelId : undefined;
+  if (profile.id === "di-expenses" && session.parentSessionId) {
+    const parent = await getSession(session.parentSessionId);
+    const latestUpload = (await getPool().query(`SELECT content FROM messages
+      WHERE session_id=$1 AND role='user' AND (content LIKE '%/files/%' OR content LIKE '%_inbox/%')
+      ORDER BY id DESC LIMIT 1`, [parent.id])).rows[0]?.content || "";
+    const packed = await prepareExpenseDelegation({ message: trimmed, sourceMessage: latestUpload,
+      workspace: agentWorkspace(profile), root: path.join(DATA_DIR, "files"),
+      sourceWorkspace: agentWorkspace({ id: ORCHESTRATOR_AGENT_ID, slug: ORCHESTRATOR_AGENT_ID }),
+      companyId: companyHostContext().tenantId });
+    preparedMessage = packed.message;
+    delegatedImages = packed.images;
+    if (session.engine === "agy" && delegatedImages.length) {
+      throw new Error("Delegated receipt images require the Pi engine");
+    }
+    if (delegatedImages.length) {
+      delegatedModelId = expenseEvidenceModel(modelCatalog, delegatedModelId || session.modelId || defaultModelId);
+      session = await updateSession(session.id, { modelId: delegatedModelId }) || session;
+    }
+  }
   const turn =
     session.engine === "agy"
       ? await chatAgy({
-          message: trimmed,
+          message: preparedMessage,
           modelId: typeof modelId === "string" ? modelId : undefined,
           session,
           profile,
         })
       : await withAgentLock(session.agentId, () =>
-          chat(trimmed, typeof modelId === "string" ? modelId : undefined, session),
+          chat(preparedMessage, delegatedModelId, session, undefined, delegatedImages),
         );
   await insertMessage({
     sessionId: session.id,
     role: "assistant",
     content: serializeTurn(turn),
-    modelId: session.engine === "agy" ? (modelId || session.modelId || "gemini-3.8-flash-high") : defaultModelId,
+    modelId: session.engine === "agy" ? (modelId || session.modelId || "gemini-3.8-flash-high") : (delegatedModelId || defaultModelId),
   });
 
   const tools = (turn.blocks || [])
@@ -3157,6 +3181,15 @@ const server = createServer(async (req, res) => {
       let packed = { prompt: "", images: [], files: [] };
       try {
         packed = await materializeAttachments(agentWorkspace(profile), attachments);
+        if (profile.id === ORCHESTRATOR_AGENT_ID && packed.files.length) {
+          const shared = [];
+          for (const file of packed.files) {
+            shared.push(await publishFile({ root: path.join(DATA_DIR, "files"),
+              companyId: companyHostContext().tenantId, workspace: agentWorkspace(profile), source: file.rel }));
+          }
+          packed.prompt += `\nUploaded document references for delegation (include the URL in the specialist task):\n${JSON.stringify(shared)}\n`;
+          packed.sharedFiles = shared;
+        }
       } catch (error) {
         json(res, 400, { error: sanitizeError(error) });
         return;
