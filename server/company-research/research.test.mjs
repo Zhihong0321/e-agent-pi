@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { quotePresent, validSsm, phone, ageYears, lockIdentity, fact, validateFindings, reconcile, renderDossier, evidenceRecord, dateInQuote } from './core.mjs';
 import { publicIp, safeUrl, parseScrapling, scraplingHttpGet, ResearchBudget, createEvidenceTools } from './adapters.mjs';
-import { assertResearchTools, PiResearchRunner, RESEARCH_TOOLS, researchModelRuntime } from './runner.mjs';
+import { assertResearchTools, PiResearchRunner, RESEARCH_TOOLS, researchModelRuntime, researchContext, evidenceExcerpt } from './runner.mjs';
 import { researchCompany } from './pipeline.mjs';
 import { researchAuthorized, researchEnv, RESEARCH_TOKEN } from './auth.mjs';
 import { BUNDLED_MODELS } from '../paths.mjs';
@@ -155,6 +155,25 @@ test('Pi runner repairs a rejected quote in-loop and has exactly the three allow
   const result = await runner.run({ lane: 'G1', seed, identity: {}, evidence, tools: {} });
   assert.equal(result.status, 'ok'); assert.equal(attempts, 2); assert.equal(disposed, true);
   assert.throws(() => assertResearchTools({ getActiveToolNames: () => [...RESEARCH_TOOLS, 'bash'] }), /isolation/);
+});
+test('model context deduplicates sources, preserves literal footer text and remains bounded', () => {
+  const text = 'First-party service description. ' + 'x'.repeat(9000) + 'ETERNALGY SDN BHD 202301029164';
+  const input = Array.from({ length: 70 }, (_, i) => ({ id: `E${i}`, url: `https://example.com/${i % 20}`, text, tier: 3 }));
+  const out = researchContext(input, 'G1');
+  assert.equal(new Set(out.map(e => e.url)).size, out.length);
+  assert.ok(JSON.stringify(out).length < 19000);
+  assert.ok(out[0].text.includes('ETERNALGY SDN BHD 202301029164'));
+  assert.ok(evidenceExcerpt(text).length <= 1800);
+  assert.equal(input[0].text, text);
+});
+test('provider failures keep their actual error and do not retry an unsuccessful response', async () => {
+  let listener, prompts = 0;
+  const runner = new PiResearchRunner({ sessionFactory: async () => ({ session: {
+    getActiveToolNames: () => RESEARCH_TOOLS, subscribe: fn => { listener = fn; return () => {}; }, abort: async () => {}, dispose: () => {},
+    prompt: async () => { prompts++; listener({ type: 'message_end', message: { role: 'assistant', stopReason: 'error', errorMessage: 'Provider unavailable' } }); },
+  } }) });
+  const out = await runner.run({ lane: 'G1', seed, identity: {}, evidence, tools: {} });
+  assert.equal(out.error, 'Provider unavailable'); assert.equal(prompts, 1);
 });
 test('existing Pi SDK can construct isolated sessions with an in-memory model runtime', async () => {
   const { runtime, model } = await researchModelRuntime({ modelsPath: BUNDLED_MODELS, provider: 'cavoti', model: 'gpt-5.6-luna', apiKey: 'test-only', baseUrl: 'https://custom.example/v1' });

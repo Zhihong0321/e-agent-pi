@@ -23,6 +23,26 @@ Every non-null claim needs evidence_id and a verbatim quote of 8–200 character
 When not found, omit the claim and list the field in unknowns. Conflicts: submit both values and sources. No guesses or industry averages. People with the same name stay separate without corroboration. Every signal needs an exact source date. A search-snippet quote can support only what the snippet actually says.
 Call submit_findings once done, even if every list is empty. Payload keys: facts:[{field,value,evidence_id,quote}], people:[{name,role,contact,evidence_id,quote}], clients:[{name,year,delivered,evidence_id,quote}], signals:[{what,date,evidence_id,quote}], risks:[{risk,evidence_id,quote}], wrong_entity_warnings:[string], unknowns:[string]. No extra keys. Fix rejected submissions, with at most two retries.`;
 
+export function evidenceExcerpt(text, limit = 1800) {
+  if (text.length <= limit) return text;
+  const head = Math.floor(limit * 0.65);
+  return `${text.slice(0, head)}\n[... source excerpt omitted ...]\n${text.slice(-(limit - head - 40))}`;
+}
+export function researchContext(evidence, lane) {
+  const focus = { G1: /ctos|ssm|seda|registration|incorporat|capital/i, G2: /about|contact|team|goldenbull|award|services/i, G3: /linkedin|job|career|branch|headcount|employees/i, G4: /news|court|winding|notice|award/i }[lane];
+  const ranked = evidence.map((e, i) => ({ e, i, rank: (e.tier === 1 ? 20 : e.tier === 2 ? 5 : 0) + (e.mode === 'http' ? 3 : 0) + (focus?.test(e.url + ' ' + e.text.slice(0, 600)) ? 15 : 0) })).sort((a, b) => b.rank - a.rank || a.i - b.i);
+  const seen = new Set(), rows = [];
+  let chars = 0;
+  for (const { e } of ranked) {
+    if (seen.has(e.url)) continue;
+    const row = { id: e.id, url: e.url, tier: e.tier, text: evidenceExcerpt(e.text, 1500) };
+    const size = JSON.stringify(row).length;
+    if (chars + size > 18000) continue;
+    seen.add(e.url); rows.push(row); chars += size;
+  }
+  return rows;
+}
+
 export async function researchModelRuntime({ modelsPath, provider, model, apiKey, baseUrl }) {
   const runtime = await ModelRuntime.create({ modelsPath, credentials: new InMemoryCredentialStore(), modelsStore: new InMemoryModelsStore(), refreshOnCreate: false, allowModelNetwork: false });
   if (baseUrl) {
@@ -53,9 +73,11 @@ export class PiResearchRunner {
       execute: async (_id, input) => {
         assertResearchTools(session);
         if (accepted || stopReason) throw new Error('Session is finished');
+        if (name !== 'submit_findings' && (tokens >= this.tokenBudget * 0.5 || turns >= this.maxTurns - 3)) return { content: [{ type: 'text', text: 'Research allowance is nearly spent. Call submit_findings now using available evidence; list unsupported fields as unknown.' }], details: {} };
         const out = await execute(input);
         transcript.push({ type: 'tool', name, input, output: out });
-        return { content: [{ type: 'text', text: JSON.stringify(out) }], details: {} };
+        const visible = out.results ? { ...out, results: out.results.map(row => row.text ? { ...row, text: evidenceExcerpt(row.text, 2400) } : row) } : out;
+        return { content: [{ type: 'text', text: JSON.stringify(visible) }], details: {} };
       },
     });
     const customTools = [
@@ -72,7 +94,7 @@ export class PiResearchRunner {
     const settings = SettingsManager.inMemory({ compaction: { enabled: false }, retry: { enabled: false } });
     const loader = new DefaultResourceLoader({ cwd: ROOT, agentDir: ROOT, settingsManager: settings, noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true, systemPromptOverride: () => PREAMBLE });
     await loader.reload();
-    const created = await this.sessionFactory({ cwd: ROOT, agentDir: ROOT, modelRuntime: this.modelRuntime, model: this.model, thinkingLevel: 'low', tools: RESEARCH_TOOLS, customTools, resourceLoader: loader, settingsManager: settings, sessionManager: SessionManager.inMemory(ROOT) });
+    const created = await this.sessionFactory({ cwd: ROOT, agentDir: ROOT, modelRuntime: this.modelRuntime, model: this.model, thinkingLevel: 'off', tools: RESEARCH_TOOLS, customTools, resourceLoader: loader, settingsManager: settings, sessionManager: SessionManager.inMemory(ROOT) });
     session = created.session;
     let timer, unsubscribe;
     try {
@@ -88,8 +110,8 @@ export class PiResearchRunner {
         }
       });
       timer = setTimeout(() => stop('timeout'), this.timeoutMs);
-      const context = evidence.slice(0, 70).map(e => ({ id: e.id, url: e.url, tier: e.tier, text: e.text.slice(0, 3500) }));
-      await session.prompt(`TASK: ${TASKS[lane]}\nGAPS: ${JSON.stringify(gaps)}\n<untrusted_seed>${JSON.stringify(seed)}</untrusted_seed>\nIDENTITY LOCK: ${JSON.stringify(identity)}\n<untrusted_evidence>${JSON.stringify(context)}</untrusted_evidence>`);
+      const context = researchContext(evidence, lane);
+      await session.prompt(`TASK: ${TASKS[lane]}\nGAPS: ${JSON.stringify(gaps)}\nUse the supplied evidence first. Run at most two targeted searches and fetch only pages needed to resolve a specific gap. Then call submit_findings promptly. Text is excerpted; omitted text is not a quote.\n<untrusted_seed>${JSON.stringify(seed)}</untrusted_seed>\nIDENTITY LOCK: ${JSON.stringify(identity)}\n<untrusted_evidence>${JSON.stringify(context)}</untrusted_evidence>`);
       if (!accepted && !stopReason) {
         await session.prompt('Finish now with submit_findings. Omit unsupported claims and list unknowns. Do not search or fetch more.');
       }
