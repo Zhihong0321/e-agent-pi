@@ -27,6 +27,9 @@ export const GATED = {
   publish_form: () => true,
   close_form: () => true,
   intake_submission: (args) => args?.allow_duplicate === true,
+  review_claim: () => true,
+  close_monthly_submission: () => true,
+  file_claim: (args) => args?.allow_duplicate === true,
 };
 
 export const isGated = (tool, args) => Boolean(GATED[tool]?.(args));
@@ -36,6 +39,9 @@ const GATE_NOTES = {
   publish_form:
     "The server refuses unsafe fields (passwords, PINs, OTPs, card or banking logins) when a form is saved, so a stored form cannot contain them, and it refuses to publish without consent text when personal data is collected. Judge only whether the user asked to publish THIS form now.",
   close_form: "Judge only whether the user asked to close THIS form.",
+  review_claim: "The server already limits this to admins. Judge only whether the user asked to approve or reject THIS claim, and, for a rejection, whether a reason was given.",
+  close_monthly_submission: "The server refuses while claims are pending unless carry_forward_pending is set. Judge only whether the user asked to close THIS month, and, if carry_forward_pending is true, whether they agreed to move pending claims to the next month.",
+  file_claim: "Only reached with allow_duplicate. Judge whether the user confirmed this is a separate expense from the one the earlier refusal named.",
 };
 
 /** The record a write acts on, from its arguments, when no database description is available. */
@@ -47,7 +53,8 @@ function rawTarget(args = {}) {
 
 const KNOWN_GAPS =
   "No tool exists to edit, reverse, refund or unallocate a recorded payment, edit an issued document, apply a credit note to an invoice, or submit to MyInvois. Email delivery is available only through the separately attached ee-mail MCP after explicit confirmation. " +
-  "Forms: no tool can send or share a form link (email, WhatsApp, SMS), edit or delete a submitted answer, edit a published form version in place, add custom HTML/JavaScript to a form, raise upload limits above the host limits, or collect passwords, PINs, OTPs or card details.";
+  "Forms: no tool can send or share a form link (email, WhatsApp, SMS), edit or delete a submitted answer, edit a published form version in place, add custom HTML/JavaScript to a form, raise upload limits above the host limits, or collect passwords, PINs, OTPs or card details. " +
+  "Expenses: no tool can delete or reopen a claim or a closed monthly submission, pay claims out, convert foreign currency, or email the report.";
 
 function toolList() {
   const lines = Object.entries(AGENTS).map(([id, meta]) => {

@@ -604,7 +604,7 @@ export async function previewForm(tx, { form, version }, { renderPage }) {
 
 // ---------------------------------------------------------------- public submission (host, no agent)
 
-function sniffMime(buf) {
+export function sniffMime(buf) {
   if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
   if (buf.length >= 8 && buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
   if (buf.length >= 12 && buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 8, 12) === "WEBP") return "image/webp";
@@ -1022,7 +1022,7 @@ export async function summariseSubmissions(tx, { form, field, tag, status, inclu
   };
 }
 
-const csvCell = (v) => {
+export const csvCell = (v) => {
   let s = v == null ? "" : Array.isArray(v) ? v.join("; ") : typeof v === "object" ? JSON.stringify(v) : String(v);
   if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;

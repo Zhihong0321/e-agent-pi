@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ensureUsers, hashPassword, verifyPassword, sessionCookie, manageUsers, userManagementPrompt } from './users.mjs';
+import { ensureUsers, hashPassword, verifyPassword, sessionCookie, manageUsers, userManagementPrompt, expenseIdentityPrompt, resolveIdentity } from './users.mjs';
 
 test('passwords use unique salts and reject incorrect or oversized input', () => {
   const first = hashPassword('1234');
@@ -45,4 +45,23 @@ test('AI management refuses missing or fabricated admin authorization', async ()
   await assert.rejects(manageUsers('create_user', { username: 'new', password: '1234' }), /current admin login/);
   await assert.rejects(manageUsers('list_users', { admin_capability: 'invented' }), /current admin login/);
   assert.doesNotMatch(userManagementPrompt({}, { role: 'user' }), /admin_capability=/);
+});
+
+test('expense identity codes are random per turn, and only honoured while fresh', async () => {
+  const req = { headers: { cookie: 'demo_session=tok123' } };
+  const mint = () => expenseIdentityPrompt(req, { username: 'sam', role: 'user' });
+  const first = mint();
+  const code = first.match(/identity="([a-f0-9]{32})"/)[1];
+  assert.match(first, /\[Expense identity: sam \(regular user\)/);
+  assert.match(expenseIdentityPrompt(req, { username: 'root', role: 'admin' }), /root \(admin\)/);
+  assert.notEqual(code, mint().match(/identity="([a-f0-9]{32})"/)[1]);
+  assert.equal(await resolveIdentity('invented'), null);
+  assert.equal(await resolveIdentity(undefined), null);
+  assert.equal(await resolveIdentity(first), null, 'the whole prompt line is not a code');
+  // a real code is recognised, so it goes on to look the user up (no database in this test)
+  await assert.rejects(resolveIdentity(code), /Database is not connected/);
+  const realNow = Date.now;
+  Date.now = () => realNow() + 5 * 3600000;
+  try { assert.equal(await resolveIdentity(code), null, 'expired codes are refused before any lookup'); }
+  finally { Date.now = realNow; }
 });

@@ -1,4 +1,4 @@
-import { manageUsers } from '../server/users.mjs';
+import { manageUsers, resolveIdentity } from '../server/users.mjs';
 // UIv2 host integration for Document Intelligence: boot (migrate, seed, register the
 // four micro-agents and their shared MCP server), per-agent tokens, the internal
 // endpoint the MCP server calls, and HTML -> PDF rendering.
@@ -75,6 +75,13 @@ const AGENT_CARDS = {
     headline: "Keep the company calendar meaningful",
     description:
       "Reads date-bearing company records and turns them into a unified calendar feed. Shows quotation expiry, unpaid invoice due dates, payment receipts, form deadlines and custom date reminders with provenance. Read-only: it never edits business records.",
+  },
+  "di-expenses": {
+    color: "rose",
+    userFacing: true,
+    headline: "File receipts and run the monthly claim",
+    description:
+      "Takes receipts (photos, screenshots, PDFs) and files them as expense claims for the signed-in user, groups every claim into a monthly submission by the company's cut-off day, lets admins approve or reject, and produces the claim submission report. Regular users only see their own claims.",
   },
 };
 
@@ -154,6 +161,7 @@ export async function handleDiRequest(req, body, deps) {
         tenantId: () => state.tenantId,
         actor: "owner",
         asRole: state.asRole,
+        resolveIdentity,
         workspace: (id) => deps.workspace({ id, slug: id }),
         renderPdf,
         publicUrl: publicBaseUrl(),
@@ -165,6 +173,20 @@ export async function handleDiRequest(req, body, deps) {
   } catch (error) {
     return { status: 400, body: { ok: false, error: describeError(error) } };
   }
+}
+
+/**
+ * runTool dependencies for host-side callers that already authenticated a user (the /demo
+ * routes), so they go through exactly the same tools as the agents do.
+ * @param {{ workspace: (agent: {id: string, slug: string}) => string, who?: object }} opts
+ */
+export function diRunDeps({ workspace, who } = {}) {
+  if (!state.db) throw new Error("Document Intelligence is not ready");
+  return {
+    db: state.db, tenantId: () => state.tenantId, actor: "owner", asRole: state.asRole,
+    workspace: (id) => workspace({ id, slug: id }), renderPdf,
+    publicUrl: publicBaseUrl(), filesRoot: path.join(DATA_DIR, "files"), who,
+  };
 }
 
 // ---------------------------------------------------------------- public forms

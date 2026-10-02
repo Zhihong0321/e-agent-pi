@@ -1,4 +1,4 @@
-import { requestUser, loginUser, logoutUser, sessionCookie as userSessionCookie, userManagementPrompt, manageUsers } from './users.mjs';
+import { requestUser, loginUser, logoutUser, sessionCookie as userSessionCookie, userManagementPrompt, expenseIdentityPrompt, manageUsers } from './users.mjs';
 import { createHash, randomBytes } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
@@ -9,6 +9,7 @@ import { handleFileSharing } from './file-sharing.mjs';
 import { filesFromBlocks } from '../shared/shared-files.mjs';
 import { handleDiViewer } from "./di-viewer.mjs";
 import { demoAction, demoCalendar, demoState } from "./demo-api.mjs";
+import { handleDemoExpenses } from "./demo-expenses.mjs";
 import path from "node:path";
 import { RpcClient } from "@earendil-works/pi-coding-agent";
 import {
@@ -2074,6 +2075,7 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { ok: true }, { "Set-Cookie": userSessionCookie(req, "", 0) });
     }
     if (conversationRoute && !user && !authorized(req)) return json(res, 401, { error: "Please sign in" });
+    if (await handleDemoExpenses(req, res, url, { user, readBody, json, workspace: agentWorkspace })) return;
     if (req.method === "GET" && pathname === "/api/demo/state") {
       json(res, 200, await demoState());
       return;
@@ -3095,7 +3097,8 @@ const server = createServer(async (req, res) => {
       const prompt = packed.prompt
         ? `${packed.prompt}\n${trimmed || attachFallback(profile)}`
         : trimmed;
-      const chatPrompt = await enrichRestartPrompt(prompt, profile) + (user ? userManagementPrompt(req, user) : "");
+      const chatPrompt = await enrichRestartPrompt(prompt, profile) + (user ? userManagementPrompt(req, user) : "")
+        + (user && profile.id === "di-expenses" ? expenseIdentityPrompt(req, user) : "");
       const storedUser =
         [trimmed, attachmentChatMarkup(packed.files)].filter(Boolean).join("\n\n") ||
         (packed.files.length ? `Attached: ${attachmentSummary(packed.files)}` : prompt);

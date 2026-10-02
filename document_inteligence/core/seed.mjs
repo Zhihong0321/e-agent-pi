@@ -19,6 +19,7 @@ export const DEFAULT_SEQUENCES = [
   { key: "credit_note", prefix: "CN-", padding: 4, yearly_reset: true },
   { key: "receipt", prefix: "RCP-", padding: 4, yearly_reset: true },
   { key: "customer", prefix: "C-", padding: 4, yearly_reset: false },
+  { key: "expense_claim", prefix: "EXP-", padding: 4, yearly_reset: true },
 ];
 
 export const ENTITY_DEFS = [
@@ -73,6 +74,20 @@ export const ENTITY_DEFS = [
     description:
       "One set of answers to a form, pinned to the version it was filled in on. Answers never change; status moves new -> reviewed -> processed (turned into a customer/document or linked to one), or spam.",
     match_keys: ["id"],
+  },
+  {
+    entity: "expense_claim",
+    label: "Expense claim",
+    description:
+      "One employee expense with its receipts, numbered EXP-yyyy-nnnn when filed. Status: submitted -> approved | rejected (or withdrawn). It joins the monthly submission whose cut-off date follows the day it was filed.",
+    match_keys: ["number", "claimant_name", "expense_date", "amount"],
+  },
+  {
+    entity: "expense_batch",
+    label: "Monthly submission",
+    description:
+      "The month's expense claims, grouped by the company's cut-off day. Open while claims are collected; closing freezes it and fixes the report. Claims filed after a closed submission roll into the next one.",
+    match_keys: ["period_key"],
   },
 ];
 

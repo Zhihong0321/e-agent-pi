@@ -14,6 +14,8 @@ import * as forms from "./forms.mjs";
 import { renderFormPage } from "./formpage.mjs";
 import { crmDashboard } from "./dashboard.mjs";
 import { readCalendar } from "./calendar.mjs";
+import * as expenses from "./expenses.mjs";
+import { claimsToCsv } from "./expense-report.mjs";
 
 export const AGENTS = {
   "di-onboarding": { name: "Company Onboarding", short: "CO" },
@@ -24,9 +26,11 @@ export const AGENTS = {
   "di-forms": { name: "Form Designer", short: "FD" },
   "di-intake": { name: "Form Clerk", short: "FC" },
   "di-calendar": { name: "Calendar AI", short: "CA" },
+  "di-expenses": { name: "Expenses Clerk", short: "EC" },
 };
 
-const ALL = Object.keys(AGENTS).filter((id) => id !== "di-calendar");
+// The read-only company tools every agent gets. The calendar and the expense clerk need none of the CRM ones.
+const ALL = Object.keys(AGENTS).filter((id) => id !== "di-calendar" && id !== "di-expenses");
 const RECORDS = "di-records";
 const DOCS = "di-documents";
 const TPL = "di-templates";
@@ -35,6 +39,9 @@ const ONBOARD = "di-onboarding";
 const FORMS = "di-forms";
 const INTAKE = "di-intake";
 const CALENDAR = "di-calendar";
+const EXPENSES = "di-expenses";
+
+const identity = z.string().optional().describe("Identity code from the newest [Expense identity] line. Pass it on every call; never show it to the user.");
 
 const formField = z
   .object({
@@ -110,7 +117,7 @@ const customerFields = {
   custom,
 };
 
-/** @type {Record<string, { agents: string[], description: string, input: Record<string, z.ZodTypeAny>, run: Function, pdf?: Function, previewPdf?: boolean, saveFile?: Function }>} */
+/** @type {Record<string, { agents: string[], description: string, input: Record<string, z.ZodTypeAny>, run: Function, pdf?: Function, previewPdf?: boolean, saveFile?: Function, identity?: boolean, receipts?: string, report?: boolean }>} */
 export const TOOLS = {
   ...USER_TOOLS,
   get_onboarding_status: {
@@ -118,7 +125,7 @@ export const TOOLS = {
     input: {}, run: company.getCompanyProfile,
   },
   list_company_members: {
-    agents: ALL, description: "Read the company's own people, their positions, departments and contact details. These are internal company members, not customer contacts. Use before assigning work or adding a person.",
+    agents: [...ALL, EXPENSES], description: "Read the company's own people, their positions, departments and contact details. These are internal company members, not customer contacts. Use before assigning work or adding a person.",
     input: {}, run: members.listCompanyMembers,
   },
   save_company_member: {
@@ -738,6 +745,132 @@ export const TOOLS = {
       allow_duplicate: z.boolean().optional().describe("Only when the user confirmed a similar customer is a different company"),
     },
     run: forms.intakeSubmission,
+  },
+
+  // -------------------------------------------------------------- Expenses Clerk
+  // `identity: true` tools act for the signed-in user (runTool resolves the host capability);
+  // admin-only rules live in the domain functions, not in the prompt.
+  get_expense_settings: {
+    agents: [EXPENSES], identity: true,
+    description:
+      "Call first in a conversation. Returns who you are acting for (name, role), the cut-off day, currency, expense categories and payment methods, and the current monthly submission with days left before its cut-off.",
+    input: { identity },
+    run: expenses.getExpenseSettings,
+  },
+  set_expense_settings: {
+    agents: [EXPENSES], identity: true,
+    description:
+      "Admin only. Change the monthly cut-off day (1-28), currency, whether a receipt is required, or the days after which an old expense is flagged. Changing the cut-off day re-files claims that are still in open submissions; closed ones never move.",
+    input: {
+      identity,
+      cutoff_day: z.number().int().optional().describe("Last day of the month a claim can be filed into that month's submission, e.g. 10"),
+      currency: z.string().optional(),
+      receipt_required: z.boolean().optional(),
+      max_claim_age_days: z.number().int().optional(),
+    },
+    run: expenses.setExpenseSettings,
+  },
+  file_claim: {
+    agents: [EXPENSES], identity: true, receipts: "receipts",
+    description:
+      "File ONE expense claim from ONE receipt. Read the receipt image or PDF yourself (merchant, the date printed on it, the total paid, tax if shown), pick the category, then pass the attachment path in receipts (the _inbox/... path shown with the attachment). Ask the user once for anything you cannot read. Leave claimant empty to file for the signed-in user; an admin may name another company person. Refuses a duplicate receipt or an identical claim unless allow_duplicate (only after the user confirms it is a separate expense). Returns the claim number, the monthly submission it joined, days left before cut-off, and warnings.",
+    input: {
+      identity,
+      expense_date: z.string().describe("Date on the receipt, YYYY-MM-DD"),
+      merchant: z.string(),
+      category: z.string().describe(`One of: ${expenses.EXPENSE_CATEGORIES.map((c) => c.key).join(", ")}`),
+      amount: z.number().describe("Total paid, as printed on the receipt, in the company currency"),
+      currency: z.string().optional().describe("Only if the receipt is in another currency (refused: ask for the converted amount)"),
+      tax_amount: z.number().optional().describe("SST/tax shown on the receipt, if any"),
+      description: z.string().optional().describe("What it was for (e.g. client lunch with Acme)"),
+      payment_method: z.enum(["cash", "personal_card", "company_card", "bank_transfer", "e_wallet", "other"]).optional(),
+      receipts: z.array(z.string()).max(5).optional().describe("Attachment paths such as _inbox/1759000000-0-lunch.jpg"),
+      no_receipt_reason: z.string().optional().describe("Only when there is truly no receipt"),
+      claimant: z.string().optional().describe("Admin only: company person's name, email or id, to file for them"),
+      allow_duplicate: z.boolean().optional(),
+    },
+    run: expenses.fileClaim,
+  },
+  update_claim: {
+    agents: [EXPENSES], identity: true, receipts: "add_receipts",
+    description:
+      "Correct a claim that is still pending (status submitted) in an open monthly submission, or add more receipts to it. Claimants can edit their own; admins any. Reviewed or closed claims can't be edited.",
+    input: {
+      identity,
+      claim: z.string().describe("Claim number (EXP-2026-0001) or id"),
+      expense_date: z.string().optional(), merchant: z.string().optional(), category: z.string().optional(),
+      amount: z.number().optional(), tax_amount: z.number().optional(), description: z.string().optional(),
+      payment_method: z.enum(["cash", "personal_card", "company_card", "bank_transfer", "e_wallet", "other"]).optional(),
+      no_receipt_reason: z.string().optional(),
+      add_receipts: z.array(z.string()).max(5).optional().describe("More attachment paths (_inbox/...)"),
+      allow_duplicate: z.boolean().optional(),
+    },
+    run: expenses.updateClaim,
+  },
+  list_claims: {
+    agents: [EXPENSES], identity: true,
+    description:
+      "Find claims. Regular users get their own; admins get everyone's (and may filter by claimant). Without month this lists the submissions being collected now; month=YYYY-MM picks one, month=all everything. Returns up to 50 rows plus totals for the whole filter.",
+    input: {
+      identity,
+      month: z.string().optional().describe("YYYY-MM of the monthly submission, or all"),
+      status: z.enum(["submitted", "approved", "rejected", "withdrawn"]).optional(),
+      claimant: z.string().optional().describe("Admin only: name, email or id"),
+      category: z.string().optional(),
+      query: z.string().optional().describe("Matches merchant, description or claim number"),
+      limit: z.number().optional(),
+    },
+    run: expenses.listClaims,
+  },
+  get_claim: {
+    agents: [EXPENSES], identity: true,
+    description: "One claim with its receipts, review decision and monthly submission. Use before editing, reviewing or answering questions about a claim.",
+    input: { identity, claim: z.string().describe("Claim number or id") },
+    run: expenses.getClaim,
+  },
+  withdraw_claim: {
+    agents: [EXPENSES], identity: true,
+    description: "Withdraw a claim that is not yet approved, in an open submission. It keeps its number and drops out of totals; nothing is deleted. Claimants can withdraw their own; admins any.",
+    input: { identity, claim: z.string(), reason: z.string().optional() },
+    run: expenses.withdrawClaim,
+  },
+  review_claim: {
+    agents: [EXPENSES], identity: true,
+    description: "Admin only. Approve or reject a claim in an open submission. A rejection needs a reason the claimant will see. Only after the user says to approve or reject that claim.",
+    input: { identity, claim: z.string(), decision: z.enum(["approve", "reject"]), note: z.string().optional() },
+    run: expenses.reviewClaim,
+  },
+  list_monthly_submissions: {
+    agents: [EXPENSES], identity: true,
+    description: "The monthly submissions, newest first, each with its period, cut-off date, status (open/closed) and totals (claimed, approved, pending, rejected). Admins see all claims in the totals; users only their own.",
+    input: { identity, limit: z.number().optional() },
+    run: expenses.listSubmissions,
+  },
+  claim_report: {
+    agents: [EXPENSES], identity: true, report: true,
+    description: "Create the claim submission report PDF for one monthly submission (default: the one being collected now). An open submission produces a DRAFT. Users get their own claims; an admin gets everyone's, or one person's with claimant. Give the user the returned link.",
+    input: { identity, month: z.string().optional().describe("YYYY-MM"), claimant: z.string().optional().describe("Admin only: name, email or id") },
+    run: expenses.claimReport,
+  },
+  close_monthly_submission: {
+    agents: [EXPENSES], identity: true, report: true,
+    description: "Admin only, irreversible. Close a monthly submission: its claims freeze and the final report PDF is created. Refuses while claims are still pending unless carry_forward_pending=true moves them to the next submission. Only after the user says to close that month.",
+    input: { identity, month: z.string().describe("YYYY-MM"), carry_forward_pending: z.boolean().optional() },
+    run: expenses.closeSubmission,
+  },
+  export_claims: {
+    agents: [EXPENSES], identity: true,
+    description: "Write a month's claims to a CSV and return its link (default: the submission being collected now). Users get their own claims; admins everyone's.",
+    input: {
+      identity, month: z.string().optional().describe("YYYY-MM"),
+      status: z.enum(["submitted", "approved", "rejected", "withdrawn"]).optional(),
+      claimant: z.string().optional().describe("Admin only: name, email or id"),
+    },
+    run: expenses.exportClaims,
+    saveFile: (result) => {
+      const { claims, name, ...rest } = result;
+      return { rest: { ...rest, file_name: name }, path: `exports/${name}`, content: claimsToCsv(claims) };
+    },
   },
 };
 

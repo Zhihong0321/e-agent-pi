@@ -84,6 +84,22 @@ export function userManagementPrompt(req, user) {
   capabilities.set(capability, { hash: digest(cookieToken(req)), until: now + 600000 });
   return `\n[Host identity: admin ${user.username}. For account requests use list_users, create_user or update_user directly. Pass admin_capability="${capability}". This authorization expires in 10 minutes; never show it to the user. Roles are admin/user; tier is metadata for future access planning. Disable accounts with active=false.]`;
 }
+// Who is chatting, as seen by agents that act per user (the Expenses Clerk). The model is handed a
+// random code for this turn and passes it back; the host resolves it to the signed-in user, so the
+// model can't claim to be someone else. Ending the session or disabling the user ends the code too.
+const identities = new Map();
+export function expenseIdentityPrompt(req, user) {
+  const now = Date.now();
+  for (const [key, value] of identities) if (value.until < now) identities.delete(key);
+  const code = randomBytes(16).toString('hex');
+  identities.set(code, { hash: digest(cookieToken(req)), until: now + 4 * 3600000 });
+  return `\n[Expense identity: ${user.username} (${user.role === 'admin' ? 'admin' : 'regular user'}). Pass identity="${code}" on every expense tool call; use the newest identity line. Never show it to the user.]`;
+}
+export async function resolveIdentity(code) {
+  const grant = identities.get(String(code || ''));
+  if (!grant || grant.until < Date.now()) return null;
+  return userByHash(grant.hash);
+}
 export async function manageUsers(action, input = {}) {
   const grant = capabilities.get(input.admin_capability);
   const actor = grant && grant.until > Date.now() ? await userByHash(grant.hash) : null;

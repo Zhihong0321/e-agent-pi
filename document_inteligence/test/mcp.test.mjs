@@ -76,11 +76,18 @@ test("MCP server exposes per-agent tools and round-trips through the host", asyn
     assert.match(denied.content[0].text, /Unauthorized/);
     await forged.close();
 
-    for (const agent of ["di-forms", "di-intake"]) {
+    for (const agent of ["di-forms", "di-intake", "di-expenses"]) {
       const client = await connect(agent);
       assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), toolsFor(agent).map((t) => t.name).sort());
       await client.close();
     }
+
+    // the clerk acts for a signed-in user: over MCP, with no identity attached, it refuses
+    const expenses = await connect("di-expenses");
+    const unsigned = await expenses.callTool({ name: "list_claims", arguments: {} });
+    assert.equal(unsigned.isError, true);
+    assert.match(unsigned.content[0].text, /Sign-in required/);
+    await expenses.close();
 
     const nobody = await connect("website");
     assert.deepEqual((await nobody.listTools()).tools.map((t) => t.name), ["di_unavailable"]);

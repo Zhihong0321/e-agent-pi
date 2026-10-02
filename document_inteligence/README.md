@@ -77,7 +77,7 @@ Three design rules drive everything:
 
 ---
 
-## 2. The six micro-agents
+## 2. The micro-agents
 
 | Agent (id) | One job | Talks to you directly? |
 |---|---|---|
@@ -87,6 +87,7 @@ Three design rules drive everything:
 | **DB Manager** (`di-db`) | Company profile, custom fields, readiness rules, numbering, tax codes, archive/restore, audit log. | Via Orchestrator or the agent list |
 | **Form Designer** (`di-forms`) | Designs forms from a fixed field vocabulary, previews, publishes/closes public links, versions live forms. Never sees submissions. | Yes (home tile) |
 | **Form Clerk** (`di-intake`) | Reviews submissions per form, marks spam, links job reports to customers/invoices, summarises, exports CSV. Treats answers as untrusted. | Yes (home tile) |
+| **Expenses Clerk** (`di-expenses`) | Employee expense claims: reads receipts (photo, screenshot, PDF), files them for the signed-in user, groups claims into a monthly submission by the company's cut-off day, lets admins approve/reject/close, produces the claim report. See [Expense claims](#expense-claims). | Yes (home tile). Receipts must go straight to it: images don't pass through the Orchestrator. |
 
 All run on the `assistant` tool profile: **no general file editing, shell or SQL**.
 Business operations use the `document-intelligence` MCP server, which shows each agent
@@ -217,6 +218,47 @@ form (slug = public link, draft | published | closed)
 
 ---
 
+### Expense claims
+
+```
+expense_setting (cut-off day, currency)        one row per company
+expense_batch   (monthly submission)           open -> closed (frozen by trigger; report stored)
+  └─ expense_claim   EXP-yyyy-nnnn             submitted -> approved | rejected | withdrawn
+       └─ expense_receipt                      insert-only; file in shared storage, sha256 for duplicates
+```
+
+- **One receipt = one claim.** A claim joins the monthly submission by the day it was **filed**:
+  with cut-off day 10, claims filed 11 Sep to 10 Oct belong to the October submission
+  (`cycleFor` in [`core/expenses.mjs`](core/expenses.mjs)). Filed after that month is closed? It
+  rolls to the next one. Changing the cut-off day re-files claims still in open submissions.
+- **Closing a month** (`close_monthly_submission`, admin): refuses while claims are pending unless
+  `carry_forward_pending`; freezes the claims (database trigger, not the prompt); stores the final
+  report PDF. Pending claims can't be left behind silently.
+- **Who is acting** is not left to the model. Each chat turn for this agent ends with an
+  `[Expense identity: ...]` line carrying a random code the host minted for the signed-in user
+  (`expenseIdentityPrompt` in `server/users.mjs`). The tools take it as `identity`; `runTool`
+  resolves it (`deps.resolveIdentity`) to `{id, username, role}`, records the username as the audit
+  actor, and passes it to the handler. **Admins** see and approve everything and file for anyone;
+  **regular users** see only their own claims. No identity (e.g. dispatched by the Orchestrator)
+  means every expense tool refuses. The `/demo` routes call the same tools with the signed-in user
+  passed in directly (`deps.who`).
+- **Receipts** are chat attachments (`_inbox/...`). `loadReceipts` ([`core/receipts.mjs`](core/receipts.mjs))
+  checks the path, size and the real file type from the bytes, publishes a durable copy to shared
+  storage, and the claim stores its link and SHA-256: the same file can't back two claims unless the
+  user confirms.
+- **Reports** ([`core/expense-report.mjs`](core/expense-report.mjs)): one A4 PDF per submission
+  (or per claimant), grouped by person with subtotals, category summary, sign-off lines and an
+  appendix of image receipts. An open month is a DRAFT; closing fixes the final file. `claims`
+  also export to CSV with spreadsheet-formula protection.
+- **Demo data:** `/demo` > Expenses > "Load demo claims" (admin) files ~12 claims with generated
+  sample receipts across a closed and an open month, through the same code
+  ([`core/expense-demo.mjs`](core/expense-demo.mjs)). It is idempotent; "Reset & Start Fresh" in
+  company onboarding removes it (closed months can't be edited, by design).
+- Not built: foreign-currency claims (refused with a clear message), mileage rates, per-category
+  limits, emailing the report, payment of approved claims.
+
+---
+
 ## 6. File map
 
 ```
@@ -235,6 +277,10 @@ document_inteligence/
     templates.mjs       logic-less template engine, render context, default A4 templates
     seed.mjs            default tenant + idempotent per-tenant seed (tax, numbering, rules, templates)
   mcp-server.mjs        stdio MCP server; DI_AGENT picks the tool set; forwards to host
+  core/expenses.mjs     expense claims + monthly submissions (cut-off math, filing, review, closing)
+  core/receipts.mjs     receipt files from chat attachments: checks, durable copy
+  core/expense-report.mjs  claim report PDF/HTML + CSV
+  core/expense-demo.mjs    demo claims for /demo
   host.mjs              UIv2 glue: boot, agent cards, per-agent tokens, /api/internal/di, Chromium PDF
   test/di.test.mjs      domain + safety tests on PGlite (real Postgres engine, in-process)
   test/mcp.test.mjs     real MCP protocol round-trip per agent, token replay refused

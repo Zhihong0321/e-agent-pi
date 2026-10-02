@@ -86,7 +86,7 @@ test('migration preserves existing company information and future tenants get pr
 });
 
 test('orchestrator requires minimum setup but permits setup specialists and unrelated work',()=>{
-  for(const id of ['di-records','di-documents','di-forms','di-intake']) assert.equal(companyDispatchGate({id},{minimum_ready:false}).ok,false);
+  for(const id of ['di-records','di-documents','di-forms','di-intake','di-expenses']) assert.equal(companyDispatchGate({id},{minimum_ready:false}).ok,false);
   for(const id of ['di-onboarding','di-db','di-templates','website']) assert.equal(companyDispatchGate({id},{minimum_ready:false}).ok,true);
   assert.equal(companyDispatchGate({id:'di-documents'},{minimum_ready:true}).ok,true);
 });

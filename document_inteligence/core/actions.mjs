@@ -8,6 +8,8 @@ import { DiError } from "./common.mjs";
 import { AGENTS, TOOLS, allowed } from "./tools.mjs";
 import { renderDocumentHtml, setPdfPath } from "./documents.mjs";
 import { publishFile, readSharedFile, sharedFileLocation } from "../../server/shared-files.mjs";
+import { loadReceipts } from "./receipts.mjs";
+import { publishExpenseReport } from "./expense-report.mjs";
 
 function formatZod(error) {
   return error.issues.map((i) => `${i.path.join(".") || "input"}: ${i.message}`).join("; ");
@@ -25,6 +27,9 @@ const safeName = (s) => String(s).replace(/[^A-Za-z0-9._-]+/g, "_");
  *   renderPdf?: (html: string, absPath: string) => Promise<void>,
  *   publicUrl?: string,   base for public form links (https://app.example.com)
  *   filesRoot?: string,   persistent shared-files root
+ *   resolveIdentity?: (capability: string) => Promise<object | null>,   host capability -> signed-in user
+ *   who?: object,         a user the caller already authenticated (the /demo routes)
+ *   now?: () => Date,     clock, so tests can pin the day
  * }} deps
  * @param {{ agent: string, tool: string, args?: any }} call
  */
@@ -40,13 +45,32 @@ export async function runTool(deps, { agent, tool, args = {} }) {
   if (!parsed.success) throw new DiError(`Invalid input: ${formatZod(parsed.error)}`);
 
   const ctx = { tenantId: await deps.tenantId(), actor: deps.actor || "owner", agent, asRole: deps.asRole };
-  let result = await withContext(deps.db, ctx, (tx) => spec.run(tx, parsed.data));
-
   const sharing = (owner) => ({
     root: deps.filesRoot || path.join(path.dirname(deps.workspace(owner)), "files"),
     companyId: ctx.tenantId, workspace: deps.workspace(owner), publicUrl: deps.publicUrl,
   });
   const publish = (owner, source) => publishFile({ ...sharing(owner), source });
+
+  // Tools flagged `identity` act for the signed-in user. The host vouches for who that is
+  // (a short-lived capability it minted for this chat turn); the model can't pick another user.
+  let who = null;
+  let callArgs = parsed.data;
+  if (spec.identity) {
+    const { identity, ...rest } = parsed.data;
+    who = deps.who ?? (identity && deps.resolveIdentity ? await deps.resolveIdentity(identity) : null);
+    if (!who) {
+      throw new DiError("Sign-in required: no signed-in user is attached to this call. Pass the identity code from the [Expense identity] line. If there is none, ask the user to sign in and chat with the Expenses Clerk directly.");
+    }
+    ctx.actor = who.username;
+    callArgs = rest;
+  }
+  const receipts = spec.receipts
+    ? await loadReceipts(callArgs[spec.receipts] ?? [], { workspace: deps.workspace?.(agent), publish: deps.workspace ? (rel) => publish(agent, rel) : null })
+    : [];
+  let result = await withContext(deps.db, ctx, (tx) => spec.run(tx, callArgs, { who, receipts, now: deps.now ? deps.now() : new Date() }));
+  if (receipts.length && result && typeof result === "object") {
+    result = { ...result, shared_files: [...(result.shared_files ?? []), ...receipts.map((r) => r.ref)] };
+  }
 
   if (tool === "get_document" && result.document?.pdf_path && deps.workspace) {
     const rel = result.document.pdf_path;
@@ -92,6 +116,29 @@ export async function runTool(deps, { agent, tool, args = {} }) {
       result = { ...rest, file: fileRef, shared_files: [fileRef] };
     } else {
       result = { ...rest, file: { skipped: "no workspace on this host", chars: content.length } };
+    }
+  }
+
+  if (spec.report && result?.report) {
+    const { report, ...rest } = result;
+    const env = {
+      db: deps.db, ctx: { ...ctx, who }, renderPdf: deps.renderPdf,
+      workspaceDir: deps.workspace?.(agent),
+      publish: deps.workspace ? (rel) => publish(agent, rel) : undefined,
+      readShared: deps.workspace
+        ? async (href) => {
+            const stored = sharedFileLocation(href);
+            if (!stored) throw new DiError("Not a shared file");
+            return readSharedFile({ ...sharing(agent), ...stored });
+          }
+        : undefined,
+    };
+    try {
+      const out = await publishExpenseReport(env, report);
+      result = { ...rest, ...out, shared_files: [...(rest.shared_files ?? []), ...(out.pdf?.id ? [out.pdf] : [])] };
+    } catch (error) {
+      // The data change (e.g. closing a submission) already committed; say so rather than fail the call.
+      result = { ...rest, pdf: { error: describeError(error) }, note: "The data change was saved, but the report could not be made. Call claim_report to try again." };
     }
   }
 

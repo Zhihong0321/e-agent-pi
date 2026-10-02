@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { runCodeChecks } from "../checker/checks.mjs";
 import { createChecker, feedbackMessage, isGated } from "../checker/index.mjs";
 import { parseJsonReply } from "../checker/judge.mjs";
+import { dbDescribe } from "../checker/lookup.mjs";
 import { runChecked } from "../checker/loop.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -76,6 +77,25 @@ test("gate: only irreversible writes are gated", () => {
   assert.equal(isGated("create_draft", {}), false);
   assert.equal(isGated("save_customer", {}), false);
   assert.equal(isGated("save_customer", { allow_duplicate: true }), true);
+});
+
+test("gate: expense approvals and closing a month are gated; filing is not", () => {
+  assert.equal(isGated("review_claim", { claim: "EXP-2026-0001", decision: "approve" }), true);
+  assert.equal(isGated("close_monthly_submission", { month: "2026-10" }), true);
+  assert.equal(isGated("file_claim", {}), false);
+  assert.equal(isGated("file_claim", { allow_duplicate: true }), true);
+  assert.equal(isGated("list_claims", {}), false);
+});
+
+test("gate: the checker reads the stored claim and month, not the chat history", async () => {
+  const query = async (sql) => {
+    if (/expense_claim WHERE batch_id/.test(sql)) return { rows: [{ status: "submitted", n: 2 }] };
+    if (/expense_batch/.test(sql)) return { rows: [{ id: "b1", period_key: "2026-10", status: "open" }] };
+    return { rows: [{ id: "c1", number: "EXP-2026-0007", claimant_name: "Aisyah", merchant: "Grab", currency: "MYR", amount: "45.50", status: "submitted", review_note: null }] };
+  };
+  const describe = dbDescribe(query);
+  assert.match((await describe("review_claim", { claim: "EXP-2026-0007" })).facts, /EXP-2026-0007 by Aisyah: Grab, MYR 45.50, status submitted/);
+  assert.match((await describe("close_monthly_submission", { month: "2026-10" })).facts, /2026-10: open\. Claims: 2 submitted/);
 });
 
 test("gate: judge block is returned; judge failure fails open", async () => {

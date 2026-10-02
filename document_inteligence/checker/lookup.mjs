@@ -45,6 +45,26 @@ export function dbDescribe(query) {
       }
       return { target: `form:${f.id}`, facts: lines.join("\n") };
     }
+    if (args.claim != null) {
+      const ref = String(args.claim).trim();
+      const c = (
+        await query(UUID.test(ref) ? "SELECT * FROM di.expense_claim WHERE id = $1" : "SELECT * FROM di.expense_claim WHERE upper(number) = upper($1)", [ref])
+      ).rows[0];
+      if (!c) return { target: `claim:${ref.toUpperCase()}`, facts: `Claim "${ref}" does not exist.` };
+      return {
+        target: `claim:${c.id}`,
+        facts: `Claim ${c.number} by ${c.claimant_name}: ${c.merchant}, ${c.currency} ${c.amount}, status ${c.status}${c.review_note ? `, note "${c.review_note}"` : ""}.`,
+      };
+    }
+    if (args.month != null && /^\d{4}-\d{2}$/.test(String(args.month))) {
+      const b = (await query("SELECT * FROM di.expense_batch WHERE period_key = $1 AND deleted_at IS NULL", [String(args.month)])).rows[0];
+      if (!b) return { target: `submission:${args.month}`, facts: `No monthly submission exists for ${args.month}.` };
+      const counts = (await query("SELECT status, count(*)::int AS n FROM di.expense_claim WHERE batch_id = $1 AND deleted_at IS NULL GROUP BY status", [b.id])).rows;
+      return {
+        target: `submission:${b.id}`,
+        facts: `Monthly submission ${b.period_key}: ${b.status}. Claims: ${counts.map((r) => `${r.n} ${r.status}`).join(", ") || "none"}.`,
+      };
+    }
     const ref = args.document ?? args.quotation;
     if (ref != null) {
       const d = (
