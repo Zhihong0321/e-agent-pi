@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { quotePresent, validSsm, phone, ageYears, lockIdentity, fact, validateFindings, reconcile, renderDossier, evidenceRecord, dateInQuote } from './core.mjs';
-import { publicIp, safeUrl, parseScrapling, ResearchBudget, createEvidenceTools } from './adapters.mjs';
+import { publicIp, safeUrl, parseScrapling, scraplingHttpGet, ResearchBudget, createEvidenceTools } from './adapters.mjs';
 import { assertResearchTools, PiResearchRunner, RESEARCH_TOOLS, researchModelRuntime } from './runner.mjs';
 import { researchCompany } from './pipeline.mjs';
 import { researchAuthorized, researchEnv, RESEARCH_TOKEN } from './auth.mjs';
@@ -82,6 +82,13 @@ test('Scrapling content arrays are flattened, errors and malformed objects fail 
   assert.equal(parseScrapling({ structuredContent: { url: seed.website, status: 200, content: ['A', 'B'] } }).text, 'A\nB');
   assert.throws(() => parseScrapling({ isError: true })); assert.throws(() => parseScrapling({ structuredContent: { text: 'x' } }));
 });
+test('Scrapling versions use only HTTP get or make_request with redirect controls', () => {
+  const http = name => ({ name, inputSchema: { properties: { follow_redirects: { type: 'boolean' } } } });
+  assert.equal(scraplingHttpGet([http('get'), http('make_request')]), 'get');
+  assert.equal(scraplingHttpGet([http('make_request'), http('fetch')]), 'make_request');
+  assert.throws(() => scraplingHttpGet([http('fetch')]), /HTTP GET/);
+  assert.throws(() => scraplingHttpGet([{ name: 'get', inputSchema: { properties: {} } }]), /redirects/);
+});
 test('Tavily is search only and shared caps reserve cost before concurrent calls', async () => {
   const bodies = [], budget = new ResearchBudget({ searches: 2, credits: 2 });
   const tools = createEvidenceTools({ seed, evidence: [], sources, tavilyKey: 'test-only', budget, fetchImpl: async (_url, opts) => { bodies.push(JSON.parse(opts.body)); return { ok: true, status: 200, json: async () => ({ results: [{ title: seed.name, url: seed.website, content: 'Acme Solar Sdn Bhd solar installation' }] }) }; } });
@@ -153,6 +160,7 @@ test('existing Pi SDK can construct isolated sessions with an in-memory model ru
   const { runtime, model } = await researchModelRuntime({ modelsPath: BUNDLED_MODELS, provider: 'cavoti', model: 'gpt-5.6-luna', apiKey: 'test-only', baseUrl: 'https://custom.example/v1' });
   assert.ok(model); assert.ok(runtime);
   assert.equal(model.baseUrl, 'https://custom.example/v1');
+  assert.deepEqual(model.cost, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
   const runner = new PiResearchRunner({ modelRuntime: runtime, model, sessionFactory: async opts => {
     const { createAgentSession } = await import('@earendil-works/pi-coding-agent');
     const created = await createAgentSession(opts); assertResearchTools(created.session);

@@ -1,7 +1,6 @@
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
-import { readFile } from 'node:fs/promises';
 import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from '@earendil-works/pi-coding-agent';
 import { PI_PACKAGE_DIR, ROOT } from '../paths.mjs';
 import { validateFindings } from './core.mjs';
@@ -27,9 +26,9 @@ Call submit_findings once done, even if every list is empty. Payload keys: facts
 export async function researchModelRuntime({ modelsPath, provider, model, apiKey, baseUrl }) {
   const runtime = await ModelRuntime.create({ modelsPath, credentials: new InMemoryCredentialStore(), modelsStore: new InMemoryModelsStore(), refreshOnCreate: false, allowModelNetwork: false });
   if (baseUrl) {
-    const config = JSON.parse(await readFile(modelsPath, 'utf8')).providers[provider];
-    if (!config) throw new Error('Research provider has no existing configuration');
-    runtime.registerProvider(provider, { ...config, baseUrl, apiKey });
+    // Keep the SDK-normalized catalog models, including default usage costs.
+    // Re-registering raw models.json entries bypasses that normalization.
+    runtime.registerProvider(provider, { baseUrl, apiKey });
   }
   if (apiKey) await runtime.setRuntimeApiKey(provider, apiKey);
   const selected = runtime.getModel(provider, model);
@@ -84,6 +83,7 @@ export class PiResearchRunner {
           const u = event.message.usage || {};
           tokens += (u.input || 0) + (u.output || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0);
           transcript.push({ type: 'assistant', message: event.message });
+          if (event.message.stopReason === 'error') stop(event.message.errorMessage || 'Model provider failed');
           if (tokens >= this.tokenBudget && !accepted) stop('token_budget_exhausted');
         }
       });

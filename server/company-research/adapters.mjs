@@ -48,6 +48,11 @@ export function parseScrapling(result) {
   if (!Number.isInteger(body.status) || !Array.isArray(body.content) || !body.content.every(c => typeof c === 'string') || typeof body.url !== 'string') throw new Error('Unsupported Scrapling response shape');
   return { url: body.url, status: body.status, text: body.content.join('\n') };
 }
+export function scraplingHttpGet(tools) {
+  const tool = ['get', 'make_request'].map(name => tools.find(t => t.name === name)).find(t => t?.inputSchema?.properties?.follow_redirects);
+  if (!tool) throw new Error('Scrapling HTTP GET must support follow_redirects=false');
+  return tool.name;
+}
 export async function connectScrapling(server) {
   const client = new Client({ name: 'company-research', version: '2.0.0' });
   const transport = server.url
@@ -56,11 +61,10 @@ export async function connectScrapling(server) {
   try {
     await client.connect(transport, { timeout: 30000 });
     const tools = await client.listTools();
-    const get = tools.tools.find(t => t.name === 'get');
-    if (!get?.inputSchema?.properties?.follow_redirects) throw new Error('Scrapling get must support follow_redirects=false');
+    const get = scraplingHttpGet(tools.tools);
     return {
       async get(url, extraction = 'markdown') {
-        const result = await client.callTool({ name: 'get', arguments: { url, extraction_type: extraction, main_content_only: false, follow_redirects: false, retries: 0, timeout: 25, headers: { 'User-Agent': RESEARCH_USER_AGENT } } }, undefined, { timeout: 35000 });
+        const result = await client.callTool({ name: get, arguments: { url, ...(get === 'make_request' ? { method: 'GET' } : {}), extraction_type: extraction, main_content_only: false, follow_redirects: false, retries: 0, timeout: 25, headers: { 'User-Agent': RESEARCH_USER_AGENT } } }, undefined, { timeout: 35000 });
         return parseScrapling(result);
       },
       close: () => client.close(),
