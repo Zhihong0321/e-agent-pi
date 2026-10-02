@@ -21,7 +21,7 @@ const submissionsSchema = Type.Object({
 const { InMemoryCredentialStore, InMemoryModelsStore } = await import(pathToFileURL(path.join(PI_PACKAGE_DIR, 'node_modules', '@earendil-works', 'pi-ai', 'dist', 'index.js')).href);
 export const RESEARCH_TOOLS = ['search', 'fetch_pages', 'submit_findings'];
 export const TASKS = {
-  G1: 'Registry and identity: legal_name, ssm_no, incorporated_on, status (live/struck_off/winding_up/dormant), msic, paid_up_capital, registered_address; directors as people. Prefer registry/government and independent corroboration. Paywalls mean unknown.',
+  G1: 'Registry and identity: legal_name, ssm_no, incorporated_on, status (live/struck_off/winding_up/dormant), msic, paid_up_capital, registered_address; directors as people. Prefer registry/government and independent corroboration. For each registry value cite every independent source that supports it, using multiple fact entries with the same literal value. Prefer the 12-digit SSM identifier. Paywalls mean unknown.',
   G2: 'Business and people: sells, buyers, price_points, people (name, role, contact or null), clients (name, year or null, delivered), phone/email/social. Prefer own-site, directory and job-ad evidence.',
   G3: 'Signals and scale: headcount (integer, never estimate), reach, signals (what, date YYYY-MM-DD). Find current jobs, branches, equipment and dated operating activity. Do not invent a day for month-only dates.',
   G4: 'Risks and news: risks (risk), dated signals (what, date YYYY-MM-DD). Prefer news, courts, tenders and winding-up notices. A missing footprint is unknown, not a red flag.',
@@ -105,6 +105,20 @@ export class PiResearchRunner {
     await loader.reload();
     const created = await this.sessionFactory({ cwd: ROOT, agentDir: ROOT, modelRuntime: this.modelRuntime, model: this.model, thinkingLevel: 'off', tools: RESEARCH_TOOLS, customTools, resourceLoader: loader, settingsManager: settings, sessionManager: SessionManager.inMemory(ROOT) });
     session = created.session;
+    // Discovery already gathered evidence. Make the first pass a synthesis
+    // request; gap-fill sessions can perform one targeted lookup before finalizing.
+    if (session.agent?.streamFunction && this.model?.api === 'openai-completions') {
+      const stream = session.agent.streamFunction;
+      session.agent.streamFunction = (model, context, options) => {
+        const finalize = !gaps.length || searches >= 1 || fetches >= 1 || tokens >= this.tokenBudget * 0.5;
+        const visible = finalize ? { ...context, tools: context.tools.filter(t => t.name === 'submit_findings') } : context;
+        return stream(model, visible, { ...options, onPayload: async (payload, selected) => {
+        const original = await options?.onPayload?.(payload, selected) || payload;
+        if (finalize) return { ...original, tool_choice: 'required' };
+        return original;
+        } });
+      };
+    }
     let timer, unsubscribe;
     try {
       assertResearchTools(session);
@@ -120,7 +134,7 @@ export class PiResearchRunner {
       });
       timer = setTimeout(() => stop('timeout'), this.timeoutMs);
       const context = researchContext(evidence, lane);
-      await session.prompt(`TASK: ${TASKS[lane]}\nGAPS: ${JSON.stringify(gaps)}\nUse the supplied evidence first. Run at most two targeted searches and fetch only pages needed to resolve a specific gap. Then call submit_findings promptly. Text is excerpted; omitted text is not a quote.\n<untrusted_seed>${JSON.stringify(seed)}</untrusted_seed>\nIDENTITY LOCK: ${JSON.stringify(identity)}\n<untrusted_evidence>${JSON.stringify(context)}</untrusted_evidence>`);
+      await session.prompt(`TASK: ${TASKS[lane]}\nGAPS: ${JSON.stringify(gaps)}\n${gaps.length ? 'Gap-fill phase: make at most one targeted lookup, then submit findings.' : 'Final synthesis phase: call submit_findings now from the supplied evidence. Do not search or fetch. Omit unsupported claims and list unknowns.'} Text is excerpted; omitted text is not a quote.\n<untrusted_seed>${JSON.stringify(seed)}</untrusted_seed>\nIDENTITY LOCK: ${JSON.stringify(identity)}\n<untrusted_evidence>${JSON.stringify(context)}</untrusted_evidence>`);
       if (!accepted && !stopReason) {
         await session.prompt('Finish now with submit_findings. Omit unsupported claims and list unknowns. Do not search or fetch more.');
       }

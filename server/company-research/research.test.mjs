@@ -185,6 +185,20 @@ test('provider failures keep their actual error and do not retry an unsuccessful
   const out = await runner.run({ lane: 'G1', seed, identity: {}, evidence, tools: {} });
   assert.equal(out.error, 'Provider unavailable'); assert.equal(prompts, 1);
 });
+test('final synthesis requires findings while preserving active tool isolation and payload hooks', async () => {
+  const runner = new PiResearchRunner({ model: { api: 'openai-completions' }, sessionFactory: async opts => {
+    const agent = { streamFunction: async (_model, context, options) => {
+      assert.deepEqual(context.tools.map(t => t.name), ['submit_findings']);
+      const payload = await options.onPayload({ tools: context.tools });
+      assert.equal(payload.tool_choice, 'required'); assert.equal(payload.priorHook, true);
+    } };
+    return { session: { agent, getActiveToolNames: () => RESEARCH_TOOLS, subscribe: () => () => {}, abort: async () => {}, dispose: () => {}, prompt: async () => {
+      await agent.streamFunction({}, { tools: opts.customTools }, { onPayload: async payload => ({ ...payload, priorHook: true }) });
+      await opts.customTools.find(t => t.name === 'submit_findings').execute('1', { facts: [claim] });
+    } } };
+  } });
+  assert.equal((await runner.run({ lane: 'G1', seed, identity: {}, evidence, tools: {} })).status, 'ok');
+});
 test('existing Pi SDK can construct isolated sessions with an in-memory model runtime', async () => {
   const { runtime, model } = await researchModelRuntime({ modelsPath: BUNDLED_MODELS, provider: 'cavoti', model: 'gpt-5.6-luna', apiKey: 'test-only', baseUrl: 'https://custom.example/v1' });
   assert.ok(model); assert.ok(runtime);
