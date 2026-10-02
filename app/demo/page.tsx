@@ -493,7 +493,7 @@ function DemoWorkspace({ user, initialArea = "onboarding", onLogout }: { user: D
 
   return <div className="di-demo">
     <aside className="demo-rail">
-      <a className="demo-brand" href="/demo" aria-label="e — Eternalgy Sdn Bhd"><span className="demo-brand-mark"><img src="/branding/e-logo.png" alt=""/></span><span><strong>e</strong><small>Eternalgy Sdn Bhd</small></span></a>
+      <a className="demo-brand" href="/demo" aria-label="e by Eternalgy"><span className="demo-brand-mark"><img src="/branding/e-logo.png" alt=""/></span><span><strong>e</strong><small>by Eternalgy</small></span></a>
       <div className="demo-rail-label">EXPLORE</div>
       <nav aria-label="Demo sections">
         <button className={area === "onboarding" ? "active" : ""} onClick={() => setArea("onboarding")}><Icon name="chat"/><span>Onboarding</span><span className="demo-nav-count">01</span></button>
