@@ -56,7 +56,7 @@ The internal MCP gateway `/api/internal/company-research` accepts only a per-boo
 
 When the user requests publication, `publish_company_report` persists a designed HTML snapshot and returns `/reports/company/:token` on this production host. Only `complete` or `partial` dossiers with a locked identity can be published. Unknowns, conflicts and failed lanes stay visible. The public page contains accepted claim excerpts, not full source documents or transcripts. Reports have opaque links, no indexing, no scripts or external assets. They are accessible to anyone with the link. Republish updates the snapshot at the same link; unpublish removes the public link without deleting the private dossier. `COMPANY_RESEARCH_PUBLIC_URL` can set the canonical public origin; otherwise the Railway public domain is used.
 
-`/reports/company/preview` is a public layout preview, clearly marked as containing no researched company. It is available without a configured research provider. Actual company reports require the Tavily key and saved model credentials.
+`/reports/company/preview` is a public layout preview, clearly marked as containing no researched company. It is available without a configured research provider. Actual company research requires at least one configured Brave, Exa or Tavily key and saved model credentials.
 
 ## Optional inputs
 
