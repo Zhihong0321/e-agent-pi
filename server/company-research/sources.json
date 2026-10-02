@@ -1,0 +1,6 @@
+{
+  "tier1": ["ssm.com.my", "ssm-einfo.my", "cidb.gov.my", "kehakiman.gov.my", "agc.gov.my"],
+  "social": ["facebook.com", "linkedin.com", "instagram.com", "tiktok.com"],
+  "blocked": ["facebook.com", "linkedin.com", "instagram.com", "tiktok.com", "google.com", "bing.com"],
+  "note": "HTTP only until the fetchability spike validates browser strategies. Social sources are snippets only."
+}

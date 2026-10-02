@@ -14,12 +14,14 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern legacy_archive",
     "pi": "pi",
     "pi:version": "pi --version",
-    "test": "npm run build"
+    "test": "npm run build",
+    "test:company-research": "node --test server/company-research/*.test.mjs"
   },
   "dependencies": {
     "@composio/core": "^0.18.1",
     "@earendil-works/pi-coding-agent": "latest",
     "@modelcontextprotocol/sdk": "^1.30.0",
+    "libphonenumber-js": "1.13.14",
     "mammoth": "^1.13.0",
     "pg": "^8.23.0",
     "pi-mcp-adapter": "^2.32.1",
@@ -27,9 +29,11 @@
     "react": "19.2.6",
     "react-dom": "19.2.6",
     "read-excel-file": "^9.3.10",
+    "tldts": "7.4.16",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
     "@eslint/js": "9.39.4",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",

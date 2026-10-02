@@ -3,6 +3,7 @@ import JobsSettings from "./jobs-settings";
 import ActivityLog from "./activity-log";
 
 type Settings = {
+  tavilyApiKeySet: boolean;
   cavotiApiKeySet: boolean;
   cavotiBaseUrl: string;
   kimiApiKeySet: boolean;
@@ -229,6 +230,7 @@ export default function SettingsPage() {
   });
   const [settings, setSettings] = useState<Settings | null>(null);
   const [form, setForm] = useState({
+    tavilyApiKey: "",
     cavotiApiKey: "",
     cavotiBaseUrl: "",
     kimiApiKey: "",
@@ -688,10 +690,12 @@ export default function SettingsPage() {
           sales_pg_proxy_expires_at: form.salesPgProxyExpiresAt,
           om_api_token: form.omApiToken,
           composio_api_key: form.composioApiKey,
+          tavily_api_key: form.tavilyApiKey,
           ...Object.fromEntries(form.jinaKeys.map((value, index) => [`jina_api_key_${index + 1}`, value])),
         }),
       });
       setSettings(data);
+      setForm((prev) => ({ ...prev, tavilyApiKey: "" }));
       setJinaTest(null);
       setForm((prev) => ({ ...prev, jinaKeys: Array.from({ length: JINA_SLOTS }, () => ""), cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", opencodeGoApiKey: "", hiveAiApiKey: "", yerplanApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", eeMailApiKey: "", settingsPassword: "", afaPasskey: "", tnbPassword: "", salesPgProxyToken: "", googleAdsClientSecret: "", googleAdsDeveloperToken: "", googleAdsRefreshToken: "", omApiToken: "", composioApiKey: "" }));
       if (data.proposal?.lastError) {
@@ -1090,6 +1094,15 @@ export default function SettingsPage() {
                   value={form.kimiBaseUrl}
                   onChange={(event) => setForm({ ...form, kimiBaseUrl: event.target.value })}
                 />
+              </label>
+
+              <h2>Company Deep Research</h2>
+              <p>Tavily searches for sources. Company Deep Research uses the existing model and Scrapling setup.</p>
+              <label>
+                Tavily API key {settings?.tavilyApiKeySet ? <em>saved</em> : <em>missing</em>}
+                <input type="password" value={form.tavilyApiKey}
+                  onChange={(event) => setForm({ ...form, tavilyApiKey: event.target.value })}
+                  placeholder={settings?.tavilyApiKeySet ? "••••••••  (unchanged)" : "Paste Tavily key"} />
               </label>
 
               <h2>GLM 5.3</h2>

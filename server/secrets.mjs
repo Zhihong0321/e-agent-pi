@@ -5,6 +5,7 @@ export const JINA_SLOTS = 5;
 export const JINA_KEY_NAMES = Array.from({ length: JINA_SLOTS }, (_, i) => `jina_api_key_${i + 1}`);
 
 const KEYS = [
+  "tavily_api_key",
   "cavoti_api_key",
   "cavoti_base_url",
   "kimi_api_key",
@@ -122,6 +123,7 @@ export async function saveSecrets(patch) {
 
 export function publicSettings() {
   return {
+    tavilyApiKeySet: Boolean(secret("tavily_api_key") || process.env.TAVILY_API_KEY),
     cavotiApiKeySet: Boolean(secret("cavoti_api_key")),
     cavotiBaseUrl: secret("cavoti_base_url") || "https://cavoti.com/v1",
     kimiApiKeySet: Boolean(secret("kimi_api_key")),
@@ -171,6 +173,7 @@ export function publicSettings() {
 
 export function secretFlags() {
   return {
+    tavilyApiKey: Boolean(secret("tavily_api_key") || process.env.TAVILY_API_KEY),
     cavotiApiKey: Boolean(secret("cavoti_api_key")),
     kimiApiKey: Boolean(secret("kimi_api_key")),
     glm53ApiKey: Boolean(secret("glm53_api_key")),

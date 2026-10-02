@@ -146,6 +146,7 @@ import { ensureSalesMcp } from "./sales-mcp.mjs";
 import { ensureGoogleAdsMcp } from "./google-ads-mcp.mjs";
 import { ensureOmMcp } from "./om-mcp.mjs";
 import { ensureWebSearchMcp } from "./web-search-mcp.mjs";
+import { ensureCompanyResearch, handleCompanyResearch, stopCompanyResearch } from "./company-research/host.mjs";
 import { ensureComposioMcp } from "./composio.mjs";
 import { ensureOrchestratorMcp } from "./orchestrator-mcp.mjs";
 import { ensureEeMailMcp } from "./ee-mail-mcp.mjs";
@@ -1830,6 +1831,13 @@ async function bootServices() {
     logEvent("error", `web-search mcp failed: ${sanitizeError(error)}`);
   }
 
+  boot.step = "company-research";
+  try {
+    if (dbReady()) await ensureCompanyResearch({ log: logEvent });
+  } catch (error) {
+    logEvent("error", `company research init failed: ${sanitizeError(error)}`);
+  }
+
   boot.step = "composio-mcp";
   try {
     if (dbReady()) {
@@ -2100,6 +2108,7 @@ const server = createServer(async (req, res) => {
       companyId: () => companyHostContext().tenantId,
       workspaceFor: async (id) => { const agent = await getAgent(id); return agent ? agentWorkspace(agent) : null; },
     })) return;
+    if (await handleCompanyResearch(req, res, url, { authorized, readBody })) return;
     if (req.method === "POST" && pathname === "/api/internal/orchestrator") {
       if (!orchestratorAuthorized(req)) {
         json(res, 401, { error: "Unauthorized" });
@@ -3326,6 +3335,7 @@ server.listen(PORT, HOST, () => {
 async function shutdown() {
   logEvent("info", turnsInFlight ? `shutdown during ${turnsInFlight} in-flight turn(s)` : "shutdown");
   stopSampler();
+  stopCompanyResearch();
   await Promise.allSettled([...piPool.values()].map((slot) => stopSlot(slot)));
   await stopWhatsappSidecar().catch(() => {});
   await closeAllSessions().catch(() => {});

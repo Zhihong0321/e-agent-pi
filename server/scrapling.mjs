@@ -233,6 +233,8 @@ async function ensureScraplingMcp() {
  * @param {string} agentRef
  */
 export async function grantScraplingToAgent(agentRef) {
+  // Research fetches must pass through provenance and evidence capture.
+  if (agentRef === "company-deep-research") return null;
   const skills = (await getSkill(SCRAPLING_SKILL_SLUG)) ? [SCRAPLING_SKILL_SLUG] : [];
   const mcp = (await getMcpServer(SCRAPLING_MCP_SLUG)) ? [SCRAPLING_MCP_SLUG] : [];
   if (!skills.length && !mcp.length) return null;

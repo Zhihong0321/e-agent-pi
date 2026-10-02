@@ -90,6 +90,7 @@ export async function skillsNeedBash(skills) {
  * @param {{ dirPath?: string }[] | undefined} skills
  */
 export async function resolveToolProfile(agent, skills) {
+  if (agent?.id === "company-deep-research" || agent?.slug === "company-deep-research") return { profile: "assistant", warning: null };
   const requested = normalizeToolProfile(agent?.toolProfile ?? DEFAULT_TOOL_PROFILE);
   if (requested !== "assistant" || !(await skillsNeedBash(skills))) {
     return { profile: requested, warning: null };
@@ -124,7 +125,8 @@ export function mcpServerConfig(server) {
  */
 export async function buildRoleText(agent, { modelId } = {}) {
   const role = String(agent.rolePrompt || "").trim();
-  const extras = [replyStyleSystemPrompt(), FILE_SHARING_PROMPT, imagenSystemPrompt()];
+  const research = agent.id === "company-deep-research" || agent.slug === "company-deep-research";
+  const extras = research ? [replyStyleSystemPrompt()] : [replyStyleSystemPrompt(), FILE_SHARING_PROMPT, imagenSystemPrompt()];
   if (agent.id === "website" || agent.slug === "website") extras.push(hostSystemPrompt());
   if (isProposalAgent(agent)) extras.push(proposalSystemPrompt(agent));
   if (isWhatsappAgent(agent)) extras.push(await whatsappNotesSystemPrompt());
@@ -145,6 +147,9 @@ export async function buildRoleText(agent, { modelId } = {}) {
  * @param {{ modelId?: string | null; runtimeKey?: string | null }} [opts]
  */
 export async function materializeAgentRuntime(agent, mcpServers, modelsJson, { modelId, runtimeKey } = {}) {
+  if (agent.id === "company-deep-research" || agent.slug === "company-deep-research") {
+    mcpServers = mcpServers.filter(server => server.slug === "company-research");
+  }
   const dir = path.join(RUNTIME_DIR, runtimeKey || agent.id);
   await mkdir(dir, { recursive: true });
   const roleText = await buildRoleText(agent, { modelId });
@@ -205,20 +210,22 @@ export function buildPiArgs(opts) {
     "--no-extensions",
     "--no-prompt-templates",
   ];
-  const profile = TOOL_PROFILES[normalizeToolProfile(opts.toolProfile)] || TOOL_PROFILES[DEFAULT_TOOL_PROFILE];
+  const research = opts.agent.id === "company-deep-research" || opts.agent.slug === "company-deep-research";
+  const profile = research ? TOOL_PROFILES.assistant : TOOL_PROFILES[normalizeToolProfile(opts.toolProfile)] || TOOL_PROFILES[DEFAULT_TOOL_PROFILE];
   if (profile.systemPrompt) args.push("--system-prompt", profile.systemPrompt);
   if (profile.tools) args.push("--tools", profile.tools.join(","));
   if (profile.noBuiltinTools) args.push("--no-builtin-tools");
   const thinkingLevel = normalizeThinkingLevel(opts.thinkingLevel);
   if (thinkingLevel) args.push("--thinking", thinkingLevel);
   const skills = [...(opts.skills || [])];
-  if (imagenConfigured()) skills.push({ dirPath: IMAGEN_SKILL_DIR });
+  if (research) skills.length = 0;
+  if (!research && imagenConfigured()) skills.push({ dirPath: IMAGEN_SKILL_DIR });
   for (const skill of skills) {
     if (skill.dirPath) args.push("--skill", skill.dirPath);
   }
   if (opts.mcpCount) args.push("--extension", MCP_ADAPTER_EXTENSION);
-  args.push("--extension", path.join(ROOT, "agent", "extensions", "share-file.ts"));
-  if (agentHasSubagents(opts.skills)) args.push("--extension", SUBAGENTS_EXTENSION);
+  if (!research) args.push("--extension", path.join(ROOT, "agent", "extensions", "share-file.ts"));
+  if (!research && agentHasSubagents(opts.skills)) args.push("--extension", SUBAGENTS_EXTENSION);
   if (opts.sessionFile) args.push("--session", opts.sessionFile);
   return args;
 }
