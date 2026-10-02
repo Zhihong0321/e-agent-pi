@@ -55,10 +55,10 @@ export function parseJobReply(reply, kind = "worker") {
   if (!result || typeof result.summary !== "string" || !result.summary.trim()) throw new Error("Outcome needs a non-empty summary");
   if (kind === "checker") {
     if (typeof result.pass !== "boolean") throw new Error("Checker must return an explicit pass verdict");
-    return { status: result.pass ? "done" : "error", result: result.summary, error: result.pass ? null : `Checker rejected: ${result.summary}` };
+    return { status: result.pass ? "done" : "error", result: result.summary, resultData: result, error: result.pass ? null : `Checker rejected: ${result.summary}` };
   }
   if (!["done", "blocked", "failed"].includes(result.status)) throw new Error("Outcome status must be done, blocked or failed");
-  return { status: result.status === "failed" ? "error" : result.status, result: result.summary, error: result.status === "done" ? null : result.summary };
+  return { status: result.status === "failed" ? "error" : result.status, result: result.summary, resultData: result, error: result.status === "done" ? null : result.summary };
 }
 
 export function cleanupCutoff(before) {

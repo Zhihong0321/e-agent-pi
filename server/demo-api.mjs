@@ -2,6 +2,7 @@ import { companyHostContext } from "../document_inteligence/host.mjs";
 import { withContext } from "../document_inteligence/core/db.mjs";
 import { getCompanyProfile, updateCompanyProfile } from "../document_inteligence/core/company.mjs";
 import { listCompanyMembers, saveCompanyMember } from "../document_inteligence/core/members.mjs";
+import { listPeople, managePeople } from "./users.mjs";
 import { findCustomers, saveCustomer } from "../document_inteligence/core/records.mjs";
 import { createDraft, getDocument, issueDocument, listDocuments } from "../document_inteligence/core/documents.mjs";
 import { readCalendar, validateCalendarRange } from "../document_inteligence/core/calendar.mjs";
@@ -22,21 +23,28 @@ export async function demoCalendar(query = {}) {
 }
 
 export async function demoState() {
+  const ctx = companyHostContext();
+  const people = await listPeople(ctx.tenantId);
   return scope(async (tx) => {
-    const [profile, members, customers, documents] = await Promise.all([
-      getCompanyProfile(tx), listCompanyMembers(tx), findCustomers(tx, { limit: 50 }),
+    const [profile, customers, documents] = await Promise.all([
+      getCompanyProfile(tx), findCustomers(tx, { limit: 50 }),
       listDocuments(tx, { doc_type: "invoice", limit: 100 }),
     ]);
     const invoices = await Promise.all(documents.documents.map(async (row) => {
       const { document } = await getDocument(tx, { ref: row.id });
       return document;
     }));
-    return { profile, members: members.members, customers: customers.customers, invoices };
+    return { profile, members: people.people, people: people.people, customers: customers.customers, invoices };
   });
 }
 
-export async function demoAction(body) {
+export async function demoAction(body, actorUserId) {
   const action = String(body?.action || "");
+  if (action === "person") {
+    const ctx = companyHostContext();
+    const person = body.person || {};
+    return managePeople(body.person_id ? "update_person" : "create_person", { ...person, ...(body.person_id ? { person_id: body.person_id } : {}) }, { tenantId: ctx.tenantId, actorUserId });
+  }
   return scope(async (tx) => {
     switch (action) {
       case "profile": {

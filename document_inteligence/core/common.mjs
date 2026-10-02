@@ -120,7 +120,7 @@ export async function nextNumber(tx, key, today = todayMY()) {
  * Validates custom field values against di.field_def. Unknown keys are refused so
  * agents can't invent columns; the DB Manager agent defines new fields first.
  */
-export async function validateCustom(tx, entity, custom, { creating = false } = {}) {
+export async function validateCustom(tx, entity, custom, { creating = false, definer = "the DB Manager agent" } = {}) {
   const defs = (
     await tx.query("SELECT * FROM di.field_def WHERE entity = $1 AND deleted_at IS NULL", [entity])
   ).rows;
@@ -131,7 +131,7 @@ export async function validateCustom(tx, entity, custom, { creating = false } = 
     if (!def) {
       const known = defs.map((d) => d.key).join(", ") || "none";
       throw new DiError(
-        `Unknown custom field ${entity}.${key} (defined: ${known}). Ask the DB Manager agent to define it first.`,
+        `Unknown custom field ${entity}.${key} (defined: ${known}). Ask ${definer} to define it first.`,
       );
     }
     if (value === null || value === "") {

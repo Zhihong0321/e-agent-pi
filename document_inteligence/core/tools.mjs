@@ -15,6 +15,8 @@ import { renderFormPage } from "./formpage.mjs";
 import { crmDashboard } from "./dashboard.mjs";
 import { readCalendar } from "./calendar.mjs";
 import * as expenses from "./expenses.mjs";
+import * as fde from "./fde.mjs";
+import * as reports from "./reports.mjs";
 import { claimsToCsv } from "./expense-report.mjs";
 import * as procurement from "./procurement.mjs";
 import { publishPoPdf } from "./procurement-report.mjs";
@@ -30,10 +32,11 @@ export const AGENTS = {
   "di-calendar": { name: "Calendar AI", short: "CA" },
   "di-expenses": { name: "Expenses Clerk", short: "EC" },
   "di-procurement": { name: "Procurement Clerk", short: "PC" },
+  "di-fde": { name: "Forward Deploy Engineer", short: "FD" },
 };
 
 // The read-only company tools every agent gets. The calendar and the expense clerk need none of the CRM ones.
-const ALL = Object.keys(AGENTS).filter((id) => !["di-calendar", "di-expenses", "di-procurement"].includes(id));
+const ALL = Object.keys(AGENTS).filter((id) => !["di-calendar", "di-expenses", "di-procurement", "di-fde"].includes(id));
 const RECORDS = "di-records";
 const DOCS = "di-documents";
 const TPL = "di-templates";
@@ -44,9 +47,55 @@ const INTAKE = "di-intake";
 const CALENDAR = "di-calendar";
 const EXPENSES = "di-expenses";
 const PROC = "di-procurement";
+const FDE = "di-fde";
 
-const identity = z.string().optional().describe("Identity code from the newest [Expense identity] line. Pass it on every call; never show it to the user.");
+const fdeIdentity = z.string().optional().describe("Identity code from the newest [Deploy identity] line. Pass it on every call; never show it to the user.");
+const fdeRule = z.object({
+  id: z.string().describe("Short slug such as mileage-map. The same id replaces that rule."),
+  when: z.object({ category: z.array(z.string()).max(10) }).optional().describe("Only claims in these category keys; omit to cover every category"),
+  check: z.enum(["custom_field", "attachment_kind", "amount_at_most"]),
+  arg: z.union([z.string(), z.number()]).describe("custom_field: expense_claim.<field key>; attachment_kind: the kind key; amount_at_most: a number"),
+  severity: z.enum(["block", "warn"]),
+  message: z.string().describe("Max 200 characters, shown to the claimant: say exactly what to provide"),
+});
+const fdeReport = z.object({
+  slug: z.string().describe("e.g. mileage-monthly"), title: z.string(),
+  where: z.object({
+    category: z.array(z.string()).optional(), status: z.array(z.enum(["submitted", "approved", "rejected"])).optional(),
+    department: z.array(z.string()).optional(), period: z.string().optional().describe("current | previous | YYYY-MM | all"),
+  }).optional(),
+  period_basis: z.enum(["submission", "expense_date"]).optional().describe("submission = the monthly claim cycle (default); expense_date = calendar month of the expense"),
+  group_by: z.array(z.enum(["employee", "department", "category", "month"])).max(2).optional(),
+  measures: z.array(z.object({
+    key: z.string(), label: z.string().optional(), fn: z.enum(["count", "sum", "avg", "max"]),
+    field: z.string().optional().describe("amount | tax_amount | custom.<number field key>; not needed for count"),
+  })).max(8).optional(),
+  include_members: z.boolean().optional().describe("With group_by [employee] only: list people with no claims too"),
+  detail: z.boolean().optional(), sort: z.object({ by: z.string(), dir: z.enum(["asc", "desc"]).optional() }).optional(),
+  audience: z.enum(["admin", "scoped"]).optional().describe("admin (default) = admins only; scoped = anyone sees only their own claims"),
+});
+const fdeChangeset = z.object({
+  target_agent: z.enum(["di-expenses"]),
+  summary: z.string().describe("One line for the change history"),
+  categories: z.array(z.object({ key: z.string(), label: z.string() })).max(10).optional().describe("Extra expense categories, e.g. {key: mileage, label: Mileage}"),
+  custom_fields: z.array(z.object({
+    key: z.string(), label: z.string(), type: z.enum(["text", "number", "date", "boolean", "select"]),
+    options: z.array(z.string()).optional().describe("select only"), help: z.string().optional(),
+  })).max(10).optional().describe("Extra values a claim can carry, e.g. {key: distance_km, label: Distance (km), type: number}"),
+  rules: z.array(fdeRule).max(20).optional(),
+  reports: z.array(fdeReport).max(10).optional().describe("Saved reports the Expenses Clerk can run, e.g. monthly mileage by employee"),
+  sop: z.object({ markdown: z.string().describe("Max 1200 characters: how the agent should handle these rules in conversation") }).optional(),
+  examples: z.array(z.object({
+    claim: z.object({
+      category: z.string(), amount: z.number(), custom: z.record(z.string(), z.any()).optional(),
+      attachment_kinds: z.array(z.string()).optional().describe("Kinds of the attachments on the example, e.g. [route_map]"),
+    }),
+    expect: z.enum(["ok", "blocked"]),
+  })).max(12).optional().describe("Example claims and whether the rules must accept or refuse them. Needed when you add rules."),
+  notes_for_engineering: z.array(z.string()).max(5).optional().describe("Anything asked for that cannot be done with this vocabulary"),
+});
 
+const identity =z.string().optional().describe("Identity code from the newest [Expense identity] line. Pass it on every call; never show it to the user.");
 const procIdentity = z.string().optional().describe("Identity code from the newest [Procurement identity] line. Pass it on every call; never show it to the user.");
 const poLine = z.object({
   description: z.string(), quantity: z.number(), unit_price: z.number(),
@@ -139,7 +188,7 @@ export const TOOLS = {
     input: {}, run: members.listCompanyMembers,
   },
   save_company_member: {
-    agents: [ONBOARD, DB], description: "Record or update one person who works for this company. Ask for name, position, department and a work email or phone when available; use id to update an existing member. Do not create a customer contact for company staff.",
+    agents: [ONBOARD, DB], description: "Compatibility alias for create_person/update_person. Record or update one internal company person; optionally provision a workspace login only through the unified person tools. Do not create a customer contact for company staff.",
     input: {
       id: z.string().uuid().optional(),
       name: z.string().optional(),
@@ -763,7 +812,7 @@ export const TOOLS = {
   get_expense_settings: {
     agents: [EXPENSES], identity: true,
     description:
-      "Call first in a conversation. Returns who you are acting for (name, role), the cut-off day, currency, expense categories and payment methods, and the current monthly submission with days left before its cut-off.",
+      "Call first in a conversation. Returns who you are acting for (name, role), the cut-off day, currency, expense categories and payment methods, the company policy (extra fields, attachment kinds and per-category requirements), and the current monthly submission with days left before its cut-off.",
     input: { identity },
     run: expenses.getExpenseSettings,
   },
@@ -788,13 +837,15 @@ export const TOOLS = {
       identity,
       expense_date: z.string().describe("Date on the receipt, YYYY-MM-DD"),
       merchant: z.string(),
-      category: z.string().describe(`One of: ${expenses.EXPENSE_CATEGORIES.map((c) => c.key).join(", ")}`),
+      category: z.string().describe("A category key from get_expense_settings.categories"),
       amount: z.number().describe("Total paid, as printed on the receipt, in the company currency"),
       currency: z.string().optional().describe("Only if the receipt is in another currency (refused: ask for the converted amount)"),
       tax_amount: z.number().optional().describe("SST/tax shown on the receipt, if any"),
       description: z.string().optional().describe("What it was for (e.g. client lunch with Acme)"),
       payment_method: z.enum(["cash", "personal_card", "company_card", "bank_transfer", "e_wallet", "other"]).optional(),
       receipts: z.array(z.string()).max(5).optional().describe("Attachment paths such as _inbox/1759000000-0-lunch.jpg"),
+      receipt_kinds: z.array(z.string()).max(5).optional().describe("Kind of each attachment, same order as receipts; default receipt. Company policy may ask for others (get_expense_settings.policy.attachment_kinds)"),
+      custom: z.record(z.string(), z.any()).optional().describe("Extra values company policy asks for (get_expense_settings.policy.fields), e.g. {distance_km: 12.4}"),
       no_receipt_reason: z.string().optional().describe("Only when there is truly no receipt"),
       claimant: z.string().optional().describe("Admin only: company person's name, email or id, to file for them"),
       allow_duplicate: z.boolean().optional(),
@@ -813,6 +864,8 @@ export const TOOLS = {
       payment_method: z.enum(["cash", "personal_card", "company_card", "bank_transfer", "e_wallet", "other"]).optional(),
       no_receipt_reason: z.string().optional(),
       add_receipts: z.array(z.string()).max(5).optional().describe("More attachment paths (_inbox/...)"),
+      add_receipt_kinds: z.array(z.string()).max(5).optional().describe("Kind of each added attachment, same order as add_receipts; default receipt"),
+      custom: z.record(z.string(), z.any()).optional().describe("Extra policy values to set or correct, e.g. {distance_km: 12.4}; merged into the claim's existing values"),
       allow_duplicate: z.boolean().optional(),
     },
     run: expenses.updateClaim,
@@ -881,6 +934,42 @@ export const TOOLS = {
       const { claims, name, ...rest } = result;
       return { rest: { ...rest, file_name: name }, path: `exports/${name}`, content: claimsToCsv(claims) };
     },
+  },
+  run_report: {
+    agents: [EXPENSES], identity: true,
+    description:
+      "Run one of the company's saved reports (e.g. monthly mileage by employee) and get a table. Without report it lists the reports you may run (also in get_expense_settings.reports). month=YYYY-MM overrides the report's own period. Reports meant for admins refuse everyone else. Show the returned markdown table as it is, then a one-line summary from the totals.",
+    input: { identity, report: z.string().optional().describe("Report slug"), month: z.string().optional().describe("YYYY-MM, or all") },
+    run: reports.runReport,
+  },
+  // -------------------------------------------------------------- Forward Deploy Engineer
+  // Admin-only, preview-then-apply. Every change is data (rules, fields, categories, one SOP block)
+  // and can be undone or reset to the defaults; see core/fde.mjs.
+  fde_describe: {
+    agents: [FDE], identity: true,
+    description:
+      "Call first. What the company's rules and reports can be made of (the closed vocabulary and limits), what is set now (categories, fields, rules, reports, the SOP block, which of them you created, the change history) and facts to check names against (departments, people).",
+    input: { identity: fdeIdentity, agent: z.enum(["di-expenses"]).optional().describe("The agent whose rules to change; default di-expenses") },
+    run: fde.describe,
+  },
+  fde_apply: {
+    agents: [FDE], identity: true,
+    description:
+      "Preview or apply a change. Without fingerprint it is a DRY RUN: nothing is written, you get the diff, how each example claim behaves, how many open claims would fail, and a fingerprint. Show the admin the diff and examples in plain words. Only after they say yes, call again with the SAME changeset and that fingerprint to apply. Include examples: at least one claim that must be accepted and one that must be refused.",
+    input: { identity: fdeIdentity, changeset: fdeChangeset, fingerprint: z.string().optional().describe("Omit for a preview. To apply: the fingerprint of the preview the admin approved") },
+    run: fde.apply,
+  },
+  fde_revert: {
+    agents: [FDE], identity: true,
+    description:
+      "Undo or reset what you created. scope=last undoes the latest change; scope=item removes one category, field, rule or the SOP block (kind + key); scope=all resets everything you created to the defaults. Same preview-then-apply as fde_apply: first without fingerprint, then with it after the admin says yes. Claims already filed are never changed.",
+    input: {
+      identity: fdeIdentity, scope: z.enum(["last", "item", "all"]),
+      kind: z.enum(["category", "field", "rule", "report", "sop"]).optional().describe("scope=item only"),
+      key: z.string().optional().describe("scope=item: the category or field key, the rule id or the report slug"),
+      fingerprint: z.string().optional().describe("Omit for a preview. To apply: the fingerprint of the preview the admin approved"),
+    },
+    run: fde.revert,
   },
   // -------------------------------------------------------------- Procurement Clerk
   // Same rules as the Expenses Clerk: tools act for the signed-in user; admin-only steps are

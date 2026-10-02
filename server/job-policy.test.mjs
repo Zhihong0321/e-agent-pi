@@ -32,6 +32,13 @@ test("malformed, blocked and rejected outcomes never count as successful work", 
   assert.throws(() => parseJobReply('{"pass":"true","summary":"fine"}', "checker"), /explicit pass/);
 });
 
+test("outcomes retain structured receipt evidence outside the summary", () => {
+  const evidence = { status: "done", summary: "Read seven slides", slides: [{ slide: 7, amount: "5.09", currency: "MYR", image_link: "/files/receipt.png" }] };
+  const outcome = parseJobReply(JSON.stringify(evidence));
+  assert.equal(outcome.result, evidence.summary);
+  assert.deepEqual(outcome.resultData, evidence);
+});
+
 test("retention uses exclusive midnight in Kuala Lumpur and rejects invalid dates", () => {
   assert.equal(cleanupCutoff("2026-09-30"), "2026-09-29T16:00:00.000Z");
   assert.throws(() => cleanupCutoff("2026-02-30"), /Invalid/);

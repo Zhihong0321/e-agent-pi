@@ -6,13 +6,22 @@ import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { escapeHtml as esc } from "../../server/report-html.mjs";
 import { EXPENSE_CATEGORIES, loadSubmissionData, setBatchReportPath, totalsOf } from "./expenses.mjs";
+import { DEFAULT_KIND, visibleCustom } from "./expense-policy.mjs";
 import { csvCell } from "./forms.mjs";
 import { addressLines, fmtDate, money } from "./templates.mjs";
 import { todayMY } from "./common.mjs";
 import { withContext } from "./db.mjs";
 
 const STATUS_LABEL = { submitted: "Pending", approved: "Approved", rejected: "Rejected" };
-const categoryLabel = (key) => (EXPENSE_CATEGORIES.find((c) => c.key === key)?.label ?? key).replace(/ \(.*\)$/, "");
+// A company's own categories aren't in the built-in list here: show their key as words ("mileage_km" -> "Mileage km").
+const humanise = (key) => String(key).replace(/_/g, " ").replace(/^./, (ch) => ch.toUpperCase());
+const categoryLabel = (key) => (EXPENSE_CATEGORIES.find((c) => c.key === key)?.label ?? humanise(key)).replace(/ \(.*\)$/, "");
+
+/** "distance km: 350.2 · toll: 12" for a claim's extra fields; empty when it has none. */
+const customParts = (claim) =>
+  Object.entries(visibleCustom(claim.custom))
+    .filter(([, value]) => value !== null && value !== "")
+    .map(([key, value]) => `${key.replace(/_/g, " ")}: ${value}`);
 const MAX_EMBED_BYTES = 15 * 1024 * 1024;
 
 // ---------------------------------------------------------------- shaping (pure)
@@ -29,18 +38,26 @@ export function summariseSubmission(claims) {
   const claimants = [...people.values()]
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((p) => ({ ...p, totals: totalsOf(p.claims) }));
-  const byCategory = EXPENSE_CATEGORIES.map((cat) => ({ key: cat.key, label: categoryLabel(cat.key), ...totalsOf(live.filter((c) => c.category === cat.key)) }))
+  // Built-in categories in their usual order, then any the company added (or removed but still uses).
+  const extra = [...new Set(live.map((c) => c.category))].filter((key) => !EXPENSE_CATEGORIES.some((cat) => cat.key === key)).sort();
+  const byCategory = [...EXPENSE_CATEGORIES.map((cat) => cat.key), ...extra]
+    .map((key) => ({ key, label: categoryLabel(key), ...totalsOf(live.filter((c) => c.category === key)) }))
     .filter((row) => row.count);
   return { totals: totalsOf(live), claimants, byCategory, withdrawn: claims.length - live.length };
 }
 
 export function claimsToCsv(claims) {
+  // The company's extra fields and non-receipt attachment kinds add columns on the end, only when present.
+  const customKeys = [...new Set(claims.flatMap((c) => Object.keys(visibleCustom(c.custom))))].sort();
+  const kinds = claims.some((c) => c.receipts.some((r) => (r.kind || DEFAULT_KIND) !== DEFAULT_KIND));
   const header = ["Claim no", "Claimant", "Email", "Expense date", "Filed on", "Merchant", "Category", "Description", "Payment method",
-    "Currency", "Amount", "Tax", "Status", "Reviewed by", "Review note", "Submission", "Receipts"];
+    "Currency", "Amount", "Tax", "Status", "Reviewed by", "Review note", "Submission", "Receipts", ...customKeys, ...(kinds ? ["Attachment kinds"] : [])];
   const rows = claims.map((c) => [
     c.number, c.claimant.name, c.claimant.email, c.expense_date, c.submitted_at.slice(0, 10), c.merchant, categoryLabel(c.category),
     c.description, c.payment_method, c.currency, c.amount.toFixed(2), c.tax_amount == null ? "" : c.tax_amount.toFixed(2),
     STATUS_LABEL[c.status] ?? c.status, c.reviewed_by, c.review_note, c.submission?.period_key, c.receipts.length,
+    ...customKeys.map((key) => visibleCustom(c.custom)[key] ?? ""),
+    ...(kinds ? [[...new Set(c.receipts.map((r) => r.kind || DEFAULT_KIND))].join("; ")] : []),
   ]);
   return `${[header, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n")}\r\n`;
 }
@@ -109,7 +126,7 @@ export function renderExpenseReportHtml(data, { images = new Map(), generatedOn 
     <table class="claims"><colgroup><col style="width:15%"><col style="width:12%"><col><col style="width:14%"><col style="width:10%"><col style="width:13%"><col style="width:10%"></colgroup><thead><tr><th>No.</th><th>Date</th><th>Merchant</th><th>Category</th><th>Payment</th><th>Status</th><th class="r">Amount</th></tr></thead><tbody>
     ${p.claims.map((c) => `<tr>
       <td>${esc(c.number)}</td><td>${esc(fmtDate(c.expense_date))}</td>
-      <td>${esc(c.merchant)}${c.description ? `<span class="grey"> · ${esc(c.description)}</span>` : ""}${c.review_note ? `<span class="note">${esc(c.review_note)}</span>` : ""}${c.no_receipt_reason ? `<span class="note">No receipt: ${esc(c.no_receipt_reason)}</span>` : ""}</td>
+      <td>${esc(c.merchant)}${c.description ? `<span class="grey"> · ${esc(c.description)}</span>` : ""}${customParts(c).length ? `<span class="note">${esc(customParts(c).join(" · "))}</span>` : ""}${c.review_note ? `<span class="note">${esc(c.review_note)}</span>` : ""}${c.no_receipt_reason ? `<span class="note">No receipt: ${esc(c.no_receipt_reason)}</span>` : ""}</td>
       <td>${esc(categoryLabel(c.category))}</td><td>${esc((c.payment_method || "").replace(/_/g, " "))}</td>
       <td><span class="st ${esc(c.status)}">${esc(STATUS_LABEL[c.status] ?? c.status)}</span></td><td class="r">${money(c.amount)}</td></tr>`).join("")}
     <tr class="sub"><td colspan="5">Subtotal · approved ${cur(p.totals.approved)}</td><td></td><td class="r">${money(p.totals.claimed)}</td></tr>
@@ -117,7 +134,7 @@ export function renderExpenseReportHtml(data, { images = new Map(), generatedOn 
 
   const attachments = claims.filter((c) => c.status !== "withdrawn" && c.receipts.length);
   const figures = attachments.flatMap((c) => c.receipts.map((r) => {
-    const cap = `${esc(c.number)} · ${esc(c.merchant)} · ${cur(c.amount)}`;
+    const cap = `${esc(c.number)} · ${esc(c.merchant)} · ${cur(c.amount)}${r.kind && r.kind !== DEFAULT_KIND ? ` · ${esc(humanise(r.kind).toLowerCase())}` : ""}`;
     const src = images.get(r.id);
     return src
       ? `<figure><img src="${src}" alt="${esc(r.name)}"/><figcaption>${cap}</figcaption></figure>`

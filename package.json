@@ -15,7 +15,8 @@
     "pi": "pi",
     "pi:version": "pi --version",
     "test": "npm run build",
-    "test:company-research": "node --test server/company-research/*.test.mjs"
+    "test:company-research": "node --test server/company-research/*.test.mjs",
+    "test:ads-research": "node --test server/ads-research/*.test.mjs"
   },
   "dependencies": {
     "@composio/core": "^0.18.1",

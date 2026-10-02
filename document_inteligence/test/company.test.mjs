@@ -14,6 +14,7 @@ test('company onboarding, concurrent updates, isolation and recoverable reset', 
   const db = pgliteAdapter(engine);
   try {
     await migrate(db);
+    assert.ok((await db.query("SELECT 1 FROM information_schema.columns WHERE table_schema='di' AND table_name='company_member' AND column_name='user_id'")).rows.length);
     const a = (await db.query("INSERT INTO di.tenant(name) VALUES ('My Company') RETURNING id")).rows[0].id;
     const b = (await db.query("INSERT INTO di.tenant(name) VALUES ('Other') RETURNING id")).rows[0].id;
     await seedTenant(db,a); await seedTenant(db,b);

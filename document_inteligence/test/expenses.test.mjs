@@ -348,7 +348,7 @@ test("expense claims", async (t) => {
     assert.ok(allowed("di-expenses", "list_company_members"));
     assert.equal(AGENTS["di-expenses"].name, "Expenses Clerk");
     const names = toolsFor("di-expenses").map((tool) => tool.name).sort();
-    assert.deepEqual(names, ["claim_report", "close_monthly_submission", "export_claims", "file_claim", "get_claim", "get_expense_settings", "list_claims", "list_company_members", "list_monthly_submissions", "review_claim", "set_expense_settings", "update_claim", "withdraw_claim"]);
+    assert.deepEqual(names, ["claim_report", "close_monthly_submission", "export_claims", "file_claim", "get_claim", "get_expense_settings", "list_claims", "list_company_members", "list_monthly_submissions", "review_claim", "run_report", "set_expense_settings", "update_claim", "withdraw_claim"]);
   });
 });
 

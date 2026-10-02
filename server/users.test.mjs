@@ -45,6 +45,18 @@ test('AI management refuses missing or fabricated admin authorization', async ()
   await assert.rejects(manageUsers('create_user', { username: 'new', password: '1234' }), /current admin login/);
   await assert.rejects(manageUsers('list_users', { admin_capability: 'invented' }), /current admin login/);
   assert.doesNotMatch(userManagementPrompt({}, { role: 'user' }), /admin_capability=/);
+  assert.match(userManagementPrompt({ headers: { cookie: 'demo_session=admin-token' } }, { role: 'admin', username: 'admin' }), /list_people/);
+});
+
+test('user bootstrap schema includes unified person profile fields without exposing password columns', async () => {
+  const calls = [];
+  const tx = { query: async (sql, params) => { calls.push({ sql, params }); }, release: () => {} };
+  await ensureUsers({ query: tx.query, connect: async () => tx });
+  const schema = calls[0].sql;
+  assert.match(schema, /email TEXT/);
+  assert.match(schema, /department TEXT/);
+  assert.match(schema, /company_tenant_id TEXT/);
+  assert.doesNotMatch(userManagementPrompt({ headers: { cookie: 'demo_session=admin-token' } }, { role: 'admin', username: 'admin' }), /password_hash/);
 });
 
 test('expense identity codes are random per turn, and only honoured while fresh', async () => {

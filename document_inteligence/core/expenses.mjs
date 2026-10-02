@@ -7,7 +7,10 @@
 //
 // Every handler takes (tx, args, { who, receipts, now }). `who` is the signed-in host user
 // ({ id, username, display_name, role, email? }); the host supplies it, never the model.
-import { DiError, addDays, isUuid, isoDate, nextNumber, round2, todayMY } from "./common.mjs";
+import { DiError, addDays, isUuid, isoDate, nextNumber, round2, todayMY, validateCustom } from "./common.mjs";
+import {
+  DEFAULT_KIND, availableReports, blockedMessage, checkClaim, issueMessages, loadPolicy, mergeCategories, policySummary, visibleCustom, withKinds,
+} from "./expense-policy.mjs";
 
 export const EXPENSE_CATEGORIES = [
   { key: "meals", label: "Meals" },
@@ -107,7 +110,7 @@ async function resolveClaimant(tx, who, claimant) {
 }
 
 /** SQL fragment limiting claims (alias c) to what `who` may see, plus an optional claimant filter. */
-function scopeClause(who, claimant, startAt) {
+export function scopeClause(who, claimant, startAt) {
   const parts = [];
   const values = [];
   const next = (v) => { values.push(v); return `$${startAt + values.length - 1}`; };
@@ -165,6 +168,7 @@ async function openBatchFor(tx, dateISO, settings) {
 }
 
 const filedOn = (ts) => todayMY(ts instanceof Date ? ts : new Date(ts));
+const CUSTOM_DEFINER = "an admin (the Forward Deploy Engineer agent adds claim fields)";
 
 function shapeBatch(b) {
   return {
@@ -190,7 +194,9 @@ export async function getExpenseSettings(tx, _args, { who, now = new Date() } = 
   return {
     me: { username: who.username, name: member?.name || who.display_name || who.username, role: who.role, company_person: member ? { id: member.id, name: member.name } : null },
     settings: { cutoff_day: settings.cutoff_day, currency: settings.currency, receipt_required: settings.receipt_required, max_claim_age_days: settings.max_claim_age_days },
-    categories: EXPENSE_CATEGORIES,
+    categories: mergeCategories(EXPENSE_CATEGORIES, settings),
+    policy: policySummary(await loadPolicy(tx)),
+    reports: availableReports(settings, who),
     payment_methods: PAYMENT_METHODS,
     max_receipts_per_claim: MAX_RECEIPTS,
     current_submission: {
@@ -263,13 +269,13 @@ export async function setExpenseSettings(tx, input = {}, { who, now = new Date()
 async function receiptsFor(tx, claimIds) {
   if (!claimIds.length) return new Map();
   const { rows } = await tx.query(
-    "SELECT id, claim_id, name, mime, bytes, sha256, file_path FROM di.expense_receipt WHERE claim_id = ANY($1::uuid[]) AND deleted_at IS NULL ORDER BY created_at, name",
+    "SELECT id, claim_id, name, mime, bytes, sha256, file_path, extracted FROM di.expense_receipt WHERE claim_id = ANY($1::uuid[]) AND deleted_at IS NULL ORDER BY created_at, name",
     [claimIds],
   );
   const map = new Map();
   for (const r of rows) {
     const list = map.get(r.claim_id) ?? [];
-    list.push({ id: r.id, name: r.name, mime: r.mime, bytes: Number(r.bytes), sha256: r.sha256, path: r.file_path });
+    list.push({ id: r.id, name: r.name, mime: r.mime, bytes: Number(r.bytes), sha256: r.sha256, path: r.file_path, kind: r.extracted?.kind || DEFAULT_KIND });
     map.set(r.claim_id, list);
   }
   return map;
@@ -282,7 +288,7 @@ function shapeClaim(row, receipts = [], batch = null) {
     expense_date: isoDate(row.expense_date), merchant: row.merchant, category: row.category,
     description: row.description ?? null, currency: row.currency, amount: num(row.amount),
     tax_amount: row.tax_amount == null ? null : num(row.tax_amount), payment_method: row.payment_method ?? null,
-    no_receipt_reason: row.no_receipt_reason ?? null,
+    no_receipt_reason: row.no_receipt_reason ?? null, custom: visibleCustom(row.custom),
     submitted_at: new Date(row.submitted_at).toISOString(),
     reviewed_by: row.reviewed_by ?? null, reviewed_at: row.reviewed_at ? new Date(row.reviewed_at).toISOString() : null, review_note: row.review_note ?? null,
     submission: batch ? { period_key: batch.period_key, label: batchLabel(batch), status: batch.status } : null,
@@ -316,10 +322,10 @@ function cleanText(value, label, max, { required = false } = {}) {
   return s;
 }
 
-function normaliseCategory(value) {
+function normaliseCategory(value, categories = EXPENSE_CATEGORIES) {
   const q = String(value || "").trim().toLowerCase();
-  const hit = EXPENSE_CATEGORIES.find((c) => c.key === q || c.label.toLowerCase() === q);
-  if (!hit) throw new DiError(`category must be one of: ${EXPENSE_CATEGORIES.map((c) => c.key).join(", ")}`);
+  const hit = categories.find((c) => c.key === q || c.label.toLowerCase() === q);
+  if (!hit) throw new DiError(`category must be one of: ${categories.map((c) => c.key).join(", ")}`);
   return hit.key;
 }
 
@@ -339,7 +345,7 @@ function checkFields(input, settings, today, { partial = false } = {}) {
     out.expense_date = input.expense_date;
   }
   if (!partial || has("merchant")) out.merchant = cleanText(input.merchant, "merchant", 120, { required: true });
-  if (!partial || has("category")) out.category = normaliseCategory(input.category);
+  if (!partial || has("category")) out.category = normaliseCategory(input.category, mergeCategories(EXPENSE_CATEGORIES, settings));
   if (has("description")) out.description = cleanText(input.description, "description", 500);
   if (!partial || has("amount")) out.amount = cleanAmount(input.amount);
   if (has("tax_amount")) {
@@ -360,11 +366,13 @@ function checkFields(input, settings, today, { partial = false } = {}) {
 }
 
 async function findDuplicates(tx, { receipts, claimant, fields, excludeClaimId = null }) {
-  const sha = receipts.map((r) => r.sha256);
+  // Only real receipts count: a route screenshot or other supporting file may legitimately be reused.
+  const sha = receipts.filter((r) => (r.kind || DEFAULT_KIND) === DEFAULT_KIND).map((r) => r.sha256);
   if (sha.length) {
     const hit = (await tx.query(
       `SELECT c.number, c.claimant_name FROM di.expense_receipt r JOIN di.expense_claim c ON c.id = r.claim_id
-        WHERE r.sha256 = ANY($1::text[]) AND r.deleted_at IS NULL AND c.deleted_at IS NULL AND c.status <> 'withdrawn'
+        WHERE r.sha256 = ANY($1::text[]) AND coalesce(r.extracted->>'kind', '${DEFAULT_KIND}') = '${DEFAULT_KIND}'
+          AND r.deleted_at IS NULL AND c.deleted_at IS NULL AND c.status <> 'withdrawn'
           AND ($2::uuid IS NULL OR c.id <> $2::uuid) LIMIT 1`,
       [sha, excludeClaimId],
     )).rows[0];
@@ -387,12 +395,17 @@ async function insertReceipts(tx, claimId, receipts) {
   for (const r of receipts) {
     await tx.query(
       `INSERT INTO di.expense_receipt (claim_id, file_path, name, mime, bytes, sha256, extracted) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [claimId, r.path, r.name, r.mime, r.bytes, r.sha256, JSON.stringify(r.extracted ?? {})],
+      [claimId, r.path, r.name, r.mime, r.bytes, r.sha256, JSON.stringify({ ...(r.extracted ?? {}), ...(r.kind && r.kind !== DEFAULT_KIND ? { kind: r.kind } : {}) })],
     );
   }
 }
 
-const uniqueBySha = (receipts) => [...new Map(receipts.map((r) => [r.sha256, r])).values()];
+/** One copy per file; when the same file is listed twice the first entry (and its kind) wins. */
+const uniqueBySha = (receipts) => {
+  const seen = new Map();
+  for (const r of receipts) if (!seen.has(r.sha256)) seen.set(r.sha256, r);
+  return [...seen.values()];
+};
 
 // ---------------------------------------------------------------- claims
 
@@ -403,7 +416,8 @@ export async function fileClaim(tx, input = {}, { who, receipts = [], now = new 
   const fields = checkFields(input, settings, today);
   // `preset` is host-only (the /demo seed): tools never pass it, so a model can't name an arbitrary claimant.
   const claimant = preset ?? await resolveClaimant(tx, who, input.claimant);
-  const files = uniqueBySha(receipts);
+  const policy = await loadPolicy(tx);
+  const files = uniqueBySha(withKinds(policy, receipts, input.receipt_kinds));
   const warnings = [];
   if (!files.length) {
     if (settings.receipt_required && !fields.no_receipt_reason) {
@@ -414,6 +428,13 @@ export async function fileClaim(tx, input = {}, { who, receipts = [], now = new 
   if (files.length < receipts.length) warnings.push("The same receipt file was attached more than once; kept one copy");
   if (daysBetween(fields.expense_date, today) > settings.max_claim_age_days) {
     warnings.push(`Expense is ${daysBetween(fields.expense_date, today)} days old; the policy window is ${settings.max_claim_age_days} days, so a reviewer may reject it`);
+  }
+  // The company's own rules (extra fields, required attachments, limits). `preset` is the host-only demo seed.
+  const custom = preset ? (input.custom ?? {}) : await validateCustom(tx, "expense_claim", input.custom, { creating: true, definer: CUSTOM_DEFINER });
+  if (!preset) {
+    const verdict = checkClaim(policy, { category: fields.category, amount: fields.amount, custom }, files);
+    if (verdict.blockers.length) throw new DiError(blockedMessage(verdict));
+    warnings.push(...verdict.warnings.map((w) => w.message));
   }
   const duplicate = await findDuplicates(tx, { receipts: files, claimant, fields });
   if (duplicate && !input.allow_duplicate) {
@@ -430,7 +451,7 @@ export async function fileClaim(tx, input = {}, { who, receipts = [], now = new 
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
     [number, batch.id, claimant.user_id, claimant.member_id, claimant.name, claimant.email, fields.expense_date, fields.merchant, fields.category,
       fields.description ?? null, settings.currency, fields.amount, fields.tax_amount ?? null, fields.payment_method ?? null,
-      fields.no_receipt_reason ?? null, now.toISOString(), JSON.stringify(input.custom ?? {})],
+      fields.no_receipt_reason ?? null, now.toISOString(), JSON.stringify(custom)],
   )).rows[0];
   await insertReceipts(tx, row.id, files);
   const stored = (await receiptsFor(tx, [row.id])).get(row.id) ?? [];
@@ -448,32 +469,45 @@ export async function updateClaim(tx, input = {}, { who, receipts = [], now = ne
   if (batch?.status === "closed") throw new DiError(`${row.number} is in the closed ${batchLabel(batch)} and can't change.`);
   if (row.status !== "submitted") throw new DiError(`${row.number} is ${row.status}; only a pending (submitted) claim can be edited. A reviewer can reject it first, or withdraw it and file a new one.`);
   const settings = await getSettings(tx);
+  const policy = await loadPolicy(tx);
   const fields = checkFields(input, settings, todayMY(now), { partial: true });
-  const files = uniqueBySha(receipts);
+  const files = uniqueBySha(withKinds(policy, receipts, input.add_receipt_kinds, "add_receipt_kinds"));
   const effectiveTax = fields.tax_amount ?? (row.tax_amount == null ? null : num(row.tax_amount));
   if (effectiveTax != null && effectiveTax > (fields.amount ?? num(row.amount))) throw new DiError("tax_amount cannot exceed the claim amount");
   const merged = { expense_date: fields.expense_date ?? isoDate(row.expense_date), amount: fields.amount ?? num(row.amount), merchant: fields.merchant ?? row.merchant };
   const claimant = { user_id: row.claimant_user_id, name: row.claimant_name };
   const duplicate = await findDuplicates(tx, { receipts: files, claimant, fields: merged, excludeClaimId: row.id });
   if (duplicate && !input.allow_duplicate) throw new DiError(`Possible duplicate: ${duplicate}. Send allow_duplicate=true only if the user confirms.`);
+  // Extra field values merge into what the claim already has; the company rules judge the claim as it will be.
+  let custom = row.custom ?? {};
+  if (input.custom !== undefined) {
+    custom = { ...custom, ...(await validateCustom(tx, "expense_claim", input.custom, { definer: CUSTOM_DEFINER })) };
+    fields.custom = JSON.stringify(custom);
+  }
+  const existing = (await receiptsFor(tx, [row.id])).get(row.id) ?? [];
+  if (existing.length + files.length > MAX_RECEIPTS) throw new DiError(`A claim can hold at most ${MAX_RECEIPTS} receipts`);
+  const verdict = checkClaim(policy, { category: fields.category ?? row.category, amount: fields.amount ?? num(row.amount), custom }, [...existing, ...files]);
+  if (verdict.blockers.length) throw new DiError(blockedMessage(verdict));
   const cols = Object.keys(fields);
-  if (!cols.length && !files.length) throw new DiError("Nothing to change: give the fields to correct or add_receipts");
+  if (!cols.length && !files.length) throw new DiError("Nothing to change: give the fields to correct, custom values or add_receipts");
   let updated = row;
   if (cols.length) {
     updated = (await tx.query(`UPDATE di.expense_claim SET ${cols.map((c, i) => `${c} = $${i + 1}`).join(", ")} WHERE id = $${cols.length + 1} RETURNING *`, [...cols.map((c) => fields[c]), row.id])).rows[0];
   }
-  const existing = (await receiptsFor(tx, [row.id])).get(row.id) ?? [];
-  if (existing.length + files.length > MAX_RECEIPTS) throw new DiError(`A claim can hold at most ${MAX_RECEIPTS} receipts`);
   await insertReceipts(tx, row.id, files);
   const stored = (await receiptsFor(tx, [row.id])).get(row.id) ?? [];
-  return { claim: shapeClaim(updated, stored, batch), changed: cols, receipts_added: files.length, ...(duplicate ? { warnings: [`Saved despite a possible duplicate: ${duplicate}`] } : {}) };
+  const warnings = [...verdict.warnings.map((w) => w.message), ...(duplicate ? [`Saved despite a possible duplicate: ${duplicate}`] : [])];
+  return { claim: shapeClaim(updated, stored, batch), changed: cols, receipts_added: files.length, ...(warnings.length ? { warnings } : {}) };
 }
 
 export async function getClaim(tx, { claim } = {}, { who } = {}) {
   requireWho(who);
   const { row, batch } = await findClaim(tx, claim, who);
   const receipts = (await receiptsFor(tx, [row.id])).get(row.id) ?? [];
-  return { claim: shapeClaim(row, receipts, batch) };
+  const claimShape = shapeClaim(row, receipts, batch);
+  // Read-time check against today's rules: claims filed before a rule existed are flagged, never blocked.
+  const verdict = checkClaim(await loadPolicy(tx), { category: claimShape.category, amount: claimShape.amount, custom: claimShape.custom }, receipts);
+  return { claim: { ...claimShape, policy_issues: issueMessages(verdict) } };
 }
 
 /** Totals for a list of shaped claims; withdrawn claims never count. */
@@ -531,7 +565,18 @@ export async function listClaims(tx, input = {}, { who } = {}) {
     if (!["submitted", "approved", "rejected", "withdrawn"].includes(status)) throw new DiError("status must be submitted, approved, rejected or withdrawn");
     conds.push(`c.status = ${arg(status)}`);
   }
-  if (category) conds.push(`c.category = ${arg(normaliseCategory(category))}`);
+  if (category) {
+    let key;
+    try {
+      key = normaliseCategory(category, mergeCategories(EXPENSE_CATEGORIES, await getSettings(tx)));
+    } catch (error) {
+      // A category the company later removed can still be filtered on while claims use it.
+      const used = String(category).trim().toLowerCase();
+      if (!(await tx.query("SELECT 1 FROM di.expense_claim WHERE category = $1 AND deleted_at IS NULL LIMIT 1", [used])).rows[0]) throw error;
+      key = used;
+    }
+    conds.push(`c.category = ${arg(key)}`);
+  }
   if (query) {
     const p = arg(`%${String(query).toLowerCase().replace(/[\\%_]/g, "\\$&")}%`);
     conds.push(`(lower(c.merchant) LIKE ${p} OR lower(coalesce(c.description, '')) LIKE ${p} OR lower(c.number) LIKE ${p})`);
@@ -673,7 +718,7 @@ export async function setBatchReportPath(tx, batchId, reportPath) {
 }
 
 /** The oldest submission still open: what the company is collecting right now. */
-async function defaultMonth(tx) {
+export async function defaultMonth(tx) {
   const open = (await tx.query("SELECT period_key FROM di.expense_batch WHERE status = 'open' AND deleted_at IS NULL ORDER BY cutoff_date LIMIT 1")).rows[0];
   if (!open) throw new DiError("There is no open monthly submission yet (no claims filed); give month (YYYY-MM)");
   return open.period_key;

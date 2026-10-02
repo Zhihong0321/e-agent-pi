@@ -1,4 +1,4 @@
-import { requestUser, loginUser, logoutUser, sessionCookie as userSessionCookie, userManagementPrompt, expenseIdentityPrompt, procurementIdentityPrompt, manageUsers } from './users.mjs';
+import { requestUser, loginUser, logoutUser, sessionCookie as userSessionCookie, userManagementPrompt, expenseIdentityPrompt, procurementIdentityPrompt, fdeIdentityPrompt, manageUsers, managePeople } from './users.mjs';
 import { createHash, randomBytes } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
@@ -48,6 +48,7 @@ import {
   getAgentSop,
   listAgentSops,
   saveAgentSop,
+  sopFingerprint,
 } from "./sops.mjs";
 import {
   getGitStatus,
@@ -70,6 +71,7 @@ import { hasApiAuth, hasSession, hasStockAuth, sessionCookie, sessionToken, chec
 import { searchAuthorized, searchWeb, testJinaKeys } from "./web-search.mjs";
 import { loadSecrets, publicSettings, rememberSecret, saveSecrets, secret, secretFlags } from "./secrets.mjs";
 import { listActivity, recordActivity } from "./activity.mjs";
+import { usageReport, recordApiUsage } from "./usage.mjs";
 import {
   adjustStockItem,
   ensureStockSchema,
@@ -150,6 +152,7 @@ import { ensureGoogleAdsMcp } from "./google-ads-mcp.mjs";
 import { ensureOmMcp } from "./om-mcp.mjs";
 import { ensureWebSearchMcp } from "./web-search-mcp.mjs";
 import { ensureCompanyResearch, handleCompanyResearch, stopCompanyResearch } from "./company-research/host.mjs";
+import { ensureAdsResearch, handleAdsResearch, stopAdsResearch } from "./ads-research/host.mjs";
 import { ensureMediaAi, handleMediaAi } from "./media-ai/host.mjs";
 import { ensureComposioMcp } from "./composio.mjs";
 import { ensureOrchestratorMcp } from "./orchestrator-mcp.mjs";
@@ -372,7 +375,7 @@ function wantsAuth(pathname, method = "GET") {
   if (pathname === "/api/sops" || pathname.startsWith("/api/sops/") || pathname.match(/^\/api\/agents\/[^/]+\/sop(?:\/status)?$/)) return true;
   if (pathname.startsWith("/api/demo/")) return false;
   if (pathname === "/api/settings" || pathname.startsWith("/api/settings/")) return true;
-  if (pathname === "/api/activity") return true;
+  if (pathname === "/api/activity" || pathname === "/api/usage") return true;
   if (pathname === "/api/manage" || pathname.startsWith("/api/manage/")) return true;
   if (pathname === "/api/sites" || pathname.startsWith("/api/sites/")) return true;
   if (pathname === "/api/browser" || pathname.startsWith("/api/browser/")) return true;
@@ -546,12 +549,13 @@ async function ensureCatalog() {
 async function agentBundleKey(agent, modelId) {
   const role = createHash("sha1").update(agent.rolePrompt || "").digest("hex").slice(0, 12);
   const pack = await contextPackFingerprint(agent);
+  const sop = dbReady() ? await sopFingerprint(agent.id).catch(() => "") : "";
   const skills = (agent.skillIds || []).slice().sort().join(",");
   const mcp = (agent.mcpIds || []).slice().sort().join(",");
   const imagen = imagenConfigured() ? `${secret("imagen_model") || "default"}:${secret("imagen_api") || "auto"}` : "off";
   const profile = agent.toolProfile || "coding";
   const thinking = agent.thinkingLevel || "";
-  return `${agent.id}:${skills}:${mcp}:${role}:${pack}:${modelId || "none"}:${imagen}:${profile}:${thinking}`;
+  return `${agent.id}:${skills}:${mcp}:${role}:${pack}:${sop}:${modelId || "none"}:${imagen}:${profile}:${thinking}`;
 }
 
 async function defaultChatAgentId() {
@@ -1843,6 +1847,13 @@ async function bootServices() {
     logEvent("error", `company research init failed: ${sanitizeError(error)}`);
   }
 
+  boot.step = "ads-research";
+  try {
+    if (dbReady()) await ensureAdsResearch({ log: logEvent });
+  } catch (error) {
+    logEvent("error", `ads research init failed: ${sanitizeError(error)}`);
+  }
+
   boot.step = "composio-mcp";
   try {
     if (dbReady()) {
@@ -2114,7 +2125,7 @@ const server = createServer(async (req, res) => {
       }
       const body = JSON.parse((await readBody(req)) || "{}");
       try {
-        json(res, 200, { result: await demoAction(body) });
+        json(res, 200, { result: await demoAction(body, user.id) });
       } catch (error) {
         json(res, error?.details?.code === "conflict" ? 409 : 400, { error: error instanceof Error ? error.message : String(error) });
       }
@@ -2126,6 +2137,7 @@ const server = createServer(async (req, res) => {
       workspaceFor: async (id) => { const agent = await getAgent(id); return agent ? agentWorkspace(agent) : null; },
     })) return;
     if (await handleCompanyResearch(req, res, url, { authorized, readBody })) return;
+    if (await handleAdsResearch(req, res, url, { authorized, readBody })) return;
     if (await handleMediaAi(req, res, url, { authorized })) return;
     if (req.method === "POST" && pathname === "/api/internal/orchestrator") {
       if (!orchestratorAuthorized(req)) {
@@ -2137,8 +2149,10 @@ const server = createServer(async (req, res) => {
         return;
       }
       const body = JSON.parse((await readBody(req)) || "{}");
-      const outcome = ["list_users", "create_user", "update_user"].includes(body.action)
-        ? await manageUsers(body.action, body).then(result => ({ ok: true, result: JSON.stringify(result) })).catch(error => ({ ok: false, error: error.message }))
+      const outcome = ["list_users", "create_user", "update_user", "list_people", "create_person", "update_person"].includes(body.action)
+        ? await (['list_people', 'create_person', 'update_person'].includes(body.action)
+          ? managePeople(body.action, body, { tenantId: companyHostContext().tenantId }).then(result => ({ ok: true, result: JSON.stringify(result) })).catch(error => ({ ok: false, error: error.message }))
+          : manageUsers(body.action, body, { tenantId: companyHostContext().tenantId }).then(result => ({ ok: true, result: JSON.stringify(result) })).catch(error => ({ ok: false, error: error.message })))
         : await handleOrchestratorAction(body);
       json(res, outcome.ok ? 200 : 400, outcome);
       return;
@@ -2454,6 +2468,23 @@ const server = createServer(async (req, res) => {
       }
       json(res, 404, { error: "Not found" });
       return;
+    }
+
+    if (req.method === "GET" && pathname === "/api/usage") {
+      try {
+        const requestedUser = url.searchParams.get("userId") || undefined;
+        const userId = user?.role === "admin" ? requestedUser : (user?.id || undefined);
+        return json(res, 200, await usageReport({
+          since: url.searchParams.get("since") || undefined,
+          until: url.searchParams.get("until") || undefined,
+          service: url.searchParams.get("service") || undefined,
+          provider: url.searchParams.get("provider") || undefined,
+          modelId: url.searchParams.get("modelId") || undefined,
+          userId,
+        }));
+      } catch (error) {
+        return json(res, 400, { error: sanitizeError(error) });
+      }
     }
 
     if (req.method === "GET" && pathname === "/api/activity") {
@@ -3115,7 +3146,8 @@ const server = createServer(async (req, res) => {
         : trimmed;
       const chatPrompt = await enrichRestartPrompt(prompt, profile) + (user ? userManagementPrompt(req, user) : "")
         + (user && profile.id === "di-expenses" ? expenseIdentityPrompt(req, user) : "")
-        + (user && profile.id === "di-procurement" ? procurementIdentityPrompt(req, user) : "");
+        + (user && profile.id === "di-procurement" ? procurementIdentityPrompt(req, user) : "")
+        + (user && profile.id === "di-fde" ? fdeIdentityPrompt(req, user) : "");
       const storedUser =
         [trimmed, attachmentChatMarkup(packed.files)].filter(Boolean).join("\n\n") ||
         (packed.files.length ? `Attached: ${attachmentSummary(packed.files)}` : prompt);
@@ -3356,6 +3388,7 @@ async function shutdown() {
   logEvent("info", turnsInFlight ? `shutdown during ${turnsInFlight} in-flight turn(s)` : "shutdown");
   stopSampler();
   await stopCompanyResearch().catch(() => {});
+  await stopAdsResearch().catch(() => {});
   await Promise.allSettled([...piPool.values()].map((slot) => stopSlot(slot)));
   await stopWhatsappSidecar().catch(() => {});
   await closeAllSessions().catch(() => {});

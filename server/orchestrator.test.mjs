@@ -30,6 +30,18 @@ test("a dependent profile save receives the observed logo and source page", () =
   assert.doesNotMatch(message, /Unrelated secret|Unverified/);
 });
 
+test("dependent tasks receive complete structured evidence and published files", () => {
+  const evidence = { status: "done", summary: "Extracted receipts", notes: "x".repeat(RESULT_CHARS + 1), slides: [{ slide: 7, image_link: "/files/slide-07.png", amount: "5.09" }] };
+  const files = [{ url: "/files/slide-07.png" }];
+  const message = specialistPrompt({ prompt: "Verify receipts", dependsOn: ["t1"] }, [
+    { id: "t1", status: "done", result: evidence.summary, resultData: evidence, shared_files: files },
+    { id: "pending", status: "pending", resultData: { secret: "Unverified" } },
+  ]);
+  assert.ok(message.includes(JSON.stringify(evidence)));
+  assert.ok(message.includes(`Published files: ${JSON.stringify(files)}`));
+  assert.doesNotMatch(message, /truncated|Unverified/);
+});
+
 test("capabilityCard projects skills and MCP without secrets", () => {
   const card = capabilityCard({
     id: "sales",

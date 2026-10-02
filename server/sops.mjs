@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { getPool } from "./db.mjs";
@@ -68,6 +68,16 @@ export async function getApprovedAgentSop(agentId) {
   return getAgentSop(agentId);
 }
 
+/**
+ * Cheap change marker for the runtime bundle key: the SOP is part of an agent's prompt, so a save
+ * from any path (UI, catalog CLI, FDE) must start a fresh runtime. Empty string when no SOP.
+ */
+export async function sopFingerprint(agentId) {
+  const result = await getPool().query(`SELECT updated_at FROM agent_sops WHERE agent_id = $1`, [agentId]);
+  const at = result.rows[0]?.updated_at;
+  return at ? new Date(at).toISOString() : "";
+}
+
 export async function listAgentSops() {
   const result = await getPool().query(
     `SELECT ${SOP_SELECT} FROM agent_sops s JOIN agents a ON a.id = s.agent_id ORDER BY a.name`,
@@ -88,6 +98,14 @@ export async function saveAgentSop(agentId, content, updatedBy = null) {
   const sop = await getAgentSop(agentId);
   await writeAgentSopFile(agentId, sop.content);
   return sop;
+}
+
+/** Remove an agent's SOP (back to "no custom SOP") and its mirrored workspace file. */
+export async function clearAgentSop(agentId, workspace = null) {
+  const result = await getPool().query(`DELETE FROM agent_sops WHERE agent_id = $1 RETURNING id`, [agentId]);
+  const dir = workspace || agentWorkspace({ id: agentId, slug: agentId });
+  await rm(path.join(dir, "SOP.md"), { force: true });
+  return result.rows.length > 0;
 }
 
 export async function writeAgentSopFile(agentId, content, workspace = null) {

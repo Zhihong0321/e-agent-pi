@@ -67,7 +67,7 @@ export async function runTool(deps, { agent, tool, args = {} }) {
   const receipts = spec.receipts
     ? await loadReceipts(callArgs[spec.receipts] ?? [], { workspace: deps.workspace?.(agent), publish: deps.workspace ? (rel) => publish(agent, rel) : null })
     : [];
-  let result = await withContext(deps.db, ctx, (tx) => spec.run(tx, callArgs, { who, receipts, now: deps.now ? deps.now() : new Date() }));
+  let result = await withContext(deps.db, ctx, (tx) => spec.run(tx, callArgs, { who, receipts, sop: deps.sop, now: deps.now ? deps.now() : new Date() }));
   if (receipts.length && result && typeof result === "object") {
     result = { ...result, shared_files: [...(result.shared_files ?? []), ...receipts.map((r) => r.ref)] };
   }

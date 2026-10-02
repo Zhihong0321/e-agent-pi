@@ -16,6 +16,14 @@ const pool = {
       return { rows: row ? [{ ...row, agentSlug: params[0], agentName: params[0] }] : [] };
     }
     if (sql.includes("ORDER BY a.name")) return { rows: [...rows.values()] };
+    if (sql.includes("SELECT updated_at FROM agent_sops")) {
+      const row = rows.get(params[0]);
+      return { rows: row ? [{ updated_at: row.updatedAt }] : [] };
+    }
+    if (sql.includes("DELETE FROM agent_sops")) {
+      const had = rows.delete(params[0]);
+      return { rows: had ? [{ id: "x" }] : [] };
+    }
     return { rows: [] };
   },
 };
@@ -40,7 +48,28 @@ test("saving an SOP upserts one agent row and writes its SOP file", async () => 
   assert.equal((await sops.getAgentSop("di-documents")).content, sop.content);
 });
 
+test("fingerprint changes on every save so a warm runtime is replaced", async () => {
+  rows.clear();
+  assert.equal(await sops.sopFingerprint("di-documents"), "");
+  await sops.saveAgentSop("di-documents", "# One");
+  const first = await sops.sopFingerprint("di-documents");
+  assert.ok(first);
+  rows.get("di-documents").updatedAt = new Date(Date.now() + 5000).toISOString();
+  assert.notEqual(await sops.sopFingerprint("di-documents"), first);
+});
+
+test("clearing an SOP removes the row and reports whether one existed", async () => {
+  rows.clear();
+  await sops.saveAgentSop("di-documents", "# One");
+  assert.equal(await sops.clearAgentSop("di-documents", "/tmp/di-documents"), true);
+  assert.equal(await sops.getAgentSop("di-documents"), null);
+  assert.equal(await sops.sopFingerprint("di-documents"), "");
+  assert.equal(await sops.clearAgentSop("di-documents", "/tmp/di-documents"), false);
+});
+
 test("approved lookup is now the same simple current SOP lookup", async () => {
+  rows.clear();
+  await sops.saveAgentSop("di-documents", "# Email SOP\nOnly internal transactional email.");
   assert.equal((await sops.getApprovedAgentSop("di-documents")).content, "# Email SOP\nOnly internal transactional email.");
   assert.equal(await sops.getAgentSop("missing"), null);
 });

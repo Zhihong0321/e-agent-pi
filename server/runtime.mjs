@@ -150,6 +150,9 @@ export async function materializeAgentRuntime(agent, mcpServers, modelsJson, { m
   if (agent.id === "company-deep-research" || agent.slug === "company-deep-research") {
     mcpServers = mcpServers.filter(server => server.slug === "company-research");
   }
+  if (agent.id === "ads-research" || agent.slug === "ads-research") {
+    mcpServers = mcpServers.filter(server => server.slug === "ads-research");
+  }
   const dir = path.join(RUNTIME_DIR, runtimeKey || agent.id);
   await mkdir(dir, { recursive: true });
   const roleText = await buildRoleText(agent, { modelId });
@@ -211,14 +214,16 @@ export function buildPiArgs(opts) {
     "--no-prompt-templates",
   ];
   const research = opts.agent.id === "company-deep-research" || opts.agent.slug === "company-deep-research";
-  const profile = research ? TOOL_PROFILES.assistant : TOOL_PROFILES[normalizeToolProfile(opts.toolProfile)] || TOOL_PROFILES[DEFAULT_TOOL_PROFILE];
+  const adsResearch = opts.agent.id === "ads-research" || opts.agent.slug === "ads-research";
+  const restricted = research || adsResearch;
+  const profile = restricted ? TOOL_PROFILES.assistant : TOOL_PROFILES[normalizeToolProfile(opts.toolProfile)] || TOOL_PROFILES[DEFAULT_TOOL_PROFILE];
   if (profile.systemPrompt) args.push("--system-prompt", profile.systemPrompt);
   if (profile.tools) args.push("--tools", profile.tools.join(","));
   if (profile.noBuiltinTools) args.push("--no-builtin-tools");
   const thinkingLevel = normalizeThinkingLevel(opts.thinkingLevel);
   if (thinkingLevel) args.push("--thinking", thinkingLevel);
   const skills = [...(opts.skills || [])];
-  if (research) skills.length = 0;
+  if (restricted) skills.length = 0;
   if (!research && imagenConfigured()) skills.push({ dirPath: IMAGEN_SKILL_DIR });
   for (const skill of skills) {
     if (skill.dirPath) args.push("--skill", skill.dirPath);

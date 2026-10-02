@@ -55,15 +55,21 @@ const taskShape = z.object({
 
 const server = new McpServer({ name: "orchestrator-dispatch", version: "1.0.0" });
 
-for (const name of ["list_users", "create_user", "update_user"]) {
+for (const name of ["list_users", "create_user", "update_user", "list_people", "create_person", "update_person"]) {
   const inputSchema = { admin_capability: z.string().describe("Current host-provided admin authorization from this turn") };
-  if (name !== "list_users") Object.assign(inputSchema, {
+  if (name === "create_user" || name === "update_user" || name === "create_person" || name === "update_person") Object.assign(inputSchema, {
     username: name === "create_user" ? z.string() : z.string().optional(),
     password: name === "create_user" ? z.string() : z.string().optional(),
     display_name: z.string().optional(), role: z.enum(["admin", "user"]).optional(), tier: z.string().optional(),
+    name: z.string().optional(), position: z.string().optional(), department: z.string().optional(), email: z.string().optional(), phone: z.string().optional(), location: z.string().optional(), notes: z.string().optional(),
+    login_enabled: z.boolean().optional(), active: z.boolean().optional(), user_id: z.string().optional(), person_id: z.string().optional(), member_id: z.string().optional(), id: z.string().optional(),
   });
-  if (name === "update_user") Object.assign(inputSchema, { user: z.string().describe("User id or current username"), active: z.boolean().optional() });
-  server.registerTool(name, { description: "Admin account management: list accounts, create an account, or update username, display name, password, role, tier and active status. Requires current admin login. Tier is metadata only. Never expose authorization or passwords in replies.", inputSchema }, async args => {
+  if (name === "update_user") Object.assign(inputSchema, { user: z.string().describe("User id or current username") });
+  if (name === "update_person") Object.assign(inputSchema, { user: z.string().optional() });
+  const description = name.includes("person")
+    ? "Manage an internal company person and optional workspace login in one operation. Contact-only people are allowed; enabling login requires username and password and admin authorization. Never expose passwords or authorization. External CRM contacts remain separate."
+    : "Admin account management: list accounts, create an account, or update username, display name, password, role, tier and active status. Requires current admin login. Tier is metadata only. Never expose authorization or passwords in replies.";
+  server.registerTool(name, { description, inputSchema }, async args => {
     try { return reply(await callHost(name, args)); } catch (error) { return fail(error); }
   });
 }

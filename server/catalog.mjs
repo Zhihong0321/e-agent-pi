@@ -8,6 +8,8 @@ import {
   AFA_ROLE_FILE,
   MEDIA_AI_AGENT_ID,
   MEDIA_AI_ROLE_FILE,
+  ADS_RESEARCH_AGENT_ID,
+  ADS_RESEARCH_ROLE_FILE,
   BUNDLED_SKILLS,
   COMPOSIO_AGENT_ID,
   COMPOSIO_ROLE_FILE,
@@ -1094,6 +1096,21 @@ You are bound to **Open Design** — the open-source local-first design tool at 
     thinkingLevel: "low",
   });
   await mkdir(agentWorkspace({ id: MEDIA_AI_AGENT_ID, slug: "media-ai" }), { recursive: true });
+
+  const adsResearchRole = await readFile(ADS_RESEARCH_ROLE_FILE, "utf8").catch(() => "You are Ads Research Agent.");
+  await seedSystemAgent({
+    id: ADS_RESEARCH_AGENT_ID,
+    slug: "ads-research",
+    name: "Ads Research Agent",
+    short: "AR",
+    headline: "Country and keyword advertising intelligence",
+    description: "Runs read-only Meta and Google Ads Transparency Center research and returns evidence-backed reports.",
+    color: "amber",
+    rolePrompt: adsResearchRole,
+    toolProfile: "assistant",
+    thinkingLevel: "low",
+  });
+  await mkdir(agentWorkspace({ id: ADS_RESEARCH_AGENT_ID, slug: "ads-research" }), { recursive: true });
 
   const orchestratorRole = await readFile(ORCHESTRATOR_ROLE_FILE, "utf8").catch(() => "You are Orchestrator.");
   await seedSystemAgent({

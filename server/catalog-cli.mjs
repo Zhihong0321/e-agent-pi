@@ -152,15 +152,19 @@ async function run(argv) {
       return { ok: true, agent: dumpAgent(agent) };
     }
     if (action === "sop-get") {
-      const sop = await getAgentSop(target);
+      const agent = await getAgent(target);
+      if (!agent) throw new Error(`Agent not found: ${target}`);
+      const sop = await getAgentSop(agent.id);
       if (!sop) throw new Error(`SOP not found for agent: ${target}`);
       return { ok: true, sop };
     }
     if (action === "sop-set") {
       const file = flag(opts, "file");
       if (!file) throw new Error("--file is required");
+      const agent = await getAgent(target);
+      if (!agent) throw new Error(`Agent not found: ${target}`);
       const content = await readFile(file, "utf8");
-      const sop = await saveAgentSop(target, content, "catalog-cli");
+      const sop = await saveAgentSop(agent.id, content, "catalog-cli");
       return { ok: true, sop };
     }
     if (action === "attach" || action === "detach") {

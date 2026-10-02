@@ -3,7 +3,7 @@
 // "Changing the schema" here means data in di.field_def / di.workflow_def: agents
 // never run DDL, so a tenant's customisation can't break the tables.
 import { DiError, defined, isUuid, requireRow, round2, setClause } from "./common.mjs";
-import { CHECKS, validateRules } from "./workflows.mjs";
+import { CHECKS, CLAIM_ONLY_CHECKS, validateRules } from "./workflows.mjs";
 import { addressLines, checkTemplate, partyView, renderTemplate, sampleContext } from "./templates.mjs";
 
 import { getCompanyProfile } from './company.mjs';
@@ -46,17 +46,20 @@ export async function describeSchema(tx, { entity } = {}) {
     custom_fields: fields,
     workflows: entity ? undefined : workflows,
     numbering: entity ? undefined : sequences,
-    available_checks: Object.keys(CHECKS),
+    available_checks: Object.keys(CHECKS).filter((name) => !CLAIM_ONLY_CHECKS.includes(name)),
     rules_note:
       "Every table also has tenant_id, created_*/updated_*/deleted_* audit columns and a custom jsonb. Nothing is ever hard-deleted.",
   };
 }
 
-const CUSTOM_ENTITIES = ["customer", "contact", "product", "package", "document", "payment"];
+const CUSTOM_ENTITIES = ["customer", "contact", "product", "package", "document", "payment", "expense_claim"];
+// Keys the system itself writes into a claim's custom bag (withdraw reason, demo marker).
+const RESERVED_KEYS = { expense_claim: ["withdrawn_reason", "withdrawn_by", "demo"] };
 
 export async function defineCustomField(tx, { entity, key, label, type, options = [], required_for = null, help = null }) {
   if (!CUSTOM_ENTITIES.includes(entity)) throw new DiError(`entity must be one of ${CUSTOM_ENTITIES.join(", ")}`);
   if (!/^[a-z][a-z0-9_]{0,47}$/.test(key || "")) throw new DiError("key must be snake_case, start with a letter, max 48 chars");
+  if (RESERVED_KEYS[entity]?.includes(key)) throw new DiError(`${entity}.${key} is used by the system; pick another key`);
   if (type === "select" && !options.length) throw new DiError("a select field needs options");
   if (required_for && !/^(save|(quotation|invoice|credit_note)\.issue)$/.test(required_for)) {
     throw new DiError("required_for must be save, quotation.issue, invoice.issue or credit_note.issue");
@@ -81,10 +84,28 @@ export async function defineCustomField(tx, { entity, key, label, type, options 
   return describeSchema(tx, { entity });
 }
 
+/**
+ * Soft-deletes a custom field definition. Stored values stay in each row's custom bag, and
+ * defining the same key again brings them back (defineCustomField clears deleted_at).
+ */
+export async function removeCustomField(tx, { entity, key }) {
+  if (!CUSTOM_ENTITIES.includes(entity)) throw new DiError(`entity must be one of ${CUSTOM_ENTITIES.join(", ")}`);
+  const { rows } = await tx.query(
+    "UPDATE di.field_def SET deleted_at = now() WHERE entity = $1 AND key = $2 AND deleted_at IS NULL RETURNING id",
+    [entity, key],
+  );
+  return { entity, key, removed: rows.length > 0 };
+}
+
 export async function setWorkflowRules(tx, { doc_type, transition = "issue", rules }) {
-  validateRules(rules);
+  try {
+    validateRules(rules, doc_type);
+  } catch (error) {
+    throw new DiError(error.message);
+  }
   const blocking = rules.filter((r) => r.severity === "block").map((r) => r.check);
-  for (const must of ["customer_selected", "has_lines", "template_available"]) {
+  // Documents break without these; expense claims have no such invariants.
+  for (const must of doc_type === "expense_claim" ? [] : ["customer_selected", "has_lines", "template_available"]) {
     if (!blocking.includes(must)) throw new DiError(`${must} must stay a blocking rule; documents break without it`);
   }
   await tx.query(

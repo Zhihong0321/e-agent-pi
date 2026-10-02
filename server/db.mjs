@@ -1,5 +1,6 @@
 import { ensureUsers } from './users.mjs';
 import { ensureActivitySchema } from './activity.mjs';
+import { ensureUsageSchema } from './usage.mjs';
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 
@@ -94,6 +95,7 @@ export async function connectDb() {
   await migrateLegacyMessages();
   await ensureUsers(pool);
   await ensureActivitySchema(pool);
+  await ensureUsageSchema(pool);
 }
 
 async function migrateLegacyMessages() {

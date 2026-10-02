@@ -4,7 +4,7 @@ const FIELDS = ['name', 'position', 'department', 'email', 'phone', 'location', 
 
 export async function listCompanyMembers(tx) {
   const rows = (await tx.query(
-    `SELECT id, name, position, department, email, phone, location, notes, created_at, updated_at
+    `SELECT id, name, position, department, email, phone, location, notes, user_id, created_at, updated_at
        FROM di.company_member
       WHERE tenant_id=di.current_tenant() AND deleted_at IS NULL
       ORDER BY department NULLS LAST, name LIMIT 201`,

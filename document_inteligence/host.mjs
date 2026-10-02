@@ -1,4 +1,4 @@
-import { manageUsers, resolveIdentity } from '../server/users.mjs';
+import { manageUsers, managePeople, listPeople, resolveIdentity, ensurePeopleTenant } from '../server/users.mjs';
 // UIv2 host integration for Document Intelligence: boot (migrate, seed, register the
 // four micro-agents and their shared MCP server), per-agent tokens, the internal
 // endpoint the MCP server calls, and HTML -> PDF rendering.
@@ -7,6 +7,7 @@ import { readFile, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DATA_DIR } from "../server/paths.mjs";
+import { clearAgentSop, getAgentSop, saveAgentSop } from "../server/sops.mjs";
 import { migrate, pgAdapter, roleAvailable, withContext } from "./core/db.mjs";
 import { ensureDefaultTenant, seedTenant } from "./core/seed.mjs";
 import { getCompanyProfile } from './core/company.mjs';
@@ -23,6 +24,8 @@ export const DI_AGENT_IDS = Object.keys(AGENTS);
 
 const SECRET = randomBytes(32);
 const state = { db: null, tenantId: null, asRole: true };
+/** Where the Forward Deploy Engineer keeps an agent's SOP (the same table the Settings page edits). */
+const SOP_STORE = { get: getAgentSop, save: saveAgentSop, clear: clearAgentSop };
 
 const AGENT_CARDS = {
   "di-onboarding": {
@@ -82,6 +85,13 @@ const AGENT_CARDS = {
     headline: "Suppliers, purchase orders and what to pay",
     description:
       "Keeps suppliers, records the quotations and invoices they send, drafts purchase orders from them, records goods received, and checks every invoice against what was ordered and received before it is paid. Admins issue POs and mark invoices paid; anyone signed in can draft and record.",
+  },
+  "di-fde": {
+    color: "violet",
+    userFacing: true,
+    headline: "Teach the system your company's rules",
+    description:
+      "Admin only. Turns a business rule (for example: mileage claims need a route screenshot and the distance) into extra categories, fields and checks on claims, and a short SOP for the agent. Previews every change first; each one can be undone or reset to the defaults.",
   },
   "di-expenses": {
     color: "rose",
@@ -155,10 +165,22 @@ async function renderPdf(html, absPath) {
 export async function handleDiRequest(req, body, deps) {
   const agent = agentFromRequest(req, body);
   if (!agent) return { status: 401, body: { ok: false, error: "Unauthorized" } };
-  if (["list_users", "create_user", "update_user"].includes(body.tool)) {
-    if (!["di-onboarding", "di-db"].includes(agent)) return { status: 403, body: { ok: false, error: "User administration is unavailable for this agent" } };
-    try { return { status: 200, body: { ok: true, result: await manageUsers(body.tool, body.args) } }; }
-    catch (error) { return { status: 403, body: { ok: false, error: error.message } }; }
+  if (["list_users", "create_user", "update_user", "list_people", "create_person", "update_person", "list_company_members", "save_company_member"].includes(body.tool)) {
+    if (body.tool !== "list_company_members" && !["di-onboarding", "di-db"].includes(agent)) return { status: 403, body: { ok: false, error: "People and user administration is unavailable for this agent" } };
+    try {
+      const args = body.args || {};
+      let result;
+      if (body.tool === "list_company_members") {
+        const people = await listPeople(state.tenantId);
+        result = { members: people.people, has_more: people.has_more };
+      } else if (body.tool === "save_company_member") {
+        const saved = await managePeople(args.id ? "update_person" : "create_person", args, { tenantId: state.tenantId, trustedAgent: true });
+        result = { member: saved.person, created: !args.id };
+      }
+      else if (["list_people", "create_person", "update_person"].includes(body.tool)) result = await managePeople(body.tool, args, { tenantId: state.tenantId });
+      else result = await manageUsers(body.tool, args, { tenantId: state.tenantId });
+      return { status: 200, body: { ok: true, result } };
+    } catch (error) { return { status: 403, body: { ok: false, error: error.message } }; }
   }
   if (!state.db) return { status: 503, body: { ok: false, error: "Document Intelligence is not initialised (database not connected?)" } };
   try {
@@ -173,6 +195,7 @@ export async function handleDiRequest(req, body, deps) {
         renderPdf,
         publicUrl: publicBaseUrl(),
         filesRoot: path.join(DATA_DIR, "files"),
+        sop: SOP_STORE,
       },
       { agent, tool: body.tool, args: body.args },
     );
@@ -345,6 +368,7 @@ export async function ensureDocumentIntelligence({ pool, catalog, logEvent = () 
   if (!state.asRole) logEvent("warn", "di: role di_app unavailable; agents run without database role separation");
   state.tenantId = await ensureDefaultTenant(db);
   await seedTenant(db, state.tenantId);
+  await ensurePeopleTenant(state.tenantId).catch((error) => logEvent('warn', `people account migration skipped: ${error.message}`));
   state.db = db;
 
   for (const [id, meta] of Object.entries(AGENTS)) {

@@ -41,7 +41,9 @@ test("submitted jobs execute and completed-job cleanup is selective and atomic",
   mock.module("../document_inteligence/host.mjs", { namedExports: { companyOnboardingStatus: async () => ({ minimum_ready: true }) } });
   const jobs = await import(`./orchestrator.mjs?integration=${randomUUID()}`);
   const calls = [];
-  let reply = ({ agentId }) => agentId === "reviewer" ? { pass: true, summary: "Verified actual state" } : { status: "done", summary: "Observed logo URL https://example.test/logo.png" };
+  const evidence = { status: "done", summary: "Extracted all seven receipts", notes: "x".repeat(jobs.RESULT_CHARS + 1),
+    slides: [{ slide: 7, amount: "5.09", currency: "MYR", image_link: "https://example.test/slide-07.png" }] };
+  let reply = ({ agentId }) => agentId === "reviewer" ? { pass: true, summary: "Verified actual state" } : evidence;
   jobs.setDispatchRuntime({ maxSlots: () => 3, runningCount: () => 0, activeOrchestratorSessionId: () => "parent",
     runAgentTurn: async input => { calls.push(input); return { reply: JSON.stringify(await reply(input)), shared_files: [{ url: "/files/retained" }] }; },
   });
@@ -64,11 +66,16 @@ test("submitted jobs execute and completed-job cleanup is selective and atomic",
       assert.equal(calls.length, 1);
       await jobs.runJobTick(); await settle();
       assert.equal(calls[1].agentId, "reviewer");
+      assert.deepEqual(JSON.parse(calls[1].message.split("\n").find(line => line.startsWith('{"'))), evidence);
+      assert.match(calls[1].message, /\/files\/retained/);
       await jobs.runJobTick(); await settle();
       assert.equal(calls[2].agentId, "worker2");
-      assert.match(calls[2].message, /example.test\/logo.png/);
+      assert.deepEqual(JSON.parse(calls[2].message.split("\n").find(line => line.startsWith('{"'))), evidence);
+      assert.match(calls[2].message, /\/files\/retained/);
       const done = await jobs.taskStatus({ planId: plan.id });
       assert.equal(done.status, "done"); assert.ok(done.completedAt);
+      assert.deepEqual(done.tasks[0].resultData, evidence);
+      assert.equal(done.tasks[0].result, evidence.summary);
       await jobs.runJobTick();
       assert.equal((await pool.query("SELECT COUNT(*)::int n FROM messages")).rows[0].n, 1);
       assert.equal((await jobs.jobReport(plan.id)).attempts.length, 3);
