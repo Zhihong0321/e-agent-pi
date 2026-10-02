@@ -74,6 +74,7 @@ import { loadSecrets, publicSettings, rememberSecret, saveSecrets, secret, secre
 import { listActivity, recordActivity } from "./activity.mjs";
 import { usageReport, recordApiUsage } from "./usage.mjs";
 import { chatLogs } from "./chat-logs.mjs";
+import { demoObservability } from "./demo-observability.mjs";
 import {
   adjustStockItem,
   ensureStockSchema,
@@ -1982,7 +1983,7 @@ async function bootServices() {
   try {
     if (dbReady()) {
       await ensureSitesSchema();
-      const attached = await attachSkillToAllAgents("site-browser", { exclude: [WHATSAPP_AGENT_ID, ORCHESTRATOR_AGENT_ID, MEDIA_AI_AGENT_ID, ...DI_AGENT_IDS] });
+      const attached = await attachSkillToAllAgents("site-browser", { exclude: [WHATSAPP_AGENT_ID, ORCHESTRATOR_AGENT_ID, MEDIA_AI_AGENT_ID, "ads-research", ...DI_AGENT_IDS] });
       logEvent("info", `site-browser skill on ${attached.length} agents`);
     }
   } catch (error) {
@@ -2149,6 +2150,10 @@ const server = createServer(async (req, res) => {
       } catch (error) { return json(res, 401, { error: error.message }); }
     }
     if (accountRoute && !user) return json(res, 401, { error: "Please sign in" });
+    if (req.method === "GET" && ["/api/demo/chat-logs", "/api/demo/usage", "/api/demo/activity", "/api/demo/metrics"].includes(pathname)) {
+      const data = await demoObservability(pathname, url.searchParams, user);
+      return data ? json(res, 200, data) : json(res, 403, { error: "Admin access required" });
+    }
     if (pathname === "/api/demo/me" && req.method === "GET") return json(res, 200, { user });
     if (pathname === "/api/demo/logout" && req.method === "POST") {
       await logoutUser(req);
@@ -2195,7 +2200,7 @@ const server = createServer(async (req, res) => {
     })) return;
     if (await handleCompanyResearch(req, res, url, { authorized: (r) => authorized(r) || Boolean(user), readBody })) return;
     if (await handleAdsResearch(req, res, url, { authorized, readBody })) return;
-    if (await handleMediaAi(req, res, url, { authorized })) return;
+    if (await handleMediaAi(req, res, url, { authorized, user })) return;
     if (req.method === "POST" && pathname === "/api/internal/orchestrator") {
       if (!orchestratorAuthorized(req)) {
         json(res, 401, { error: "Unauthorized" });
