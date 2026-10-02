@@ -6,6 +6,8 @@ import { DEFAULT_TOOL_PROFILE, normalizeThinkingLevel, normalizeToolProfile } fr
 import {
   AFA_AGENT_ID,
   AFA_ROLE_FILE,
+  MEDIA_AI_AGENT_ID,
+  MEDIA_AI_ROLE_FILE,
   BUNDLED_SKILLS,
   COMPOSIO_AGENT_ID,
   COMPOSIO_ROLE_FILE,
@@ -548,6 +550,9 @@ export async function deleteAgent(id) {
   if (agent.id === ORCHESTRATOR_AGENT_ID || agent.slug === "orchestrator") {
     throw new Error("The Orchestrator cannot be deleted.");
   }
+  if (agent.id === MEDIA_AI_AGENT_ID || agent.slug === "media-ai") {
+    throw new Error("The Media AI agent cannot be deleted.");
+  }
   await getPool().query(`UPDATE sessions SET agent_id = $1 WHERE agent_id = $2`, [WEBSITE_AGENT_ID, agent.id]);
   await getPool().query(`DELETE FROM agents WHERE id = $1`, [agent.id]);
   return true;
@@ -1074,6 +1079,21 @@ You are bound to **Open Design** — the open-source local-first design tool at 
     toolProfile: "assistant",
     thinkingLevel: "low",
   });
+
+  const mediaAiRole = await readFile(MEDIA_AI_ROLE_FILE, "utf8").catch(() => "You are Media AI.");
+  await seedSystemAgent({
+    id: MEDIA_AI_AGENT_ID,
+    slug: "media-ai",
+    name: "Media AI",
+    short: "MK",
+    headline: "Collects and shares the company media kit",
+    description: "Organizes company logos, event photos, news, certifications, qualifications and awards into a verified, shareable media kit.",
+    color: "emerald",
+    rolePrompt: mediaAiRole,
+    toolProfile: "assistant",
+    thinkingLevel: "low",
+  });
+  await mkdir(agentWorkspace({ id: MEDIA_AI_AGENT_ID, slug: "media-ai" }), { recursive: true });
 
   const orchestratorRole = await readFile(ORCHESTRATOR_ROLE_FILE, "utf8").catch(() => "You are Orchestrator.");
   await seedSystemAgent({

@@ -30,6 +30,7 @@ export const SOLAR_ROI_ROLE_FILE = path.join(ROOT, "agent", "roles", "solar-roi.
 export const OM_ROLE_FILE = path.join(ROOT, "agent", "roles", "om.md");
 export const COMPOSIO_ROLE_FILE = path.join(ROOT, "agent", "roles", "composio.md");
 export const ORCHESTRATOR_ROLE_FILE = path.join(ROOT, "agent", "roles", "orchestrator.md");
+export const MEDIA_AI_ROLE_FILE = path.join(ROOT, "agent", "roles", "media-ai.md");
 export const PROTOTYPER_ROLE_FILE = path.join(ROOT, "agent", "roles", "prototyper.md");
 export const PROTOTYPER_REPO_ROLE_FILE = path.join(ROOT, "agent", "roles", "prototyper-repo.md");
 export const BUNDLED_SKILLS = path.join(ROOT, "agent", "skills");
@@ -48,6 +49,7 @@ export const SOLAR_ROI_AGENT_ID = "solar-roi";
 export const OM_AGENT_ID = "om";
 export const COMPOSIO_AGENT_ID = "composio";
 export const ORCHESTRATOR_AGENT_ID = "orchestrator";
+export const MEDIA_AI_AGENT_ID = "media-ai";
 export const EE_MAIL_AGENT_ID = "di-documents";
 export const EE_MAIL_AGENT_IDS = Object.freeze([EE_MAIL_AGENT_ID, ORCHESTRATOR_AGENT_ID]);
 export const EE_MAIL_MCP_SLUG = "ee-mail";
@@ -181,6 +183,12 @@ export function isOrchestratorAgent(agent) {
   return id === ORCHESTRATOR_AGENT_ID || slug === "orchestrator";
 }
 
+export function isMediaAiAgent(agent) {
+  const id = typeof agent === "string" ? agent : agent?.id || "";
+  const slug = typeof agent === "string" ? agent : agent?.slug || "";
+  return id === MEDIA_AI_AGENT_ID || slug === "media-ai";
+}
+
 /**
  * Read-only checkout of the system a repo-bound Prototyper designs against.
  * Kept inside the agent's workspace but outside its prototypes: the agent
@@ -224,6 +232,8 @@ export const OM_MCP_SLUG = "om-data";
 export const COMPOSIO_MCP_SLUG = "composio";
 export const ORCHESTRATOR_MCP_SERVER = path.join(ROOT, "server", "orchestrator-mcp-server.mjs");
 export const ORCHESTRATOR_MCP_SLUG = "orchestrator-dispatch";
+export const MEDIA_AI_MCP_SERVER = path.join(ROOT, "server", "media-ai", "mcp-server.mjs");
+export const MEDIA_AI_MCP_SLUG = "media-ai";
 export const WHATSAPP_MCP_SLUG = "whatsapp";
 export const WHATSAPP_DATA_DIR = path.join(DATA_DIR, "whatsapp");
 export const WHATSAPP_MEMORY_FILE = path.join(WHATSAPP_DATA_DIR, "memory.md");

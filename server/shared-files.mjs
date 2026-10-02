@@ -9,7 +9,7 @@ import { pipeline } from "node:stream/promises";
 import { resolveWorkspaceFile } from "./files.mjs";
 
 function companyFolder(root, companyId) {
-  if (!/^[a-zA-Z0-9_-]+$/.test(companyId || "")) throw new Error("Company is required");
+  if (!/^[a-zA-Z0-9_-]+$/.test(companyId || "") && !/^[0-9a-f-]{36}$/i.test(companyId || "")) throw new Error("Company is required");
   return path.join(root, companyId);
 }
 

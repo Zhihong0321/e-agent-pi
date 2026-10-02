@@ -103,6 +103,7 @@ import {
   SALES_AGENT_ID,
   WHATSAPP_AGENT_ID,
   ORCHESTRATOR_AGENT_ID,
+  MEDIA_AI_AGENT_ID,
   BROWSER_MCP_SLUG,
   RUNTIME_DIR,
   SKILLS_DIR,
@@ -149,6 +150,7 @@ import { ensureGoogleAdsMcp } from "./google-ads-mcp.mjs";
 import { ensureOmMcp } from "./om-mcp.mjs";
 import { ensureWebSearchMcp } from "./web-search-mcp.mjs";
 import { ensureCompanyResearch, handleCompanyResearch, stopCompanyResearch } from "./company-research/host.mjs";
+import { ensureMediaAi, handleMediaAi } from "./media-ai/host.mjs";
 import { ensureComposioMcp } from "./composio.mjs";
 import { ensureOrchestratorMcp } from "./orchestrator-mcp.mjs";
 import { ensureEeMailMcp } from "./ee-mail-mcp.mjs";
@@ -1615,6 +1617,7 @@ async function prepareDirs() {
   await mkdir(agentWorkspace({ id: SALES_AGENT_ID, slug: "sales" }), { recursive: true });
   await mkdir(agentWorkspace({ id: WHATSAPP_AGENT_ID, slug: "whatsapp-assistant" }), { recursive: true });
   await mkdir(agentWorkspace({ id: ORCHESTRATOR_AGENT_ID, slug: "orchestrator" }), { recursive: true });
+  await mkdir(agentWorkspace({ id: MEDIA_AI_AGENT_ID, slug: "media-ai" }), { recursive: true });
   await mkdir(STORAGE, { recursive: true });
   await mkdir(PI_AGENT_DIR, { recursive: true });
   await mkdir(LIBRARY_DIR, { recursive: true });
@@ -1781,7 +1784,7 @@ async function bootServices() {
   boot.step = "scrapling";
   try {
     if (dbReady()) {
-      const result = await ensureScraplingForWebsite({ exclude: [WHATSAPP_AGENT_ID, ORCHESTRATOR_AGENT_ID, ...DI_AGENT_IDS] });
+      const result = await ensureScraplingForWebsite({ exclude: [WHATSAPP_AGENT_ID, ORCHESTRATOR_AGENT_ID, MEDIA_AI_AGENT_ID, ...DI_AGENT_IDS] });
       logEvent(
         "info",
         result.skipped
@@ -1878,6 +1881,16 @@ async function bootServices() {
     logEvent("error", `document-intelligence failed: ${sanitizeError(error)}`);
   }
 
+  boot.step = "media-ai";
+  try {
+    if (dbReady()) {
+      await ensureMediaAi({ log: logEvent });
+      logEvent("info", "media-ai mcp registered and attached to media-ai agent");
+    }
+  } catch (error) {
+    logEvent("error", `media-ai failed: ${sanitizeError(error)}`);
+  }
+
   boot.step = "ee-mail-mcp";
   try {
     if (dbReady()) {
@@ -1903,7 +1916,7 @@ async function bootServices() {
   try {
     if (dbReady()) {
       await ensureSitesSchema();
-      const attached = await attachSkillToAllAgents("site-browser", { exclude: [WHATSAPP_AGENT_ID, ORCHESTRATOR_AGENT_ID, ...DI_AGENT_IDS] });
+      const attached = await attachSkillToAllAgents("site-browser", { exclude: [WHATSAPP_AGENT_ID, ORCHESTRATOR_AGENT_ID, MEDIA_AI_AGENT_ID, ...DI_AGENT_IDS] });
       logEvent("info", `site-browser skill on ${attached.length} agents`);
     }
   } catch (error) {
@@ -1914,7 +1927,7 @@ async function bootServices() {
   try {
     if (dbReady()) {
       await ensureBrowserSchema();
-      const result = await ensureBrowserMcp({ exclude: [WHATSAPP_AGENT_ID, ORCHESTRATOR_AGENT_ID, ...DI_AGENT_IDS] });
+      const result = await ensureBrowserMcp({ exclude: [WHATSAPP_AGENT_ID, ORCHESTRATOR_AGENT_ID, MEDIA_AI_AGENT_ID, ...DI_AGENT_IDS] });
       logEvent("info", `browser mcp on ${result.attachedTo.join(",") || "none"}`);
     }
   } catch (error) {
@@ -2113,6 +2126,7 @@ const server = createServer(async (req, res) => {
       workspaceFor: async (id) => { const agent = await getAgent(id); return agent ? agentWorkspace(agent) : null; },
     })) return;
     if (await handleCompanyResearch(req, res, url, { authorized, readBody })) return;
+    if (await handleMediaAi(req, res, url, { authorized })) return;
     if (req.method === "POST" && pathname === "/api/internal/orchestrator") {
       if (!orchestratorAuthorized(req)) {
         json(res, 401, { error: "Unauthorized" });
