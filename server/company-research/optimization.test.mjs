@@ -126,3 +126,19 @@ test('identity searches and page retrieval overlap before the identity decision'
   const out = await researchCompany({ seed, runner: {}, metadataLanes: {}, toolsFactory: () => ({ search: work, fetch_pages: work }) });
   assert.equal(started, 3); assert.equal(out.status, 'needs_review');
 });
+
+test('shutdown cancellation aborts the active research session and disposes it', async () => {
+  let promptStarted, rejectPrompt, disposed = false;
+  const ready = new Promise(r => { promptStarted = r; });
+  const runner = new PiResearchRunner({ sessionFactory: async () => ({ session: {
+    getActiveToolNames: () => RESEARCH_TOOLS, subscribe: () => () => {},
+    prompt: async () => { promptStarted(); await new Promise((_resolve, reject) => { rejectPrompt = reject; }); },
+    abort: async () => { rejectPrompt?.(Error('aborted for shutdown')); }, dispose: () => { disposed = true; },
+  } }) });
+  const pending = runner.run({ lane: 'G2', seed, identity: {}, evidence: [], tools: {} });
+  await ready;
+  await runner.abort();
+  const result = await pending;
+  assert.equal(result.status, 'failed'); assert.match(result.error, /shutdown/);
+  assert.equal(disposed, true); assert.equal(runner.sessions.size, 0);
+});

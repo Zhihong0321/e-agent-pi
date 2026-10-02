@@ -64,7 +64,13 @@ test('recovered leases fence stale workers from evidence, findings, completion a
     assert.equal((await store.get(first.id)).status, 'running');
     await store.evidence(first.id, e, current.lease_token);
     assert.equal(await store.heartbeat(first.id, current.lease_token), true);
-    assert.equal(await store.fail(first.id, 'current failure', current.lease_token), true);
+    assert.equal(await store.release(first.id, old.lease_token), false);
+    assert.equal(await store.release(first.id, current.lease_token), true);
+    assert.equal(await store.heartbeat(first.id, current.lease_token), false);
+    const restarted = await store.claim();
+    assert.equal(restarted.id, first.id);
+    assert.notEqual(restarted.lease_token, current.lease_token);
+    assert.equal(await store.fail(first.id, 'current failure', restarted.lease_token), true);
     assert.equal((await store.get(first.id)).error, 'current failure');
   } finally { await db.close(); }
 });

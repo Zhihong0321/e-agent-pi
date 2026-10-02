@@ -87,7 +87,9 @@ export function assertResearchTools(session) {
 export class PiResearchRunner {
   constructor({ modelRuntime, model, maxTurns = 8, tokenBudget = 40000, timeoutMs = 120000, sessionFactory = createAgentSession }) {
     Object.assign(this, { modelRuntime, model, maxTurns, tokenBudget, timeoutMs, sessionFactory });
+    this.sessions = new Set();
   }
+  async abort() { await Promise.allSettled([...this.sessions].map(session => session.abort())); }
   async run({ lane, seed, identity, evidence, tools, gaps = [] }) {
     const started = Date.now();
     const transcript = [];
@@ -125,6 +127,7 @@ export class PiResearchRunner {
     await loader.reload();
     const created = await this.sessionFactory({ cwd: ROOT, agentDir: ROOT, modelRuntime: this.modelRuntime, model: this.model, thinkingLevel: 'off', tools: RESEARCH_TOOLS, customTools, resourceLoader: loader, settingsManager: settings, sessionManager: SessionManager.inMemory(ROOT) });
     session = created.session;
+    this.sessions.add(session);
     // Discovery already gathered evidence. Make the first pass a synthesis
     // request; gap-fill sessions can perform one targeted lookup before finalizing.
     if (session.agent?.streamFunction && this.model?.api === 'openai-completions') {
@@ -161,6 +164,6 @@ export class PiResearchRunner {
       return { lane, status: accepted ? 'ok' : salvaged ? 'partial' : 'failed', findings: accepted || salvaged, tokens, credits: searches, ms: Date.now() - started, transcript, error: accepted ? null : stopReason || 'No accepted submission' };
     } catch (error) {
       return { lane, status: accepted ? 'ok' : salvaged ? 'partial' : 'failed', findings: accepted || salvaged, tokens, credits: searches, ms: Date.now() - started, transcript, error: accepted ? null : error.message };
-    } finally { clearTimeout(timer); unsubscribe?.(); await session.abort().catch(() => {}); session.dispose(); }
+    } finally { clearTimeout(timer); unsubscribe?.(); this.sessions.delete(session); await session.abort().catch(() => {}); session.dispose(); }
   }
 }

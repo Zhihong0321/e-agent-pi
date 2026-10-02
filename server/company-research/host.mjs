@@ -14,6 +14,7 @@ import { researchCompany } from './pipeline.mjs';
 import { createMetadataLanes } from './metadata.mjs';
 
 let store, workerTimer, busy = false, stopped = false, tavilyMcpKey = '';
+let activeJob, activeRunner, activeHeartbeat;
 export function tavilyKeyFromMcp(server) {
   const env = server.env || {};
   const direct = env.TAVILY_API_KEY || env.tavily_api_key;
@@ -76,10 +77,15 @@ async function tick(log) {
   let job, scrapling, heartbeat;
   try {
     job = await store.claim(); if (!job) return;
+    activeJob = job;
+    if (stopped) { await store.release(job.id, job.lease_token); return; }
     heartbeat = setInterval(() => { void store.heartbeat(job.id, job.lease_token).catch(() => {}); }, 45000); heartbeat.unref?.();
+    activeHeartbeat = heartbeat;
     const tavilyKeys = await resolveTavilyKeys();
     if (!tavilyKeys.length) throw new Error('Add a Tavily API key in Settings → Keys');
     const runner = await configuredRunner(job.options?.modelId);
+    activeRunner = runner;
+    if (stopped) return;
     const server = await getMcpServer('scrapling');
     if (server) { try { scrapling = await connectScrapling(server); } catch { await store.event(job.id, { type: 'warning', message: 'Scrapling unavailable; page-fetch lanes will return partial results' }, job.lease_token); } }
     const metadataLanes = createMetadataLanes({ seed: job.seed, psiKey: process.env.PSI_API_KEY, pitchSignals: job.options?.pitchSignals, directory: seed => store.directoryCandidates(seed) });
@@ -91,9 +97,15 @@ async function tick(log) {
     const message = String(error.message || 'Research failed').replace(/(?:sk-|tvly-)[A-Za-z0-9_-]+/g, '[redacted]').slice(0, 500);
     if (job) await store.fail(job.id, message, job.lease_token).catch(() => {});
     log('warn', `company research job ${job?.id || 'queue'} failed: ${message}`);
-  } finally { clearInterval(heartbeat); await scrapling?.close().catch(() => {}); busy = false; }
+  } finally { clearInterval(heartbeat); activeJob = activeRunner = activeHeartbeat = undefined; await scrapling?.close().catch(() => {}); busy = false; }
 }
-export function stopCompanyResearch() { stopped = true; clearInterval(workerTimer); }
+export async function stopCompanyResearch() {
+  stopped = true;
+  clearInterval(workerTimer);
+  clearInterval(activeHeartbeat);
+  if (activeJob) await store.release(activeJob.id, activeJob.lease_token).catch(() => {});
+  await activeRunner?.abort().catch(() => {});
+}
 function reportUrl(pathname) {
   const base = process.env.COMPANY_RESEARCH_PUBLIC_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '');
   return base ? new URL(pathname, base).href : pathname;

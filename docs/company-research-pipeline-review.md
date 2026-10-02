@@ -7,6 +7,7 @@ This review covers the UIv2 host, queue, Tavily/Scrapling evidence adapters, met
 | Finding | Previous behavior | Correction |
 |---|---|---|
 | Stale queue ownership | A recovered worker could overwrite evidence/results from its replacement. Claim and cleanup were separate operations. | Atomic claim/cleanup and lease-token checks on worker writes, heartbeat, completion and failure. |
+| Deploy recovery delay | Graceful shutdown left jobs running until the 15-minute lease expired. A concurrent production deploy reproduced this during live validation. | Await lease release and abort active Pi research sessions before the host closes its database. |
 | Duplicate discovery | Repeated requests fetched the same page or query and stored duplicate evidence. | Shared in-flight request cache and URL/mode/content-hash evidence deduplication within each dossier. |
 | Serial requests | Identity queries/home fetch, page batches and discovery queries waited for each preceding request. Metadata started after discovery. | Independent requests overlap, with shared caps of three searches and three Scrapling calls. Batch failures wait for siblings to settle before proceeding. |
 | Transport failure | Tavily socket/timeout exceptions bypassed key failover. | Network failures retry within the reserved attempt/credit budget. |

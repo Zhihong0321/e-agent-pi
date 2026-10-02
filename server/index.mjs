@@ -3355,7 +3355,7 @@ server.listen(PORT, HOST, () => {
 async function shutdown() {
   logEvent("info", turnsInFlight ? `shutdown during ${turnsInFlight} in-flight turn(s)` : "shutdown");
   stopSampler();
-  stopCompanyResearch();
+  await stopCompanyResearch().catch(() => {});
   await Promise.allSettled([...piPool.values()].map((slot) => stopSlot(slot)));
   await stopWhatsappSidecar().catch(() => {});
   await closeAllSessions().catch(() => {});

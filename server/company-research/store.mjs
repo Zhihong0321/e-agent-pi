@@ -56,6 +56,11 @@ export class ResearchStore {
     const q = await this.pool.query("UPDATE company_research_dossiers SET lease_until=now()+interval '15 minutes' WHERE id=$1 AND status='running' AND ($2::uuid IS NULL OR (lease_token=$2 AND lease_until>now())) RETURNING id", [id, token || null]);
     return q.rows.length > 0;
   }
+  async release(id, token) {
+    if (!token) throw new Error('Lease token required to release a job');
+    const q = await this.pool.query("UPDATE company_research_dossiers SET lease_until=now()-interval '1 second' WHERE id=$1 AND status='running' AND lease_token=$2 RETURNING id", [id, token]);
+    return q.rows.length > 0;
+  }
   async publish(id, html, name) {
     return (await this.pool.query(`INSERT INTO company_research_publications(token,dossier_id,html,name) VALUES($1,$2,$3,$4)
       ON CONFLICT(dossier_id) DO UPDATE SET html=excluded.html,name=excluded.name,published_at=now()
