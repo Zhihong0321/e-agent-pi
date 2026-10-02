@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { Seed, VERSION, lockIdentity, reconcile, domain } from './core.mjs';
+import { Seed, VERSION, lockIdentity, reconcile, domain, contactFindings } from './core.mjs';
 import { ResearchBudget, createEvidenceTools } from './adapters.mjs';
 import { TASKS } from './runner.mjs';
 import { createMetadataLanes } from './metadata.mjs';
@@ -108,6 +108,9 @@ export async function researchCompany({ seed: input, tavilyKey, tavilyKeys, scra
     await Promise.allSettled(sessions.map(id => runAgent(id, gaps.filter(g => g[0] === id).map(g => g[1]))));
     result = reconcile({ seed, identity, evidence, runs, startedAt, webState, web }, now());
   }
+  const contacts = { lane: 'contacts', status: 'ok', findings: contactFindings(seed, evidence), ms: 0, credits: 0 };
+  runs.push(contacts); await saveRun(contacts);
+  result = reconcile({ seed, identity, evidence, runs, startedAt, webState, web }, now());
   result.meta.credits = { total: budget.used.credits };
   result.meta.budgets = { ...budget.used };
   result.meta.version = VERSION;

@@ -107,6 +107,27 @@ export function checkedFindings(input, evidence) {
   if (discarded) findings.unknowns = [...new Set([...findings.unknowns, `${discarded} submitted claims failed evidence validation and were excluded.`])].slice(0, 50);
   return { findings, discarded };
 }
+export function contactFindings(seed, evidence) {
+  const own = [seed.website, ...(seed.related_websites || [])].map(domain).filter(Boolean);
+  const facts = [], seen = new Set();
+  for (const e of evidence.filter(e => e.mode === 'http' && own.includes(domain(e.url)))) {
+    for (const [field, regex] of [
+      ['phone', /(?<![\dA-Za-z])(?:\+?60|0)[\d ().-]{7,18}(?!\d)/g],
+      ['email', /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi],
+    ]) for (const match of e.text.matchAll(regex)) {
+      const value = match[0].trim();
+      if (field === 'phone' && !phone(value)) continue;
+      const key = `${e.url}\n${field}\n${field === 'phone' ? phone(value) : value.toLowerCase()}`;
+      if (seen.has(key)) continue;
+      const start = Math.max(0, match.index - 30);
+      const quote = e.text.slice(start, Math.min(e.text.length, match.index + match[0].length + 80)).slice(0, 200);
+      const claim = { field, value, evidence_id: e.id, quote };
+      if (validateFindings({ facts: [claim] }, evidence).accepted) { facts.push(claim); seen.add(key); }
+      if (facts.length === 60) return { facts };
+    }
+  }
+  return { facts };
+}
 export function validDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value)) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
 }
@@ -213,9 +234,12 @@ export function reconcile({ seed, identity, evidence, runs, startedAt, webState 
     const grouped = new Map();
     for (const row of findings.flatMap(f => f[key])) {
       const value = Object.fromEntries(keys.map(k => [k, row[k]]));
-      const id = JSON.stringify(value);
+      const personName = key === 'people' ? row.name.replace(/^(?:mr\.?|mrs\.?|ms\.?)\s+/i, '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '') : null;
+      const id = key === 'people' ? JSON.stringify([personName, row.role.toLowerCase(), row.contact?.toLowerCase() || null])
+        : key === 'signals' ? JSON.stringify([row.date, normalizeQuote(row.what).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()]) : JSON.stringify(value);
       if (!grouped.has(id)) grouped.set(id, []);
-      grouped.get(id).push({ ...row, value });
+      const rows = grouped.get(id);
+      rows.push({ ...row, value: rows[0]?.value || value });
     }
     return [...grouped.values()].map(rows => fact(rows, evidence));
   };

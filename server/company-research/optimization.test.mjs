@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createEvidenceTools, ResearchBudget } from './adapters.mjs';
 import { createLimiter, settleBatch } from './concurrency.mjs';
-import { evidenceRecord, fact, lockIdentity, reconcile } from './core.mjs';
+import { evidenceRecord, fact, lockIdentity, reconcile, contactFindings } from './core.mjs';
 import { PiResearchRunner, RESEARCH_TOOLS, researchContext } from './runner.mjs';
 import { researchCompany } from './pipeline.mjs';
 
@@ -141,4 +141,26 @@ test('shutdown cancellation aborts the active research session and disposes it',
   const result = await pending;
   assert.equal(result.status, 'failed'); assert.match(result.error, /shutdown/);
   assert.equal(disposed, true); assert.equal(runner.sessions.size, 0);
+});
+
+test('contacts are extracted from original company pages without model recall', () => {
+  const original = ev('H', seed.website, 'Contact +60 11 2345 6789 or enquiry@acme.example. Registration 202301029164.', 3, 'http');
+  const other = ev('X', 'https://unrelated.example/', 'Contact +601123456789 or unrelated@acme.example.', 2, 'http');
+  const snippet = ev('S', seed.website, 'Contact missing@acme.example', 3);
+  const evidence = [original, other, snippet];
+  const findings = contactFindings(seed, evidence);
+  assert.equal(findings.facts.length, 2);
+  const d = reconcile({ seed, identity: { status: 'locked' }, evidence, runs: [{ lane: 'contacts', findings }], startedAt: '2026-10-02' });
+  assert.equal(d.contacts.phones[0].e164, '+601123456789');
+  assert.equal(d.contacts.emails[0].address, 'enquiry@acme.example');
+  assert.equal(d.sources.length, 1);
+});
+
+test('honorific name variants and punctuation-only signal variants deduplicate', () => {
+  const evidence = [ev('E1', 'https://award.example/', 'Mr. Gan Lai Soon, CEO & Founder. Job vacancy posted on 2025-03-12')];
+  const people = ['Gan Lai Soon', 'Mr. Gan Lai Soon'].map(name => ({ name, role: 'CEO & Founder', contact: null, evidence_id: 'E1', quote: evidence[0].text }));
+  const signals = ['Job vacancy posted: Sales Executive', 'Job vacancy posted Sales Executive'].map(what => ({ what, date: '2025-03-12', evidence_id: 'E1', quote: evidence[0].text }));
+  const d = reconcile({ seed, identity: { status: 'locked' }, evidence, runs: [{ lane: 'G2', findings: { people, signals } }], startedAt: '2026-10-02' });
+  assert.equal(d.people.length, 1); assert.equal(d.people[0].status, 'unknown');
+  assert.equal(d.signals.length, 1);
 });

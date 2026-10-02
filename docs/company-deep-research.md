@@ -27,6 +27,8 @@ Discovery searches and optional metadata overlap. Shared per-dossier limits allo
 
 An authoritative-domain search snippet alone does not make a fact `confirmed`: the original HTTP document or metadata is required. Phone agreement counts source domains and groups company/social claims into one self-reported origin. Web coverage evaluates the live site, domain age and archive history separately; missing metadata and unverified people do not inflate coverage. These corrections are versioned as `company-research-v2.1`.
 
+Published phones and emails are also extracted deterministically from the supplied company's fetched original pages, then passed through the same quote/value validation. The resulting `contacts` lane is persisted for replay and does not spend model tokens. Contact presence indicates publication, not independent ownership verification.
+
 ## Private API
 
 These routes use the existing UIv2 owner/session or management API authentication. Dossiers, raw evidence and transcripts remain private. HTML reports have a responsive editorial layout, evidence badges, clickable citations, contact directory, score breakdown and print styles.
