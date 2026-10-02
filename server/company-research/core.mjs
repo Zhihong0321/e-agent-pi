@@ -4,7 +4,7 @@ import { getDomain } from 'tldts';
 import { parsePhoneNumberFromString } from 'libphonenumber-js/max';
 import { renderCompanyReport } from './report-html.mjs';
 
-export const VERSION = 'company-research-v2.2';
+export const VERSION = 'company-research-v2.3';
 export const Seed = z.object({
   name: z.string().trim().min(2).max(200), place_id: z.string().max(200).optional(),
   website: z.string().url().refine(v => /^https?:\/\//i.test(v) && Boolean(domain(v)), 'Website must be an HTTP(S) URL with a registrable domain').optional(), phone: z.string().max(80).optional(),
@@ -18,6 +18,7 @@ export const Findings = z.object({
   clients: z.array(z.object({ name: z.string(), year: z.number().int().nullable(), delivered: z.string(), ...citation })).max(30).default([]),
   signals: z.array(z.object({ what: z.string(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), ...citation })).max(30).default([]),
   risks: z.array(z.object({ risk: z.string(), ...citation })).max(30).default([]),
+  observations: z.array(z.object({ category: z.enum(['operating_scale', 'credentials', 'projects', 'locations', 'milestones']), value: z.string().min(8).max(200), ...citation })).max(40).default([]),
   wrong_entity_warnings: z.array(z.string().max(500)).max(20).default([]),
   unknowns: z.array(z.string().max(500)).max(50).default([]),
 }).strict();
@@ -61,7 +62,7 @@ export function validateFindings(input, evidence) {
   const parsed = Findings.safeParse(input);
   if (!parsed.success) return { accepted: false, errors: parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`) };
   const errors = [];
-  for (const key of ['facts', 'people', 'clients', 'signals', 'risks']) parsed.data[key].forEach((item, i) => {
+  for (const key of ['facts', 'people', 'clients', 'signals', 'risks', 'observations']) parsed.data[key].forEach((item, i) => {
     const e = evidence.find(e => e.id === item.evidence_id);
     if (!e || !quotePresent(item.quote, e.text)) errors.push(`${key}.${i}: quote is absent from evidence ${item.evidence_id}`);
     if (key === 'facts' && item.field === 'ssm_no' && !validSsm(item.value)) errors.push(`facts.${i}: invalid SSM number`);
@@ -89,6 +90,7 @@ export function validateFindings(input, evidence) {
     if (key === 'people' && item.role && !normalizeQuote(item.quote).toLowerCase().includes(normalizeQuote(item.role).toLowerCase())) errors.push(`people.${i}: role is absent from its quote`);
     if (key === 'people' && item.contact && !item.quote.toLowerCase().includes(item.contact.toLowerCase())) errors.push(`people.${i}: contact is absent from its quote; use null`);
     if (key === 'signals' && !dateInQuote(item.date, item.quote)) errors.push(`signals.${i}: quote must include the exact date; do not invent dates or days`);
+    if (key === 'observations' && !normalizeQuote(item.quote).toLowerCase().includes(normalizeQuote(item.value).toLowerCase())) errors.push(`observations.${i}: value is absent from its quote`);
   });
   return errors.length ? { accepted: false, errors } : { accepted: true, findings: parsed.data };
 }
@@ -97,7 +99,7 @@ export function checkedFindings(input, evidence) {
   if (!parsed.success) return null;
   const findings = { ...parsed.data };
   let discarded = 0;
-  for (const key of ['facts', 'people', 'clients', 'signals', 'risks']) {
+  for (const key of ['facts', 'people', 'clients', 'signals', 'risks', 'observations']) {
     findings[key] = findings[key].filter(item => {
       const valid = validateFindings({ [key]: [item] }, evidence).accepted;
       if (!valid) discarded++;
@@ -175,12 +177,20 @@ export function fact(items, evidence) {
     const e = evidence.find(e => e.id === i.evidence_id);
     return [e.id, { id: e.id, url: e.url, tier: e.tier, mode: e.mode, quote: i.quote, retrievedAt: e.retrievedAt }];
   })).values()];
-  const valueKey = i => i.field === 'legal_name' ? nameKey(i.value) : i.field === 'ssm_no' ? String(i.value) : JSON.stringify(i.value);
+  // Modern and legacy SSM forms agree only when a cited source explicitly
+  // pairs the two identifiers. Never derive a mapping from the company name.
+  const ssmAliases = new Map();
+  for (const ref of refs) for (const match of normalizeQuote(evidence.find(e => e.id === ref.id)?.text || '').matchAll(/\b((?:19|20)\d{10})\s*[/(]\s*(\d{5,7}-?[A-Z])\b/g)) {
+    const legacy = match[2].replace(/(\d)([A-Z])$/, '$1-$2');
+    ssmAliases.set(legacy, match[1]);
+  }
+  const valueKey = i => i.field === 'legal_name' ? nameKey(i.value) : i.field === 'ssm_no' ? ssmAliases.get(String(i.value)) || String(i.value) : JSON.stringify(i.value);
   const unique = new Set(verified.map(valueKey));
   const domains = new Set(refs.filter(e => e.tier === 2).map(e => domain(e.url)));
-  const status = unique.size > 1 ? 'conflicting' : refs.some(e => e.tier === 1 && ['http', 'metadata'].includes(e.mode)) ? 'confirmed' : domains.size >= 2 ? 'corroborated' : refs.every(e => e.tier === 3) ? 'self_reported' : 'unknown';
-  const out = { value: status === 'unknown' || status === 'conflicting' ? null : verified[0].value, status, confidence: { confirmed: 0.95, corroborated: 0.8, self_reported: 0.5, conflicting: 0, unknown: 0 }[status], evidence: refs };
-  if (status === 'unknown' && unique.size === 1) out.reportedValue = verified[0].value;
+  const status = unique.size > 1 ? 'conflicting' : refs.some(e => e.tier === 1 && ['http', 'metadata'].includes(e.mode)) ? 'confirmed' : domains.size >= 2 ? 'corroborated' : refs.some(e => e.tier === 3) ? 'self_reported' : 'unknown';
+  const canonical = verified[0].field === 'ssm_no' ? valueKey(verified[0]) : verified[0].value;
+  const out = { value: status === 'unknown' || status === 'conflicting' ? null : canonical, status, confidence: { confirmed: 0.95, corroborated: 0.8, self_reported: 0.5, conflicting: 0, unknown: 0 }[status], evidence: refs };
+  if (status === 'unknown' && unique.size === 1) out.reportedValue = canonical;
   if (unique.size > 1) out.conflicts = verified.map(i => ({ value: i.value, evidenceId: i.evidence_id }));
   return out;
 }
@@ -255,6 +265,7 @@ export function reconcile({ seed, identity, evidence, runs, startedAt, webState 
     business: { sells: field('sells'), buyers: field('buyers'), pricePoints: field('price_points') },
     scale: { headcount: field('headcount'), reach: field('reach') },
     people: list('people', ['name', 'role', 'contact']), clients: list('clients', ['name', 'year', 'delivered']),
+    observations: list('observations', ['category', 'value']),
     signals: list('signals', ['what', 'date']), risks: list('risks', ['risk']), contacts: { phones: [], emails: [], social: {} },
     web: { ...web, domain: { ...web.domain, state: webState }, archive: { ...web.archive } }, unknowns: [], outreachAngles: [],
     meta: { version: VERSION, credits: Object.fromEntries(runs.map(r => [r.lane, r.credits || 0])), tokens: Object.fromEntries(runs.map(r => [r.lane, r.tokens || 0])), lanes: runs.map(({ lane, status, ms, error }) => ({ lane, status, ms, error })), durationMs: Math.max(0, now - new Date(startedAt)) },
@@ -292,8 +303,14 @@ export function reconcile({ seed, identity, evidence, runs, startedAt, webState 
   d.identity.warnings = [...new Set(findings.flatMap(f => f.wrong_entity_warnings))];
   d.unknowns = [...new Set([...(claims.length ? [] : ['No accepted findings']), ...findings.flatMap(f => f.unknowns), ...['legal_name', 'ssm_no', 'incorporated_on', 'status', 'msic', 'paid_up_capital', 'registered_address', 'sells', 'buyers', 'price_points', 'headcount', 'reach'].filter(k => field(k).value === null), ...(d.people.some(p => p.value) ? [] : ['people'])])];
   d.unknowns = d.unknowns.filter(item => {
-    const match = item.match(/^(phone|email)(?:$|\s*:\s*(?:no\b|not\b|none\b))/i);
-    return !match || !(match[1].toLowerCase() === 'phone' ? d.contacts.phones.length : d.contacts.emails.length);
+    // Keep contradictions and verification questions; remove obsolete
+    // absence notes only when later findings actually supply that information.
+    if (/conflict|discrepan|inconsistent|not corroborated|unverified|independent|registered address|registry status|directors|day-level|exact day/i.test(item)) return true;
+    const match = item.match(/^(?:email address|phone|email|people|buyers|clients|paid_up_capital|headcount|incorporated_on|legal_name|ssm_no|sells|reach|social)(?=$|\s*[:(])/i);
+    if (!match) return true;
+    const key = match[0].toLowerCase();
+    const present = key === 'email' || key === 'email address' ? d.contacts.emails.length : key === 'phone' ? d.contacts.phones.length : key === 'social' ? Object.keys(d.contacts.social).length : key === 'people' || key === 'clients' ? d[key].some(f => f.value || f.reportedValue) : Boolean(field(key).value !== null || field(key).reportedValue !== undefined);
+    return !present;
   });
   for (const signal of d.signals.filter(s => s.value)) {
     if (/hiring|recruit|new branch|expan/i.test(signal.value.what)) d.outreachAngles.push({ angle: `Ask about operating requirements related to the reported signal: ${signal.value.what}`, basedOn: signal.evidence.map(e => e.id) });
@@ -304,7 +321,7 @@ export function reconcile({ seed, identity, evidence, runs, startedAt, webState 
   }
   // Compact source index includes contact-only citations without publishing
   // full fetched documents or agent transcripts.
-  const cited = findings.flatMap(f => [...f.facts, ...f.people, ...f.clients, ...f.signals, ...f.risks]);
+  const cited = findings.flatMap(f => [...f.facts, ...f.people, ...f.clients, ...f.signals, ...f.risks, ...f.observations]);
   d.sources = evidence.filter(e => cited.some(c => c.evidence_id === e.id)).map(e => ({ id: e.id, url: e.url, tier: e.tier, mode: e.mode, quotes: [...new Set(cited.filter(c => c.evidence_id === e.id).map(c => c.quote))] }));
   d.summary = `${seed.name}: ${d.scores.verdict}. Legitimacy ${d.scores.legitimacy}/100; evidence coverage ${Math.round(d.scores.coverage * 100)}%. ${d.business.sells.value || 'Business activity is unknown.'}`;
   return d;

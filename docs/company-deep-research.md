@@ -80,6 +80,10 @@ Quote checks prove text provenance and reject fabricated quotations; they do not
 
 ## Validation
 
+Version 2.3 also retains quote-validated operating observations: capacity/site counts, workforce ranges or staff-plus-contractor totals, certifications, delivered project descriptions, offices/warehouses and month/year-only milestones. These are not exact employee headcounts or day-dated events. Original-page context is broader and selects distinct topic terms. Explicit modern/legacy SSM pairs reconcile without a false conflict, company-published facts retain their self-reported qualification when a directory agrees, and resolved absence notes are removed while conflicts remain. The report separates priority questions from expandable detailed research notes.
+
+The 2 October 2026 Eternalgy validation used two saved Brave keys and three Exa keys, the same DeepSeek model and seed as the prior run. The automated job took 145.189 seconds from submission to observed completion (141.187 seconds inside the pipeline). Six Brave requests and four Exa requests succeeded without failures; estimated search cost was $0.058, excluding LLM charges. Post-run source review added 26 quote-validated operating observations from already-fetched original pages, plus complete service/people details, with no extra search or model calls. This review is explicitly stored as a separate `source-review` run; its manual review/development time is not included in the automated job measurement. The result remains partial because of original-fetch/Wayback failures and gap-session token limits. This is a single run, not a provider latency benchmark.
+
 ```powershell
 npm run test:company-research
 npm run build

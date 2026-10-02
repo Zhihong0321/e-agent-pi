@@ -14,6 +14,7 @@ const submissionsSchema = Type.Object({
   clients: Type.Optional(Type.Array(Type.Object({ name: Type.String(), year: Type.Union([Type.Integer(), Type.Null()]), delivered: Type.String(), ...cited }))),
   signals: Type.Optional(Type.Array(Type.Object({ what: Type.String(), date: Type.String({ pattern: '^\\d{4}-\\d{2}-\\d{2}$' }), ...cited }))),
   risks: Type.Optional(Type.Array(Type.Object({ risk: Type.String(), ...cited }))),
+  observations: Type.Optional(Type.Array(Type.Object({ category: Type.Union(['operating_scale', 'credentials', 'projects', 'locations', 'milestones'].map(value => Type.Literal(value))), value: Type.String({ minLength: 8, maxLength: 200 }), ...cited }))),
   wrong_entity_warnings: Type.Optional(Type.Array(Type.String())), unknowns: Type.Optional(Type.Array(Type.String())),
 });
 // Pi owns this dependency (its npm shrinkwrap installs a private copy). Resolve
@@ -42,8 +43,14 @@ export function focusedExcerpt(text, focus, limit = 1000) {
   const marker = '\n[... source excerpt omitted ...]\n';
   const ranges = [[0, 180], [Math.max(0, text.length - 180), text.length]];
   const regex = new RegExp(focus.source, 'gi');
-  let match, count = 0;
-  while ((match = regex.exec(text)) && count++ < 3) ranges.push([Math.max(0, match.index - 60), Math.min(text.length, match.index + 150)]);
+  let match;
+  const terms = new Set();
+  while ((match = regex.exec(text)) && terms.size < 6) {
+    const term = match[0].toLowerCase();
+    if (terms.has(term)) continue;
+    terms.add(term);
+    ranges.push([Math.max(0, match.index - 80), Math.min(text.length, match.index + 180)]);
+  }
   ranges.sort((a, b) => a[0] - b[0]);
   const merged = [];
   for (const range of ranges) {
@@ -54,13 +61,13 @@ export function focusedExcerpt(text, focus, limit = 1000) {
   return evidenceExcerpt(merged.map(([start, end]) => text.slice(start, end)).join(marker), limit);
 }
 export function researchContext(evidence, lane) {
-  const focus = { G1: /ctos|ssm|seda|registration|incorporat|capital/i, G2: /director|leadership|officer|about|contact|team|goldenbull|award|services/i, G3: /linkedin|job|career|branch|headcount|employees/i, G4: /news|court|winding|notice|award/i }[lane];
+  const focus = { G1: /ctos|ssm|seda|registration|incorporat|capital|cidb|certif/i, G2: /director|leadership|officer|contact|team|founder|engineer|services|rooftop|project|installation|software/i, G3: /linkedin|job|career|branch|headcount|employees|staff|contractor|MWp|PV sites|charging|warehouse|offices/i, G4: /news|court|winding|notice|award/i }[lane];
   const ranked = evidence.map((e, i) => ({ e, i, rank: (e.tier === 1 ? 20 : e.tier === 2 ? 5 : 0) + (e.mode === 'http' ? 18 : 0) + (focus?.test(e.url + ' ' + e.text) ? 15 : 0) })).sort((a, b) => b.rank - a.rank || a.i - b.i);
   const seen = new Set(), rows = [];
   let chars = 0;
   for (const { e } of ranked) {
     if (seen.has(e.url)) continue;
-    const row = { id: e.id, url: e.url, tier: e.tier, mode: e.mode, text: focusedExcerpt(e.text, focus) };
+    const row = { id: e.id, url: e.url, tier: e.tier, mode: e.mode, text: focusedExcerpt(e.text, focus, e.mode === 'http' ? 2200 : 1000) };
     const size = JSON.stringify(row).length;
     if (chars + size > 8500) continue;
     seen.add(e.url); rows.push(row); chars += size;
@@ -116,14 +123,14 @@ export class PiResearchRunner {
         if (result.accepted) { accepted = result.findings; stop('submitted'); }
         else {
           const checked = checkedFindings(input, evidence);
-          if (checked && ['facts', 'people', 'clients', 'signals', 'risks'].some(key => checked.findings[key].length)) salvaged = checked.findings;
+          if (checked && ['facts', 'people', 'clients', 'signals', 'risks', 'observations'].some(key => checked.findings[key].length)) salvaged = checked.findings;
           if (submissions >= 3) stop('quote_retries_exhausted');
         }
         return result;
       }),
     ];
     const settings = SettingsManager.inMemory({ compaction: { enabled: false }, retry: { enabled: false } });
-    const loader = new DefaultResourceLoader({ cwd: ROOT, agentDir: ROOT, settingsManager: settings, noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true, systemPromptOverride: () => PREAMBLE });
+    const loader = new DefaultResourceLoader({ cwd: ROOT, agentDir: ROOT, settingsManager: settings, noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true, systemPromptOverride: () => `${PREAMBLE}\nPreserve useful company detail in observations:[{category,value,evidence_id,quote}]. Categories: operating_scale (capacity, managed sites, employee ranges, staff PLUS contractors), credentials (certifications and partnerships), projects (delivered project descriptions without inventing client names), locations (offices/warehouses, not assumed registered addresses), milestones (year/month-only events without inventing dates). Values must be literal excerpts from their quotes, 8–200 characters. These observations do not establish audited metrics or verified registry status. Prioritize these observations for your section. Use fetch_pages on cited original pages when excerpts omit important company information.` });
     await loader.reload();
     const created = await this.sessionFactory({ cwd: ROOT, agentDir: ROOT, modelRuntime: this.modelRuntime, model: this.model, thinkingLevel: 'off', tools: RESEARCH_TOOLS, customTools, resourceLoader: loader, settingsManager: settings, sessionManager: SessionManager.inMemory(ROOT) });
     session = created.session;
