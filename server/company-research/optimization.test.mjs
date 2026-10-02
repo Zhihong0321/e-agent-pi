@@ -150,10 +150,11 @@ test('contacts are extracted from original company pages without model recall', 
   const evidence = [original, other, snippet];
   const findings = contactFindings(seed, evidence);
   assert.equal(findings.facts.length, 2);
-  const d = reconcile({ seed, identity: { status: 'locked' }, evidence, runs: [{ lane: 'contacts', findings }], startedAt: '2026-10-02' });
+  const d = reconcile({ seed, identity: { status: 'locked' }, evidence, runs: [{ lane: 'contacts', findings }, { lane: 'G2', findings: { unknowns: ['phone', 'email: no contact email found', 'phone ownership is unverified'] } }], startedAt: '2026-10-02' });
   assert.equal(d.contacts.phones[0].e164, '+601123456789');
   assert.equal(d.contacts.emails[0].address, 'enquiry@acme.example');
   assert.equal(d.sources.length, 1);
+  assert.deepEqual(d.unknowns.filter(u => /phone|email/.test(u)), ['phone ownership is unverified']);
 });
 
 test('honorific name variants and punctuation-only signal variants deduplicate', () => {

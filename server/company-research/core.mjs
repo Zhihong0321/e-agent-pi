@@ -284,6 +284,10 @@ export function reconcile({ seed, identity, evidence, runs, startedAt, webState 
   d.scores = scoreDossier(d, now);
   d.identity.warnings = [...new Set(findings.flatMap(f => f.wrong_entity_warnings))];
   d.unknowns = [...new Set([...(claims.length ? [] : ['No accepted findings']), ...findings.flatMap(f => f.unknowns), ...['legal_name', 'ssm_no', 'incorporated_on', 'status', 'msic', 'paid_up_capital', 'registered_address', 'sells', 'buyers', 'price_points', 'headcount', 'reach'].filter(k => field(k).value === null), ...(d.people.some(p => p.value) ? [] : ['people'])])];
+  d.unknowns = d.unknowns.filter(item => {
+    const match = item.match(/^(phone|email)(?:$|\s*:\s*(?:no\b|not\b|none\b))/i);
+    return !match || !(match[1].toLowerCase() === 'phone' ? d.contacts.phones.length : d.contacts.emails.length);
+  });
   for (const signal of d.signals.filter(s => s.value)) {
     if (/hiring|recruit|new branch|expan/i.test(signal.value.what)) d.outreachAngles.push({ angle: `Ask about operating requirements related to the reported signal: ${signal.value.what}`, basedOn: signal.evidence.map(e => e.id) });
   }
