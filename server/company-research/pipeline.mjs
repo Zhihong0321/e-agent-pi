@@ -6,10 +6,10 @@ import { createMetadataLanes } from './metadata.mjs';
 import { settleBatch } from './concurrency.mjs';
 
 const SOURCES = JSON.parse(await readFile(new URL('./sources.json', import.meta.url), 'utf8'));
-export async function researchCompany({ seed: input, tavilyKey, tavilyKeys, scrapling, runner, emit = async () => {}, saveEvidence = async () => {}, saveRun = async () => {}, budget = new ResearchBudget(), toolsFactory = createEvidenceTools, now = () => new Date(), metadataLanes }) {
+export async function researchCompany({ seed: input, tavilyKey, tavilyKeys, braveKeys, exaKeys, scrapling, runner, emit = async () => {}, saveEvidence = async () => {}, saveRun = async () => {}, budget = new ResearchBudget(), toolsFactory = createEvidenceTools, now = () => new Date(), metadataLanes }) {
   const seed = Seed.parse(input), startedAt = now().toISOString();
   const evidence = [], runs = [];
-  const tools = toolsFactory({ seed, evidence, sources: SOURCES, budget, tavilyKey, tavilyKeys, scrapling, persist: saveEvidence });
+  const tools = toolsFactory({ seed, evidence, sources: SOURCES, budget, tavilyKey, tavilyKeys, braveKeys, exaKeys, scrapling, persist: saveEvidence });
   const web = { domain: {}, archive: {} };
   const lane = async (id, work) => {
     const start = Date.now(); await emit({ type: 'lane', lane: id, status: 'running' });
@@ -37,6 +37,7 @@ export async function researchCompany({ seed: input, tavilyKey, tavilyKeys, scra
     const result = reconcile({ seed, identity, evidence, runs, startedAt }, now());
     result.unknowns.push('Identity needs review: provide a corroborating website, phone or full address.');
     result.meta.credits = { total: budget.used.credits };
+    result.meta.searchProviders = budget.providers || {};
     return { status: 'needs_review', result, seed, identity, evidence, runs, startedAt, webState: 'unknown' };
   }
   await emit({ type: 'wave', wave: 1, status: 'evidence' });
@@ -112,6 +113,7 @@ export async function researchCompany({ seed: input, tavilyKey, tavilyKeys, scra
   runs.push(contacts); await saveRun(contacts);
   result = reconcile({ seed, identity, evidence, runs, startedAt, webState, web }, now());
   result.meta.credits = { total: budget.used.credits };
+  result.meta.searchProviders = budget.providers || {};
   result.meta.budgets = { ...budget.used };
   result.meta.version = VERSION;
   const acceptedAgents = runs.filter(r => /^G[1-4]$/.test(r.lane) && r.status === 'ok');

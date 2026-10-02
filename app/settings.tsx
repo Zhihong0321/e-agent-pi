@@ -5,6 +5,8 @@ import ActivityLog from "./activity-log";
 type Settings = {
   tavilyApiKeySet: boolean;
   tavilyKeysSet: boolean[];
+  braveKeysSet: boolean[];
+  exaKeysSet: boolean[];
   cavotiApiKeySet: boolean;
   cavotiBaseUrl: string;
   kimiApiKeySet: boolean;
@@ -232,6 +234,8 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [form, setForm] = useState({
     tavilyKeys: Array.from({ length: 5 }, () => ""),
+    braveKeys: Array.from({ length: 3 }, () => ""),
+    exaKeys: Array.from({ length: 3 }, () => ""),
     cavotiApiKey: "",
     cavotiBaseUrl: "",
     kimiApiKey: "",
@@ -640,6 +644,21 @@ export default function SettingsPage() {
     }
   };
 
+  const saveResearchKeys = async (provider: "brave" | "exa", remove?: number) => {
+    setBusy(true); setError(""); setSaved("");
+    const field = provider === "brave" ? "braveKeys" : "exaKeys";
+    try {
+      const patch = remove === undefined
+        ? Object.fromEntries(form[field].map((value, index) => [`${provider}_api_key_${index + 1}`, value]))
+        : { clear_secrets: [`${provider}_api_key_${remove + 1}`] };
+      const data = await authedJson<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(patch) });
+      setSettings(data);
+      setForm(prev => ({ ...prev, [field]: remove === undefined ? Array.from({ length: 3 }, () => "") : prev[field].map((key, index) => index === remove ? "" : key) }));
+      setSaved(`${provider === "brave" ? "Brave" : "Exa"} keys ${remove === undefined ? "saved. New company research jobs will use them immediately" : "removed"}.`);
+    } catch (err) { setError(err instanceof Error ? err.message : "Could not save research keys"); }
+    finally { setBusy(false); }
+  };
+
   const saveTavilyKeys = async () => {
     setBusy(true); setError(""); setSaved("");
     try {
@@ -705,12 +724,15 @@ export default function SettingsPage() {
           sales_pg_proxy_expires_at: form.salesPgProxyExpiresAt,
           om_api_token: form.omApiToken,
           composio_api_key: form.composioApiKey,
+          ...Object.fromEntries(form.braveKeys.map((value, index) => ["brave_api_key_" + (index + 1), value])),
+          ...Object.fromEntries(form.exaKeys.map((value, index) => ["exa_api_key_" + (index + 1), value])),
           ...Object.fromEntries(form.tavilyKeys.map((value, index) => [`tavily_api_key_${index + 1}`, value])),
           ...Object.fromEntries(form.jinaKeys.map((value, index) => [`jina_api_key_${index + 1}`, value])),
         }),
       });
       setSettings(data);
       setForm((prev) => ({ ...prev, tavilyKeys: Array.from({ length: 5 }, () => "") }));
+      setForm(prev => ({ ...prev, braveKeys: Array.from({ length: 3 }, () => ""), exaKeys: Array.from({ length: 3 }, () => "") }));
       setJinaTest(null);
       setForm((prev) => ({ ...prev, jinaKeys: Array.from({ length: JINA_SLOTS }, () => ""), cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", opencodeGoApiKey: "", hiveAiApiKey: "", yerplanApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", eeMailApiKey: "", settingsPassword: "", afaPasskey: "", tnbPassword: "", salesPgProxyToken: "", googleAdsClientSecret: "", googleAdsDeveloperToken: "", googleAdsRefreshToken: "", omApiToken: "", composioApiKey: "" }));
       if (data.proposal?.lastError) {
@@ -1111,7 +1133,26 @@ export default function SettingsPage() {
                 />
               </label>
 
-              <h2 id="tavily">Tavily company research</h2>
+              <h2>Company research search providers</h2>
+              {(["brave", "exa"] as const).map(provider => {
+                const label = provider === "brave" ? "Brave" : "Exa";
+                const field = provider === "brave" ? "braveKeys" : "exaKeys";
+                const flags = provider === "brave" ? settings?.braveKeysSet : settings?.exaKeysSet;
+                return <div key={provider}>
+                  <h3 id={provider}>{label} company research</h3>
+                  <p>{provider === "brave" ? "Broad company and news discovery." : "Focused people, projects and missing-detail searches."} Add up to three keys. Keys rotate automatically; rejected or rate-limited keys fall back to the next saved key and provider. Leave blank to keep a saved key.</p>
+                  {form[field].map((value, index) => <div key={index}>
+                    <label>{label} key {index + 1} <em>{flags?.[index] ? "saved" : "empty"}</em>
+                      <input type="password" autoComplete="new-password" value={value}
+                        onChange={event => setForm(prev => ({ ...prev, [field]: prev[field].map((key, i) => i === index ? event.target.value : key) }))}
+                        placeholder={flags?.[index] ? "••••••••  (unchanged)" : "Paste API key"} />
+                    </label>
+                    {flags?.[index] && <button type="button" className="secondary" disabled={busy} onClick={() => void saveResearchKeys(provider, index)}>Remove {label} key {index + 1}</button>}
+                  </div>)}
+                  <button type="button" disabled={busy} onClick={() => void saveResearchKeys(provider)}>Save {label} keys</button>
+                </div>;
+              })}
+              <h3 id="tavily">Tavily company research</h3>
               <p>Add up to five Tavily API keys. Company Deep Research rotates searches through them and tries another key when one is rejected or rate-limited. Leave a slot blank to keep its saved key, then click Save Tavily keys.</p>
               {form.tavilyKeys.map((value, index) => {
                 const slot = index + 1;

@@ -6,6 +6,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { domain, evidenceRecord, sourceTier } from './core.mjs';
 import { robotsAllowed, RESEARCH_USER_AGENT } from './robots.mjs';
 import { createLimiter } from './concurrency.mjs';
+import { createSearchRouter } from './search-providers.mjs';
 
 const denied = new BlockList();
 for (const [ip, n] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.168.0.0', 16], ['192.0.0.0', 24], ['192.0.2.0', 24], ['198.18.0.0', 15], ['198.51.100.0', 24], ['203.0.113.0', 24], ['224.0.0.0', 4], ['240.0.0.0', 4]]) denied.addSubnet(ip, n, 'ipv4');
@@ -72,7 +73,7 @@ export async function connectScrapling(server) {
     };
   } catch (error) { await client.close().catch(() => {}); throw error; }
 }
-export function createEvidenceTools({ seed, evidence, sources, budget, tavilyKey, tavilyKeys = [], scrapling, persist = async () => {}, fetchImpl = fetch, resolve = lookup }) {
+export function createEvidenceTools({ seed, evidence, sources, budget, tavilyKey, tavilyKeys = [], braveKeys = [], exaKeys = [], scrapling, persist = async () => {}, fetchImpl = fetch, resolve = lookup }) {
   const keys = [...new Set([...tavilyKeys, tavilyKey].map(key => String(key || '').trim()).filter(Boolean))];
   let keyCursor = 0;
   const ownDomain = seed.website ? domain(seed.website) : null;
@@ -82,8 +83,9 @@ export function createEvidenceTools({ seed, evidence, sources, budget, tavilyKey
   const searchCache = new Map(), pageCache = new Map(), evidenceCache = new Map();
   const searchLimit = createLimiter(3), fetchLimit = createLimiter(3);
   let nextId = evidence.length + 1;
-  const add = async (url, text, lane, mode) => {
+  const add = async (url, text, lane, mode, provenance = {}) => {
     const e = evidenceRecord({ id: `E${nextId++}`, url, text, lane, mode, tier: sourceTier(url, ownDomains, sources) });
+    Object.assign(e, provenance);
     const key = `${e.url}\n${e.mode}\n${e.hash}`;
     if (evidenceCache.has(key)) return evidenceCache.get(key);
     const saved = (async () => { await persist(e); evidence.push(e); allowed.add(e.url); return e; })();
@@ -97,6 +99,9 @@ export function createEvidenceTools({ seed, evidence, sources, budget, tavilyKey
       if (typeof query !== 'string' || !query.trim() || query.length > 400) throw new Error('Search query must be 1–400 characters');
       const cost = depth === 'advanced' ? 2 : 1;
       budget.take('searches', cost, lane);
+      budget.providers ||= {};
+      budget.providers.tavily ||= { requests: 0 };
+      budget.providers.tavily.requests++;
       let attempts = 1;
       const body = { query, search_depth: depth, topic, max_results: 5, auto_parameters: false, include_answer: false, include_raw_content: false, include_usage: true };
       if (topic === 'general') body.country = 'malaysia';
@@ -106,7 +111,7 @@ export function createEvidenceTools({ seed, evidence, sources, budget, tavilyKey
       const start = keyCursor++ % keys.length;
       const maxAttempts = keys.length === 1 ? 3 : keys.length;
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        if (attempt) { budget.take('searches', cost, lane); attempts++; } // Failed attempts count conservatively.
+        if (attempt) { budget.take('searches', cost, lane); attempts++; budget.providers.tavily.requests++; } // Failed attempts count conservatively.
         const key = keys[(start + attempt) % keys.length];
         try {
           response = await fetchImpl('https://api.tavily.com/search', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });
@@ -174,9 +179,9 @@ export function createEvidenceTools({ seed, evidence, sources, budget, tavilyKey
       return { untrusted_data: true, results };
     },
   };
-  const search = tools.search;
+  const search = createSearchRouter({ braveKeys, exaKeys, tavilyAvailable: keys.length > 0, tavilySearch: tools.search, budget, fetchImpl, add });
   tools.search = async (input, lane = 'A') => {
-    const key = JSON.stringify({ query: input.query?.trim(), depth: input.depth || 'basic', topic: input.topic || 'general', time_range: input.time_range || null, domains: [...new Set(input.include_domains || [])].sort() });
+    const key = JSON.stringify({ route: exaKeys.some(k => String(k || '').trim()) && /^G[23]/.test(lane) ? 'targeted' : 'general', query: input.query?.trim(), depth: input.depth || 'basic', topic: input.topic || 'general', time_range: input.time_range || null, domains: [...new Set(input.include_domains || [])].sort() });
     if (searchCache.has(key)) return { ...await searchCache.get(key), credits: 0, cached: true };
     const request = searchLimit(() => search(input, lane));
     searchCache.set(key, request);

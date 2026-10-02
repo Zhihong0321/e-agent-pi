@@ -4,7 +4,7 @@ import { getDomain } from 'tldts';
 import { parsePhoneNumberFromString } from 'libphonenumber-js/max';
 import { renderCompanyReport } from './report-html.mjs';
 
-export const VERSION = 'company-research-v2.1';
+export const VERSION = 'company-research-v2.2';
 export const Seed = z.object({
   name: z.string().trim().min(2).max(200), place_id: z.string().max(200).optional(),
   website: z.string().url().refine(v => /^https?:\/\//i.test(v) && Boolean(domain(v)), 'Website must be an HTTP(S) URL with a registrable domain').optional(), phone: z.string().max(80).optional(),

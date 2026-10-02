@@ -1,7 +1,7 @@
 import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { getPool, getSetting } from '../db.mjs';
-import { secret, TAVILY_KEY_NAMES } from '../secrets.mjs';
+import { secret, TAVILY_KEY_NAMES, BRAVE_KEY_NAMES, EXA_KEY_NAMES } from '../secrets.mjs';
 import { getAgent, getMcpServer, listMcpServers, createMcpServer, updateMcpServer, seedSystemAgent, updateAgent } from '../catalog.mjs';
 import { BUNDLED_MODELS, ROOT, agentWorkspace } from '../paths.mjs';
 import { resolveModelCredentials } from '../models.mjs';
@@ -43,7 +43,12 @@ async function resolveTavilyKeys() {
 }
 export function researchConfiguration() {
   const keyCount = savedTavilyKeys().length || (tavilyMcpKey ? 1 : 0);
-  return { tavily: keyCount > 0, tavilyKeyCount: keyCount, model: process.env.COMPANY_RESEARCH_MODEL || null, persistence: Boolean(store), workerBusy: busy };
+  const braveKeyCount = savedSearchKeys(BRAVE_KEY_NAMES, 'BRAVE_API_KEY').length;
+  const exaKeyCount = savedSearchKeys(EXA_KEY_NAMES, 'EXA_API_KEY').length;
+  return { brave: braveKeyCount > 0, braveKeyCount, exa: exaKeyCount > 0, exaKeyCount, tavily: keyCount > 0, tavilyKeyCount: keyCount, model: process.env.COMPANY_RESEARCH_MODEL || null, persistence: Boolean(store), workerBusy: busy };
+}
+export function savedSearchKeys(names, envName, get = secret, env = process.env) {
+  return [...new Set([...names.map(get), env[envName]].map(key => String(key || '').trim()).filter(Boolean))];
 }
 async function configuredRunner(modelId) {
   const resolved = await resolveModelCredentials();
@@ -82,14 +87,16 @@ async function tick(log) {
     heartbeat = setInterval(() => { void store.heartbeat(job.id, job.lease_token).catch(() => {}); }, 45000); heartbeat.unref?.();
     activeHeartbeat = heartbeat;
     const tavilyKeys = await resolveTavilyKeys();
-    if (!tavilyKeys.length) throw new Error('Add a Tavily API key in Settings → Keys');
+    const braveKeys = savedSearchKeys(BRAVE_KEY_NAMES, 'BRAVE_API_KEY');
+    const exaKeys = savedSearchKeys(EXA_KEY_NAMES, 'EXA_API_KEY');
+    if (!tavilyKeys.length && !braveKeys.length && !exaKeys.length) throw new Error('Add a Brave, Exa or Tavily API key in Settings → Keys');
     const runner = await configuredRunner(job.options?.modelId);
     activeRunner = runner;
     if (stopped) return;
     const server = await getMcpServer('scrapling');
     if (server) { try { scrapling = await connectScrapling(server); } catch { await store.event(job.id, { type: 'warning', message: 'Scrapling unavailable; page-fetch lanes will return partial results' }, job.lease_token); } }
     const metadataLanes = createMetadataLanes({ seed: job.seed, psiKey: process.env.PSI_API_KEY, pitchSignals: job.options?.pitchSignals, directory: seed => store.directoryCandidates(seed) });
-    const outcome = await researchCompany({ seed: job.seed, tavilyKeys, scrapling, runner, metadataLanes, emit: event => store.event(job.id, event, job.lease_token), saveEvidence: e => store.evidence(job.id, e, job.lease_token), saveRun: r => store.run(job.id, r, job.lease_token) });
+    const outcome = await researchCompany({ seed: job.seed, tavilyKeys, braveKeys, exaKeys, scrapling, runner, metadataLanes, emit: event => store.event(job.id, event, job.lease_token), saveEvidence: e => store.evidence(job.id, e, job.lease_token), saveRun: r => store.run(job.id, r, job.lease_token) });
     await store.finish(job.id, outcome, job.lease_token);
   } catch (error) {
     // Provider errors may include request diagnostics. Persist a bounded safe
@@ -113,7 +120,7 @@ function reportUrl(pathname) {
 export async function researchAction({ action, seed, id, force, pitchSignals = false, modelId, format = 'json' }, repository = store) {
   if (!repository) throw new Error('Company research is not initialized');
   if (action === 'start') {
-    if (!(await resolveTavilyKeys()).length) throw new Error('Add a Tavily API key in Settings → Keys');
+    if (!(await resolveTavilyKeys()).length && !savedSearchKeys(BRAVE_KEY_NAMES, 'BRAVE_API_KEY').length && !savedSearchKeys(EXA_KEY_NAMES, 'EXA_API_KEY').length) throw new Error('Add a Brave, Exa or Tavily API key in Settings → Keys');
     if (modelId !== undefined && (typeof modelId !== 'string' || !modelId.trim() || modelId.length > 200)) throw new Error('Valid research model id required');
     return repository.enqueue(Seed.parse(seed), Boolean(force), { pitchSignals: Boolean(pitchSignals), ...(modelId ? { modelId } : {}) });
   }
