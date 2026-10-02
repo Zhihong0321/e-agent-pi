@@ -1993,7 +1993,7 @@ async function bootServices() {
   try {
     if (dbReady()) {
       await ensureBrowserSchema();
-      const result = await ensureBrowserMcp({ exclude: [WHATSAPP_AGENT_ID, ORCHESTRATOR_AGENT_ID, MEDIA_AI_AGENT_ID, ...DI_AGENT_IDS] });
+      const result = await ensureBrowserMcp({ exclude: [WHATSAPP_AGENT_ID, ORCHESTRATOR_AGENT_ID, MEDIA_AI_AGENT_ID, "ads-research", ...DI_AGENT_IDS] });
       logEvent("info", `browser mcp on ${result.attachedTo.join(",") || "none"}`);
     }
   } catch (error) {
@@ -2193,7 +2193,7 @@ const server = createServer(async (req, res) => {
       companyId: () => companyHostContext().tenantId,
       workspaceFor: async (id) => { const agent = await getAgent(id); return agent ? agentWorkspace(agent) : null; },
     })) return;
-    if (await handleCompanyResearch(req, res, url, { authorized, readBody })) return;
+    if (await handleCompanyResearch(req, res, url, { authorized: (r) => authorized(r) || Boolean(user), readBody })) return;
     if (await handleAdsResearch(req, res, url, { authorized, readBody })) return;
     if (await handleMediaAi(req, res, url, { authorized })) return;
     if (req.method === "POST" && pathname === "/api/internal/orchestrator") {
