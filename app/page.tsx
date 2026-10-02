@@ -149,6 +149,7 @@ export default function Home() {
             </div>
           </div>
           <div className="inbox-body">
+            <nav aria-label="Site navigation" style={{ display: "flex", gap: 20, padding: "0 0 18px", fontSize: 14 }}><a href="/research">Research history</a><a href="/calendar">Calendar</a></nav>
             {error && !inChat && <p className="session-error">{error}</p>}
             {tab === "chats" && (
               <ChatsTab

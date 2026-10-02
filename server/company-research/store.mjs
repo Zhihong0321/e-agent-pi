@@ -52,6 +52,16 @@ export class ResearchStore {
     const q = await this.pool.query('SELECT id,status,result,error,created_at,updated_at FROM company_research_dossiers WHERE id=$1', [id]);
     return q.rows[0] || null;
   }
+  async list({ query = '', status = 'finished', limit = 20, offset = 0 } = {}) {
+    if (!['all', 'finished', 'active', 'complete', 'partial', 'failed', 'needs_review'].includes(status)) throw new Error('Invalid research status filter');
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0 || offset > 100000 || typeof query !== 'string' || query.length > 200) throw new Error('Invalid research pagination or query');
+    const where = `($1='' OR position(lower($1) in lower(d.seed->>'name'))>0) AND ($2='all' OR ($2='finished' AND d.status NOT IN ('queued','running')) OR ($2='active' AND d.status IN ('queued','running')) OR d.status=$2)`;
+    const [count, rows] = await Promise.all([
+      this.pool.query(`SELECT count(*)::int AS total FROM company_research_dossiers d WHERE ${where}`, [query.trim(), status]),
+      this.pool.query(`SELECT d.id,d.seed->>'name' AS name,d.seed->>'website' AS website,d.status,d.created_at AS "createdAt",d.updated_at AS "updatedAt",d.result IS NOT NULL AS "hasReport",d.result->'meta'->'durationMs' AS "durationMs",d.result->'scores'->'coverage' AS coverage,d.result->'meta'->>'version' AS version,p.token AS "publicationToken" FROM company_research_dossiers d LEFT JOIN company_research_publications p ON p.dossier_id=d.id WHERE ${where} ORDER BY d.created_at DESC,d.id DESC LIMIT $3 OFFSET $4`, [query.trim(), status, limit, offset]),
+    ]);
+    return { items: rows.rows, total: Number(count.rows[0].total), limit, offset };
+  }
   async heartbeat(id, token) {
     const q = await this.pool.query("UPDATE company_research_dossiers SET lease_until=now()+interval '15 minutes' WHERE id=$1 AND status='running' AND ($2::uuid IS NULL OR (lease_token=$2 AND lease_until>now())) RETURNING id", [id, token || null]);
     return q.rows.length > 0;

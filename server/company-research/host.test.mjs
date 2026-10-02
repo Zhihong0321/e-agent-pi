@@ -46,6 +46,7 @@ test('private API, SSE, report publication, replay and chat MCP tools work end t
   let transport;
   try {
     const route = '/api/company-research/dossiers';
+    assert.equal((await fetch(`${base}${route}`)).status, 401);
     const preview = await fetch(`${base}/reports/company/preview`);
     assert.equal(preview.status, 200); assert.match(await preview.text(), /no company has been researched/);
     assert.equal((await fetch(`${base}${route}`, { method: 'POST', body: '{}' })).status, 401);
@@ -62,6 +63,15 @@ test('private API, SSE, report publication, replay and chat MCP tools work end t
     const result = reconcile(input, new Date('2026-10-02T00:01:00Z'));
     await repository.finish(id, { ...input, status: 'partial', result });
     const authed = { headers: { Authorization: 'Bearer owner-test' } };
+    const queued = await repository.enqueue({ name: 'Other Company', website: 'https://other.example/' }, {});
+    const history = await (await fetch(`${base}${route}?q=acme`, authed)).json();
+    assert.equal(history.total, 1); assert.equal(history.items[0].name, 'Acme Solar');
+    assert.equal(history.items[0].hasReport, true);
+    assert.equal('result' in history.items[0], false); assert.equal('seed' in history.items[0], false);
+    assert.equal((await repository.list({ status: 'active' })).items[0].id, queued.id);
+    assert.equal((await repository.list({ status: 'all', limit: 1, offset: 1 })).items.length, 1);
+    assert.equal((await fetch(`${base}${route}?status=invalid`, authed)).status, 400);
+    assert.equal((await fetch(`${base}${route}?limit=101`, authed)).status, 400);
     const artifact = await fetch(`${base}${route}/${id}/artifact?format=html`, authed);
     assert.equal(artifact.status, 200); assert.match(artifact.headers.get('cache-control'), /private/); assert.match(artifact.headers.get('content-security-policy'), /sandbox/);
     assert.match(await artifact.text(), /Acme Solar/);
@@ -72,7 +82,10 @@ test('private API, SSE, report publication, replay and chat MCP tools work end t
     assert.equal(publication.published, true);
     const publicReport = await fetch(`${base}${publication.url}`);
     assert.equal(publicReport.status, 200); assert.equal(publicReport.headers.get('x-robots-tag'), 'noindex, nofollow');
-    assert.match(await publicReport.text(), /Company intelligence report/);
+    const publicHtml = await publicReport.text();
+    assert.match(publicHtml, /Company intelligence report/); assert.match(publicHtml, /href="\/research"/);
+    const publishedHistory = await repository.list({ query: 'acme' });
+    assert.equal(publication.url, `/reports/company/${publishedHistory.items[0].publicationToken}`);
     assert.equal((await fetch(`${base}${route}/${id}`)).status, 401);
     const republished = await client.callTool({ name: 'publish_company_report', arguments: { id } });
     assert.equal(JSON.parse(republished.content[0].text).url, publication.url);

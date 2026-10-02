@@ -7,6 +7,7 @@ import WebHome from "../app/web/page";
 import DemoPage from "../app/demo/page";
 import CalendarPage from "../app/calendar";
 import MediaKitPage from "../app/media-kit";
+import ResearchPage from "../app/research";
 import { watchForNewBuild } from "./sw-refresh";
 import "../app/globals.css";
 
@@ -17,6 +18,7 @@ if (window.location.pathname.startsWith("/test-agy")) {
 }
 
 const path = window.location.pathname;
+const research = path === "/research" || path.startsWith("/research/");
 const web = path.startsWith("/web");
 const demo = path === "/demo" || path.startsWith("/demo/");
 const calendar = path === "/calendar" || path.startsWith("/calendar/");
@@ -25,5 +27,5 @@ const settings = !web && !demo && !calendar && !mediaKit && path.startsWith("/se
 const signin = !web && !demo && !calendar && !mediaKit && !settings && path.startsWith("/signin");
 
 createRoot(document.getElementById("root")!).render(
-  <StrictMode>{mediaKit ? <MediaKitPage /> : calendar ? <CalendarPage /> : demo ? <DemoPage /> : web ? <WebHome /> : settings ? <SettingsPage /> : signin ? <SigninPage /> : <Home />}</StrictMode>,
+  <StrictMode>{research ? <ResearchPage /> : mediaKit ? <MediaKitPage /> : calendar ? <CalendarPage /> : demo ? <DemoPage /> : web ? <WebHome /> : settings ? <SettingsPage /> : signin ? <SigninPage /> : <Home />}</StrictMode>,
 );

@@ -171,7 +171,8 @@ export async function handleCompanyResearch(req, res, url, { authorized, readBod
     if (!['GET', 'HEAD'].includes(req.method)) { res.writeHead(405, { Allow: 'GET, HEAD' }); res.end(); return true; }
     if (!publication) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('Report not found'); return true; }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow', 'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox allow-popups allow-popups-to-escape-sandbox" });
-    res.end(req.method === 'HEAD' ? undefined : publication.html); return true;
+    const html = publication.html.replace(/<body(?:\s[^>]*)?>/i, match => `${match}<nav aria-label="Site navigation" style="display:flex;gap:24px;padding:14px 24px;background:#fff;border-bottom:1px solid #dce3d9;font:600 13px system-ui"><a href="/" style="color:#244c35">Agents</a><a href="/research" style="color:#244c35">Research history</a><a href="/calendar" style="color:#244c35">Calendar</a></nav>`);
+    res.end(req.method === 'HEAD' ? undefined : html); return true;
   }
   const internal = url.pathname === '/api/internal/company-research';
   const prefix = '/api/company-research/dossiers';
@@ -183,6 +184,9 @@ export async function handleCompanyResearch(req, res, url, { authorized, readBod
   if (configuration) { json(req.method === 'GET' ? 200 : 405, req.method === 'GET' ? researchConfiguration() : { error: 'GET required' }); return true; }
   const action = input => researchAction(input, repository);
   try {
+    if (req.method === 'GET' && url.pathname === prefix) {
+      json(200, await repository.list({ query: url.searchParams.get('q') || '', status: url.searchParams.get('status') || 'finished', limit: Number(url.searchParams.get('limit') || 20), offset: Number(url.searchParams.get('offset') || 0) })); return true;
+    }
     if (internal) {
       if (req.method !== 'POST') { json(405, { error: 'POST required' }); return true; }
       const input = JSON.parse(await readBody(req) || '{}');
