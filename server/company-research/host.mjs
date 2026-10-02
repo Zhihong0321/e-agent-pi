@@ -76,20 +76,20 @@ async function tick(log) {
   let job, scrapling, heartbeat;
   try {
     job = await store.claim(); if (!job) return;
-    heartbeat = setInterval(() => { void store.heartbeat(job.id).catch(() => {}); }, 45000); heartbeat.unref?.();
+    heartbeat = setInterval(() => { void store.heartbeat(job.id, job.lease_token).catch(() => {}); }, 45000); heartbeat.unref?.();
     const tavilyKeys = await resolveTavilyKeys();
     if (!tavilyKeys.length) throw new Error('Add a Tavily API key in Settings → Keys');
     const runner = await configuredRunner(job.options?.modelId);
     const server = await getMcpServer('scrapling');
-    if (server) { try { scrapling = await connectScrapling(server); } catch { await store.event(job.id, { type: 'warning', message: 'Scrapling unavailable; page-fetch lanes will return partial results' }); } }
+    if (server) { try { scrapling = await connectScrapling(server); } catch { await store.event(job.id, { type: 'warning', message: 'Scrapling unavailable; page-fetch lanes will return partial results' }, job.lease_token); } }
     const metadataLanes = createMetadataLanes({ seed: job.seed, psiKey: process.env.PSI_API_KEY, pitchSignals: job.options?.pitchSignals, directory: seed => store.directoryCandidates(seed) });
-    const outcome = await researchCompany({ seed: job.seed, tavilyKeys, scrapling, runner, metadataLanes, emit: event => store.event(job.id, event), saveEvidence: e => store.evidence(job.id, e), saveRun: r => store.run(job.id, r) });
-    await store.finish(job.id, outcome);
+    const outcome = await researchCompany({ seed: job.seed, tavilyKeys, scrapling, runner, metadataLanes, emit: event => store.event(job.id, event, job.lease_token), saveEvidence: e => store.evidence(job.id, e, job.lease_token), saveRun: r => store.run(job.id, r, job.lease_token) });
+    await store.finish(job.id, outcome, job.lease_token);
   } catch (error) {
     // Provider errors may include request diagnostics. Persist a bounded safe
     // message; never serialize headers or credential-bearing client objects.
     const message = String(error.message || 'Research failed').replace(/(?:sk-|tvly-)[A-Za-z0-9_-]+/g, '[redacted]').slice(0, 500);
-    if (job) await store.fail(job.id, message).catch(() => {});
+    if (job) await store.fail(job.id, message, job.lease_token).catch(() => {});
     log('warn', `company research job ${job?.id || 'queue'} failed: ${message}`);
   } finally { clearInterval(heartbeat); await scrapling?.close().catch(() => {}); busy = false; }
 }

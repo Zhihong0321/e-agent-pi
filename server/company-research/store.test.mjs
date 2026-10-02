@@ -39,3 +39,32 @@ test('Postgres migrations, queue leases, cache, evidence and replay work togethe
     assert.notEqual((await store.enqueue({ ...seed, phone: '012-345 6789' })).id, first.id);
   } finally { await db.close(); }
 });
+
+test('recovered leases fence stale workers from evidence, findings, completion and failure', async () => {
+  const db = new PGlite();
+  const store = new ResearchStore({ query: (sql, params) => params ? db.query(sql, params) : db.exec(sql).then(r => r.at(-1)) });
+  try {
+    await store.migrate();
+    const seed = { name: 'Acme Solar', website: 'https://acme.example/' };
+    const first = await store.enqueue(seed);
+    assert.equal((await store.enqueue(seed)).id, first.id); // Names/websites cache without a place id.
+    const old = await store.claim();
+    const e = evidenceRecord({ id: 'E1', url: seed.website, text: 'Acme Solar installation', tier: 3, lane: 'C' });
+    await store.evidence(first.id, e, old.lease_token);
+    await db.query("UPDATE company_research_dossiers SET lease_until=now()-interval '1 minute' WHERE id=$1", [first.id]);
+    assert.equal(await store.heartbeat(first.id, old.lease_token), false);
+    const current = await store.claim();
+    assert.notEqual(current.lease_token, old.lease_token);
+    assert.equal((await db.query('SELECT id FROM company_research_evidence')).rows.length, 0);
+    await assert.rejects(store.evidence(first.id, e, old.lease_token), /lease lost/);
+    await assert.rejects(store.run(first.id, { lane: 'G1' }, old.lease_token), /lease lost/);
+    await assert.rejects(store.event(first.id, { type: 'stale' }, old.lease_token), /lease lost/);
+    await assert.rejects(store.finish(first.id, { status: 'complete' }, old.lease_token), /lease lost/);
+    assert.equal(await store.fail(first.id, 'stale failure', old.lease_token), false);
+    assert.equal((await store.get(first.id)).status, 'running');
+    await store.evidence(first.id, e, current.lease_token);
+    assert.equal(await store.heartbeat(first.id, current.lease_token), true);
+    assert.equal(await store.fail(first.id, 'current failure', current.lease_token), true);
+    assert.equal((await store.get(first.id)).error, 'current failure');
+  } finally { await db.close(); }
+});

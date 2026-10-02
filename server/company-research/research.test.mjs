@@ -13,6 +13,7 @@ const seed = { name: 'Acme Solar Sdn Bhd', website: 'https://acme.example/', pho
 const sources = JSON.parse(await readFile(new URL('./sources.json', import.meta.url)));
 const e = (id, url, text, tier = 3) => evidenceRecord({ id, url, text, tier, lane: 'test' });
 const evidence = [e('E1', seed.website, 'Acme Solar Sdn Bhd offers solar installation. Contact 011-2345 6789 at 43000. Our director is Jane Tan.'), e('E2', 'https://ssm.com.my/acme', 'Acme Solar Sdn Bhd registration 199901234567 status live since 1999-10-03.', 1)];
+evidence[1].mode = 'http'; // A confirmed registry fact requires the fetched original, not a search snippet.
 const claim = { field: 'ssm_no', value: '199901234567', evidence_id: 'E2', quote: 'registration 199901234567 status live' };
 
 test('quotes allow formatting/whitespace but reject fabricated or changed text', () => {
@@ -106,9 +107,9 @@ test('Tavily key pool rotates searches, fails over auth/quota errors and budgets
       return { ok: status === 200, status, body: { cancel: async () => {} }, json: async () => ({ results: [{ title: seed.name, url: seed.website, content: 'Acme Solar Sdn Bhd solar installation' }] }) };
     } });
   assert.equal((await tools.search({ query: 'Acme' })).credits, 2);
-  await tools.search({ query: 'Acme' }); await tools.search({ query: 'Acme' });
+  await tools.search({ query: 'Acme services' }); await tools.search({ query: 'Acme news' });
   assert.deepEqual(used, ['Bearer tvly-one', 'Bearer tvly-two', 'Bearer tvly-two', 'Bearer tvly-one']);
-  await assert.rejects(() => tools.search({ query: 'Acme' }), /budget/);
+  await assert.rejects(() => tools.search({ query: 'Acme contact' }), /budget/);
   assert.equal(used.length, 4); assert.equal(budget.used.credits, 4);
   assert.equal(JSON.stringify(evidence).includes('tvly-'), false);
 });

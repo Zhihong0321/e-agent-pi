@@ -19,6 +19,7 @@ export class ResearchStore {
         token uuid PRIMARY KEY, dossier_id uuid NOT NULL UNIQUE REFERENCES company_research_dossiers(id) ON DELETE CASCADE,
         html text NOT NULL, name text NOT NULL, published_at timestamptz NOT NULL DEFAULT now());
       ALTER TABLE company_research_dossiers ADD COLUMN IF NOT EXISTS options jsonb NOT NULL DEFAULT '{}';
+      ALTER TABLE company_research_dossiers ADD COLUMN IF NOT EXISTS lease_token uuid;
       CREATE TABLE IF NOT EXISTS company_research_newpages (id text PRIMARY KEY, name_norm text NOT NULL, data jsonb NOT NULL);`);
     try {
       await this.pool.query('CREATE EXTENSION IF NOT EXISTS pg_trgm');
@@ -27,8 +28,8 @@ export class ResearchStore {
     } catch { this.trigrams = false; }
   }
   async enqueue(seed, force = false, options = {}) {
-    if (seed.place_id && !force) {
-      const old = await this.pool.query(`SELECT id,status FROM company_research_dossiers WHERE place_id=$1 AND version=$2 AND seed=$3::jsonb AND options=$4::jsonb AND created_at > now()-interval '30 days' AND status IN ('queued','running','complete','partial') ORDER BY created_at DESC LIMIT 1`, [seed.place_id, VERSION, JSON.stringify(seed), JSON.stringify(options)]);
+    if (!force) {
+      const old = await this.pool.query(`SELECT id,status FROM company_research_dossiers WHERE version=$1 AND seed=$2::jsonb AND options=$3::jsonb AND ((status IN ('queued','running')) OR (status='complete' AND created_at > now()-interval '30 days') OR (status='partial' AND created_at > now()-interval '1 day')) ORDER BY created_at DESC LIMIT 1`, [VERSION, JSON.stringify(seed), JSON.stringify(options)]);
       if (old.rows.length) return { ...old.rows[0], cached: true };
     }
     const id = randomUUID();
@@ -36,21 +37,24 @@ export class ResearchStore {
     await this.event(id, { type: 'queued', status: 'queued' }); return { id, status: 'queued', cached: false };
   }
   async claim() {
-    const q = await this.pool.query(`UPDATE company_research_dossiers SET status='running', lease_until=now()+interval '15 minutes', updated_at=now() WHERE id=(SELECT id FROM company_research_dossiers WHERE status='queued' OR (status='running' AND lease_until < now()) ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING id,seed,options`);
-    const job = q.rows[0];
-    if (job) {
-      // A recovered job starts over. Never combine stale findings with new ids.
-      await this.pool.query('DELETE FROM company_research_evidence WHERE dossier_id=$1', [job.id]);
-      await this.pool.query('DELETE FROM company_research_runs WHERE dossier_id=$1', [job.id]);
-    }
-    return job;
+    // Claim and recovery cleanup are one atomic statement. The token fences
+    // writes from a worker that resumes after another host takes its lease.
+    const q = await this.pool.query(`WITH claimed AS (
+      UPDATE company_research_dossiers SET status='running',error=NULL,lease_token=$1,lease_until=now()+interval '15 minutes',updated_at=now()
+      WHERE id=(SELECT id FROM company_research_dossiers WHERE status='queued' OR (status='running' AND (lease_until IS NULL OR lease_until < now())) ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1)
+      RETURNING id,seed,options,lease_token
+    ), cleared_evidence AS (DELETE FROM company_research_evidence WHERE dossier_id IN (SELECT id FROM claimed) RETURNING dossier_id),
+    cleared_runs AS (DELETE FROM company_research_runs WHERE dossier_id IN (SELECT id FROM claimed) RETURNING dossier_id)
+    SELECT * FROM claimed`, [randomUUID()]);
+    return q.rows[0];
   }
   async get(id) {
     const q = await this.pool.query('SELECT id,status,result,error,created_at,updated_at FROM company_research_dossiers WHERE id=$1', [id]);
     return q.rows[0] || null;
   }
-  async heartbeat(id) {
-    await this.pool.query("UPDATE company_research_dossiers SET lease_until=now()+interval '15 minutes' WHERE id=$1 AND status='running'", [id]);
+  async heartbeat(id, token) {
+    const q = await this.pool.query("UPDATE company_research_dossiers SET lease_until=now()+interval '15 minutes' WHERE id=$1 AND status='running' AND ($2::uuid IS NULL OR (lease_token=$2 AND lease_until>now())) RETURNING id", [id, token || null]);
+    return q.rows.length > 0;
   }
   async publish(id, html, name) {
     return (await this.pool.query(`INSERT INTO company_research_publications(token,dossier_id,html,name) VALUES($1,$2,$3,$4)
@@ -59,19 +63,30 @@ export class ResearchStore {
   }
   async publication(token) { return (await this.pool.query('SELECT html,name,published_at FROM company_research_publications WHERE token=$1', [token])).rows[0] || null; }
   async unpublish(id) { await this.pool.query('DELETE FROM company_research_publications WHERE dossier_id=$1', [id]); }
-  async event(id, data) { await this.pool.query('INSERT INTO company_research_events(dossier_id,data) VALUES($1,$2)', [id, data]); }
+  async event(id, data, token) { await this.write('company_research_events', id, 'data', [data], token); }
   async events(id, after = 0) { return (await this.pool.query('SELECT seq,data FROM company_research_events WHERE dossier_id=$1 AND seq>$2 ORDER BY seq LIMIT 100', [id, after])).rows; }
-  async evidence(id, e) { await this.pool.query('INSERT INTO company_research_evidence(dossier_id,id,data) VALUES($1,$2,$3) ON CONFLICT(dossier_id,id) DO UPDATE SET data=excluded.data', [id, e.id, e]); }
-  async run(id, r) { await this.pool.query('INSERT INTO company_research_runs(dossier_id,lane,data) VALUES($1,$2,$3) ON CONFLICT(dossier_id,lane) DO UPDATE SET data=excluded.data', [id, r.lane, r]); }
-  async finish(id, outcome) {
+  async write(table, id, columns, values, token) {
+    const tokenIndex = values.length + 2;
+    const q = await this.pool.query(`WITH owned AS (SELECT id FROM company_research_dossiers WHERE id=$1 AND ($${tokenIndex}::uuid IS NULL OR (status='running' AND lease_token=$${tokenIndex} AND lease_until>now())) FOR UPDATE)
+      INSERT INTO ${table}(dossier_id,${columns}) SELECT id,${values.map((_, i) => `$${i + 2}`).join(',')} FROM owned
+      ${table === 'company_research_events' ? '' : `ON CONFLICT(dossier_id,${table === 'company_research_evidence' ? 'id' : 'lane'}) DO UPDATE SET data=excluded.data`}
+      RETURNING dossier_id`, [id, ...values, token || null]);
+    if (token && !q.rows.length) throw new Error('Research job lease lost');
+  }
+  async evidence(id, e, token) { await this.write('company_research_evidence', id, 'id,data', [e.id, e], token); }
+  async run(id, r, token) { await this.write('company_research_runs', id, 'lane,data', [r.lane, r], token); }
+  async finish(id, outcome, token) {
     const { result, status, seed, identity, startedAt, webState, web } = outcome;
     const input = { seed, identity, startedAt, webState, web };
-    await this.pool.query('UPDATE company_research_dossiers SET status=$2,result=$3,replay_input=$4,lease_until=NULL,updated_at=now() WHERE id=$1', [id, status, result, input]);
+    const q = await this.pool.query("UPDATE company_research_dossiers SET status=$2,result=$3,replay_input=$4,error=NULL,lease_until=NULL,lease_token=NULL,updated_at=now() WHERE id=$1 AND ($5::uuid IS NULL OR (status='running' AND lease_token=$5 AND lease_until>now())) RETURNING id", [id, status, result, input, token || null]);
+    if (token && !q.rows.length) throw new Error('Research job lease lost');
     await this.event(id, { type: 'finished', status });
   }
-  async fail(id, error) {
-    await this.pool.query("UPDATE company_research_dossiers SET status='failed',error=$2,lease_until=NULL,updated_at=now() WHERE id=$1", [id, error]);
+  async fail(id, error, token) {
+    const q = await this.pool.query("UPDATE company_research_dossiers SET status='failed',error=$2,lease_until=NULL,lease_token=NULL,updated_at=now() WHERE id=$1 AND ($3::uuid IS NULL OR (status='running' AND lease_token=$3 AND lease_until>now())) RETURNING id", [id, error, token || null]);
+    if (!q.rows.length) return false;
     await this.event(id, { type: 'finished', status: 'failed', error });
+    return true;
   }
   async replayInput(id) {
     const q = await this.pool.query('SELECT replay_input,status FROM company_research_dossiers WHERE id=$1', [id]);

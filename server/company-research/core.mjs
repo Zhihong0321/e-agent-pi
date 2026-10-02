@@ -4,7 +4,7 @@ import { getDomain } from 'tldts';
 import { parsePhoneNumberFromString } from 'libphonenumber-js/max';
 import { renderCompanyReport } from './report-html.mjs';
 
-export const VERSION = 'company-research-v2.0';
+export const VERSION = 'company-research-v2.1';
 export const Seed = z.object({
   name: z.string().trim().min(2).max(200), place_id: z.string().max(200).optional(),
   website: z.string().url().refine(v => /^https?:\/\//i.test(v) && Boolean(domain(v)), 'Website must be an HTTP(S) URL with a registrable domain').optional(), phone: z.string().max(80).optional(),
@@ -92,6 +92,21 @@ export function validateFindings(input, evidence) {
   });
   return errors.length ? { accepted: false, errors } : { accepted: true, findings: parsed.data };
 }
+export function checkedFindings(input, evidence) {
+  const parsed = Findings.safeParse(input);
+  if (!parsed.success) return null;
+  const findings = { ...parsed.data };
+  let discarded = 0;
+  for (const key of ['facts', 'people', 'clients', 'signals', 'risks']) {
+    findings[key] = findings[key].filter(item => {
+      const valid = validateFindings({ [key]: [item] }, evidence).accepted;
+      if (!valid) discarded++;
+      return valid;
+    });
+  }
+  if (discarded) findings.unknowns = [...new Set([...findings.unknowns, `${discarded} submitted claims failed evidence validation and were excluded.`])].slice(0, 50);
+  return { findings, discarded };
+}
 export function validDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(String(value)) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
 }
@@ -107,7 +122,8 @@ export function lockIdentity(seed, evidence) {
   const candidates = evidence.map(e => {
     const text = e.text.toLowerCase();
     const matched = [];
-    if (nameKey(text).includes(nameKey(seed.name))) matched.push('name');
+    const name = nameKey(seed.name);
+    if (name.length >= 2 && nameKey(text).includes(name)) matched.push('name');
     if (seed.website && domain(seed.website) && domain(e.url) === domain(seed.website)) matched.push('domain');
     if (seed.phone && phone(seed.phone)) {
       const found = [...e.text.matchAll(/(?:\+?60|0)[\d\s().-]{7,18}/g)].some(m => phone(m[0]) === phone(seed.phone));
@@ -129,12 +145,12 @@ export function fact(items, evidence) {
   if (!verified.length) return { value: null, status: 'unknown', confidence: 0, evidence: [] };
   const refs = [...new Map(verified.map(i => {
     const e = evidence.find(e => e.id === i.evidence_id);
-    return [e.id, { id: e.id, url: e.url, tier: e.tier, quote: i.quote, retrievedAt: e.retrievedAt }];
+    return [e.id, { id: e.id, url: e.url, tier: e.tier, mode: e.mode, quote: i.quote, retrievedAt: e.retrievedAt }];
   })).values()];
   const valueKey = i => i.field === 'legal_name' ? nameKey(i.value) : i.field === 'ssm_no' ? String(i.value) : JSON.stringify(i.value);
   const unique = new Set(verified.map(valueKey));
   const domains = new Set(refs.filter(e => e.tier === 2).map(e => domain(e.url)));
-  const status = unique.size > 1 ? 'conflicting' : refs.some(e => e.tier === 1) ? 'confirmed' : domains.size >= 2 ? 'corroborated' : refs.every(e => e.tier === 3) ? 'self_reported' : 'unknown';
+  const status = unique.size > 1 ? 'conflicting' : refs.some(e => e.tier === 1 && ['http', 'metadata'].includes(e.mode)) ? 'confirmed' : domains.size >= 2 ? 'corroborated' : refs.every(e => e.tier === 3) ? 'self_reported' : 'unknown';
   const out = { value: status === 'unknown' || status === 'conflicting' ? null : verified[0].value, status, confidence: { confirmed: 0.95, corroborated: 0.8, self_reported: 0.5, conflicting: 0, unknown: 0 }[status], evidence: refs };
   if (status === 'unknown' && unique.size === 1) out.reportedValue = verified[0].value;
   if (unique.size > 1) out.conflicts = verified.map(i => ({ value: i.value, evidenceId: i.evidence_id }));
@@ -146,15 +162,18 @@ export function scoreDossier(d, now = new Date()) {
   const add = (feature, max, evaluated, points, note) => drivers.push({ feature, max, evaluated, points: evaluated ? points : 0, note });
   add('Registry', 30, trusted(d.identity.ssmNo) && trusted(d.identity.status), d.identity.status.value === 'live' ? 30 : 0, 'Verified registration and live status required.');
   const address = trusted(d.identity.registeredAddress);
-  const phoneAgreement = d.contacts.phones.some(p => p.sources.length >= 3);
+  const phoneAgreement = d.contacts.phones.some(p => (p.sourceDomains || []).length >= 3);
   add('Entity consistency', 15, trusted(d.identity.legalName) && address && phoneAgreement, 15, 'Name, address and the same phone need source agreement.');
-  const oldDomain = d.web.domain.createdOn && now - new Date(d.web.domain.createdOn) >= 365 * 86400000;
+  const knownDomainDate = validDate(d.web.domain.createdOn);
+  const oldDomain = knownDomainDate && now - new Date(d.web.domain.createdOn) >= 365 * 86400000;
   const history = d.web.archive.snapshotCount > 1 || d.web.archive.snapshotCountLowerBound > 1;
-  add('Real web presence', 15, d.web.domain.state !== 'unknown', (d.web.domain.state === 'active' ? 5 : 0) + (oldDomain ? 5 : 0) + (history ? 5 : 0), 'Live site, domain older than one year, and archive history: 5 each.');
+  add('Live website', 5, d.web.domain.state !== 'unknown', d.web.domain.state === 'active' ? 5 : 0, 'A successfully fetched company website.');
+  add('Domain age', 5, knownDomainDate, oldDomain ? 5 : 0, 'An established domain registration date older than one year.');
+  add('Archive history', 5, Number.isFinite(d.web.archive.snapshotCount) || Number.isFinite(d.web.archive.snapshotCountLowerBound), history ? 5 : 0, 'More than one successful archived capture.');
   const dated = d.signals.filter(s => s.value && validDate(s.value.date));
   const recent = dated.some(s => { const age = now - new Date(s.value.date); return age >= 0 && age <= 90 * 86400000; });
   add('Operating signals', 15, dated.length > 0, recent ? 15 : 0, 'Dated operating evidence within 90 days.');
-  add('Named people', 10, d.people.length > 0, d.people.some(trusted) ? 10 : 0, 'At least one independently corroborated person.');
+  add('Named people', 10, d.people.some(trusted), d.people.some(trusted) ? 10 : 0, 'At least one independently corroborated person.');
   const footprint = [...d.clients, ...d.signals].some(trusted);
   add('Independent footprint', 10, footprint, footprint ? 10 : 0, 'Independent client or operating evidence.');
   const explicitRisk = d.risks.some(trusted);
@@ -172,10 +191,9 @@ export function reconcile({ seed, identity, evidence, runs, startedAt, webState 
   // Re-check every stored claim on replay; one unsupported item must not erase
   // unrelated, valid findings from the same completed section.
   const findings = runs.map(r => {
-    const parsed = Findings.safeParse(r.findings || {});
-    if (!parsed.success) return null;
-    const out = { ...parsed.data };
-    for (const key of ['facts', 'people', 'clients', 'signals', 'risks']) out[key] = out[key].filter(item => validateFindings({ [key]: [item] }, evidence).accepted);
+    const checked = checkedFindings(r.findings || {}, evidence);
+    if (!checked) return null;
+    const out = checked.findings;
     if (!/^G4(?:-|$)/.test(r.lane)) out.risks = [];
     out.signals = out.signals.filter(item => !/(?:rebate|programme|program).*(?:claim window|deadline|eligible homeowner)/i.test(item.what) || nameKey(item.what).includes(nameKey(seed.name)));
     return out;
@@ -219,8 +237,11 @@ export function reconcile({ seed, identity, evidence, runs, startedAt, webState 
     if (claim.field === 'phone' && phone(claim.value)) {
       const e164 = phone(claim.value);
       let p = d.contacts.phones.find(p => p.e164 === e164);
-      if (!p) { p = { e164, whatsapp: false, sources: [] }; d.contacts.phones.push(p); }
+      if (!p) { p = { e164, whatsapp: false, sources: [], sourceDomains: [] }; d.contacts.phones.push(p); }
       if (!p.sources.includes(claim.evidence_id)) p.sources.push(claim.evidence_id);
+      const source = evidence.find(e => e.id === claim.evidence_id);
+      const agreement = source.tier === 3 ? 'company/self-reported' : domain(source.url);
+      if (agreement && !p.sourceDomains.includes(agreement)) p.sourceDomains.push(agreement);
       const links = claim.quote.match(/(?:https?:\/\/)?(?:wa\.me\/|api\.whatsapp\.com\/)[^\s)\]]+/gi) || [];
       p.whatsapp ||= links.some(link => {
         try { const u = new URL(link.startsWith('http') ? link : `https://${link}`); const digits = (u.hostname === 'wa.me' ? u.pathname : u.searchParams.get('phone') || '').replace(/\D/g, ''); return phone(`+${digits}`) === e164; } catch { return false; }
