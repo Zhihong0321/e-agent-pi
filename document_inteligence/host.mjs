@@ -76,6 +76,13 @@ const AGENT_CARDS = {
     description:
       "Reads date-bearing company records and turns them into a unified calendar feed. Shows quotation expiry, unpaid invoice due dates, payment receipts, form deadlines and custom date reminders with provenance. Read-only: it never edits business records.",
   },
+  "di-procurement": {
+    color: "orange",
+    userFacing: true,
+    headline: "Suppliers, purchase orders and what to pay",
+    description:
+      "Keeps suppliers, records the quotations and invoices they send, drafts purchase orders from them, records goods received, and checks every invoice against what was ordered and received before it is paid. Admins issue POs and mark invoices paid; anyone signed in can draft and record.",
+  },
   "di-expenses": {
     color: "rose",
     userFacing: true,

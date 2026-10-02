@@ -20,6 +20,10 @@ export const DEFAULT_SEQUENCES = [
   { key: "receipt", prefix: "RCP-", padding: 4, yearly_reset: true },
   { key: "customer", prefix: "C-", padding: 4, yearly_reset: false },
   { key: "expense_claim", prefix: "EXP-", padding: 4, yearly_reset: true },
+  { key: "supplier", prefix: "S-", padding: 4, yearly_reset: false },
+  { key: "purchase_order", prefix: "PO-", padding: 4, yearly_reset: true },
+  { key: "supplier_quotation", prefix: "SQ-", padding: 4, yearly_reset: true },
+  { key: "supplier_invoice", prefix: "SI-", padding: 4, yearly_reset: true },
 ];
 
 export const ENTITY_DEFS = [
@@ -88,6 +92,27 @@ export const ENTITY_DEFS = [
     description:
       "The month's expense claims, grouped by the company's cut-off day. Open while claims are collected; closing freezes it and fixes the report. Claims filed after a closed submission roll into the next one.",
     match_keys: ["period_key"],
+  },
+  {
+    entity: "supplier",
+    label: "Supplier",
+    description:
+      "A company we buy from (code S-0001). Match first: the same registration number, email, name or phone is the same supplier. Quotations, invoices and purchase orders hang off it.",
+    match_keys: ["reg_no", "email", "name", "phone"],
+  },
+  {
+    entity: "purchase_order",
+    label: "Purchase order",
+    description:
+      "Our order to a supplier. A draft is editable and has no number; an admin issues it (PO-yyyy-nnnn, frozen from then on). Status: draft -> issued -> partially_received -> received, or cancelled. Goods are received against its lines and can never exceed what was ordered.",
+    match_keys: ["number", "supplier", "status"],
+  },
+  {
+    entity: "supplier_document",
+    label: "Supplier quotation / invoice",
+    description:
+      "A quotation or invoice a supplier sent us, kept as evidence with its file (SQ-/SI-yyyy-nnnn is our reference; supplier_ref is theirs). A quotation can become a PO; an invoice is matched to its PO and to what was received before it is paid.",
+    match_keys: ["number", "supplier_ref", "supplier"],
   },
 ];
 

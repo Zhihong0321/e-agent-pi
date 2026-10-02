@@ -4,7 +4,7 @@ import { DiError } from './common.mjs';
 import { seedTenantTx } from './seed.mjs';
 
 // Children precede parents. Names are constants, never request data.
-const DATA = ['expense_receipt','expense_claim','expense_batch','form_submission','form_version','form','payment_allocation','payment',
+const DATA = ['goods_receipt','purchase_order_line','supplier_document','purchase_order','supplier','expense_receipt','expense_claim','expense_batch','form_submission','form_version','form','payment_allocation','payment',
   'document_line','document','attachment','package_item','package','product','contact','customer','company_member'];
 const CONFIG = ['template','workflow_def','tax_code','expense_setting'];
 const SNAPSHOT = [...DATA,...CONFIG,'document_sequence','company_profile','onboarding_progress','field_def','entity_def'];

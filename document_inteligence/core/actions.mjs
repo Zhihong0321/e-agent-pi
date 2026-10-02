@@ -59,7 +59,7 @@ export async function runTool(deps, { agent, tool, args = {} }) {
     const { identity, ...rest } = parsed.data;
     who = deps.who ?? (identity && deps.resolveIdentity ? await deps.resolveIdentity(identity) : null);
     if (!who) {
-      throw new DiError("Sign-in required: no signed-in user is attached to this call. Pass the identity code from the [Expense identity] line. If there is none, ask the user to sign in and chat with the Expenses Clerk directly.");
+      throw new DiError("Sign-in required: no signed-in user is attached to this call. Pass the identity code from your \"[... identity]\" line. If there is none, ask the user to sign in and chat with this clerk directly.");
     }
     ctx.actor = who.username;
     callArgs = rest;
@@ -134,11 +134,11 @@ export async function runTool(deps, { agent, tool, args = {} }) {
         : undefined,
     };
     try {
-      const out = await publishExpenseReport(env, report);
+      const out = await (typeof spec.report === "function" ? spec.report : publishExpenseReport)(env, report);
       result = { ...rest, ...out, shared_files: [...(rest.shared_files ?? []), ...(out.pdf?.id ? [out.pdf] : [])] };
     } catch (error) {
       // The data change (e.g. closing a submission) already committed; say so rather than fail the call.
-      result = { ...rest, pdf: { error: describeError(error) }, note: "The data change was saved, but the report could not be made. Call claim_report to try again." };
+      result = { ...rest, pdf: { error: describeError(error) }, note: "The data change was saved, but the PDF could not be made. Ask for the report or PDF again." };
     }
   }
 

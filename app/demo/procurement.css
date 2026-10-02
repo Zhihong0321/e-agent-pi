@@ -1,0 +1,32 @@
+.pr-stats small{display:block;margin-top:3px;color:#8b9a8f;font-size:10px;font-weight:600;letter-spacing:0;text-transform:none}
+.pr-attention{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 26px;border-bottom:1px solid var(--line);background:#fffdf7}
+.pr-attention>span{color:#9a6a1b;font-size:9px;font-weight:800;letter-spacing:1px}
+.pr-chip{border:1px solid #ecd9ad;background:#fdf7e6;color:#8a6a1b;border-radius:99px;padding:6px 11px;font-size:11px;font-weight:700;cursor:pointer}
+.pr-chip.no{border-color:#efcfcf;background:#fff5f4;color:#a33d3d}
+.pr-late{color:#a33d3d;font-size:10px;font-weight:800}
+.ex-status.issued{background:#e8eefb;color:#3a5ba0}.ex-status.partially_received{background:#fbf1de;color:#9a6a1b}
+.ex-status.received,.ex-status.paid,.ex-status.accepted{background:#e5f5e7;color:#2f7a4c}
+.ex-status.draft,.ex-status.unpaid{background:#f3f0e8;color:#8a7a46}
+.ex-status.cancelled,.ex-status.void,.ex-status.rejected{background:#eef0f4;color:#5b6678}
+.ex-status.disputed{background:#fde9e8;color:#a33d3d}.ex-status.converted{background:#ece8fa;color:#5a4aa0}
+.pr-lines{width:100%;border-collapse:collapse;font-size:11px;margin:0 0 14px}
+.pr-lines th{color:#8b9a8f;font-size:9px;letter-spacing:.7px;text-transform:uppercase;text-align:left;padding:6px 4px;border-bottom:1px solid var(--line)}
+.pr-lines th.r,.pr-lines td.r{text-align:right}.pr-lines td{padding:7px 4px;border-bottom:1px solid #eff3ef;vertical-align:top}
+.pr-lines td small{display:block;color:#9aa89e;font-size:10px;margin-top:2px}
+.pr-lines input{width:64px;border:1px solid #d6e2d8;border-radius:6px;padding:4px 6px;font-size:11px;text-align:right}
+.pr-bar{display:inline-block;vertical-align:middle;width:34px;height:5px;border-radius:3px;background:#e4ebe7;margin-right:6px;overflow:hidden}
+.pr-bar i{display:block;height:100%;background:#4a9a6a}
+.pr-links{display:grid;gap:2px;margin:0 0 12px}.pr-links .ex-link{text-align:left}
+.pr-receipts{font-size:11px;color:#617969;margin-bottom:14px}.pr-receipts p{margin:4px 0 0}
+.pr-match{border-radius:9px;padding:10px 12px;margin:0 0 14px;font-size:11px;line-height:1.5;border:1px solid}
+.pr-match.matched{background:#eef8f0;border-color:#cfe6d4;color:#2f6a46}
+.pr-match.review{background:#fdf7e6;border-color:#ecd9ad;color:#8a6a1b}
+.pr-match.no_po,.pr-match.void{background:#f4f6f4;border-color:#e1e9e1;color:#5b6678}
+.pr-match p{margin:5px 0 0}
+.pr-modal{width:min(100%,600px)}
+.pr-draft-lines{display:grid;gap:7px}
+.pr-draft-line{display:grid;grid-template-columns:minmax(0,3fr) 70px 90px 60px auto;gap:6px}
+.pr-draft-line input{border:1px solid #e1e9e1;border-radius:8px;height:38px;padding:0 9px;font-size:12px;min-width:0}
+.pr-draft-head{font-size:9px;color:#8b9a8f;font-weight:800;text-transform:uppercase;letter-spacing:.6px}
+.pr-draft-line button{border:0;background:#f1f5f1;border-radius:7px;width:30px;color:#7b8c80}
+@media(max-width:900px){.pr-attention{padding:12px 18px}.pr-draft-line{grid-template-columns:1fr 1fr}}

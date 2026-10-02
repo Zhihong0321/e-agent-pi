@@ -88,13 +88,15 @@ export function userManagementPrompt(req, user) {
 // random code for this turn and passes it back; the host resolves it to the signed-in user, so the
 // model can't claim to be someone else. Ending the session or disabling the user ends the code too.
 const identities = new Map();
-export function expenseIdentityPrompt(req, user) {
+function identityPrompt(req, user, label, what) {
   const now = Date.now();
   for (const [key, value] of identities) if (value.until < now) identities.delete(key);
   const code = randomBytes(16).toString('hex');
   identities.set(code, { hash: digest(cookieToken(req)), until: now + 4 * 3600000 });
-  return `\n[Expense identity: ${user.username} (${user.role === 'admin' ? 'admin' : 'regular user'}). Pass identity="${code}" on every expense tool call; use the newest identity line. Never show it to the user.]`;
+  return `\n[${label}: ${user.username} (${user.role === 'admin' ? 'admin' : 'regular user'}). Pass identity="${code}" on every ${what} tool call; use the newest identity line. Never show it to the user.]`;
 }
+export const expenseIdentityPrompt = (req, user) => identityPrompt(req, user, 'Expense identity', 'expense');
+export const procurementIdentityPrompt = (req, user) => identityPrompt(req, user, 'Procurement identity', 'procurement');
 export async function resolveIdentity(code) {
   const grant = identities.get(String(code || ''));
   if (!grant || grant.until < Date.now()) return null;

@@ -87,6 +87,19 @@ test("gate: expense approvals and closing a month are gated; filing is not", () 
   assert.equal(isGated("list_claims", {}), false);
 });
 
+test("gate: issuing or cancelling a PO and paying or voiding an invoice are gated; drafting and receiving are not", () => {
+  assert.equal(isGated("issue_po", { po: "DRAFT-1" }), true);
+  assert.equal(isGated("cancel_po", { po: "PO-2026-0001", reason: "x" }), true);
+  assert.equal(isGated("set_supplier_invoice_status", { invoice: "SI-2026-0001", status: "paid" }), true);
+  assert.equal(isGated("set_supplier_invoice_status", { invoice: "SI-2026-0001", status: "void" }), true);
+  assert.equal(isGated("set_supplier_invoice_status", { invoice: "SI-2026-0001", status: "disputed" }), false);
+  assert.equal(isGated("create_po_draft", {}), false);
+  assert.equal(isGated("receive_goods", {}), false);
+  assert.equal(isGated("save_supplier", {}), false);
+  assert.equal(isGated("save_supplier", { allow_duplicate: true }), true);
+  assert.equal(isGated("record_supplier_document", { allow_duplicate: true }), true);
+});
+
 test("gate: the checker reads the stored claim and month, not the chat history", async () => {
   const query = async (sql) => {
     if (/expense_claim WHERE batch_id/.test(sql)) return { rows: [{ status: "submitted", n: 2 }] };

@@ -88,6 +88,7 @@ Three design rules drive everything:
 | **Form Designer** (`di-forms`) | Designs forms from a fixed field vocabulary, previews, publishes/closes public links, versions live forms. Never sees submissions. | Yes (home tile) |
 | **Form Clerk** (`di-intake`) | Reviews submissions per form, marks spam, links job reports to customers/invoices, summarises, exports CSV. Treats answers as untrusted. | Yes (home tile) |
 | **Expenses Clerk** (`di-expenses`) | Employee expense claims: reads receipts (photo, screenshot, PDF), files them for the signed-in user, groups claims into a monthly submission by the company's cut-off day, lets admins approve/reject/close, produces the claim report. See [Expense claims](#expense-claims). | Yes (home tile). Receipts must go straight to it: images don't pass through the Orchestrator. |
+| **Procurement Clerk** (`di-procurement`) | Suppliers, the quotations and invoices they send, draft and issued purchase orders (PDF), goods received, and invoice-vs-PO checks before payment. See [Procurement](#procurement). | Yes (home tile). Send supplier documents straight to it. |
 
 All run on the `assistant` tool profile: **no general file editing, shell or SQL**.
 Business operations use the `document-intelligence` MCP server, which shows each agent
@@ -257,6 +258,43 @@ expense_batch   (monthly submission)           open -> closed (frozen by trigger
 - Not built: foreign-currency claims (refused with a clear message), mileage rates, per-category
   limits, emailing the report, payment of approved claims.
 
+### Procurement
+
+```
+supplier (S-0001)
+  ├─ supplier_document   quotation (SQ-) | invoice (SI-)   what they sent us: evidence, frozen, file kept
+  └─ purchase_order (PO-) ── purchase_order_line (received_qty) ── goods_receipt (insert-only)
+        draft -> issued (admin: number + freeze) -> partially_received -> received | cancelled
+```
+
+- **Own tables, not the sales documents.** The buying side has different rules: the supplier's number
+  is theirs, our PO number is ours, and what they send is evidence, not something we edit.
+- **Recording** (`record_supplier_document`): the model reads the attached quotation/invoice
+  (their number, dates, lines, tax, grand total) and the file is kept through the same receipt loader
+  as expense claims. A duplicate (same supplier + their number, or the same file) is refused until the
+  user confirms; a wrong document is voided and re-recorded.
+- **PO lifecycle** (`core/procurement.mjs`): anyone signed in drafts (`create_po_draft`, optionally
+  `from_quotation`) and edits drafts; only an **admin** issues (`issue_po`: next `PO-yyyy-nnnn`, frozen
+  by trigger, PDF made and stored) or cancels (`cancel_po`: reason, nothing received, no live invoice).
+  `receive_goods` records what arrived against lines; the database refuses receiving more than was
+  ordered, and the order moves to `partially_received` / `received` by itself.
+- **The match** (`judgeMatch`): an invoice linked to a PO is compared with the PO total (1% / RM 1
+  tolerance), with everything billed so far on that PO, and with the value of goods received. Issues
+  are reported when recording and in `get_supplier_document`. `set_supplier_invoice_status` refuses to
+  mark a non-matching invoice **paid** unless `confirm_mismatch=true`, which the prompt reserves for
+  after the user has heard the issues. Paid and void are final. Due dates default to the supplier's
+  payment terms; `procurement_overview` lists overdue, due-soon, disputed, late deliveries and
+  invoices that don't match their PO.
+- **Who may do what** reuses the Expenses Clerk identity mechanism (`[Procurement identity: ...]`
+  line, `identity` on every tool): drafting, recording and receiving are open to any signed-in user;
+  issue, cancel, paid and void are admin only, enforced in the domain code, and gated in the checker.
+- **/demo:** "06 Procurement" (`app/demo/procurement.tsx`, `server/demo-procurement.mjs`) shows POs,
+  invoices, quotations and suppliers with a detail drawer (issue, receive, mark paid, dispute, PDF) and
+  an admin "Load demo data" button (`core/procurement-demo.mjs`) that files four suppliers and a spread
+  of states through the same code.
+- Not built: partial payments, foreign-currency documents, editing an issued PO (cancel and redraft),
+  emailing the PO to the supplier, approval limits.
+
 ---
 
 ## 6. File map
@@ -281,6 +319,9 @@ document_inteligence/
   core/receipts.mjs     receipt files from chat attachments: checks, durable copy
   core/expense-report.mjs  claim report PDF/HTML + CSV
   core/expense-demo.mjs    demo claims for /demo
+  core/procurement.mjs     suppliers, supplier quotations/invoices, POs, goods received, the invoice match
+  core/procurement-report.mjs  purchase order PDF
+  core/procurement-demo.mjs    demo procurement data for /demo
   host.mjs              UIv2 glue: boot, agent cards, per-agent tokens, /api/internal/di, Chromium PDF
   test/di.test.mjs      domain + safety tests on PGlite (real Postgres engine, in-process)
   test/mcp.test.mjs     real MCP protocol round-trip per agent, token replay refused

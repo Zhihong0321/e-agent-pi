@@ -76,7 +76,7 @@ test("MCP server exposes per-agent tools and round-trips through the host", asyn
     assert.match(denied.content[0].text, /Unauthorized/);
     await forged.close();
 
-    for (const agent of ["di-forms", "di-intake", "di-expenses"]) {
+    for (const agent of ["di-forms", "di-intake", "di-expenses", "di-procurement"]) {
       const client = await connect(agent);
       assert.deepEqual((await client.listTools()).tools.map((t) => t.name).sort(), toolsFor(agent).map((t) => t.name).sort());
       await client.close();

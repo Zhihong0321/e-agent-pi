@@ -30,6 +30,11 @@ export const GATED = {
   review_claim: () => true,
   close_monthly_submission: () => true,
   file_claim: (args) => args?.allow_duplicate === true,
+  issue_po: () => true,
+  cancel_po: () => true,
+  set_supplier_invoice_status: (args) => args?.status === "paid" || args?.status === "void",
+  save_supplier: (args) => args?.allow_duplicate === true,
+  record_supplier_document: (args) => args?.allow_duplicate === true,
 };
 
 export const isGated = (tool, args) => Boolean(GATED[tool]?.(args));
@@ -42,6 +47,11 @@ const GATE_NOTES = {
   review_claim: "The server already limits this to admins. Judge only whether the user asked to approve or reject THIS claim, and, for a rejection, whether a reason was given.",
   close_monthly_submission: "The server refuses while claims are pending unless carry_forward_pending is set. Judge only whether the user asked to close THIS month, and, if carry_forward_pending is true, whether they agreed to move pending claims to the next month.",
   file_claim: "Only reached with allow_duplicate. Judge whether the user confirmed this is a separate expense from the one the earlier refusal named.",
+  issue_po: "The server limits this to admins and freezes the order. Judge only whether the user asked to issue THIS purchase order now.",
+  cancel_po: "Judge only whether the user asked to cancel THIS purchase order and gave or accepted a reason.",
+  set_supplier_invoice_status: "Paying or voiding a supplier invoice is final. Judge only whether the user asked for exactly this invoice to be marked paid or voided, and, when confirm_mismatch is true, whether they confirmed after hearing the mismatch.",
+  save_supplier: "Only reached with allow_duplicate. Judge whether the user confirmed this is a different company from the one the refusal named.",
+  record_supplier_document: "Only reached with allow_duplicate. Judge whether the user confirmed this is a different document from the one the refusal named.",
 };
 
 /** The record a write acts on, from its arguments, when no database description is available. */

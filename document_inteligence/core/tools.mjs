@@ -16,6 +16,8 @@ import { crmDashboard } from "./dashboard.mjs";
 import { readCalendar } from "./calendar.mjs";
 import * as expenses from "./expenses.mjs";
 import { claimsToCsv } from "./expense-report.mjs";
+import * as procurement from "./procurement.mjs";
+import { publishPoPdf } from "./procurement-report.mjs";
 
 export const AGENTS = {
   "di-onboarding": { name: "Company Onboarding", short: "CO" },
@@ -27,10 +29,11 @@ export const AGENTS = {
   "di-intake": { name: "Form Clerk", short: "FC" },
   "di-calendar": { name: "Calendar AI", short: "CA" },
   "di-expenses": { name: "Expenses Clerk", short: "EC" },
+  "di-procurement": { name: "Procurement Clerk", short: "PC" },
 };
 
 // The read-only company tools every agent gets. The calendar and the expense clerk need none of the CRM ones.
-const ALL = Object.keys(AGENTS).filter((id) => id !== "di-calendar" && id !== "di-expenses");
+const ALL = Object.keys(AGENTS).filter((id) => !["di-calendar", "di-expenses", "di-procurement"].includes(id));
 const RECORDS = "di-records";
 const DOCS = "di-documents";
 const TPL = "di-templates";
@@ -40,8 +43,15 @@ const FORMS = "di-forms";
 const INTAKE = "di-intake";
 const CALENDAR = "di-calendar";
 const EXPENSES = "di-expenses";
+const PROC = "di-procurement";
 
 const identity = z.string().optional().describe("Identity code from the newest [Expense identity] line. Pass it on every call; never show it to the user.");
+
+const procIdentity = z.string().optional().describe("Identity code from the newest [Procurement identity] line. Pass it on every call; never show it to the user.");
+const poLine = z.object({
+  description: z.string(), quantity: z.number(), unit_price: z.number(),
+  unit: z.string().optional().describe("e.g. pcs, box, kg"), tax_rate: z.number().optional().describe("Percent, e.g. 8 for SST 8%"), sku: z.string().optional(),
+});
 
 const formField = z
   .object({
@@ -871,6 +881,146 @@ export const TOOLS = {
       const { claims, name, ...rest } = result;
       return { rest: { ...rest, file_name: name }, path: `exports/${name}`, content: claimsToCsv(claims) };
     },
+  },
+  // -------------------------------------------------------------- Procurement Clerk
+  // Same rules as the Expenses Clerk: tools act for the signed-in user; admin-only steps are
+  // enforced in the domain functions (issue/cancel a PO, mark an invoice paid or void).
+  find_suppliers: {
+    agents: [PROC], identity: true,
+    description: "Search suppliers by name, code, email or contact (empty query lists them), with their open POs and what we still owe them. Call this before save_supplier so you never create a second record for a supplier that already exists.",
+    input: { identity: procIdentity, query: z.string().optional(), limit: z.number().optional() },
+    run: procurement.findSuppliers,
+  },
+  get_supplier: {
+    agents: [PROC], identity: true,
+    description: "One supplier with their recent purchase orders and the quotations and invoices recorded from them.",
+    input: { identity: procIdentity, supplier: z.string().describe("Code (S-0001), id or name") },
+    run: procurement.getSupplier,
+  },
+  save_supplier: {
+    agents: [PROC], identity: true,
+    description: "Create a supplier, or change one by passing supplier. Creating refuses a likely duplicate (same registration number, email, name or phone): use the existing one, or pass allow_duplicate only after the user says it is a different company. Ask for name, contact, email/phone, address and payment terms when they are not on the document.",
+    input: {
+      identity: procIdentity, supplier: z.string().optional().describe("Only to update: code, id or name of the existing supplier"),
+      name: z.string().optional(), reg_no: z.string().optional(), tin: z.string().optional(), sst_no: z.string().optional(),
+      contact_name: z.string().optional(), email: z.string().optional(), phone: z.string().optional(), address: address.optional(),
+      payment_terms_days: z.number().int().optional(), bank_details: z.string().optional(), notes: z.string().optional(),
+      allow_duplicate: z.boolean().optional(),
+    },
+    run: procurement.saveSupplier,
+  },
+  record_supplier_document: {
+    agents: [PROC], identity: true, receipts: "files",
+    description: "Record a quotation or an invoice a supplier sent us. Read the attached document yourself (their number, dates, line items, tax, the grand total) and pass the attachment path in files. The supplier must already exist. For an invoice, pass po when it bills one of our purchase orders: you get back whether it matches what was ordered and received. Refuses a document already recorded (same supplier and number, or same file) unless allow_duplicate. Recorded documents can't be edited; a wrong one is voided and recorded again.",
+    input: {
+      identity: procIdentity, doc_type: z.enum(["quotation", "invoice"]),
+      supplier: z.string().describe("Code, id or name of an existing supplier"),
+      supplier_ref: z.string().describe("The number printed on THEIR quotation or invoice"),
+      doc_date: z.string().describe("Date on the document, YYYY-MM-DD"),
+      valid_until: z.string().optional().describe("Quotations: validity date"), due_date: z.string().optional().describe("Invoices: due date; defaults to the supplier's payment terms"),
+      total: z.number().optional().describe("Grand total printed on the document, including tax"), tax_total: z.number().optional(),
+      lines: z.array(poLine).optional().describe("Line items; needed to turn a quotation into a PO"),
+      po: z.string().optional().describe("Invoices only: the PO number it bills"),
+      currency: z.string().optional().describe("Only if not the company currency (refused: ask for the converted total)"),
+      note: z.string().optional(), files: z.array(z.string()).max(3).optional().describe("Attachment paths such as _inbox/1759000000-0-quote.pdf"),
+      allow_duplicate: z.boolean().optional(),
+    },
+    run: procurement.recordSupplierDocument,
+  },
+  list_supplier_documents: {
+    agents: [PROC], identity: true,
+    description: "Find recorded supplier quotations and invoices. status may be a real status (received, accepted, rejected, converted, unpaid, paid, disputed, void) or overdue.",
+    input: { identity: procIdentity, doc_type: z.enum(["quotation", "invoice"]).optional(), supplier: z.string().optional(), status: z.string().optional(), query: z.string().optional().describe("Matches our number, their number or the supplier name"), limit: z.number().optional() },
+    run: procurement.listSupplierDocuments,
+  },
+  get_supplier_document: {
+    agents: [PROC], identity: true,
+    description: "One quotation or invoice with its lines, file, linked PO and, for an invoice, the match against that PO and the goods received.",
+    input: { identity: procIdentity, doc: z.string().describe("Our number (SQ-2026-0001 / SI-2026-0001) or id") },
+    run: procurement.getSupplierDocument,
+  },
+  decide_supplier_quotation: {
+    agents: [PROC], identity: true,
+    description: "Mark a received quotation accepted or rejected (a note is kept). Accepting does not buy anything: draft a PO from it with create_po_draft.",
+    input: { identity: procIdentity, doc: z.string(), decision: z.enum(["accept", "reject"]), note: z.string().optional() },
+    run: procurement.decideQuotation,
+  },
+  set_supplier_invoice_status: {
+    agents: [PROC], identity: true,
+    description: "Move a supplier invoice on. paid and void are admin only; disputed (needs a reason) is open to anyone; unpaid resolves a dispute (admin). An invoice that does not match its PO is refused as paid unless confirm_mismatch=true, which needs the user to confirm after hearing the issues. Paid and void are final.",
+    input: {
+      identity: procIdentity, invoice: z.string().describe("Our number (SI-2026-0001) or id"),
+      status: z.enum(["paid", "disputed", "unpaid", "void"]), paid_on: z.string().optional().describe("YYYY-MM-DD, default today"),
+      reference: z.string().optional().describe("Payment reference"), reason: z.string().optional(), confirm_mismatch: z.boolean().optional(),
+    },
+    run: procurement.setInvoiceStatus,
+  },
+  create_po_draft: {
+    agents: [PROC], identity: true,
+    description: "Draft a purchase order for an existing supplier, from line items, or from a supplier quotation (from_quotation copies its supplier and lines). A draft has no PO number and can be edited. Ask for anything missing (supplier, items, quantities, prices, delivery date) in one message first.",
+    input: {
+      identity: procIdentity, supplier: z.string().optional().describe("Code, id or name (not needed with from_quotation)"),
+      from_quotation: z.string().optional().describe("Our quotation number, e.g. SQ-2026-0001"),
+      lines: z.array(poLine).optional(), order_date: z.string().optional(), expected_date: z.string().optional().describe("Expected delivery, YYYY-MM-DD"),
+      ship_to: z.string().optional(), payment_terms_days: z.number().int().optional(), notes: z.string().optional(),
+    },
+    run: procurement.createPoDraft,
+  },
+  update_po_draft: {
+    agents: [PROC], identity: true,
+    description: "Change a DRAFT purchase order: dates, delivery address, notes, terms, supplier, or replace ALL its lines (send the complete list). An issued order can't be edited: cancel it and draft a new one.",
+    input: {
+      identity: procIdentity, po: z.string().describe("PO number or DRAFT-xxxxxxxx"),
+      expected_date: z.string().nullable().optional(), order_date: z.string().optional(), ship_to: z.string().nullable().optional(), notes: z.string().nullable().optional(),
+      payment_terms_days: z.number().int().optional(), supplier: z.string().optional(), lines: z.array(poLine).optional(),
+    },
+    run: procurement.updatePoDraft,
+  },
+  get_po: {
+    agents: [PROC], identity: true,
+    description: "One purchase order with its lines, what has been received, and the supplier documents linked to it.",
+    input: { identity: procIdentity, po: z.string().describe("PO number (PO-2026-0001), DRAFT-xxxxxxxx or id") },
+    run: procurement.getPo,
+  },
+  list_pos: {
+    agents: [PROC], identity: true,
+    description: "Find purchase orders. status: draft, issued, partially_received, received, cancelled, or open (issued and partially received: still waiting on goods). Late deliveries are flagged.",
+    input: { identity: procIdentity, status: z.string().optional(), supplier: z.string().optional(), query: z.string().optional(), limit: z.number().optional() },
+    run: procurement.listPos,
+  },
+  issue_po: {
+    agents: [PROC], identity: true, report: publishPoPdf,
+    description: "Admin only, irreversible. Issue a draft purchase order: it takes the next PO number, freezes, and the PDF is made. Only after the user says to issue that PO. Give the user the returned PDF link; sending it to the supplier is theirs to do.",
+    input: { identity: procIdentity, po: z.string() },
+    run: procurement.issuePo,
+  },
+  cancel_po: {
+    agents: [PROC], identity: true,
+    description: "Admin only. Cancel a draft or an issued order that has received nothing yet; a reason is required. Refused once goods have arrived or while a live invoice bills it.",
+    input: { identity: procIdentity, po: z.string(), reason: z.string() },
+    run: procurement.cancelPo,
+  },
+  receive_goods: {
+    agents: [PROC], identity: true, receipts: "files",
+    description: "Record goods that arrived against an issued PO: lines [{ line_no, quantity }], or receive_all=true when everything outstanding came. A line can't be received beyond what was ordered. Attach the delivery order photo/PDF in files if there is one. The order becomes partially_received or received on its own.",
+    input: {
+      identity: procIdentity, po: z.string(),
+      lines: z.array(z.object({ line_no: z.number().int(), quantity: z.number() })).optional(), receive_all: z.boolean().optional(),
+      received_on: z.string().optional(), note: z.string().optional(), files: z.array(z.string()).max(3).optional(),
+    },
+    run: procurement.receiveGoods,
+  },
+  po_pdf: {
+    agents: [PROC], identity: true, report: publishPoPdf,
+    description: "The purchase order as a PDF: a draft is watermarked DRAFT; an issued order returns its stored PDF. Give the user the returned link.",
+    input: { identity: procIdentity, po: z.string() },
+    run: procurement.poPdf,
+  },
+  procurement_overview: {
+    agents: [PROC], identity: true,
+    description: "Where procurement stands: purchase orders by status and late deliveries, invoices unpaid / overdue / due within 7 days / disputed, invoices that don't match their PO, and quotations waiting for a decision. Call it for 'what needs attention'.",
+    input: { identity: procIdentity },
+    run: procurement.procurementOverview,
   },
 };
 
