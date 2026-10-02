@@ -67,6 +67,7 @@ export function validateFindings(input, evidence) {
     if (key === 'facts' && item.field === 'ssm_no' && !validSsm(item.value)) errors.push(`facts.${i}: invalid SSM number`);
     if (key === 'facts' && item.field === 'status' && !['live', 'struck_off', 'winding_up', 'dormant'].includes(item.value)) errors.push(`facts.${i}: invalid registry status`);
     if (key === 'facts' && item.field === 'headcount' && (!Number.isInteger(item.value) || item.value < 1)) errors.push(`facts.${i}: headcount must be a positive integer`);
+    if (key === 'facts' && item.field === 'msic' && !/^\d{5}$/.test(String(item.value))) errors.push(`facts.${i}: MSIC must be a literal five-digit classification code`);
     if (key === 'facts' && item.field === 'incorporated_on' && !validDate(item.value)) errors.push(`facts.${i}: invalid incorporation date`);
     if (key === 'signals' && !validDate(item.date)) errors.push(`signals.${i}: invalid signal date`);
     // Quotes alone cannot prove semantic entailment; at least reject unrelated
@@ -130,7 +131,8 @@ export function fact(items, evidence) {
     const e = evidence.find(e => e.id === i.evidence_id);
     return [e.id, { id: e.id, url: e.url, tier: e.tier, quote: i.quote, retrievedAt: e.retrievedAt }];
   })).values()];
-  const unique = new Set(verified.map(i => JSON.stringify(i.value)));
+  const valueKey = i => i.field === 'legal_name' ? nameKey(i.value) : i.field === 'ssm_no' ? String(i.value) : JSON.stringify(i.value);
+  const unique = new Set(verified.map(valueKey));
   const domains = new Set(refs.filter(e => e.tier === 2).map(e => domain(e.url)));
   const status = unique.size > 1 ? 'conflicting' : refs.some(e => e.tier === 1) ? 'confirmed' : domains.size >= 2 ? 'corroborated' : refs.every(e => e.tier === 3) ? 'self_reported' : 'unknown';
   const out = { value: status === 'unknown' || status === 'conflicting' ? null : verified[0].value, status, confidence: { confirmed: 0.95, corroborated: 0.8, self_reported: 0.5, conflicting: 0, unknown: 0 }[status], evidence: refs };
@@ -166,8 +168,17 @@ export function scoreDossier(d, now = new Date()) {
 }
 export function reconcile({ seed, identity, evidence, runs, startedAt, webState = 'unknown', web = {} }, now = new Date()) {
   runs = runs.slice().sort((a, b) => a.lane.localeCompare(b.lane));
-  // Re-check stored submissions on replay. A rejected submission contributes no claims.
-  const findings = runs.map(r => validateFindings(r.findings || {}, evidence)).filter(r => r.accepted).map(r => r.findings);
+  // Re-check every stored claim on replay; one unsupported item must not erase
+  // unrelated, valid findings from the same completed section.
+  const findings = runs.map(r => {
+    const parsed = Findings.safeParse(r.findings || {});
+    if (!parsed.success) return null;
+    const out = { ...parsed.data };
+    for (const key of ['facts', 'people', 'clients', 'signals', 'risks']) out[key] = out[key].filter(item => validateFindings({ [key]: [item] }, evidence).accepted);
+    if (!/^G4(?:-|$)/.test(r.lane)) out.risks = [];
+    out.signals = out.signals.filter(item => !/(?:rebate|programme|program).*(?:claim window|deadline|eligible homeowner)/i.test(item.what) || nameKey(item.what).includes(nameKey(seed.name)));
+    return out;
+  }).filter(Boolean);
   const claims = findings.flatMap(f => f.facts);
   const field = key => {
     const rows = claims.filter(c => c.field === key);

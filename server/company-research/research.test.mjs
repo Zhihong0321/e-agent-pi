@@ -176,6 +176,19 @@ test('related company websites stay self-reported and services are complementary
   assert.equal(dateInQuote('2025-08-20', 'Fully commissioned on 20/8/2025'), true);
   assert.equal(dateInQuote('2025-08-20', 'Fully commissioned on 8/20/2025'), false);
 });
+test('identifier representations agree and replay keeps valid claims beside invalid classifications', () => {
+  const ev = [e('A', 'https://a.example/', 'ETERNALGY SDN. BHD. 202301029164 SALE AND SERVICES SOLAR PV SYSTEM', 2), e('B', 'https://b.example/', 'Eternalgy Sdn Bhd 202301029164', 2)];
+  const facts = [
+    { field: 'legal_name', value: 'ETERNALGY SDN. BHD.', evidence_id: 'A', quote: 'ETERNALGY SDN. BHD.' },
+    { field: 'legal_name', value: 'Eternalgy Sdn Bhd', evidence_id: 'B', quote: 'Eternalgy Sdn Bhd' },
+    ...['A', 'B'].map((id, i) => ({ field: 'ssm_no', value: i ? 202301029164 : '202301029164', evidence_id: id, quote: '202301029164' })),
+    { field: 'msic', value: 'SALE AND SERVICES SOLAR PV SYSTEM', evidence_id: 'A', quote: 'SALE AND SERVICES SOLAR PV SYSTEM' },
+  ];
+  const d = reconcile({ seed: { name: 'Eternalgy Sdn Bhd' }, identity: { status: 'locked' }, evidence: ev, runs: [{ lane: 'G1', findings: { facts } }], startedAt: '2026-10-02' });
+  assert.equal(d.identity.legalName.status, 'corroborated');
+  assert.equal(d.identity.ssmNo.status, 'corroborated');
+  assert.equal(d.identity.msic.value, null);
+});
 test('provider failures keep their actual error and do not retry an unsuccessful response', async () => {
   let listener, prompts = 0;
   const runner = new PiResearchRunner({ sessionFactory: async () => ({ session: {
