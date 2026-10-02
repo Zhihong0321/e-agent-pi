@@ -30,7 +30,8 @@ async function callHost(tool, args) {
   if (!token) throw new Error("DI_TOKEN is missing; the host did not inject Document Intelligence credentials.");
   const res = await fetch(`${url}/api/internal/di`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`,
+      ...(agent === 'di-expenses' ? { 'X-DI-Session': process.env.DI_SESSION_ID || '' } : {}) },
     body: JSON.stringify({ agent, tool, args }),
   });
   const data = await res.json().catch(() => ({}));
@@ -48,9 +49,12 @@ if (!AGENTS[agent]) {
   );
 } else {
   for (const tool of toolsFor(agent)) {
+    const expenseInput = { ...tool.input };
+    delete expenseInput.identity;
     server.registerTool(
       tool.name,
-      { title: tool.name.replace(/_/g, " "), description: tool.description, inputSchema: tool.input },
+      { title: tool.name.replace(/_/g, " "), description: tool.description,
+        inputSchema: agent === 'di-expenses' ? expenseInput : tool.input },
       async (args) => {
         try {
           return reply(await callHost(tool.name, args));

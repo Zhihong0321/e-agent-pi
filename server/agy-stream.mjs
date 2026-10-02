@@ -9,6 +9,8 @@ import { FILE_SHARING_PROMPT } from "./file-sharing.mjs";
 import { sharedFilesFromResult } from "../shared/shared-files.mjs";
 import { loadContextPack } from "./context-pack.mjs";
 import { agentEnv } from "./agent-env.mjs";
+import { withExpenseSession } from './expense-session.mjs';
+import { diAgentEnv } from '../document_inteligence/host.mjs';
 import { agentWorkspace, isProposalAgent, IMAGEN_SKILL_DIR, SKILLS_DIR } from "./paths.mjs";
 import { imagenConfigured, imagenSystemPrompt } from "./imagen.mjs";
 import { replyStyleSystemPrompt } from "./reply-style.mjs";
@@ -290,6 +292,10 @@ function applyAgyStreamEvent(turn, ev, onEvent) {
  * @returns {Promise<ReturnType<typeof createTurn>>}
  */
 export async function chatAgy({ message, modelId, session, profile, onEvent, images }) {
+  return withExpenseSession(session, () => chatAgyProcess({ message, modelId, session, profile, onEvent, images }));
+}
+
+async function chatAgyProcess({ message, modelId, session, profile, onEvent }) {
   const conversationId = session.agyConversationId || session.id;
   if (!session.agyConversationId) {
     session.agyConversationId = conversationId;
@@ -322,6 +328,7 @@ export async function chatAgy({ message, modelId, session, profile, onEvent, ima
     const child = spawn(bin, args, {
       cwd: workspace,
       env: agentEnv(profile, {
+        ...diAgentEnv(profile, process.env.PORT || '8080', session.id),
         HOME: os.homedir(),
         USER: process.env.USER || "root",
       }),

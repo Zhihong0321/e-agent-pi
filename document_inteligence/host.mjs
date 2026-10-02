@@ -1,4 +1,5 @@
 import { manageUsers, managePeople, listPeople, resolveIdentity, ensurePeopleTenant } from '../server/users.mjs';
+import { expenseUserForSession } from '../server/expense-session.mjs';
 // UIv2 host integration for Document Intelligence: boot (migrate, seed, register the
 // four micro-agents and their shared MCP server), per-agent tokens, the internal
 // endpoint the MCP server calls, and HTML -> PDF rendering.
@@ -109,15 +110,17 @@ export function publicBaseUrl(port = process.env.PORT || "8080") {
   return `http://localhost:${port}`;
 }
 
-export function diTokenFor(agentId) {
-  return createHmac("sha256", SECRET).update(`di:${agentId}`).digest("hex");
+export function diTokenFor(agentId, sessionId = '') {
+  return createHmac("sha256", SECRET).update(sessionId ? JSON.stringify(['di', agentId, sessionId]) : `di:${agentId}`).digest("hex");
 }
 
 /** Env for a DI agent's Pi process; the MCP server reads these. Empty for other agents. */
-export function diAgentEnv(agent, port = process.env.PORT || "8080") {
+export function diAgentEnv(agent, port = process.env.PORT || "8080", sessionId = '') {
   const id = typeof agent === "string" ? agent : agent?.id || agent?.slug || "";
   if (!AGENTS[id]) return {};
-  return { DI_AGENT: id, DI_TOKEN: diTokenFor(id), DI_URL: `http://127.0.0.1:${port}` };
+  const boundSession = id === 'di-expenses' ? sessionId : '';
+  return { DI_AGENT: id, DI_TOKEN: diTokenFor(id, boundSession), DI_URL: `http://127.0.0.1:${port}`,
+    ...(boundSession ? { DI_SESSION_ID: boundSession } : {}) };
 }
 
 function agentFromRequest(req, body) {
@@ -125,7 +128,8 @@ function agentFromRequest(req, body) {
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
   const agent = body?.agent;
   if (!token || !AGENTS[agent]) return null;
-  const expected = Buffer.from(diTokenFor(agent));
+  const sessionId = agent === 'di-expenses' ? String(req.headers['x-di-session'] || '') : '';
+  const expected = Buffer.from(diTokenFor(agent, sessionId));
   const given = Buffer.from(token);
   return expected.length === given.length && timingSafeEqual(expected, given) ? agent : null;
 }
@@ -184,6 +188,7 @@ export async function handleDiRequest(req, body, deps) {
   }
   if (!state.db) return { status: 503, body: { ok: false, error: "Document Intelligence is not initialised (database not connected?)" } };
   try {
+    const who = agent === 'di-expenses' ? await expenseUserForSession(String(req.headers['x-di-session'] || '')) : undefined;
     const result = await runTool(
       {
         db: state.db,
@@ -191,6 +196,7 @@ export async function handleDiRequest(req, body, deps) {
         actor: "owner",
         asRole: state.asRole,
         resolveIdentity,
+        who,
         workspace: (id) => deps.workspace({ id, slug: id }),
         renderPdf,
         publicUrl: publicBaseUrl(),

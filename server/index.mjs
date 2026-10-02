@@ -1,10 +1,11 @@
-import { requestUser, loginUser, logoutUser, sessionCookie as userSessionCookie, userManagementPrompt, expenseIdentityPrompt, procurementIdentityPrompt, fdeIdentityPrompt, manageUsers, managePeople } from './users.mjs';
+import { requestUser, loginUser, logoutUser, sessionCookie as userSessionCookie, userManagementPrompt, procurementIdentityPrompt, fdeIdentityPrompt, manageUsers, managePeople } from './users.mjs';
+import { authenticateExpenseSession, withExpenseSession } from './expense-session.mjs';
 import { createHash, randomBytes } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { handleCompanyProfile } from './company-profile.mjs';
-import { companyOnboardingStatus, companyHostContext, publicBaseUrl } from '../document_inteligence/host.mjs';
+import { companyOnboardingStatus, companyHostContext, publicBaseUrl, diAgentEnv } from '../document_inteligence/host.mjs';
 import { handleFileSharing } from './file-sharing.mjs';
 import { filesFromBlocks } from '../shared/shared-files.mjs';
 import { handleDiViewer } from "./di-viewer.mjs";
@@ -849,6 +850,7 @@ async function startSlotClient(slot, agent, modelId) {
     provider: active.provider,
     model: active.model,
     env: agentEnv(agent, {
+      ...diAgentEnv(agent, PORT, slot.identitySessionId),
       PI_CODING_AGENT_DIR: runtimeDir,
       PI_PACKAGE_DIR,
     }),
@@ -1036,9 +1038,12 @@ async function restartSlotClient(slot, agent, modelId) {
  * @param {{ sessionFile?: string | null }} [opts]
  * @returns {Promise<PiSlot>}
  */
-async function getOrCreatePiSlot(agent, modelId, { sessionFile } = {}) {
+async function getOrCreatePiSlot(agent, modelId, { sessionFile, sessionId } = {}) {
   const slot = await withPoolReserve(async () => {
-    const key = await agentBundleKey(agent, modelId);
+    const bundleKey = await agentBundleKey(agent, modelId);
+    // Expense transports are bound to one chat, including across warm turns.
+    // A process serving Alice can never be reused for Bob's session.
+    const key = agent.id === 'di-expenses' && sessionId ? `${bundleKey}:session:${sessionId}` : bundleKey;
     let s = piPool.get(key);
     if (!s) {
       s = {
@@ -1047,6 +1052,7 @@ async function getOrCreatePiSlot(agent, modelId, { sessionFile } = {}) {
         client: undefined,
         booting: undefined,
         agentId: agent.id,
+        identitySessionId: agent.id === 'di-expenses' ? sessionId : undefined,
         agentSlug: agent.slug || agent.id,
         modelId,
         activeStudioSessionId: null,
@@ -1352,6 +1358,10 @@ function waitUntilAgentSettled(pi, inactivityMs = 300_000) {
 }
 
 async function chat(message, modelId, session, onEvent, images) {
+  return withExpenseSession(session, () => chatPi(message, modelId, session, onEvent, images));
+}
+
+async function chatPi(message, modelId, session, onEvent, images) {
   await ensureCatalog();
   const profile = await resolveAgentProfile(session.agentId);
   if (profile.id === "orchestrator" || profile.slug === "orchestrator") {
@@ -1369,7 +1379,7 @@ async function chat(message, modelId, session, onEvent, images) {
   if (!entry.available) throw new Error(`${entry.label} is missing its API key.`);
 
   const t0 = Date.now();
-  const slot = await getOrCreatePiSlot(profile, resolvedModelId, { sessionFile: session.piSessionFile });
+  const slot = await getOrCreatePiSlot(profile, resolvedModelId, { sessionFile: session.piSessionFile, sessionId: session.id });
   const slotMs = Date.now() - t0;
   const coldStart = slot.bootedAt >= t0;
   return withSlotLock(slot, async () => {
@@ -1468,6 +1478,10 @@ async function runManageTurn({ message, agentId, sessionId, modelId }) {
     });
   }
 
+  if (session.agentId === 'di-expenses') {
+    if (!session.parentSessionId) throw new Error('Expense management turns require an owning parent session');
+    await authenticateExpenseSession(session);
+  }
   logEvent("info", `manage turn session=${session.id}: ${trimmed.slice(0, 120)}`);
   await insertMessage({
     sessionId: session.id,
@@ -2026,7 +2040,7 @@ async function bootServices() {
     agentBusy: (agentId) => [...piPool.values()].some(slot => slot.agentId === agentId && slot.busy),
     activeOrchestratorSessionId: () => {
       for (const slot of piPool.values()) {
-        if (slot.agentId === ORCHESTRATOR_AGENT_ID && slot.activeStudioSessionId) return slot.activeStudioSessionId;
+        if (slot.agentId === ORCHESTRATOR_AGENT_ID && slot.busy && slot.activeStudioSessionId) return slot.activeStudioSessionId;
       }
       return null;
     },
@@ -3126,6 +3140,10 @@ const server = createServer(async (req, res) => {
         });
       }
 
+      if (session.agentId === 'di-expenses' && (!user || session.userId !== user.id)) {
+        json(res, 401, { error: 'Sign-in required: expense chat must belong to the signed-in user' });
+        return;
+      }
       const profile = await resolveAgentProfile(session.agentId);
       const activityBase = {
         userId: user?.id || null,
@@ -3147,11 +3165,10 @@ const server = createServer(async (req, res) => {
         ? `${packed.prompt}\n${trimmed || attachFallback(profile)}`
         : trimmed;
       const chatPrompt = await enrichRestartPrompt(prompt, profile) + (user ? userManagementPrompt(req, user) : "")
-        + (user && profile.id === "di-expenses" ? expenseIdentityPrompt(req, user) : "")
         + (user && profile.id === "di-procurement" ? procurementIdentityPrompt(req, user) : "")
         + (user && profile.id === "di-fde" ? fdeIdentityPrompt(req, user) : "");
       const storedUser =
-        [trimmed, attachmentChatMarkup(packed.files)].filter(Boolean).join("\n\n") ||
+        [trimmed, packed.sharedFiles?.length ? packed.sharedFiles.map(file => file.link).join("\n") : attachmentChatMarkup(packed.files)].filter(Boolean).join("\n\n") ||
         (packed.files.length ? `Attached: ${attachmentSummary(packed.files)}` : prompt);
       const turnStartedAt = Date.now();
       const toolStartedAt = new Map();

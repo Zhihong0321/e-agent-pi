@@ -55,7 +55,7 @@ export async function ensureUsers(pool) {
 function cookieToken(req) {
   return String(req.headers.cookie || '').split(';').map(v => v.trim()).find(v => v.startsWith('demo_session='))?.slice(13) || '';
 }
-async function userByHash(hash) {
+export async function userByHash(hash) {
   const result = await getPool().query(`SELECT ${fields.split(', ').map(f => `u.${f}`).join(', ')} FROM users u
     JOIN user_sessions s ON s.user_id=u.id WHERE s.token_hash=$1 AND s.expires_at>NOW() AND u.active`, [hash]);
   return result.rows[0] || null;

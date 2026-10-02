@@ -231,8 +231,9 @@ async function getTaskRow(id) {
 
 function parentSessionFrom(body) {
   const passed = typeof body?.parentSessionId === "string" ? body.parentSessionId.trim() : "";
-  if (passed) return passed;
-  return runtime.activeOrchestratorSessionId?.() || "";
+  const active = runtime.activeOrchestratorSessionId?.() || "";
+  if (passed && passed !== active) throw new Error('Delegation cannot select another parent session');
+  return active;
 }
 
 export async function createPlan(input = {}) {
@@ -585,6 +586,16 @@ function textResult(payload) {
 export async function handleOrchestratorAction(body = {}) {
   const action = String(body.action || "").trim();
   try {
+    // Model-supplied plan/task IDs must remain inside the executing parent chat.
+    if (['update_plan', 'dispatch_task', 'task_status', 'stop_task'].includes(action)) {
+      const parentSessionId = parentSessionFrom(body);
+      if (!parentSessionId) throw new Error('No active orchestrator chat for this request');
+      const taskRef = String(body.taskId || body.id || '').trim();
+      const task = taskRef ? await resolveTaskRef(taskRef, body) : null;
+      const planId = task?.planId || body.planId || (action === 'update_plan' ? body.id : null);
+      const plan = planId ? await getPlanRow(planId) : null;
+      if (plan && plan.parentSessionId !== parentSessionId) throw new Error('Delegation cannot access another parent session');
+    }
     if (action === "list_specialists") {
       return { ok: true, result: JSON.stringify({ specialists: await listSpecialists(), company_setup: await companyOnboardingStatus().catch(() => ({ available: false, minimum_ready: false })) }) };
     }

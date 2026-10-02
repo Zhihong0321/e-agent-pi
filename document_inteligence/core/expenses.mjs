@@ -69,7 +69,7 @@ const daysBetween = (fromISO, toISO) => Math.round((Date.parse(`${toISO}T00:00:0
 
 export function requireWho(who) {
   if (!who?.id) {
-    throw new DiError("Sign-in required: expense tools act for the signed-in user, and none was supplied. Pass the identity code from the [Expense identity] line, or ask the user to chat with the Expenses Clerk directly while signed in.");
+    throw new DiError("Sign-in required: expense tools need an authenticated session owner. Please sign in before using Expenses Clerk.");
   }
   return who;
 }
