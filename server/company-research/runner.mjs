@@ -4,6 +4,7 @@ import path from 'node:path';
 import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from '@earendil-works/pi-coding-agent';
 import { PI_PACKAGE_DIR, ROOT } from '../paths.mjs';
 import { Findings, validateFindings, checkedFindings } from './core.mjs';
+import { recordApiUsage } from '../usage.mjs';
 
 const piRequire = createRequire(path.join(PI_PACKAGE_DIR, 'package.json'));
 const { Type } = await import(pathToFileURL(piRequire.resolve('typebox')).href);
@@ -156,7 +157,9 @@ export class PiResearchRunner {
         if (event.type === 'turn_end') { turns++; if (turns >= this.maxTurns && !accepted) stop('turn_budget_exhausted'); }
         if (event.type === 'message_end' && event.message?.role === 'assistant') {
           const u = event.message.usage || {};
-          tokens += (u.input || 0) + (u.output || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0);
+          const messageTokens = (u.input || 0) + (u.output || 0) + (u.cacheRead || 0) + (u.cacheWrite || 0);
+          tokens += messageTokens;
+          void recordApiUsage({ service: 'llm', provider: this.model?.provider, operation: 'research_message', engine: 'pi', modelId: this.model?.id || this.model?.model, status: event.message.stopReason === 'error' ? 'error' : 'ok', durationMs: Date.now() - started, usage: u, metadata: { lane } });
           transcript.push({ type: 'assistant', message: event.message });
           if (event.message.stopReason === 'error') stop(event.message.errorMessage || 'Model provider failed');
           if (tokens >= this.tokenBudget && !accepted) stop('token_budget_exhausted');

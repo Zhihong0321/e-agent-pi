@@ -1,4 +1,5 @@
 import { secret } from "./secrets.mjs";
+import { recordApiUsage } from "./usage.mjs";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -125,15 +126,19 @@ export async function testModelRoundTrip(entry, env) {
     const latencyMs = Date.now() - started;
     if (!res.ok) {
       const text = await res.text().catch(() => "");
+      void recordApiUsage({ service: "llm", provider: entry.provider, operation: "round_trip", modelId: entry.id, status: "error", durationMs: latencyMs, error: `HTTP ${res.status}`, metadata: { endpoint: url } });
       return { id: entry.id, ok: false, latencyMs, error: `HTTP ${res.status}${text ? `: ${text.slice(0, 200)}` : ""}` };
     }
     // Streaming models (e.g. Hive AI) return SSE, not a single JSON body.
+    let payload = null;
     if (entry.requiresStream) await res.text().catch(() => null);
-    else await res.json().catch(() => null);
+    else payload = await res.json().catch(() => null);
+    void recordApiUsage({ service: "llm", provider: entry.provider, operation: "round_trip", modelId: entry.id, status: "ok", durationMs: latencyMs, usage: payload?.usage, metadata: { endpoint: url } });
     return { id: entry.id, ok: true, latencyMs };
   } catch (error) {
     const latencyMs = Date.now() - started;
     const message = error instanceof Error ? (error.name === "AbortError" ? "Timed out after 20s" : error.message) : String(error);
+    void recordApiUsage({ service: "llm", provider: entry.provider, operation: "round_trip", modelId: entry.id, status: "error", durationMs: latencyMs, error: message, metadata: { endpoint: url } });
     return { id: entry.id, ok: false, latencyMs, error: message };
   } finally {
     clearTimeout(timeout);

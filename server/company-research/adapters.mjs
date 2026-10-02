@@ -7,6 +7,7 @@ import { domain, evidenceRecord, sourceTier } from './core.mjs';
 import { robotsAllowed, RESEARCH_USER_AGENT } from './robots.mjs';
 import { createLimiter } from './concurrency.mjs';
 import { createSearchRouter } from './search-providers.mjs';
+import { recordApiUsage } from '../usage.mjs';
 
 const denied = new BlockList();
 for (const [ip, n] of [['0.0.0.0', 8], ['10.0.0.0', 8], ['100.64.0.0', 10], ['127.0.0.0', 8], ['169.254.0.0', 16], ['172.16.0.0', 12], ['192.168.0.0', 16], ['192.0.0.0', 24], ['192.0.2.0', 24], ['198.18.0.0', 15], ['198.51.100.0', 24], ['203.0.113.0', 24], ['224.0.0.0', 4], ['240.0.0.0', 4]]) denied.addSubnet(ip, n, 'ipv4');
@@ -108,17 +109,22 @@ export function createEvidenceTools({ seed, evidence, sources, budget, tavilyKey
       if (include_domains?.length) body.include_domains = include_domains.slice(0, 10);
       if (time_range) body.time_range = time_range;
       let response;
+      let requestStarted = Date.now();
       const start = keyCursor++ % keys.length;
       const maxAttempts = keys.length === 1 ? 3 : keys.length;
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
         if (attempt) { budget.take('searches', cost, lane); attempts++; budget.providers.tavily.requests++; } // Failed attempts count conservatively.
         const key = keys[(start + attempt) % keys.length];
+        const attemptStarted = Date.now();
+        requestStarted = attemptStarted;
         try {
           response = await fetchImpl('https://api.tavily.com/search', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });
         } catch {
+          void recordApiUsage({ service: 'tavily', provider: 'tavily', operation: 'search', status: 'error', durationMs: Date.now() - attemptStarted, metadata: { lane, attempt } });
           if (attempt === maxAttempts - 1) throw new Error('Tavily request failed or timed out');
           continue;
         }
+        if (!response.ok) void recordApiUsage({ service: 'tavily', provider: 'tavily', operation: 'search', status: 'error', durationMs: Date.now() - attemptStarted, metadata: { lane, attempt, httpStatus: response.status } });
         const keyFailure = [401, 402, 403, 432, 433].includes(response.status);
         if (!keyFailure && response.status !== 429 && response.status < 500 || attempt === maxAttempts - 1 || (keyFailure && keys.length === 1)) break;
         if (keys.length > 1) { await response.body?.cancel(); continue; }
@@ -130,6 +136,7 @@ export function createEvidenceTools({ seed, evidence, sources, budget, tavilyKey
       }
       if (!response.ok) throw new Error(`Tavily search failed (HTTP ${response.status})`);
       const result = await response.json();
+      void recordApiUsage({ service: 'tavily', provider: 'tavily', operation: 'search', status: 'ok', durationMs: Date.now() - requestStarted, credits: attempts * cost, usage: result.usage, metadata: { lane, attempts, resultCount: Array.isArray(result.results) ? result.results.length : 0 } });
       const rows = [];
       for (const item of (result.results || []).slice(0, 5)) {
         try { const url = new URL(item.url); if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) continue; url.hash = ''; const e = await add(url.href, `${item.title || ''}\n${item.content || ''}`, lane, 'snippet'); rows.push({ evidence_id: e.id, url: e.url, text: e.text.slice(0, 8000), tier: e.tier }); } catch (error) { if (!(error instanceof TypeError)) throw error; }

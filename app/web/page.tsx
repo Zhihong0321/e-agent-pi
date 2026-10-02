@@ -150,6 +150,8 @@ export default function WebHome() {
             </span>
             <small>Sign-in</small>
           </a>
+          <a className="web-rail-btn" href="/settings#logs" title="Chat logs"><span className="web-rail-icon">▤</span><span>Chat logs</span></a>
+          <a className="web-rail-btn" href="/settings#usage" title="Usage Dashboard"><span className="web-rail-icon">▥</span><span>Usage</span></a>
           <a className="web-rail-btn" href="/settings" aria-label="Open settings" title="Settings">
             <span className="web-rail-icon">
               <IconSettings />

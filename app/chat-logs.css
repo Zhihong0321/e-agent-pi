@@ -1,0 +1,11 @@
+.chat-log-heading { display:flex; justify-content:space-between; align-items:start; gap:16px; }
+.chat-log-layout { display:grid; grid-template-columns:minmax(220px, 320px) minmax(0, 1fr); gap:24px; margin-top:20px; }
+.chat-log-sessions { max-height:70vh; overflow:auto; }
+.chat-log-sessions button { display:block; width:100%; text-align:left; margin-bottom:8px; background:#f5f7f8; color:#20352d; border:1px solid #dce5e0; }
+.chat-log-sessions button.selected { background:#e2f5ec; border-color:#008069; }
+.chat-log-sessions small { display:block; margin-top:6px; }
+.chat-log-transcript { min-width:0; }
+.chat-log-transcript article { border:1px solid #dce5e0; border-radius:12px; padding:16px; margin-top:16px; }
+.chat-log-transcript header { display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px; }
+.chat-log-transcript pre { white-space:pre-wrap; overflow-wrap:anywhere; font:inherit; line-height:1.6; }
+@media(max-width:700px) { .chat-log-layout { grid-template-columns:1fr; } .chat-log-sessions { max-height:240px; } }

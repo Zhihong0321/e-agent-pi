@@ -1,6 +1,7 @@
 // The judge: one small model call that returns JSON. No tools, no role prompt, no history.
 // Default: glm-5.3-flash on OpenCode Go, a different model family from the workers.
 import { randomUUID } from "node:crypto";
+import { recordApiUsage } from "../../server/usage.mjs";
 
 export function judgeConfigFromEnv(env = process.env) {
   return {
@@ -33,11 +34,24 @@ export function createJudge(config = judgeConfigFromEnv()) {
       messages: [{ role: "system", content: system }, { role: "user", content: user }],
     };
     if (config.reasoningEffort) body.reasoning_effort = config.reasoningEffort;
-    const res = await fetch(`${config.baseUrl}/chat/completions`, {
-      method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(config.timeoutMs),
-    });
-    const raw = await res.text();
-    if (!res.ok) throw new Error(`judge HTTP ${res.status}: ${raw.slice(0, 300)}`);
-    return parseJsonReply(JSON.parse(raw).choices?.[0]?.message?.content);
+    const started = Date.now();
+    let raw = "";
+    try {
+      const res = await fetch(`${config.baseUrl}/chat/completions`, {
+        method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(config.timeoutMs),
+      });
+      raw = await res.text();
+      let payload = null;
+      try { payload = JSON.parse(raw); } catch { /* handled by the provider error below */ }
+      if (!res.ok) {
+        void recordApiUsage({ service: "llm", provider: "checker", operation: "judge", modelId: config.model, status: "error", durationMs: Date.now() - started, error: `HTTP ${res.status}`, metadata: { baseUrl: config.baseUrl } });
+        throw new Error(`judge HTTP ${res.status}: ${raw.slice(0, 300)}`);
+      }
+      void recordApiUsage({ service: "llm", provider: "checker", operation: "judge", modelId: config.model, status: "ok", durationMs: Date.now() - started, usage: payload?.usage, metadata: { baseUrl: config.baseUrl } });
+      return parseJsonReply(payload?.choices?.[0]?.message?.content);
+    } catch (error) {
+      if (!raw) void recordApiUsage({ service: "llm", provider: "checker", operation: "judge", modelId: config.model, status: "error", durationMs: Date.now() - started, error: error instanceof Error ? error.message : String(error), metadata: { baseUrl: config.baseUrl } });
+      throw error;
+    }
   };
 }

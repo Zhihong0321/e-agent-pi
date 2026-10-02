@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import JobsSettings from "./jobs-settings";
 import ActivityLog from "./activity-log";
+import ChatLogs from "./chat-logs";
 
 type Settings = {
   tavilyApiKeySet: boolean;
@@ -53,8 +54,8 @@ type Settings = {
   jinaKeysSet: boolean[];
 };
 
-type Tab = "keys" | "models" | "agents" | "sops" | "blueprints" | "sites" | "skills" | "mcp" | "whatsapp" | "display" | "usage" | "jobs" | "activity";
-const TABS: Tab[] = ["keys", "models", "agents", "sops", "blueprints", "sites", "skills", "mcp", "whatsapp", "display", "usage", "jobs", "activity"];
+type Tab = "keys" | "models" | "agents" | "sops" | "blueprints" | "sites" | "skills" | "mcp" | "whatsapp" | "display" | "usage" | "jobs" | "activity" | "logs";
+const TABS: Tab[] = ["logs", "usage", "activity", "keys", "models", "agents", "sops", "blueprints", "sites", "skills", "mcp", "whatsapp", "display", "jobs"];
 
 const AI_REPLY_DARK_KEY = "e-agent-ai-reply-dark";
 const BLUEPRINT_APPROVER_KEY = "e-agent-blueprint-approver";
@@ -172,6 +173,13 @@ type ResourceSample = {
   childCount: number;
   load1: number | null;
   piAlive: boolean;
+};
+
+type UsagePayload = {
+  summary: { calls: number; inputTokens: string | number; outputTokens: string | number; cacheReadTokens: string | number; cacheWriteTokens: string | number; totalTokens: string | number; credits: string | number; cost: string | number; failures: number };
+  trend: Array<{ day: string; calls: number; totalTokens: string | number; credits: string | number }>;
+  breakdown: Array<{ service: string; provider: string; modelId: string; calls: number; totalTokens: string | number; credits: string | number }>;
+  recent: Array<{ id: number; occurredAt: string; service: string; provider?: string; operation: string; modelId?: string; status: string; durationMs?: number; totalTokens?: string | number; credits?: string | number; error?: string }>;
 };
 
 type MetricsPayload = {
@@ -307,6 +315,7 @@ export default function SettingsPage() {
   const [busy, setBusy] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [metrics, setMetrics] = useState<MetricsPayload | null>(null);
+  const [usage, setUsage] = useState<UsagePayload | null>(null);
   const [whatsapp, setWhatsapp] = useState<WhatsappStatus | null>(null);
   const [whatsappQrTick, setWhatsappQrTick] = useState(0);
   const [whatsappBusy, setWhatsappBusy] = useState(false);
@@ -492,7 +501,11 @@ export default function SettingsPage() {
       }
     };
     void loadMetrics();
-    const id = window.setInterval(() => void loadMetrics(), 15000);
+    void authedJson<UsagePayload>("/api/usage").then((data) => { if (!cancelled) setUsage(data); }).catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : "Could not load API usage"); });
+    const id = window.setInterval(() => {
+      void loadMetrics();
+      void authedJson<UsagePayload>("/api/usage").then((data) => { if (!cancelled) setUsage(data); }).catch(() => {});
+    }, 15000);
     return () => {
       cancelled = true;
       window.clearInterval(id);
@@ -1083,13 +1096,14 @@ export default function SettingsPage() {
           <nav className="settings-tabs">
             {TABS.map((item) => (
               <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => goTab(item)}>
-                {item === "mcp" ? "MCP" : item === "whatsapp" ? "WhatsApp" : item[0].toUpperCase() + item.slice(1)}
+                {item === "logs" ? "Chat logs" : item === "usage" ? "Usage Dashboard" : item === "mcp" ? "MCP" : item === "whatsapp" ? "WhatsApp" : item[0].toUpperCase() + item.slice(1)}
               </button>
             ))}
           </nav>
 
           {tab === "jobs" && <JobsSettings />}
           {tab === "activity" && <ActivityLog />}
+          {tab === "logs" && <ChatLogs />}
           {tab === "keys" && (
             <section className="settings-card">
               <p>
@@ -2393,7 +2407,7 @@ export default function SettingsPage() {
             </section>
           )}
 
-          {tab === "usage" && <UsagePanel data={metrics} />}
+          {tab === "usage" && <UsagePanel data={metrics} usage={usage} />}
         </>
       )}
 
@@ -2427,7 +2441,13 @@ function downsample<T>(rows: T[], max = 240): T[] {
   return out;
 }
 
-function UsagePanel({ data }: { data: MetricsPayload | null }) {
+function formatCount(value: string | number | null | undefined) {
+  if (value == null || value === "") return "0";
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toLocaleString() : String(value);
+}
+
+function UsagePanel({ data, usage }: { data: MetricsPayload | null; usage: UsagePayload | null }) {
   const now = data?.now;
   const samples = data?.samples ?? [];
   const stats = data?.stats;
@@ -2437,6 +2457,28 @@ function UsagePanel({ data }: { data: MetricsPayload | null }) {
 
   return (
     <section className="settings-card usage-card">
+      <h2>Usage Dashboard</h2>
+      <p>API calls and tokens over the last 30 days. Refreshes every 15 seconds. Usage is recorded from provider responses; earlier untracked calls cannot be reconstructed.</p>
+      {!usage && <p role="status">Waiting for API usage data…</p>}
+      <div className="usage-grid usage-grid-4">
+        <UsageStat label="API calls" value={formatCount(usage?.summary.calls)} hint={`${formatCount(usage?.summary.failures)} failed`} />
+        <UsageStat label="Total tokens" value={formatCount(usage?.summary.totalTokens)} hint={`in ${formatCount(usage?.summary.inputTokens)} · out ${formatCount(usage?.summary.outputTokens)}`} />
+        <UsageStat label="Tavily credits" value={formatCount(usage?.summary.credits)} hint="Search billable units" />
+        <UsageStat label="Estimated cost" value={usage?.summary.cost ? String(usage.summary.cost) : "—"} hint="Only when pricing is configured" />
+      </div>
+      <div className="usage-grid">
+        <UsageStat label="Input tokens" value={usage ? formatCount(usage.summary.inputTokens) : "—"} hint="Provider-reported input" />
+        <UsageStat label="Output tokens" value={usage ? formatCount(usage.summary.outputTokens) : "—"} hint="Generated output" />
+        <UsageStat label="Cache read" value={usage ? formatCount(usage.summary.cacheReadTokens) : "—"} hint="Reused cached input" />
+        <UsageStat label="Cache write" value={usage ? formatCount(usage.summary.cacheWriteTokens) : "—"} hint="New cached input" />
+      </div>
+      <h3>Usage by provider and model</h3>
+      {usage && !usage.breakdown.length ? <p>No usage recorded in this period.</p> : <div className="usage-log"><table><thead><tr><th>Service</th><th>Provider</th><th>Model</th><th>Calls</th><th>Tokens</th><th>Credits</th></tr></thead><tbody>{usage?.breakdown.map(row => <tr key={`${row.service}:${row.provider}:${row.modelId}`}><td>{row.service}</td><td>{row.provider || "—"}</td><td>{row.modelId || "—"}</td><td>{formatCount(row.calls)}</td><td>{formatCount(row.totalTokens)}</td><td>{formatCount(row.credits)}</td></tr>)}</tbody></table></div>}
+      <h3>Daily usage</h3>
+      <div className="usage-log"><table><thead><tr><th>Day</th><th>Calls</th><th>Tokens</th><th>Credits</th></tr></thead><tbody>{usage?.trend.map(row => <tr key={row.day}><td>{new Date(row.day).toLocaleDateString()}</td><td>{formatCount(row.calls)}</td><td>{formatCount(row.totalTokens)}</td><td>{formatCount(row.credits)}</td></tr>)}</tbody></table></div>
+      <h3>Recent API calls</h3>
+      {!usage?.recent?.length ? <p>No API calls recorded yet.</p> : <div className="usage-log"><table><thead><tr><th>Time</th><th>Service</th><th>Operation</th><th>Model</th><th>Status</th><th>Tokens</th><th>Duration</th></tr></thead><tbody>{usage.recent.map((row) => <tr key={row.id}><td>{formatClock(row.occurredAt)}</td><td>{row.service}</td><td>{row.operation}</td><td>{row.modelId || row.provider || "—"}</td><td>{row.status}</td><td>{formatCount(row.totalTokens ?? row.credits)}</td><td>{row.durationMs == null ? "—" : `${row.durationMs} ms`}</td></tr>)}</tbody></table></div>}
+      <h2>Resource usage</h2>
       <p>
         Sampled every {data?.intervalSec ?? 15}s. Rows older than {data?.retentionHours ?? 24} hours are deleted.
         Overhead is a /proc read plus one small Postgres insert — not a profiler.

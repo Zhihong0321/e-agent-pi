@@ -3,6 +3,7 @@ import { getPool } from "./db.mjs";
 const MAX_META = 2000;
 
 function finite(value) {
+  if (value == null || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
 }
@@ -13,22 +14,30 @@ function clip(value, max = MAX_META) {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-export function redactUsageMeta(value) {
-  if (!value || typeof value !== "object") return null;
-  const text = clip(value);
-  if (!text) return null;
-  return JSON.parse(text.replace(/("?(?:api[_-]?key|token|password|secret|authorization|cookie)"?\s*[:=]\s*)("[^"\n]*"|'[^'\n]*'|[^,}\s]+)/gi, "$1[REDACTED]"));
+export function redactUsageMeta(value, depth = 0) {
+  if (value == null || depth > 3) return null;
+  if (typeof value !== "object") return clip(value, 300);
+  if (Array.isArray(value)) return value.slice(0, 20).map(item => redactUsageMeta(item, depth + 1));
+  const out = {};
+  for (const [key, item] of Object.entries(value).slice(0, 30)) {
+    if (/(?:api[_-]?key|token|password|secret|authorization|cookie)/i.test(key)) out[key] = "[REDACTED]";
+    else if (item && typeof item === "object") out[key] = redactUsageMeta(item, depth + 1);
+    else out[key] = clip(item, 300);
+  }
+  return out;
 }
 
 export function normalizeUsage(usage = {}) {
   const u = usage && typeof usage === "object" ? usage : {};
   const input = finite(u.input ?? u.input_tokens ?? u.prompt_tokens ?? u.promptTokens);
   const output = finite(u.output ?? u.output_tokens ?? u.completion_tokens ?? u.completionTokens);
-  const cacheRead = finite(u.cacheRead ?? u.cache_read_input_tokens ?? u.cache_read ?? u.cached_tokens);
+  const cacheRead = finite(u.cacheRead ?? u.cache_read_input_tokens ?? u.cache_read ?? u.cached_tokens ?? u.prompt_tokens_details?.cached_tokens ?? u.input_tokens_details?.cached_tokens);
   const cacheWrite = finite(u.cacheWrite ?? u.cache_creation_input_tokens ?? u.cache_write);
-  const total = finite(u.total ?? u.total_tokens ?? u.totalTokens) ?? [input, output, cacheRead, cacheWrite].some(v => v != null)
-    ? [input, output, cacheRead, cacheWrite].reduce((sum, value) => sum + (value || 0), 0)
-    : null;
+  const explicitTotal = finite(u.total ?? u.total_tokens ?? u.totalTokens);
+  const hasInclusiveInput = u.prompt_tokens != null || u.input_tokens_details != null;
+  const total = explicitTotal ?? ([input, output, cacheRead, cacheWrite].some(v => v != null)
+    ? [input, output, hasInclusiveInput ? 0 : cacheRead, cacheWrite].reduce((sum, value) => sum + (value || 0), 0)
+    : null);
   const credits = finite(u.credits ?? u.credit ?? u.search_credits ?? u.units);
   return { inputTokens: input, outputTokens: output, cacheReadTokens: cacheRead, cacheWriteTokens: cacheWrite, totalTokens: total, credits };
 }
@@ -80,12 +89,18 @@ export async function recordApiUsage(input = {}) {
       [input.service, clip(input.provider, 120), input.operation, clip(input.engine, 120), clip(input.modelId, 200), input.userId || null,
         input.sessionId || null, input.agentId || null, clip(input.requestId, 200), input.status || "ok",
         finite(input.durationMs), usage.inputTokens, usage.outputTokens, usage.cacheReadTokens, usage.cacheWriteTokens,
-        usage.totalTokens, usage.credits ?? finite(input.credits), finite(input.estimatedCost), clip(input.error, 500), redactUsageMeta(input.metadata)],
+        usage.totalTokens, usage.credits ?? finite(input.credits), costValue(input.estimatedCost ?? input.usage?.cost?.total), clip(input.error, 500), redactUsageMeta(input.metadata)],
     );
     return result.rows[0] || null;
   } catch {
     return null;
   }
+}
+
+function costValue(value) {
+  if (value == null || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : null;
 }
 
 function filters(options = {}) {
@@ -102,7 +117,9 @@ function filters(options = {}) {
 }
 
 export async function usageReport(options = {}) {
-  const { where, values } = filters(options);
+  const bounded = { ...options };
+  if (!bounded.since && !bounded.until) bounded.since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const { where, values } = filters(bounded);
   const pool = getPool();
   const [summary, trend, breakdown, recent] = await Promise.all([
     pool.query(`SELECT COUNT(*)::int AS calls, COALESCE(SUM(input_tokens),0)::bigint AS "inputTokens", COALESCE(SUM(output_tokens),0)::bigint AS "outputTokens", COALESCE(SUM(cache_read_tokens),0)::bigint AS "cacheReadTokens", COALESCE(SUM(cache_write_tokens),0)::bigint AS "cacheWriteTokens", COALESCE(SUM(total_tokens),0)::bigint AS "totalTokens", COALESCE(SUM(credits),0)::numeric AS credits, COALESCE(SUM(estimated_cost),0)::numeric AS cost, COUNT(*) FILTER (WHERE status <> 'ok')::int AS failures FROM api_usage ${where}`, values),

@@ -73,6 +73,7 @@ import { searchAuthorized, searchWeb, testJinaKeys } from "./web-search.mjs";
 import { loadSecrets, publicSettings, rememberSecret, saveSecrets, secret, secretFlags } from "./secrets.mjs";
 import { listActivity, recordActivity } from "./activity.mjs";
 import { usageReport, recordApiUsage } from "./usage.mjs";
+import { chatLogs } from "./chat-logs.mjs";
 import {
   adjustStockItem,
   ensureStockSchema,
@@ -1419,8 +1420,24 @@ async function chatPi(message, modelId, session, onEvent, images) {
           }
           const mapped = applyPiEvent(turn, event);
           if (mapped) onEvent?.(mapped, turn);
-          if (event.type === "message_end" && event.message?.role === "assistant" && event.message?.errorMessage) {
-            assistantError = event.message.errorMessage;
+          if (event.type === "message_end" && event.message?.role === "assistant") {
+            if (event.message.errorMessage) assistantError = event.message.errorMessage;
+            {
+              void recordApiUsage({
+                service: "llm",
+                provider: entry.provider,
+                operation: "chat_message",
+                engine: session.engine || "pi",
+                modelId: resolvedModelId,
+                userId: session.userId,
+                sessionId: session.id,
+                agentId: session.agentId,
+                status: event.message.errorMessage ? "error" : "ok",
+                durationMs: promptedAt ? Date.now() - promptedAt : null,
+                usage: event.message.usage || {},
+                error: event.message.errorMessage,
+              });
+            }
           }
         } catch (error) {
           logEvent("warn", `Pi event map failed: ${sanitizeError(error)}`);
@@ -2508,6 +2525,11 @@ const server = createServer(async (req, res) => {
       }
       json(res, 404, { error: "Not found" });
       return;
+    }
+
+    if (req.method === "GET" && pathname === "/api/settings/chat-logs") {
+      if (!dbReady()) return json(res, 503, { error: "Database is not connected" });
+      return json(res, 200, await chatLogs(Object.fromEntries(url.searchParams)));
     }
 
     if (req.method === "GET" && pathname === "/api/usage") {
