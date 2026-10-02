@@ -44,9 +44,9 @@ export function researchConfiguration() {
   const keyCount = savedTavilyKeys().length || (tavilyMcpKey ? 1 : 0);
   return { tavily: keyCount > 0, tavilyKeyCount: keyCount, model: process.env.COMPANY_RESEARCH_MODEL || null, persistence: Boolean(store), workerBusy: busy };
 }
-async function configuredRunner() {
+async function configuredRunner(modelId) {
   const resolved = await resolveModelCredentials();
-  const chosen = process.env.COMPANY_RESEARCH_MODEL || await getSetting('active_model_id') || resolved.defaultModelId;
+  const chosen = modelId || process.env.COMPANY_RESEARCH_MODEL || await getSetting('active_model_id') || resolved.defaultModelId;
   const selected = resolved.models.find(m => m.id === chosen && m.available);
   if (!selected) throw new Error('No research model with a saved API key is available in the existing model catalog');
   const prefix = selected.envPrefix.toLowerCase();
@@ -79,7 +79,7 @@ async function tick(log) {
     heartbeat = setInterval(() => { void store.heartbeat(job.id).catch(() => {}); }, 45000); heartbeat.unref?.();
     const tavilyKeys = await resolveTavilyKeys();
     if (!tavilyKeys.length) throw new Error('Add a Tavily API key in Settings → Keys');
-    const runner = await configuredRunner();
+    const runner = await configuredRunner(job.options?.modelId);
     const server = await getMcpServer('scrapling');
     if (server) { try { scrapling = await connectScrapling(server); } catch { await store.event(job.id, { type: 'warning', message: 'Scrapling unavailable; page-fetch lanes will return partial results' }); } }
     const metadataLanes = createMetadataLanes({ seed: job.seed, psiKey: process.env.PSI_API_KEY, pitchSignals: job.options?.pitchSignals, directory: seed => store.directoryCandidates(seed) });
@@ -98,11 +98,12 @@ function reportUrl(pathname) {
   const base = process.env.COMPANY_RESEARCH_PUBLIC_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '');
   return base ? new URL(pathname, base).href : pathname;
 }
-export async function researchAction({ action, seed, id, force, pitchSignals = false, format = 'json' }, repository = store) {
+export async function researchAction({ action, seed, id, force, pitchSignals = false, modelId, format = 'json' }, repository = store) {
   if (!repository) throw new Error('Company research is not initialized');
   if (action === 'start') {
     if (!(await resolveTavilyKeys()).length) throw new Error('Add a Tavily API key in Settings → Keys');
-    return repository.enqueue(Seed.parse(seed), Boolean(force), { pitchSignals: Boolean(pitchSignals) });
+    if (modelId !== undefined && (typeof modelId !== 'string' || !modelId.trim() || modelId.length > 200)) throw new Error('Valid research model id required');
+    return repository.enqueue(Seed.parse(seed), Boolean(force), { pitchSignals: Boolean(pitchSignals), ...(modelId ? { modelId } : {}) });
   }
   if (action === 'status') return researchConfiguration();
   if (!/^[0-9a-f-]{36}$/i.test(String(id))) throw new Error('Valid dossier id required');
@@ -170,7 +171,7 @@ export async function handleCompanyResearch(req, res, url, { authorized, readBod
     }
     if (req.method === 'POST' && url.pathname === prefix) {
       const body = JSON.parse(await readBody(req) || '{}');
-      json(202, await action({ action: 'start', seed: body.seed, force: body.options?.force, pitchSignals: body.options?.pitchSignals })); return true;
+      json(202, await action({ action: 'start', seed: body.seed, force: body.options?.force, pitchSignals: body.options?.pitchSignals, modelId: body.options?.modelId })); return true;
     }
     const match = url.pathname.slice(prefix.length).match(/^\/([0-9a-f-]{36})(?:\/(artifact|events|replay|publish))?$/i);
     if (!match) { json(404, { error: 'Unknown research route' }); return true; }

@@ -75,11 +75,12 @@ export function createEvidenceTools({ seed, evidence, sources, budget, tavilyKey
   const keys = [...new Set([...tavilyKeys, tavilyKey].map(key => String(key || '').trim()).filter(Boolean))];
   let keyCursor = 0;
   const ownDomain = seed.website ? domain(seed.website) : null;
+  const ownDomains = [ownDomain, ...(seed.related_websites || []).map(domain)].filter(Boolean);
   const allowed = new Set(evidence.map(e => e.url));
   const robotCache = new Map();
   let nextId = evidence.length + 1;
   const add = async (url, text, lane, mode) => {
-    const e = evidenceRecord({ id: `E${nextId++}`, url, text, lane, mode, tier: sourceTier(url, ownDomain, sources) });
+    const e = evidenceRecord({ id: `E${nextId++}`, url, text, lane, mode, tier: sourceTier(url, ownDomains, sources) });
     await persist(e); evidence.push(e); allowed.add(e.url); return e;
   };
   return {
@@ -124,6 +125,7 @@ export function createEvidenceTools({ seed, evidence, sources, budget, tavilyKey
       for (const input of urls) {
         try {
           const url = await safeUrl(input, { blocked: sources.blocked, resolve });
+          if (/\.(?:png|jpe?g|gif|webp|svg|ico|mp4|mp3|woff2?|zip|pdf)$/i.test(new URL(url).pathname)) throw new Error('Only text pages are supported by this evidence fetcher');
           if (!allowed.has(url) && !(ownDomain && domain(url) === ownDomain)) throw new Error('URL has no seed/search/link provenance');
           if (!scrapling) throw new Error('Scrapling MCP is unavailable on this host');
           const origin = new URL(url).origin;

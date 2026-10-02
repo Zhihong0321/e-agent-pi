@@ -8,6 +8,7 @@ export const VERSION = 'company-research-v2.0';
 export const Seed = z.object({
   name: z.string().trim().min(2).max(200), place_id: z.string().max(200).optional(),
   website: z.string().url().refine(v => /^https?:\/\//i.test(v) && Boolean(domain(v)), 'Website must be an HTTP(S) URL with a registrable domain').optional(), phone: z.string().max(80).optional(),
+  related_websites: z.array(z.string().url().refine(v => /^https?:\/\//i.test(v) && Boolean(domain(v)))).max(10).optional(),
   address: z.string().max(500).optional(), postcode: z.string().regex(/^\d{5}$/).optional(),
 }).strict();
 const citation = { evidence_id: z.string(), quote: z.string().trim().min(8).max(200) };
@@ -34,6 +35,7 @@ export function dateInQuote(date, quote) {
   if (!validDate(date)) return false;
   if (quote.includes(date)) return true;
   const [year, month, day] = date.split('-').map(Number);
+  if (new RegExp(`\\b0?${day}[/.-]0?${month}[/.-]${year}\\b`).test(quote)) return true;
   const months = ['jan(?:uary|uari)?', 'feb(?:ruary|ruari)?', 'mar(?:ch)?', 'apr(?:il)?', '(?:may|mei)', 'jun(?:e)?', 'jul(?:y|ai)?', '(?:aug(?:ust)?|ogos)', 'sep(?:tember)?', '(?:oct(?:ober)?|oktober)', 'nov(?:ember)?', '(?:dec(?:ember)?|disember)'];
   const m = months[month - 1], d = `0?${day}(?:st|nd|rd|th)?`, sep = '[\\s,.-]+';
   return new RegExp(`\\b(?:${d}${sep}${m}${sep}${year}|${m}${sep}${d}${sep}${year})\\b`, 'i').test(quote);
@@ -48,7 +50,7 @@ export function domain(url) {
 }
 export function sourceTier(url, ownDomain, sources) {
   const host = new URL(url).hostname.toLowerCase();
-  if (ownDomain && domain(url) === ownDomain || sources.social.some(d => host === d || host.endsWith(`.${d}`))) return 3;
+  if ([ownDomain].flat().includes(domain(url)) || sources.social.some(d => host === d || host.endsWith(`.${d}`))) return 3;
   return sources.tier1.some(d => host === d || host.endsWith(`.${d}`)) ? 1 : 2;
 }
 export function evidenceRecord({ id, url, text, tier, lane, mode = 'snippet' }) {
@@ -167,7 +169,16 @@ export function reconcile({ seed, identity, evidence, runs, startedAt, webState 
   // Re-check stored submissions on replay. A rejected submission contributes no claims.
   const findings = runs.map(r => validateFindings(r.findings || {}, evidence)).filter(r => r.accepted).map(r => r.findings);
   const claims = findings.flatMap(f => f.facts);
-  const field = key => fact(claims.filter(c => c.field === key), evidence);
+  const field = key => {
+    const rows = claims.filter(c => c.field === key);
+    if (!['sells', 'buyers', 'price_points', 'reach'].includes(key)) return fact(rows, evidence);
+    // Different services and operating locations can all be true together.
+    const groups = [...new Set(rows.map(c => c.value))].map(value => fact(rows.filter(c => c.value === value), evidence));
+    const visible = groups.filter(f => f.value !== null);
+    if (!visible.length) return fact(rows, evidence);
+    const status = visible.every(trusted) ? (visible.every(f => f.status === 'confirmed') ? 'confirmed' : 'corroborated') : 'self_reported';
+    return { value: visible.map(f => f.value).join('; '), status, confidence: Math.min(...visible.map(f => f.confidence)), evidence: [...new Map(groups.flatMap(f => f.evidence).map(e => [e.id, e])).values()] };
+  };
   const list = (key, keys) => {
     const grouped = new Map();
     for (const row of findings.flatMap(f => f[key])) {

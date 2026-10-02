@@ -36,7 +36,15 @@ export function renderCompanyReport(d) {
   const name = d.identity?.legalName?.value || d.seed.name;
   const contactCount = (d.contacts?.phones?.length || 0) + (d.contacts?.emails?.length || 0);
   const identity = d.identity || {}, web = d.web || {};
-  const sourceList = [...sources.values()].map(e => `<article class="source" id="source-${e.index}"><span class="source-index">${e.index.toString().padStart(2, '0')}</span><div><h3>${link(e.url, (() => { try { return new URL(e.url).hostname; } catch { return e.id; } })())}</h3><p class="source-url">${link(e.url, e.url)}</p>${[...e.quotes].map(q => `<blockquote>${escape(q)}</blockquote>`).join('')}</div></article>`).join('');
+  const quoteWords = new Map();
+  const excerpts = e => [...e.quotes].map(q => {
+    const remaining = 25 - (quoteWords.get(e.url) || 0);
+    if (remaining <= 0) return '';
+    const words = q.trim().split(/\s+/), shown = words.slice(0, remaining);
+    quoteWords.set(e.url, (quoteWords.get(e.url) || 0) + shown.length);
+    return `<blockquote>${escape(shown.join(' '))}${shown.length < words.length ? ' …' : ''}</blockquote>`;
+  }).join('');
+  const sourceList = [...sources.values()].map(e => `<article class="source" id="source-${e.index}"><span class="source-index">${e.index.toString().padStart(2, '0')}</span><div><h3>${link(e.url, (() => { try { return new URL(e.url).hostname; } catch { return e.id; } })())}</h3><p class="source-url">${link(e.url, e.url)}</p>${excerpts(e)}</div></article>`).join('');
   const contacts = [
     ...(d.contacts?.phones || []).map(p => `<div class="contact"><span class="eyebrow">${p.whatsapp ? 'Phone · WhatsApp link observed' : 'Phone'}</span><a href="tel:${escape(p.e164.replace(/[^+\d]/g, ''))}">${escape(p.e164)}</a><small>Published contact · ${refs(p.sources)}</small></div>`),
     ...(d.contacts?.emails || []).map(e => `<div class="contact"><span class="eyebrow">${escape(label(e.kind))} email</span><a href="mailto:${escape(encodeURIComponent(e.address))}">${escape(e.address)}</a><small>${e.mxOk === true ? 'MX check passed' : 'Delivery not verified'} · ${refs(e.sources)}</small></div>`),

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { quotePresent, validSsm, phone, ageYears, lockIdentity, fact, validateFindings, reconcile, renderDossier, evidenceRecord, dateInQuote } from './core.mjs';
+import { quotePresent, validSsm, phone, ageYears, lockIdentity, fact, validateFindings, reconcile, renderDossier, evidenceRecord, dateInQuote, sourceTier } from './core.mjs';
 import { publicIp, safeUrl, parseScrapling, scraplingHttpGet, ResearchBudget, createEvidenceTools } from './adapters.mjs';
 import { assertResearchTools, PiResearchRunner, RESEARCH_TOOLS, researchModelRuntime, researchContext, evidenceExcerpt } from './runner.mjs';
 import { researchCompany } from './pipeline.mjs';
@@ -161,10 +161,20 @@ test('model context deduplicates sources, preserves literal footer text and rema
   const input = Array.from({ length: 70 }, (_, i) => ({ id: `E${i}`, url: `https://example.com/${i % 20}`, text, tier: 3 }));
   const out = researchContext(input, 'G1');
   assert.equal(new Set(out.map(e => e.url)).size, out.length);
-  assert.ok(JSON.stringify(out).length < 19000);
+  assert.ok(JSON.stringify(out).length < 9000);
   assert.ok(out[0].text.includes('ETERNALGY SDN BHD 202301029164'));
   assert.ok(evidenceExcerpt(text).length <= 1800);
   assert.equal(input[0].text, text);
+});
+test('related company websites stay self-reported and services are complementary', () => {
+  assert.equal(sourceTier('https://secondary.example/', ['acme.example', 'secondary.example'], sources), 3);
+  const ev = [e('A', seed.website, 'Solar PV installation and EV charging')];
+  const facts = ['Solar PV installation', 'EV charging'].map(value => ({ field: 'sells', value, evidence_id: 'A', quote: 'Solar PV installation and EV charging' }));
+  const d = reconcile({ seed, identity: { status: 'locked' }, evidence: ev, runs: [{ lane: 'G2', findings: { facts } }], startedAt: '2026-10-02' });
+  assert.equal(d.business.sells.status, 'self_reported');
+  assert.equal(d.business.sells.value, 'Solar PV installation; EV charging');
+  assert.equal(dateInQuote('2025-08-20', 'Fully commissioned on 20/8/2025'), true);
+  assert.equal(dateInQuote('2025-08-20', 'Fully commissioned on 8/20/2025'), false);
 });
 test('provider failures keep their actual error and do not retry an unsuccessful response', async () => {
   let listener, prompts = 0;
