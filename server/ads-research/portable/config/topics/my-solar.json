@@ -1,0 +1,155 @@
+{
+  "topic": "my-solar",
+  "label": "Malaysia Solar PV",
+  "region": "MY",
+  "filterVersion": 2,
+  "analysisVersion": 1,
+  "meta": {
+    "enabled": true,
+    "queries": [
+      "solar panel",
+      "pasang solar",
+      "solar rooftop",
+      "solar PV",
+      "jimat bil elektrik solar",
+      "solar NEM Malaysia",
+      "solar energy home",
+      "solar installer",
+      "太阳能"
+    ],
+    "scrolls": 4,
+    "scrollWaitMs": 2500,
+    "settleMs": 6000
+  },
+  "googleAtc": {
+    "enabled": true,
+    "_note": "Checked 2026-07-20: gsparx.com, pekat.com.my, sunview.com.my, alphasolar.my, founderenergy.com.my, trexon.my, yongyang.com.my, quantumre.com.my, eharvest.com.my, amcharge.my, solarlinkenergy.com.my, gmegreentech.com.my return 'No ads found' both by domain lookup AND by advertiser-name search (tried registered + brand names, MY-scoped and unscoped) via the SearchSuggestions RPC -- verified genuinely absent from ATC right now, not a domain-seeding artifact. Don't re-litigate without a reason to think that changed.",
+    "domains": [
+      "solarvest.my",
+      "gsparx.com",
+      "plusxnergy.com",
+      "pekat.com.my",
+      "solsenergy.com",
+      "verdantsolar.my",
+      "northernsolar.com.my",
+      "sunview.com.my",
+      "getsolar.ai",
+      "nextenergy.my",
+      "brilliantsolar.com.my",
+      "solartech.com.my",
+      "solanatec.com.my",
+      "alphasolar.my",
+      "ers.my",
+      "founderenergy.com.my",
+      "trexon.my",
+      "yongyang.com.my",
+      "homifytech.com.my",
+      "greenmalaysia.my",
+      "progressturesolar.com",
+      "quantumre.com.my",
+      "eharvest.com.my",
+      "amcharge.my",
+      "solarlinkenergy.com.my",
+      "gmegreentech.com.my",
+      "suriaenergysolutions.com"
+    ],
+    "settleMs": 6000,
+    "maxPerAdvertiser": 200,
+    "advertiserIds": [
+      {
+        "id": "AR14329732184909283329",
+        "label": "Verdant Solar Sdn Bhd"
+      },
+      {
+        "id": "AR16420673481810640897",
+        "label": "Solarvest Energy Sdn Bhd"
+      },
+      {
+        "id": "AR15822040424698085377",
+        "label": "Solana Tec Sdn Bhd"
+      },
+      {
+        "id": "AR14382034037487173633",
+        "label": "Ray Go Solar EPC Sdn Bhd"
+      },
+      {
+        "id": "AR13077926428475916289",
+        "label": "EFS Revision Energy Sdn Bhd"
+      },
+      {
+        "id": "AR04489175151505571841",
+        "label": "Suria Energy Solutions"
+      },
+      {
+        "id": "AR00356475009893400577",
+        "label": "JS Solar Sdn Bhd"
+      }
+    ]
+  },
+  "googleSerp": {
+    "enabled": false,
+    "_note": "Live SERP is CAPTCHA-gated for headless browsers. Run `cli.mjs serp` for assisted capture through a real browser; never bypass a CAPTCHA.",
+    "queries": [
+      "pasang solar panel rumah malaysia",
+      "solar panel price malaysia",
+      "solar ATAP malaysia",
+      "NEM solar malaysia",
+      "solar installer malaysia",
+      "jimat bil elektrik solar"
+    ]
+  },
+  "filter": {
+    "mustMatch": "(\\b(solar|photovoltaic|pv|tenaga suria)\\b|太阳能|光伏)",
+    "regionMatch": "(\\bRM\\s?\\d|RM\\d|TNB|SEDA|NEM|Tenaga Nasional|Malaysia|Selangor|Johor|Penang|Pulau Pinang|Kuala Lumpur|Sabah|Sarawak|Melaka|Perak|Kedah|Negeri Sembilan|Pahang|Kelantan|Terengganu|Putrajaya|Cyberjaya|wasap\\.my|wa\\.link|\\+?60 ?1\\d|01[0-9][- ]?\\d{7}|rumah|bil elektrik|jimat|pasang|percuma|马来西亚|大马|令吉)",
+    "coreMatch": "(solar panel|panel solar|solar system|sistem solar|rooftop solar|solar pv|photovoltaic|inverter|kWp|solar installation|pemasangan solar|NEM|net energy metering|SELCO|bil elektrik|solar energy|solar ATAP|太阳能|光伏|太阳能板|太阳能系统)",
+    "offTopic": "(tint|tinted|window film|隔热膜|awning|waterproof|mortgage|Cagamas|property agent|hartanah|condo|freehold|downpayment|Shopee|Alibaba|lampu|light bulb|CCTV|camera)",
+    "tiers": {
+      "brand": "(sungrow|deye|goodwe|huawei|jinko|longi|trina)",
+      "adjacent": "(property|hartanah|ioi propert|klv gem|ken property|eadepro|modern home fair|aisyah|cagamas|smart awning|dtyk)",
+      "hardware": "(mg solar|heng seng|bigg lighting|itoshi|barang trending|review barang|shopee|alibaba|cytron|sricam|maxson|nik electronic|solar street lamp|anern|bangzhao|shandong|aohai|bluesun|maraexcellent|engraving|easesourcing|tingkap)"
+    },
+    "trustSeedChannels": [
+      "google_atc"
+    ]
+  },
+  "angles": [
+    [
+      "Bill-shock savings",
+      "(bil elektrik|electricity bill|jimat|save|savings|RM\\d+ sebulan|TNB bill|cut your bill|penjimatan)"
+    ],
+    [
+      "Govt rebate (SuRIA/ATAP)",
+      "(suria|atap|rebat|rebate|government incentive|kerajaan|NEM|net energy metering|SELCO|solar rakyat)"
+    ],
+    [
+      "Urgency / quota scarcity",
+      "(terhad|limited|first come|siapa cepat|quota|kuota|sebelum|habis|before it'?s gone|jangan tunggu|last call)"
+    ],
+    [
+      "Zero-upfront / instalment",
+      "(zero upfront|tiada modal|ansuran|instalment|installment|rent.?to.?own|sewa|sebulan|/month|per month|0% faedah|financing|subscribe)"
+    ],
+    [
+      "Free assessment lead-magnet",
+      "(free (site|roof|rooftop|home|solar)? ?(assessment|check|consultation|visit|analysis|plan)|percuma|konsultasi percuma|semakan bumbung|FREE quote|quotation)"
+    ],
+    [
+      "Social proof / testimonial",
+      "(testimoni|testimonial|pelanggan|customer|dulu bayar|sekarang cuma|real project|case study|installed for|homeowner in|trusted)"
+    ],
+    [
+      "Warranty / trust stack",
+      "(warranty|waranti|jaminan|years? warranty|SEDA|licensed|certified|TUV|ISO)"
+    ],
+    [
+      "Segment targeting",
+      "(penjawat awam|civil servant|kilang|factory|industrial|commercial|SME|Sabah|Sarawak|farm|ladang)"
+    ]
+  ],
+  "publish": {
+    "enabled": false,
+    "autoPublish": false,
+    "slug": "malaysia-solar-pv-teardown",
+    "name": "Malaysia Solar PV — Advertising Teardown"
+  }
+}

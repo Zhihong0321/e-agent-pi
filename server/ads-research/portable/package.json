@@ -1,0 +1,18 @@
+{
+  "name": "solar-ads-engine-portable",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Portable solar ad research logic and HTML report renderer",
+  "scripts": {
+    "run": "node cli.mjs run --topic my-solar",
+    "report": "node cli.mjs report --topic my-solar",
+    "status": "node cli.mjs status --topic my-solar"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {
+    "playwright": "^1.63.0"
+  }
+}

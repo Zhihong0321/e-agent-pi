@@ -9,7 +9,7 @@ import { AdsResearchStore } from "./store.mjs";
 
 const PORTABLE_ROOT = process.env.ADS_RESEARCH_PORTABLE_ROOT?.trim()
   ? path.resolve(process.env.ADS_RESEARCH_PORTABLE_ROOT)
-  : path.resolve(ROOT, "..", "003-ads-research", "portable");
+  : defaultPortableRoot();
 const PORTABLE_CLI = path.join(PORTABLE_ROOT, "cli.mjs");
 const ADS_ROOT = path.join(DATA_DIR, "ads-research");
 const CONFIG_ROOT = path.join(ADS_ROOT, "config");
@@ -23,6 +23,10 @@ const COUNTRY_CODES = {
   australia: ["AU", "Australia"], "united states": ["US", "United States"], usa: ["US", "United States"],
   "united kingdom": ["GB", "United Kingdom"], uk: ["GB", "United Kingdom"],
 };
+
+export function defaultPortableRoot() {
+  return path.join(ROOT, "server", "ads-research", "portable");
+}
 
 let store;
 let busy = false;

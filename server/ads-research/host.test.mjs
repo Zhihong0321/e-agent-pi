@@ -4,7 +4,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { AdsResearchStore } from "./store.mjs";
-import { normalizeAdsInput, adsResearchAction } from "./host.mjs";
+import { defaultPortableRoot, normalizeAdsInput, adsResearchAction } from "./host.mjs";
+
+test("uses the vendored portable runtime by default", () => {
+  assert.equal(defaultPortableRoot(), path.join(process.cwd(), "server", "ads-research", "portable"));
+});
 
 test("normalizes country, keyword and deterministic topic", () => {
   const a = normalizeAdsInput({ country: "Malaysia", keyword: "solar panels" });

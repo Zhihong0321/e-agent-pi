@@ -52,6 +52,7 @@ COPY package.json package-lock.json ./
 RUN PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci
 
 COPY . .
+RUN cd server/ads-research/portable && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci --omit=dev
 COPY --from=sidecar-build /whatsapp-sidecar ./sidecar/whatsapp-sidecar
 RUN chmod +x ./sidecar/whatsapp-sidecar
 RUN npm run build
