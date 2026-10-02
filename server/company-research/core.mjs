@@ -112,11 +112,18 @@ export function contactFindings(seed, evidence) {
   const facts = [], seen = new Set();
   for (const e of evidence.filter(e => e.mode === 'http' && own.includes(domain(e.url)))) {
     for (const [field, regex] of [
-      ['phone', /(?<![\dA-Za-z])(?:\+?60|0)[\d ().-]{7,18}(?!\d)/g],
+      ['phone', /(?<![\dA-Za-z])(?:\+?60|0)[\d ().-]{7,18}(?![\dA-Za-z-])/g],
       ['email', /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi],
     ]) for (const match of e.text.matchAll(regex)) {
       const value = match[0].trim();
       if (field === 'phone' && !phone(value)) continue;
+      if (field === 'phone') {
+        const before = e.text.slice(Math.max(0, match.index - 60), match.index);
+        const after = e.text.slice(match.index + match[0].length, match.index + match[0].length + 40);
+        const labelled = /(?:phone|telefon|telephone|tel|whatsapp|mobile|call|hp|contact(?: us)?)\b[^A-Za-z0-9]{0,12}$/i.test(before);
+        const linked = /(?:tel:|wa\.me\/|phone=)$/i.test(before) || /^\]\((?:tel:|https?:\/\/wa\.me\/)/i.test(after);
+        if (!labelled && !linked) continue;
+      }
       const key = `${e.url}\n${field}\n${field === 'phone' ? phone(value) : value.toLowerCase()}`;
       if (seen.has(key)) continue;
       const start = Math.max(0, match.index - 30);

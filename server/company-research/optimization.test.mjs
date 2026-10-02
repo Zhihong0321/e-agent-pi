@@ -144,7 +144,7 @@ test('shutdown cancellation aborts the active research session and disposes it',
 });
 
 test('contacts are extracted from original company pages without model recall', () => {
-  const original = ev('H', seed.website, 'Contact +60 11 2345 6789 or enquiry@acme.example. Registration 202301029164.', 3, 'http');
+  const original = ev('H', seed.website, 'Contact +60 11 2345 6789 or enquiry@acme.example. Registration 202301029164.\nCIDB: 0120250324-WP152634\nReference: 0123456789', 3, 'http');
   const other = ev('X', 'https://unrelated.example/', 'Contact +601123456789 or unrelated@acme.example.', 2, 'http');
   const snippet = ev('S', seed.website, 'Contact missing@acme.example', 3);
   const evidence = [original, other, snippet];
