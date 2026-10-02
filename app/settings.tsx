@@ -4,6 +4,7 @@ import ActivityLog from "./activity-log";
 
 type Settings = {
   tavilyApiKeySet: boolean;
+  tavilyKeysSet: boolean[];
   cavotiApiKeySet: boolean;
   cavotiBaseUrl: string;
   kimiApiKeySet: boolean;
@@ -230,7 +231,7 @@ export default function SettingsPage() {
   });
   const [settings, setSettings] = useState<Settings | null>(null);
   const [form, setForm] = useState({
-    tavilyApiKey: "",
+    tavilyKeys: Array.from({ length: 5 }, () => ""),
     cavotiApiKey: "",
     cavotiBaseUrl: "",
     kimiApiKey: "",
@@ -639,6 +640,20 @@ export default function SettingsPage() {
     }
   };
 
+  const saveTavilyKeys = async () => {
+    setBusy(true); setError(""); setSaved("");
+    try {
+      const data = await authedJson<Settings>("/api/settings", {
+        method: "PUT",
+        body: JSON.stringify(Object.fromEntries(form.tavilyKeys.map((value, index) => [`tavily_api_key_${index + 1}`, value]))),
+      });
+      setSettings(data);
+      setForm((prev) => ({ ...prev, tavilyKeys: Array.from({ length: 5 }, () => "") }));
+      setSaved("Tavily keys saved. Company research can use them immediately.");
+    } catch (err) { setError(err instanceof Error ? err.message : "Could not save Tavily keys"); }
+    finally { setBusy(false); }
+  };
+
   const saveKeys = async () => {
     setError("");
     setSaved("");
@@ -690,12 +705,12 @@ export default function SettingsPage() {
           sales_pg_proxy_expires_at: form.salesPgProxyExpiresAt,
           om_api_token: form.omApiToken,
           composio_api_key: form.composioApiKey,
-          tavily_api_key: form.tavilyApiKey,
+          ...Object.fromEntries(form.tavilyKeys.map((value, index) => [`tavily_api_key_${index + 1}`, value])),
           ...Object.fromEntries(form.jinaKeys.map((value, index) => [`jina_api_key_${index + 1}`, value])),
         }),
       });
       setSettings(data);
-      setForm((prev) => ({ ...prev, tavilyApiKey: "" }));
+      setForm((prev) => ({ ...prev, tavilyKeys: Array.from({ length: 5 }, () => "") }));
       setJinaTest(null);
       setForm((prev) => ({ ...prev, jinaKeys: Array.from({ length: JINA_SLOTS }, () => ""), cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", opencodeGoApiKey: "", hiveAiApiKey: "", yerplanApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", eeMailApiKey: "", settingsPassword: "", afaPasskey: "", tnbPassword: "", salesPgProxyToken: "", googleAdsClientSecret: "", googleAdsDeveloperToken: "", googleAdsRefreshToken: "", omApiToken: "", composioApiKey: "" }));
       if (data.proposal?.lastError) {
@@ -1096,14 +1111,28 @@ export default function SettingsPage() {
                 />
               </label>
 
-              <h2>Company Deep Research</h2>
-              <p>Tavily searches for sources. Company Deep Research uses the existing model and Scrapling setup.</p>
-              <label>
-                Tavily API key {settings?.tavilyApiKeySet ? <em>saved</em> : <em>missing</em>}
-                <input type="password" value={form.tavilyApiKey}
-                  onChange={(event) => setForm({ ...form, tavilyApiKey: event.target.value })}
-                  placeholder={settings?.tavilyApiKeySet ? "••••••••  (unchanged)" : "Paste Tavily key"} />
-              </label>
+              <h2 id="tavily">Tavily company research</h2>
+              <p>Add up to five Tavily API keys. Company Deep Research rotates searches through them and tries another key when one is rejected or rate-limited. Leave a slot blank to keep its saved key, then click Save Tavily keys.</p>
+              {form.tavilyKeys.map((value, index) => {
+                const slot = index + 1;
+                const isSet = Boolean(settings?.tavilyKeysSet?.[index]);
+                return <div key={slot}>
+                  <label>
+                    Tavily key {slot} {isSet ? <em>saved</em> : <em>empty</em>}
+                    <input type="password" autoComplete="new-password" value={value}
+                      onChange={(event) => setForm({ ...form, tavilyKeys: form.tavilyKeys.map((key, i) => i === index ? event.target.value : key) })}
+                      placeholder={isSet ? "••••••••  (unchanged)" : "tvly-…"} />
+                  </label>
+                  {isSet ? <button type="button" className="secondary" onClick={async () => {
+                    setError(""); setSaved("");
+                    try {
+                      const data = await authedJson<Settings>("/api/settings", { method: "PUT", body: JSON.stringify({ clear_secrets: [`tavily_api_key_${slot}`, ...(slot === 1 ? ['tavily_api_key'] : [])] }) });
+                      setSettings(data); setSaved(`Tavily key ${slot} removed.`);
+                    } catch (err) { setError(err instanceof Error ? err.message : "Could not remove Tavily key"); }
+                  }}>Remove Tavily key {slot}</button> : null}
+                </div>;
+              })}
+              <button type="button" onClick={() => void saveTavilyKeys()} disabled={busy}>Save Tavily keys</button>
 
               <h2>GLM 5.3</h2>
               <label>

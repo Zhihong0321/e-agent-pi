@@ -1,7 +1,7 @@
 import { mkdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { getPool, getSetting } from '../db.mjs';
-import { secret } from '../secrets.mjs';
+import { secret, TAVILY_KEY_NAMES } from '../secrets.mjs';
 import { getAgent, getMcpServer, listMcpServers, createMcpServer, updateMcpServer, seedSystemAgent, updateAgent } from '../catalog.mjs';
 import { BUNDLED_MODELS, ROOT, agentWorkspace } from '../paths.mjs';
 import { resolveModelCredentials } from '../models.mjs';
@@ -28,15 +28,21 @@ export function tavilyKeyFromMcp(server) {
   const bearer = String(header).replace(/^Bearer\s+/i, '');
   return bearer.startsWith('tvly-') ? bearer : '';
 }
-async function resolveTavilyKey() {
-  const direct = secret('tavily_api_key') || process.env.TAVILY_API_KEY;
-  if (direct) return direct;
+export function savedTavilyKeys(get = secret, env = process.env) {
+  const slots = TAVILY_KEY_NAMES.map(get);
+  const legacy = slots[0] ? '' : get('tavily_api_key');
+  return [...new Set([...slots, legacy, env.TAVILY_API_KEY].map(key => String(key || '').trim()).filter(Boolean))];
+}
+async function resolveTavilyKeys() {
+  const direct = savedTavilyKeys();
+  if (direct.length) return direct;
   const servers = await listMcpServers();
   tavilyMcpKey = servers.filter(s => /tavily/i.test(`${s.slug} ${s.name}`)).map(tavilyKeyFromMcp).find(Boolean) || '';
-  return tavilyMcpKey;
+  return tavilyMcpKey ? [tavilyMcpKey] : [];
 }
 export function researchConfiguration() {
-  return { tavily: Boolean(secret('tavily_api_key') || process.env.TAVILY_API_KEY || tavilyMcpKey), model: process.env.COMPANY_RESEARCH_MODEL || null, persistence: Boolean(store), workerBusy: busy };
+  const keyCount = savedTavilyKeys().length || (tavilyMcpKey ? 1 : 0);
+  return { tavily: keyCount > 0, tavilyKeyCount: keyCount, model: process.env.COMPANY_RESEARCH_MODEL || null, persistence: Boolean(store), workerBusy: busy };
 }
 async function configuredRunner() {
   const resolved = await resolveModelCredentials();
@@ -49,7 +55,7 @@ async function configuredRunner() {
 }
 export async function ensureCompanyResearch({ log = () => {} } = {}) {
   store = new ResearchStore(getPool()); await store.migrate();
-  await resolveTavilyKey();
+  await resolveTavilyKeys();
   const rolePrompt = await readFile(path.join(ROOT, 'agent', 'roles', 'company-deep-research.md'), 'utf8');
   await seedSystemAgent({ id: RESEARCH_AGENT_ID, slug: RESEARCH_AGENT_ID, name: 'Company Deep Research', short: 'CDR', headline: 'Evidence-backed company dossiers', description: 'Researches Malaysian companies with Tavily search, Scrapling page evidence, four restricted Pi sessions, quote validation and reproducible scores.', color: 'cyan', rolePrompt, toolProfile: 'assistant', thinkingLevel: 'low' });
   await mkdir(agentWorkspace({ id: RESEARCH_AGENT_ID, slug: RESEARCH_AGENT_ID }), { recursive: true });
@@ -71,13 +77,13 @@ async function tick(log) {
   try {
     job = await store.claim(); if (!job) return;
     heartbeat = setInterval(() => { void store.heartbeat(job.id).catch(() => {}); }, 45000); heartbeat.unref?.();
-    const tavilyKey = await resolveTavilyKey();
-    if (!tavilyKey) throw new Error('TAVILY_API_KEY or saved tavily_api_key is missing');
+    const tavilyKeys = await resolveTavilyKeys();
+    if (!tavilyKeys.length) throw new Error('Add a Tavily API key in Settings → Keys');
     const runner = await configuredRunner();
     const server = await getMcpServer('scrapling');
     if (server) { try { scrapling = await connectScrapling(server); } catch { await store.event(job.id, { type: 'warning', message: 'Scrapling unavailable; page-fetch lanes will return partial results' }); } }
     const metadataLanes = createMetadataLanes({ seed: job.seed, psiKey: process.env.PSI_API_KEY, pitchSignals: job.options?.pitchSignals, directory: seed => store.directoryCandidates(seed) });
-    const outcome = await researchCompany({ seed: job.seed, tavilyKey, scrapling, runner, metadataLanes, emit: event => store.event(job.id, event), saveEvidence: e => store.evidence(job.id, e), saveRun: r => store.run(job.id, r) });
+    const outcome = await researchCompany({ seed: job.seed, tavilyKeys, scrapling, runner, metadataLanes, emit: event => store.event(job.id, event), saveEvidence: e => store.evidence(job.id, e), saveRun: r => store.run(job.id, r) });
     await store.finish(job.id, outcome);
   } catch (error) {
     // Provider errors may include request diagnostics. Persist a bounded safe
@@ -95,7 +101,7 @@ function reportUrl(pathname) {
 export async function researchAction({ action, seed, id, force, pitchSignals = false, format = 'json' }, repository = store) {
   if (!repository) throw new Error('Company research is not initialized');
   if (action === 'start') {
-    if (!await resolveTavilyKey()) throw new Error('Tavily API key is missing on the host');
+    if (!(await resolveTavilyKeys()).length) throw new Error('Add a Tavily API key in Settings → Keys');
     return repository.enqueue(Seed.parse(seed), Boolean(force), { pitchSignals: Boolean(pitchSignals) });
   }
   if (action === 'status') return researchConfiguration();

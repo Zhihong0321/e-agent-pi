@@ -4,15 +4,30 @@ import { createServer } from 'node:http';
 import { PGlite } from '@electric-sql/pglite';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { handleCompanyResearch, tavilyKeyFromMcp } from './host.mjs';
+import { handleCompanyResearch, tavilyKeyFromMcp, savedTavilyKeys } from './host.mjs';
 import { ResearchStore } from './store.mjs';
 import { RESEARCH_TOKEN } from './auth.mjs';
 import { reconcile } from './core.mjs';
+import { publicSettings, rememberSecret, secret } from '../secrets.mjs';
 
 test('existing Tavily MCP credentials can be reused without treating proxy tokens as search keys', () => {
   assert.equal(tavilyKeyFromMcp({ env: { TAVILY_API_KEY: 'tvly-test-only' } }), 'tvly-test-only');
   assert.equal(tavilyKeyFromMcp({ url: 'https://mcp.tavily.com/mcp/?tavilyApiKey=tvly-test-only' }), 'tvly-test-only');
   assert.equal(tavilyKeyFromMcp({ config: { headers: { Authorization: 'Bearer proxy-token' } } }), '');
+});
+test('saved Tavily slots are deduplicated and legacy/env keys remain supported', () => {
+  const saved = { tavily_api_key_1: 'tvly-one', tavily_api_key_2: 'tvly-two', tavily_api_key: 'tvly-one' };
+  assert.deepEqual(savedTavilyKeys(key => saved[key], { TAVILY_API_KEY: 'tvly-two' }), ['tvly-one', 'tvly-two']);
+});
+test('Tavily settings expose saved-slot flags and never return raw keys', async () => {
+  const old = secret('tavily_api_key_5');
+  try {
+    await rememberSecret('tavily_api_key_5', 'tvly-test-only-private');
+    const settings = publicSettings();
+    assert.equal(settings.tavilyKeysSet.length, 5);
+    assert.equal(settings.tavilyKeysSet[4], true); assert.equal(settings.tavilyApiKeySet, true);
+    assert.equal(JSON.stringify(settings).includes('tvly-test-only-private'), false);
+  } finally { await rememberSecret('tavily_api_key_5', old); }
 });
 
 test('private API, SSE, report publication, replay and chat MCP tools work end to end', async () => {

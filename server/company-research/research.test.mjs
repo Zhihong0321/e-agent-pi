@@ -89,6 +89,22 @@ test('Tavily is search only and shared caps reserve cost before concurrent calls
   assert.equal(bodies[0].include_raw_content, false); assert.equal(bodies[0].include_answer, false); assert.equal(bodies[0].country, 'malaysia');
   await assert.rejects(() => tools.search({ query: 'Acme' }), /budget/); assert.equal(bodies.length, 1);
 });
+test('Tavily key pool rotates searches, fails over auth/quota errors and budgets every attempt', async () => {
+  const used = [], budget = new ResearchBudget({ searches: 4, credits: 4 });
+  const evidence = [];
+  const tools = createEvidenceTools({ seed, evidence, sources, tavilyKeys: ['tvly-one', 'tvly-two', 'tvly-one'], budget,
+    fetchImpl: async (_url, opts) => {
+      const key = opts.headers.Authorization; used.push(key);
+      const status = used.length === 1 ? 432 : 200;
+      return { ok: status === 200, status, body: { cancel: async () => {} }, json: async () => ({ results: [{ title: seed.name, url: seed.website, content: 'Acme Solar Sdn Bhd solar installation' }] }) };
+    } });
+  assert.equal((await tools.search({ query: 'Acme' })).credits, 2);
+  await tools.search({ query: 'Acme' }); await tools.search({ query: 'Acme' });
+  assert.deepEqual(used, ['Bearer tvly-one', 'Bearer tvly-two', 'Bearer tvly-two', 'Bearer tvly-one']);
+  await assert.rejects(() => tools.search({ query: 'Acme' }), /budget/);
+  assert.equal(used.length, 4); assert.equal(budget.used.credits, 4);
+  assert.equal(JSON.stringify(evidence).includes('tvly-'), false);
+});
 test('robots rules prefer the longest matching path and enforce company-agent groups', () => {
   const text = 'User-agent: *\nDisallow: /private\nAllow: /private/public\nDisallow: /*?download=1$';
   assert.equal(robotsAllowed(text, 'https://example.com/private/payroll'), false);

@@ -3,9 +3,12 @@ import { dbReady, getSetting, setSetting } from "./db.mjs";
 /** Jina search tokens, used round-robin by server/web-search.mjs. */
 export const JINA_SLOTS = 5;
 export const JINA_KEY_NAMES = Array.from({ length: JINA_SLOTS }, (_, i) => `jina_api_key_${i + 1}`);
+export const TAVILY_SLOTS = 5;
+export const TAVILY_KEY_NAMES = Array.from({ length: TAVILY_SLOTS }, (_, i) => `tavily_api_key_${i + 1}`);
 
 const KEYS = [
   "tavily_api_key",
+  ...TAVILY_KEY_NAMES,
   "cavoti_api_key",
   "cavoti_base_url",
   "kimi_api_key",
@@ -83,13 +86,15 @@ export async function loadSecrets() {
  */
 export async function saveSecrets(patch) {
   // Secret fields ignore blanks (so "leave empty to keep" works), which means a
-  // slot can only be emptied on request. Only Jina slots may be cleared this way.
+  // slot can only be emptied on request. Only search-key slots may be cleared this way.
   const clear = Array.isArray(patch.clear_secrets) ? patch.clear_secrets : [];
   for (const key of clear) {
-    if (JINA_KEY_NAMES.includes(key)) await setSetting(key, "");
+    if ([...JINA_KEY_NAMES, ...TAVILY_KEY_NAMES, 'tavily_api_key'].includes(key)) await setSetting(key, "");
   }
   const secretFields = new Set([
     ...JINA_KEY_NAMES,
+    ...TAVILY_KEY_NAMES,
+    "tavily_api_key",
     "cavoti_api_key",
     "kimi_api_key",
     "glm53_api_key",
@@ -123,7 +128,8 @@ export async function saveSecrets(patch) {
 
 export function publicSettings() {
   return {
-    tavilyApiKeySet: Boolean(secret("tavily_api_key") || process.env.TAVILY_API_KEY),
+    tavilyApiKeySet: Boolean(secret("tavily_api_key") || process.env.TAVILY_API_KEY || TAVILY_KEY_NAMES.some(key => secret(key))),
+    tavilyKeysSet: TAVILY_KEY_NAMES.map((key, index) => Boolean(secret(key) || (index === 0 && secret('tavily_api_key')))),
     cavotiApiKeySet: Boolean(secret("cavoti_api_key")),
     cavotiBaseUrl: secret("cavoti_base_url") || "https://cavoti.com/v1",
     kimiApiKeySet: Boolean(secret("kimi_api_key")),
@@ -173,7 +179,7 @@ export function publicSettings() {
 
 export function secretFlags() {
   return {
-    tavilyApiKey: Boolean(secret("tavily_api_key") || process.env.TAVILY_API_KEY),
+    tavilyApiKey: Boolean(secret("tavily_api_key") || process.env.TAVILY_API_KEY || TAVILY_KEY_NAMES.some(key => secret(key))),
     cavotiApiKey: Boolean(secret("cavoti_api_key")),
     kimiApiKey: Boolean(secret("kimi_api_key")),
     glm53ApiKey: Boolean(secret("glm53_api_key")),

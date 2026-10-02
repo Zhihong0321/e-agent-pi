@@ -67,7 +67,9 @@ export async function connectScrapling(server) {
     };
   } catch (error) { await client.close().catch(() => {}); throw error; }
 }
-export function createEvidenceTools({ seed, evidence, sources, budget, tavilyKey, scrapling, persist = async () => {}, fetchImpl = fetch, resolve = lookup }) {
+export function createEvidenceTools({ seed, evidence, sources, budget, tavilyKey, tavilyKeys = [], scrapling, persist = async () => {}, fetchImpl = fetch, resolve = lookup }) {
+  const keys = [...new Set([...tavilyKeys, tavilyKey].map(key => String(key || '').trim()).filter(Boolean))];
+  let keyCursor = 0;
   const ownDomain = seed.website ? domain(seed.website) : null;
   const allowed = new Set(evidence.map(e => e.url));
   const robotCache = new Map();
@@ -79,7 +81,7 @@ export function createEvidenceTools({ seed, evidence, sources, budget, tavilyKey
   return {
     record_metadata: (url, text, lane) => add(url, text, lane, 'metadata'),
     async search({ query, include_domains, depth = 'basic', topic = 'general', time_range }, lane = 'A') {
-      if (!tavilyKey) throw new Error('Tavily key is unavailable: set TAVILY_API_KEY or tavily_api_key in host settings');
+      if (!keys.length) throw new Error('Tavily key is unavailable: add a key in Settings → Keys');
       if (typeof query !== 'string' || !query.trim() || query.length > 400) throw new Error('Search query must be 1–400 characters');
       const cost = depth === 'advanced' ? 2 : 1;
       budget.take('searches', cost, lane);
@@ -89,10 +91,15 @@ export function createEvidenceTools({ seed, evidence, sources, budget, tavilyKey
       if (include_domains?.length) body.include_domains = include_domains.slice(0, 10);
       if (time_range) body.time_range = time_range;
       let response;
-      for (let attempt = 0; attempt < 3; attempt++) {
+      const start = keyCursor++ % keys.length;
+      const maxAttempts = keys.length === 1 ? 3 : keys.length;
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
         if (attempt) { budget.take('searches', cost, lane); attempts++; } // Failed attempts count conservatively.
-        response = await fetchImpl('https://api.tavily.com/search', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tavilyKey}` }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });
-        if (response.status !== 429 && response.status < 500 || attempt === 2) break;
+        const key = keys[(start + attempt) % keys.length];
+        response = await fetchImpl('https://api.tavily.com/search', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });
+        const keyFailure = [401, 402, 403, 432, 433].includes(response.status);
+        if (!keyFailure && response.status !== 429 && response.status < 500 || attempt === maxAttempts - 1 || (keyFailure && keys.length === 1)) break;
+        if (keys.length > 1) { await response.body?.cancel(); continue; }
         const retry = response.headers.get('retry-after');
         const delay = retry ? (/^\d+$/.test(retry) ? Number(retry) * 1000 : Date.parse(retry) - Date.now()) : 1000 * (attempt + 1);
         if (delay > 10000) throw new Error('Tavily rate limited; retry this dossier later');
