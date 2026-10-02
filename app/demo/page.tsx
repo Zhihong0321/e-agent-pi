@@ -43,6 +43,7 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
     grid: <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
     file: <><path d="M6 2h8l5 5v14H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z"/><path d="M14 2v6h5M8 13h8M8 17h6"/></>,
     users: <><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2H3ZM16 5a3 3 0 0 1 0 6m1 4a5 5 0 0 1 4 5"/></>,
+    user: <><circle cx="12" cy="8" r="4"/><path d="M6 20v-1a6 6 0 0 1 12 0v1"/></>,
     upload: <><path d="M12 16V3m0 0L7 8m5-5 5 5"/><path d="M4 16v4h16v-4"/></>,
     send: <><path d="m3 11 18-8-8 18-2-8-8-2Z"/><path d="M11 13 21 3"/></>,
     check: <path d="m4 12 5 5L20 6"/>,
@@ -313,7 +314,7 @@ export default function DemoPage({ initialArea = "onboarding" }: { initialArea?:
 }
 
 function DemoWorkspace({ user, initialArea = "onboarding", onLogout }: { user: DemoUser; initialArea?: Area; onLogout: () => Promise<void> }) {
-  const studio = useStudio();
+  const studio = useStudio({ userId: user.id });
   const [area, setArea] = useState<Area>(initialArea);
   const [profile, setProfile] = useState<Profile>(initialProfile);
   const [companyMembers, setCompanyMembers] = useState<CompanyMember[]>([]);
@@ -370,7 +371,7 @@ function DemoWorkspace({ user, initialArea = "onboarding", onLogout }: { user: D
     if (!studio.inboxReady || restoredSession.current) return;
     restoredSession.current = true;
     const stored = window.sessionStorage.getItem(`di-demo-session-${user.id}`);
-    if (stored && studio.sessions.some((session) => session.id === stored)) studio.openSession(stored);
+    if (stored && studio.sessions.some((session) => session.id === stored && session.userId === user.id)) studio.openSession(stored);
     else {
       if (stored) window.sessionStorage.removeItem(`di-demo-session-${user.id}`);
       studio.setView("chat");
@@ -487,8 +488,40 @@ function DemoWorkspace({ user, initialArea = "onboarding", onLogout }: { user: D
         <div className="demo-heading"><div><div className="demo-eyebrow">{area === "onboarding" ? "STEP 01 · GETTING STARTED" : area === "people" ? "STEP 02 · KNOW YOUR TEAM" : area === "calendar" ? "LIVE COMPANY SIGNALS" : "STEP 03 · EXPLORE CAPABILITIES"}</div><h1>{area === "onboarding" ? "Set up your workspace" : area === "people" ? "Meet your company people" : area === "calendar" ? "One calendar for every date" : "Make work happen"}</h1><p>{area === "onboarding" ? "Tell the assistant about your business and watch your profile take shape." : area === "people" ? "Share a key contact, their position and department, so future work reaches the right person." : area === "calendar" ? "The Calendar AI reads your company records and keeps the important dates together." : "Create records and see the invoice database update instantly."}</p></div>{area === "workspace" && <button className="demo-primary demo-heading-button" onClick={() => setModal("invoice")}><Icon name="plus" size={17}/> New invoice</button>}</div>
         {area === "calendar" ? <CalendarPanel/> : <div className="demo-layout">
           <section className="demo-chat-card" aria-label={`${area} chat`}>
-            <div className={`demo-card-head${studio.loading ? " is-working" : ""}`}><div className="demo-agent-identity"><div className="demo-agent-avatar"><img src="/branding/e-logo.png" alt=""/></div><div className="demo-agent-label"><strong>{"e"}</strong><span role="status" title={studio.loading ? studio.liveStatus : undefined}><i aria-hidden="true"/> {studio.loading ? "Working…" : ready && studio.agents.length ? "Connected" : "Connecting…"}</span></div></div><button className="demo-new-chat" disabled={studio.loading || !studio.agents.length} onClick={() => { window.sessionStorage.removeItem(`di-demo-session-${user.id}`); void studio.startNewChat(); }}>New chat</button><button className="demo-more" aria-label="About this demo" title="Live Document Intelligence" onClick={() => setNotice(`Chat uses ${"e"} through the same agent pipeline as the app.`)}>···</button></div>
-            <div className="demo-chat-scroll"><div className="demo-chat-date">TODAY</div>{studio.history.length === 0 && <div className="demo-message assistant"><div className="demo-message-avatar"><img src="/branding/e-logo.png" alt=""/></div><div className="demo-message-body"><div className="demo-message-name">{"e"}</div><div className="demo-bubble">Hi! Tell me about your company or upload a document. I’m ready to help.</div></div></div>}{studio.history.map((message, index) => <div className={`demo-message ${message.role}`} key={message.id ?? index}><div className="demo-message-avatar">{message.role === "assistant" ? <img src="/branding/e-logo.png" alt=""/> : "Y"}</div><div className="demo-message-body"><div className="demo-message-name">{message.role === "assistant" ? "e" : "You"}</div><div className="demo-bubble"><ChatCopy text={message.content || (message.streaming ? studio.liveStatus || "Working…" : "")} agentId={studio.selected.id} streaming={message.streaming} onOpen={(src, alt) => studio.setMedia({ src, alt })}/>{message.role === "assistant" && message.blocks?.filter((block) => block.type === "tool" || block.type === "note").map((block, blockIndex) => <div className="demo-agent-activity" key={blockIndex}>{block.type === "tool" ? `${block.running ? "Running" : "Used"} ${block.name}` : block.text}{block.type === "tool" && block.shared_files?.map((file) => <a href={file.url} key={file.id} target="_blank" rel="noopener noreferrer">{file.name}</a>)}</div>)}</div></div></div>)}{studio.error && <div className="demo-chat-error" role="alert">{studio.error}</div>}<div ref={chatEnd}/></div>
+            <div className={`demo-card-head${studio.loading ? " is-working" : ""}`}>
+              <div className="demo-agent-identity">
+                <div className="demo-agent-avatar"><img src="/branding/e-logo.png" alt=""/></div>
+                <div className="demo-agent-label">
+                  <strong>{"e"}</strong>
+                  <span role="status" title={studio.loading ? studio.liveStatus : undefined}><i aria-hidden="true"/> {studio.loading ? "Working…" : ready && studio.agents.length ? "Connected" : "Connecting…"}</span>
+                </div>
+              </div>
+              <div className="demo-session-user-tag" title={`Chat session marked for ${user.display_name || user.username} (${user.role})`}>
+                <Icon name="user" size={13}/>
+                <span>{user.display_name || user.username}</span>
+              </div>
+              {studio.sessions.length > 0 && (
+                <select
+                  className="demo-session-select"
+                  value={studio.sessionId || ""}
+                  onChange={(event) => {
+                    if (event.target.value) studio.openSession(event.target.value);
+                  }}
+                  aria-label="Switch chat session"
+                  title="Switch chat session"
+                >
+                  <option value="" disabled>Select a chat</option>
+                  {studio.sessions.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.title || "Chat session"}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button className="demo-new-chat" disabled={studio.loading || !studio.agents.length} onClick={() => { window.sessionStorage.removeItem(`di-demo-session-${user.id}`); void studio.startNewChat(undefined, undefined, `${user.display_name || user.username} · ${area.charAt(0).toUpperCase() + area.slice(1)}`); }}>New chat</button>
+              <button className="demo-more" aria-label="About this demo" title="Live Document Intelligence" onClick={() => setNotice(`Chat session for ${user.display_name || user.username} (${user.role}). Chat uses ${"e"} through the agent pipeline.`)}>···</button>
+            </div>
+            <div className="demo-chat-scroll"><div className="demo-chat-date">TODAY</div>{studio.history.length === 0 && <div className="demo-message assistant"><div className="demo-message-avatar"><img src="/branding/e-logo.png" alt=""/></div><div className="demo-message-body"><div className="demo-message-name">{"e"}</div><div className="demo-bubble">Hi! Tell me about your company or upload a document. I’m ready to help.</div></div></div>}{studio.history.map((message, index) => <div className={`demo-message ${message.role}`} key={message.id ?? index}><div className="demo-message-avatar">{message.role === "assistant" ? <img src="/branding/e-logo.png" alt=""/> : (user.display_name || user.username).slice(0, 1).toUpperCase()}</div><div className="demo-message-body"><div className="demo-message-name">{message.role === "assistant" ? "e" : (user.display_name || user.username)}</div><div className="demo-bubble"><ChatCopy text={message.content || (message.streaming ? studio.liveStatus || "Working…" : "")} agentId={studio.selected.id} streaming={message.streaming} onOpen={(src, alt) => studio.setMedia({ src, alt })}/>{message.role === "assistant" && message.blocks?.filter((block) => block.type === "tool" || block.type === "note").map((block, blockIndex) => <div className="demo-agent-activity" key={blockIndex}>{block.type === "tool" ? `${block.running ? "Running" : "Used"} ${block.name}` : block.text}{block.type === "tool" && block.shared_files?.map((file) => <a href={file.url} key={file.id} target="_blank" rel="noopener noreferrer">{file.name}</a>)}</div>)}</div></div></div>)}{studio.error && <div className="demo-chat-error" role="alert">{studio.error}</div>}<div ref={chatEnd}/></div>
             {area === "onboarding" ? <div className="demo-suggestions"><span>TRY SAYING</span><button onClick={() => sendMessage("My company is Acme Studio")}>My company is Acme Studio</button><button onClick={() => sendMessage("My email is hello@acme.example")}>Add business email</button></div> : area === "people" ? <div className="demo-suggestions"><span>TRY SAYING</span><button onClick={() => sendMessage("Name: Maya Tan; Position: Operations Manager; Department: Operations; Email: maya@acme.example")}>Share example contact</button><button onClick={() => sendMessage("Name: Daniel Lee")}>Start with a name</button></div> : <div className="demo-suggestions"><span>QUICK ACTIONS</span><button onClick={() => setModal("invoice")}><Icon name="file" size={14}/> New invoice</button><button onClick={() => setModal("customer")}><Icon name="users" size={14}/> Add CRM entry</button></div>}
             <div className="demo-composer-wrap">{attachments.length > 0 && <div className="demo-attachments">{attachments.map((file, index) => <span key={`${file.name}-${index}`}><Icon name="file" size={14}/>{file.name}<button aria-label={`Remove ${file.name}`} onClick={() => setAttachments((old) => old.filter((_, i) => i !== index))}><Icon name="close" size={12}/></button></span>)}</div>}<form className="demo-composer" onSubmit={(event) => { event.preventDefault(); void sendMessage(); }}><input ref={fileInput} type="file" accept="application/pdf,image/*" multiple hidden onChange={(event) => addFiles(event.target.files)}/><button type="button" className="demo-attach" disabled={studio.loading} onClick={() => fileInput.current?.click()} aria-label="Attach PDF or image" title="Attach PDF or image"><Icon name="upload" size={19}/></button><input aria-label="Message" disabled={studio.loading} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={area === "onboarding" ? "Tell me about your business..." : area === "people" ? "Share a person's details..." : "What would you like to create?"}/><button type="submit" className="demo-send" disabled={studio.loading || !studio.agents.length} aria-label="Send message"><Icon name="send" size={17}/></button></form><div className="demo-composer-note">PDF and images accepted · Files are processed by the agent</div></div>
           </section>

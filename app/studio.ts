@@ -87,6 +87,13 @@ export type ChatSession = {
   agyConversationId?: string | null;
   modelId?: string | null;
   agentId?: string | null;
+  userId?: string | null;
+  user?: {
+    id: string;
+    username: string;
+    displayName?: string;
+    role?: string;
+  } | null;
   preview?: string | null;
   messageCount?: number;
   createdAt: string;

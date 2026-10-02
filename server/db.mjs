@@ -91,9 +91,9 @@ export async function connectDb() {
   await pool.query(`ALTER TABLE git_syncs ADD COLUMN IF NOT EXISTS repo TEXT`);
   await pool.query(`CREATE INDEX IF NOT EXISTS messages_session_id_idx ON messages (session_id)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS resource_samples_created_at_idx ON resource_samples (created_at)`);
+  await migrateLegacyMessages();
   await ensureUsers(pool);
   await ensureActivitySchema(pool);
-  await migrateLegacyMessages();
 }
 
 async function migrateLegacyMessages() {
@@ -137,47 +137,71 @@ export async function setSetting(key, value) {
 }
 
 /**
- * @param {{ id?: string; title?: string; piSessionId?: string | null; piSessionFile?: string | null; modelId?: string | null; agentId?: string | null; engine?: string | null; agyConversationId?: string | null; parentSessionId?: string | null }} [row]
+ * @param {{ id?: string; title?: string; piSessionId?: string | null; piSessionFile?: string | null; modelId?: string | null; agentId?: string | null; engine?: string | null; agyConversationId?: string | null; parentSessionId?: string | null; userId?: string | null }} [row]
  */
 export async function createSession(row = {}) {
   const id = row.id || randomUUID();
   const title = row.title?.trim() || "New chat";
   const engine = row.engine === "agy" ? "agy" : "pi";
   const agyConversationId = row.agyConversationId ?? (engine === "agy" ? id : null);
+  const userId = row.userId ?? null;
   const result = await getPool().query(
-    `INSERT INTO sessions (id, title, pi_session_id, pi_session_file, model_id, agent_id, engine, agy_conversation_id, parent_session_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `INSERT INTO sessions (id, title, pi_session_id, pi_session_file, model_id, agent_id, engine, agy_conversation_id, parent_session_id, user_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
+             COALESCE($10, (SELECT user_id FROM sessions WHERE id = $9)))
      RETURNING id, title, pi_session_id AS "piSessionId", pi_session_file AS "piSessionFile",
                model_id AS "modelId", agent_id AS "agentId",
                COALESCE(engine, 'pi') AS engine,
                agy_conversation_id AS "agyConversationId",
                user_id AS "userId", parent_session_id AS "parentSessionId",
                created_at AS "createdAt", updated_at AS "updatedAt"`,
-    [id, title, row.piSessionId ?? null, row.piSessionFile ?? null, row.modelId ?? null, row.agentId ?? null, engine, agyConversationId, row.parentSessionId ?? null],
+    [id, title, row.piSessionId ?? null, row.piSessionFile ?? null, row.modelId ?? null, row.agentId ?? null, engine, agyConversationId, row.parentSessionId ?? null, userId],
   );
-  return result.rows[0];
+  const session = result.rows[0];
+  if (session?.userId) {
+    try {
+      const userRow = (await getPool().query(`SELECT username, display_name, role FROM users WHERE id = $1`, [session.userId])).rows[0];
+      if (userRow) {
+        session.userName = userRow.username;
+        session.userDisplayName = userRow.display_name;
+        session.userRole = userRow.role;
+      }
+    } catch {
+      // Ignore if users table not yet queried
+    }
+  }
+  return session;
 }
 
 /**
  * @param {string} id
+ * @param {string} [userId] Restrict reads to this owner when supplied.
  */
-export async function getSession(id) {
+export async function getSession(id, userId) {
   const result = await getPool().query(
-    `SELECT id, title, pi_session_id AS "piSessionId", pi_session_file AS "piSessionFile",
-            model_id AS "modelId", agent_id AS "agentId",
-            COALESCE(engine, 'pi') AS engine,
-            agy_conversation_id AS "agyConversationId",
-            user_id AS "userId", parent_session_id AS "parentSessionId",
-            created_at AS "createdAt", updated_at AS "updatedAt"
-     FROM sessions WHERE id = $1`,
-    [id],
+    `SELECT s.id, s.title, s.pi_session_id AS "piSessionId", s.pi_session_file AS "piSessionFile",
+            s.model_id AS "modelId", s.agent_id AS "agentId",
+            COALESCE(s.engine, 'pi') AS engine,
+            s.agy_conversation_id AS "agyConversationId",
+            s.user_id AS "userId", s.parent_session_id AS "parentSessionId",
+            u.username AS "userName", u.display_name AS "userDisplayName", u.role AS "userRole",
+            s.created_at AS "createdAt", s.updated_at AS "updatedAt"
+     FROM sessions s
+     LEFT JOIN users u ON u.id = s.user_id
+     WHERE s.id = $1${userId === undefined ? "" : " AND s.user_id = $2"}`,
+    userId === undefined ? [id] : [id, userId],
   );
   return result.rows[0] ?? null;
 }
 
-export async function listSessions(agentId) {
+/** @param {string} [agentId] @param {string} [userId] Restrict the inbox to this owner. */
+export async function listSessions(agentId, userId) {
   const values = [];
   const clauses = ["s.parent_session_id IS NULL"];
+  if (userId !== undefined) {
+    values.push(userId);
+    clauses.push(`s.user_id = $${values.length}`);
+  }
   if (agentId) {
     values.push(agentId);
     clauses.push(`s.agent_id = $${values.length}`);
@@ -191,7 +215,8 @@ export async function listSessions(agentId) {
             s.agent_id AS "agentId",
             COALESCE(s.engine, 'pi') AS engine,
             s.agy_conversation_id AS "agyConversationId",
-            s.user_id AS "userId", parent_session_id AS "parentSessionId",
+            s.user_id AS "userId", s.parent_session_id AS "parentSessionId",
+            u.username AS "userName", u.display_name AS "userDisplayName", u.role AS "userRole",
             s.created_at AS "createdAt",
             s.updated_at AS "updatedAt",
             (
@@ -203,6 +228,7 @@ export async function listSessions(agentId) {
               SELECT COUNT(*)::int FROM messages m WHERE m.session_id = s.id
             ) AS "messageCount"
      FROM sessions s
+     LEFT JOIN users u ON u.id = s.user_id
      ${where}
      ORDER BY s.updated_at DESC`,
     values,
@@ -229,7 +255,7 @@ export async function countSessions() {
 
 /**
  * @param {string} id
- * @param {{ title?: string; piSessionId?: string | null; piSessionFile?: string | null; modelId?: string | null; agentId?: string | null; engine?: string | null; agyConversationId?: string | null; parentSessionId?: string | null }} patch
+ * @param {{ title?: string; piSessionId?: string | null; piSessionFile?: string | null; modelId?: string | null; agentId?: string | null; engine?: string | null; agyConversationId?: string | null; parentSessionId?: string | null; userId?: string | null }} patch
  */
 export async function updateSession(id, patch) {
   const fields = [];
@@ -267,20 +293,18 @@ export async function updateSession(id, patch) {
     fields.push(`parent_session_id = $${i++}`);
     values.push(patch.parentSessionId);
   }
+  if (patch.userId !== undefined) {
+    fields.push(`user_id = $${i++}`);
+    values.push(patch.userId);
+  }
   if (!fields.length) return getSession(id);
   fields.push("updated_at = NOW()");
   values.push(id);
-  const result = await getPool().query(
-    `UPDATE sessions SET ${fields.join(", ")} WHERE id = $${i}
-     RETURNING id, title, pi_session_id AS "piSessionId", pi_session_file AS "piSessionFile",
-               model_id AS "modelId", agent_id AS "agentId",
-               COALESCE(engine, 'pi') AS engine,
-               agy_conversation_id AS "agyConversationId",
-               user_id AS "userId", parent_session_id AS "parentSessionId",
-               created_at AS "createdAt", updated_at AS "updatedAt"`,
+  await getPool().query(
+    `UPDATE sessions SET ${fields.join(", ")} WHERE id = $${i}`,
     values,
   );
-  return result.rows[0] ?? null;
+  return getSession(id);
 }
 
 /**

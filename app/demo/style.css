@@ -88,3 +88,6 @@
 .demo-login input { padding: 12px; border: 1px solid #d7dce5; border-radius: 8px; font: inherit; width: 100%; box-sizing: border-box; }
 .demo-login button { width: 100%; justify-content: center; }
 .demo-login [role=alert] { color: #b42318; }
+.demo-session-user-tag { display: inline-flex; align-items: center; gap: 5px; background: #eef7f0; color: #236544; border: 1px solid #d4e8d8; border-radius: 99px; padding: 4px 9px; font-size: 11px; font-weight: 700; white-space: nowrap; flex: none; }
+.demo-session-select { border: 1px solid #dce8de; border-radius: 8px; background: #f7faf7; color: #286148; padding: 5px 8px; font-size: 11px; font-weight: 600; max-width: 140px; cursor: pointer; flex: none; }
+.demo-session-select:focus { outline: 0; border-color: #53ba72; }

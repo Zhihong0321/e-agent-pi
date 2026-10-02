@@ -25,7 +25,8 @@ export async function ensureUsers(pool) {
       token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
     ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id);
-    CREATE INDEX IF NOT EXISTS user_sessions_user_idx ON user_sessions(user_id);`);
+    CREATE INDEX IF NOT EXISTS user_sessions_user_idx ON user_sessions(user_id);
+    CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);`);
   // A transaction lock makes first-account bootstrap safe across simultaneous host starts.
   const tx = await pool.connect();
   try {
@@ -33,6 +34,10 @@ export async function ensureUsers(pool) {
     await tx.query('SELECT pg_advisory_xact_lock(73009124)');
     await tx.query(`INSERT INTO users(id,username,display_name,password_hash,role)
       SELECT $1,'admin','Admin',$2,'admin' WHERE NOT EXISTS(SELECT 1 FROM users)`, [randomUUID(), hashPassword('1234')]);
+    await tx.query(`UPDATE sessions child SET user_id = parent.user_id FROM sessions parent
+      WHERE child.parent_session_id = parent.id AND child.user_id IS NULL AND parent.user_id IS NOT NULL`);
+    await tx.query(`UPDATE sessions SET user_id = (SELECT id FROM users WHERE role='admin' ORDER BY created_at LIMIT 1)
+      WHERE user_id IS NULL AND EXISTS (SELECT 1 FROM users WHERE role='admin')`);
     await tx.query('COMMIT');
   } catch (error) { await tx.query('ROLLBACK'); throw error; }
   finally { tx.release(); }

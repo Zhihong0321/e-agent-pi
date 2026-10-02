@@ -34,7 +34,9 @@ import {
   type WorkspaceFile,
 } from "./studio";
 
-export function useStudio() {
+export function useStudio({ userId }: { userId?: string } = {}) {
+  const sessionKey = userId ? `${SESSION_KEY}-${userId}` : SESSION_KEY;
+  const agentKey = userId ? `${AGENT_KEY}-${userId}` : AGENT_KEY;
   const [view, setView] = useState<View>("agents");
   const [tab, setTab] = useState<Tab>("agents");
   const [full] = useState(readFullPreference);
@@ -73,6 +75,10 @@ export function useStudio() {
   const [installed, setInstalled] = useState(false);
   const historyLoad = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => {
+    historyLoad.current += 1;
+    abortRef.current?.abort();
+  }, []);
   const resumeAttempt = useRef(0);
   /** Mirrors sessionId for callbacks that outlive a render (the streaming loop). */
   const sessionIdRef = useRef("");
@@ -155,7 +161,7 @@ export function useStudio() {
         const data = await api<{ agents: Agent[] }>("/api/agents");
         const list = data.agents ?? [];
         setAgents(list);
-        const stored = window.localStorage.getItem(AGENT_KEY);
+        const stored = window.localStorage.getItem(agentKey);
         const storedAgent = list.find((agent) => agent.id === stored);
         const orch = list.find((agent) => agent.slug === "orchestrator" || agent.id === "orchestrator");
         const facing = list.filter((agent) => agent.userFacing);
@@ -170,7 +176,7 @@ export function useStudio() {
         setError(err instanceof Error ? err.message : "Could not load agents");
       }
     })();
-  }, []);
+  }, [agentKey]);
 
   useEffect(() => {
     void (async () => {
@@ -306,7 +312,7 @@ export function useStudio() {
 
   const pickAgent = (id: string) => {
     setSelectedAgentId(id);
-    window.localStorage.setItem(AGENT_KEY, id);
+    window.localStorage.setItem(agentKey, id);
   };
 
   const goTab = (next: Tab) => {
@@ -328,7 +334,7 @@ export function useStudio() {
     if (sessionId === id) {
       setSessionId("");
       setHistory([]);
-      window.localStorage.removeItem(SESSION_KEY);
+      window.localStorage.removeItem(sessionKey);
       setTab("chats");
       setView("chats");
     }
@@ -353,7 +359,7 @@ export function useStudio() {
     setView("chat");
     setSheet(null);
     setError("");
-    window.localStorage.setItem(SESSION_KEY, id);
+    window.localStorage.setItem(sessionKey, id);
     const session = sessions.find((row) => row.id === id);
     if (session?.agentId) pickAgent(session.agentId);
     if (session?.engine === "agy" || session?.engine === "pi") {
@@ -371,7 +377,7 @@ export function useStudio() {
     loadHistory(id);
   };
 
-  const startNewChat = async (agentId?: string, engine?: "pi" | "agy") => {
+  const startNewChat = async (agentId?: string, engine?: "pi" | "agy", title?: string) => {
     const agent = agents.find((row) => row.id === agentId) ?? (selected.id ? selected : undefined);
     if (agent) pickAgent(agent.id);
     const chosenEngine = engine || (agent?.engine === "agy" ? "agy" : selectedEngine);
@@ -391,6 +397,7 @@ export function useStudio() {
       const data = await api<{ session: ChatSession }>("/api/sessions", {
         method: "POST",
         body: JSON.stringify({
+          title,
           modelId: defaultModel,
           agentId: agent.id,
           engine: chosenEngine,
@@ -400,7 +407,7 @@ export function useStudio() {
       setSessions((prev) => [created, ...prev.filter((session) => session.id !== created.id)]);
       setSessionId(created.id);
       if (created.modelId) setSelectedModelId(created.modelId);
-      window.localStorage.setItem(SESSION_KEY, created.id);
+      window.localStorage.setItem(sessionKey, created.id);
       historyLoad.current += 1;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start a new chat");
@@ -436,7 +443,7 @@ export function useStudio() {
         activeId = data.session.id;
         setSessionId(activeId);
         setSessions((prev) => [data.session, ...prev.filter((session) => session.id !== activeId)]);
-        window.localStorage.setItem(SESSION_KEY, activeId);
+        window.localStorage.setItem(sessionKey, activeId);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not start a new chat");
         return;

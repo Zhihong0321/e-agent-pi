@@ -1168,8 +1168,19 @@ async function ensurePiOnSlot(slot, profile, session) {
   return pi;
 }
 
-function publicSession(session) {
+function publicSession(session, fallbackUser) {
   if (!session) return null;
+  const uid = session.userId ?? null;
+  const uname = session.userName || (fallbackUser?.id === uid ? fallbackUser.username : null);
+  const dname = session.userDisplayName || (fallbackUser?.id === uid ? (fallbackUser.display_name || fallbackUser.username) : null);
+  const role = session.userRole || (fallbackUser?.id === uid ? fallbackUser.role : null);
+  const sessionUser = uid ? {
+    id: uid,
+    username: uname || "user",
+    displayName: dname || uname || "User",
+    role: role || "user",
+  } : null;
+
   return {
     id: session.id,
     title: session.title,
@@ -1177,6 +1188,8 @@ function publicSession(session) {
     agyConversationId: session.agyConversationId ?? null,
     modelId: session.modelId ?? null,
     agentId: session.agentId ?? null,
+    userId: uid,
+    user: sessionUser,
     preview: session.preview ? extractReply(session.preview) : null,
     messageCount: session.messageCount ?? undefined,
     createdAt: session.createdAt,
@@ -2053,10 +2066,6 @@ const server = createServer(async (req, res) => {
       return json(res, 200, { ok: true }, { "Set-Cookie": userSessionCookie(req, "", 0) });
     }
     if (conversationRoute && !user && !authorized(req)) return json(res, 401, { error: "Please sign in" });
-    if (conversationRoute && user) {
-      const id = pathname.startsWith("/api/sessions/") ? decodeURIComponent(pathname.slice("/api/sessions/".length)) : url.searchParams.get("sessionId");
-      if (id && (await getSession(id))?.userId !== user.id) return json(res, 404, { error: "Session not found" });
-    }
     if (req.method === "GET" && pathname === "/api/demo/state") {
       json(res, 200, await demoState());
       return;
@@ -2854,14 +2863,16 @@ const server = createServer(async (req, res) => {
         json(res, 400, { error: "sessionId is required" });
         return;
       }
+      if (dbReady() && user && !await getSession(sessionId, user.id)) return json(res, 404, { error: "Session not found" });
       json(res, 200, { sessionId, messages: dbReady() ? await listMessages(sessionId) : [] });
       return;
     }
 
     if (req.method === "GET" && pathname === "/api/sessions") {
       const agentId = url.searchParams.get("agentId")?.trim() || undefined;
+      const userSessions = dbReady() ? await listSessions(agentId, user?.id) : [];
       json(res, 200, {
-        sessions: dbReady() ? (await listSessions(agentId)).filter(row => !user || row.userId === user.id).map((row) => publicSession(row)) : [],
+        sessions: userSessions.map((row) => publicSession(row, user)),
       });
       return;
     }
@@ -2892,11 +2903,11 @@ const server = createServer(async (req, res) => {
               : defaultModelId,
         agentId: agent.id,
         engine: requestedEngine,
-        agyConversationId: typeof body.agyConversationId === "string" ? body.agyConversationId : undefined,
+        agyConversationId: !user && typeof body.agyConversationId === "string" ? body.agyConversationId : undefined,
+        userId: user?.id ?? null,
       });
-      if (user) await getPool().query("UPDATE sessions SET user_id=$1 WHERE id=$2", [user.id, session.id]);
-      logEvent("info", `session created ${session.id} (engine=${session.engine || "pi"})`);
-      json(res, 201, { session: publicSession(session) });
+      logEvent("info", `session created ${session.id} (engine=${session.engine || "pi"}, user=${user?.username || "anon"})`);
+      json(res, 201, { session: publicSession(session, user) });
       return;
     }
 
@@ -2908,7 +2919,7 @@ const server = createServer(async (req, res) => {
           return;
         }
         const sessionId = decodeURIComponent(sessionMatch[1]);
-        const session = await getSession(sessionId);
+        const session = await getSession(sessionId, user?.id);
         if (!session) {
           json(res, 404, { error: "Session not found" });
           return;
@@ -2916,7 +2927,7 @@ const server = createServer(async (req, res) => {
 
         if (req.method === "GET") {
           json(res, 200, {
-            session: publicSession(session),
+            session: publicSession(session, user),
             messages: await listMessages(sessionId),
           });
           return;
@@ -2928,7 +2939,7 @@ const server = createServer(async (req, res) => {
           if (typeof body.title === "string" && body.title.trim()) patch.title = body.title.trim();
           if (body.engine === "agy" || body.engine === "pi") patch.engine = body.engine;
           if (typeof body.modelId === "string" && body.modelId.trim()) patch.modelId = body.modelId.trim();
-          if (typeof body.agyConversationId === "string" && body.agyConversationId.trim()) {
+          if (!user && typeof body.agyConversationId === "string" && body.agyConversationId.trim()) {
             patch.agyConversationId = body.agyConversationId.trim();
           }
           if (!Object.keys(patch).length) {
@@ -2943,7 +2954,7 @@ const server = createServer(async (req, res) => {
               }
             }
           }
-          json(res, 200, { session: publicSession(updated) });
+          json(res, 200, { session: publicSession(updated, user) });
           return;
         }
 
@@ -3024,9 +3035,8 @@ const server = createServer(async (req, res) => {
       const trimmed = typeof message === "string" ? message.trim() : "";
       let session =
         typeof requestedSessionId === "string" && requestedSessionId.trim()
-          ? await getSession(requestedSessionId.trim())
+          ? await getSession(requestedSessionId.trim(), user?.id)
           : null;
-      if (session && user && session.userId !== user.id) return json(res, 404, { error: "Session not found" });
       if (requestedSessionId && !session) {
         json(res, 404, { error: "Session not found" });
         return;
@@ -3052,10 +3062,10 @@ const server = createServer(async (req, res) => {
                 : defaultModelId,
           agentId: agent.id,
           engine: requestedEngine,
+          userId: user?.id ?? null,
         });
       }
 
-      if (user) await getPool().query("UPDATE sessions SET user_id=$1 WHERE id=$2 AND user_id IS NULL", [user.id, session.id]);
       const profile = await resolveAgentProfile(session.agentId);
       const activityBase = {
         userId: user?.id || null,
@@ -3113,7 +3123,7 @@ const server = createServer(async (req, res) => {
       });
       if (typeof res.flushHeaders === "function") res.flushHeaders();
       res.socket?.setNoDelay?.(true);
-      writeSse(res, { type: "session", sessionId: session.id, session: publicSession(session) });
+      writeSse(res, { type: "session", sessionId: session.id, session: publicSession(session, user) });
 
       const persister = createTurnPersister(
         session.id,
@@ -3234,7 +3244,7 @@ const server = createServer(async (req, res) => {
               reply: turn.text,
               blocks: JSON.parse(serializeTurn(turn)).blocks,
               sessionId: session.id,
-              session: publicSession({ ...session, preview: turn.text || storedUser }),
+              session: publicSession({ ...session, preview: turn.text || storedUser }, user),
               activeModelId: active?.id ?? defaultModelId,
               activeModel: active
                 ? { id: active.id, label: active.label, provider: active.provider, model: active.model }

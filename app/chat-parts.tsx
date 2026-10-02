@@ -153,6 +153,7 @@ export function ChatsTab({
                           {flag === "ask" && <span className="ask-dot">?</span>}
                           {flag === "run" && <span className="working">Working</span>}
                           {session.engine === "agy" && <span className="tag-agy">AGY</span>}
+                          {session.user && <span className="tag-user" title={`User: ${session.user.displayName || session.user.username}`}>{session.user.displayName || session.user.username}</span>}
                           <span>{previewText(session.preview) || "New chat"}</span>
                         </span>
                         {flag === "ask" && <span className="unread-badge">1</span>}
