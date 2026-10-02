@@ -362,17 +362,20 @@ test("procurement", async (t) => {
     const issued = await admin("issue_po", { po: draft.po.id });
     const ref = issued.po.number;
     assert.equal(issued.po.progress.ordered, 1.234);
+    assert.equal((await aisyah("list_pos")).pos.find(p => p.number === ref).received, "0/1.234");
     await rejects(aisyah("receive_goods", { po: ref, lines: [{ line_no: 1, quantity: 0.0001 }] }), /quantity/);
     const partial = await aisyah("receive_goods", { po: ref, lines: [{ line_no: 1, quantity: 1.23 }] });
     assert.equal(partial.po.status, "partially_received");
     assert.equal(partial.po.lines[0].outstanding, 0.004);
     assert.equal(partial.outstanding[0].outstanding, 0.004);
+    assert.equal((await aisyah("list_pos")).pos.find(p => p.number === ref).received, "1.23/1.234");
     await rejects(aisyah("receive_goods", { po: ref, lines: [{ line_no: 1, quantity: 0.005 }] }), /only 0.004 still to come/);
     const rest = await aisyah("receive_goods", { po: ref, receive_all: true });
     assert.equal(rest.received[0].quantity, 0.004);
     assert.equal(rest.po.lines[0].received_qty, 1.234);
     assert.equal(rest.po.progress.received, 1.234);
     assert.equal(rest.complete, true);
+    assert.equal((await aisyah("list_pos")).pos.find(p => p.number === ref).received, "1.234/1.234");
   });
 });
 

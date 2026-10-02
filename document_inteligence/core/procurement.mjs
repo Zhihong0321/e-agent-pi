@@ -377,7 +377,7 @@ export async function listPos(tx, { status, supplier, query, limit } = {}, { who
       id: p.id, number: poNumber(p), status: p.status, supplier: `${p.supplier_code} ${p.supplier_name}`, total: num(p.total), currency: p.currency,
       order_date: isoDate(p.order_date), expected_date: isoDate(p.expected_date),
       overdue: Boolean(p.expected_date && PO_OPEN.includes(p.status) && isoDate(p.expected_date) < today),
-      received: `${round2(num(p.received))}/${round2(num(p.ordered))}`,
+      received: `${roundQty(num(p.received))}/${roundQty(num(p.ordered))}`,
     })),
     has_more: rows.length > max,
   };
