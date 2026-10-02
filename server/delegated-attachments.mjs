@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { materializeAttachments } from "./attachments.mjs";
+import { materializeAttachments, MAX_DELEGATED_FILES } from "./attachments.mjs";
 import { publishFile, readSharedFile, sharedFileLocation } from "./shared-files.mjs";
 
 // Resolve storage references locally in the authenticated host's company. Never
@@ -23,7 +23,7 @@ export async function prepareExpenseDelegation({ message, sourceMessage = "", wo
     const location = sharedFileLocation(file.url);
     refs.set(`${location.id}/${location.name}`, location);
   }
-  if (refs.size > 6) throw new Error("Attach at most 6 files.");
+  if (refs.size > MAX_DELEGATED_FILES) throw new Error(`Attach at most ${MAX_DELEGATED_FILES} delegated evidence files.`);
   const attachments = [];
   for (const location of refs.values()) {
     const { full, file } = await readSharedFile({ root, companyId, ...location });

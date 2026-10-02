@@ -4,6 +4,7 @@ import { DOCX_MIME, XLSX_MIME, documentKind, excerpt, extractDocument, legacyOff
 import { renderPdfPages } from "./pdf.mjs";
 
 const MAX_FILES = 6;
+export const MAX_DELEGATED_FILES = 64;
 const MAX_BYTES = 8 * 1024 * 1024;
 // How much extracted text goes straight into the prompt. The rest stays in the .txt next to the
 // file, which the agent reads on demand; pasting a whole report into every turn is what costs.
@@ -50,8 +51,9 @@ export async function materializeAttachments(workspace, raw, { complete = false 
   if (!list.length) {
     return { prompt: "", images: [], files: [] };
   }
-  if (list.length > MAX_FILES) {
-    throw new Error(`Attach at most ${MAX_FILES} files.`);
+  const fileLimit = complete ? MAX_DELEGATED_FILES : MAX_FILES;
+  if (list.length > fileLimit) {
+    throw new Error(`Attach at most ${fileLimit} files.`);
   }
 
   const inbox = path.join(workspace, "_inbox");

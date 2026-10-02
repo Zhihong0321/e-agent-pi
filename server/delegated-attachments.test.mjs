@@ -79,6 +79,27 @@ test("scanned evidence uses an available vision model without changing the globa
   assert.throws(() => expenseEvidenceModel(catalog.slice(0, 1), "text"), /configured vision model/);
 });
 
+test("seven published page images reach the clerk while direct upload retains its six-file limit", async t => {
+  const f = await fixture(t);
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j4WQAAAAASUVORK5CYII=", "base64");
+  const urls = [];
+  const raw = [];
+  for (let page = 1; page <= 7; page++) {
+    const source = `_inbox/page-${page}.png`;
+    await writeFile(path.join(f.sourceWorkspace, source), png);
+    const ref = await publishFile({ ...f, workspace: f.sourceWorkspace, source });
+    urls.push(ref.url);
+    raw.push({ name: `page-${page}.png`, data: png.toString("base64") });
+  }
+  const packed = await prepareExpenseDelegation({ ...f, message: urls.join("\n") });
+  assert.equal(packed.files.length, 7);
+  assert.equal(packed.images.length, 7);
+  for (const file of packed.files) assert.deepEqual(await readFile(file.abs), png);
+  await assert.rejects(materializeAttachments(f.workspace, raw), /Attach at most 6 files/);
+  const tooMany = Array.from({ length: 65 }, (_, i) => `/files/${"a".repeat(64)}/page-${i}.png`).join("\n");
+  await assert.rejects(prepareExpenseDelegation({ ...f, message: tooMany }), /at most 64 delegated/);
+});
+
 test("mixed PDFs deliver text plus explicitly numbered scanned pages", { skip: !poppler }, async t => {
   const f = await fixture(t, pdf(["Text receipt merchant one amount MYR 12.34", null, "Text receipt merchant three amount MYR 56.78", null, null, null, null]));
   const packed = await prepareExpenseDelegation({ ...f, message: f.file.url });
