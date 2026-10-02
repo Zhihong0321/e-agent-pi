@@ -5,15 +5,15 @@ type Session = { id: string; title: string; agentId?: string; engine: string; us
 type Message = { id: number; role: string; content: string; modelId?: string; createdAt: string };
 type List = { sessions: Session[]; nextBefore: string | null; nextBeforeId?: string | null };
 type Transcript = { session: { id: string; title: string } | null; messages: Message[]; nextAfter: number | null };
-async function request<T>(params: URLSearchParams): Promise<T> {
-  const response = await fetch(`/api/settings/chat-logs?${params}`, { credentials: "include", cache: "no-store" });
+async function request<T>(endpoint: string, params: URLSearchParams): Promise<T> {
+  const response = await fetch(`${endpoint}?${params}`, { credentials: "include", cache: "no-store" });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "Could not load chat logs");
   return data;
 }
 const time = (value: string) => new Date(value).toLocaleString();
 
-export default function ChatLogs() {
+export default function ChatLogs({ endpoint = "/api/settings/chat-logs" }: { endpoint?: string } = {}) {
   const [search, setSearch] = useState("");
   const [list, setList] = useState<List>({ sessions: [], nextBefore: null });
   const [selected, setSelected] = useState<string | null>(() => new URLSearchParams(window.location.search).get("sessionId"));
@@ -25,24 +25,24 @@ export default function ChatLogs() {
     let cancelled = false;
     const timer = window.setTimeout(() => {
       setError("");
-      void request<List>(new URLSearchParams({ search })).then(data => { if (!cancelled) setList(data); }).catch(err => { if (!cancelled) setError(err.message); });
+      void request<List>(endpoint, new URLSearchParams({ search })).then(data => { if (!cancelled) setList(data); }).catch(err => { if (!cancelled) setError(err.message); });
     }, 250);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [search, refresh]);
+  }, [search, refresh, endpoint]);
   useEffect(() => {
     if (!selected) return;
     let cancelled = false;
-    void request<Transcript>(new URLSearchParams({ sessionId: selected })).then(data => { if (!cancelled) { setTranscript(data); setError(""); } }).catch(err => { if (!cancelled) setError(err.message); });
+    void request<Transcript>(endpoint, new URLSearchParams({ sessionId: selected })).then(data => { if (!cancelled) { setTranscript(data); setError(""); } }).catch(err => { if (!cancelled) setError(err.message); });
     return () => { cancelled = true; };
-  }, [selected, refresh]);
+  }, [selected, refresh, endpoint]);
   const more = async (messages: boolean) => {
     setBusy(true);
     try {
       if (messages && selected && transcript?.nextAfter) {
-        const data = await request<Transcript>(new URLSearchParams({ sessionId: selected, after: String(transcript.nextAfter) }));
+        const data = await request<Transcript>(endpoint, new URLSearchParams({ sessionId: selected, after: String(transcript.nextAfter) }));
         if (data.session?.id === transcript.session?.id) setTranscript({ ...data, messages: [...transcript.messages, ...data.messages] });
       } else if (!messages && list.nextBefore) {
-        const data = await request<List>(new URLSearchParams({ search, before: list.nextBefore, beforeId: list.nextBeforeId || "" }));
+        const data = await request<List>(endpoint, new URLSearchParams({ search, before: list.nextBefore, beforeId: list.nextBeforeId || "" }));
         setList({ ...data, sessions: [...list.sessions, ...data.sessions] });
       }
     } catch (err) { setError(err instanceof Error ? err.message : "Could not load logs"); }

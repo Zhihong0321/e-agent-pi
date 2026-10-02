@@ -1,8 +1,8 @@
 import { getPool } from './db.mjs';
 
-export async function chatLogs({ search = '', before, beforeId = '', sessionId, after = 0 } = {}, pool = getPool()) {
+export async function chatLogs({ search = '', before, beforeId = '', sessionId, after = 0, userId } = {}, pool = getPool()) {
   if (sessionId) {
-    const session = await pool.query('SELECT id, title FROM sessions WHERE id=$1', [sessionId]);
+    const session = await pool.query('SELECT id, title FROM sessions WHERE id=$1 AND ($2::text IS NULL OR user_id=$2)', [sessionId, userId || null]);
     if (!session.rows.length) return { session: null, messages: [], nextAfter: null };
     const result = await pool.query(`SELECT id, role, content, model_id AS "modelId", created_at AS "createdAt"
       FROM messages WHERE session_id=$1 AND id>$2 ORDER BY id ASC LIMIT 201`,
@@ -18,7 +18,8 @@ export async function chatLogs({ search = '', before, beforeId = '', sessionId, 
     WHERE ($1='' OR s.title ILIKE '%' || $1 || '%' OR s.agent_id ILIKE '%' || $1 || '%'
       OR u.username ILIKE '%' || $1 || '%' OR u.display_name ILIKE '%' || $1 || '%')
       AND ($2::timestamptz IS NULL OR s.updated_at<$2 OR (s.updated_at=$2 AND s.id<$3))
-    ORDER BY s.updated_at DESC, s.id DESC LIMIT 101`, [String(search).slice(0, 200), before || null, beforeId]);
+      AND ($4::text IS NULL OR s.user_id=$4)
+    ORDER BY s.updated_at DESC, s.id DESC LIMIT 101`, [String(search).slice(0, 200), before || null, beforeId, userId || null]);
   const sessions = result.rows.slice(0, 100);
   return { sessions, nextBefore: result.rows.length > 100 ? sessions.at(-1).updatedAt : null, nextBeforeId: result.rows.length > 100 ? sessions.at(-1).id : null };
 }

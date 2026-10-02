@@ -25,5 +25,8 @@ test('chat logs search, delegation, timestamp ties and full transcript paginatio
     assert.equal(rest.nextAfter, null);
     assert.equal((await chatLogs({ sessionId: 'missing' }, db)).session, null);
     assert.equal((await chatLogs({ search: "' OR true --" }, db)).sessions.length, 0);
+    assert.equal((await chatLogs({ userId: 'other-user' }, db)).sessions.length, 0);
+    assert.equal((await chatLogs({ sessionId: 's-001', userId: 'other-user' }, db)).session, null);
+    assert.equal((await chatLogs({ sessionId: 's-001', userId: 'u' }, db)).messages.length, 200);
   } finally { await db.close(); }
 });

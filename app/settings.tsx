@@ -175,14 +175,14 @@ type ResourceSample = {
   piAlive: boolean;
 };
 
-type UsagePayload = {
+export type UsagePayload = {
   summary: { calls: number; inputTokens: string | number; outputTokens: string | number; cacheReadTokens: string | number; cacheWriteTokens: string | number; totalTokens: string | number; credits: string | number; cost: string | number; failures: number };
   trend: Array<{ day: string; calls: number; totalTokens: string | number; credits: string | number }>;
   breakdown: Array<{ service: string; provider: string; modelId: string; calls: number; totalTokens: string | number; credits: string | number }>;
   recent: Array<{ id: number; occurredAt: string; service: string; provider?: string; operation: string; modelId?: string; status: string; durationMs?: number; totalTokens?: string | number; credits?: string | number; error?: string }>;
 };
 
-type MetricsPayload = {
+export type MetricsPayload = {
   intervalSec: number;
   retentionHours: number;
   now: ResourceSample | null;
@@ -2447,7 +2447,7 @@ function formatCount(value: string | number | null | undefined) {
   return Number.isFinite(n) ? n.toLocaleString() : String(value);
 }
 
-function UsagePanel({ data, usage }: { data: MetricsPayload | null; usage: UsagePayload | null }) {
+export function UsagePanel({ data, usage, showResources = true }: { data: MetricsPayload | null; usage: UsagePayload | null; showResources?: boolean }) {
   const now = data?.now;
   const samples = data?.samples ?? [];
   const stats = data?.stats;
@@ -2478,7 +2478,7 @@ function UsagePanel({ data, usage }: { data: MetricsPayload | null; usage: Usage
       <div className="usage-log"><table><thead><tr><th>Day</th><th>Calls</th><th>Tokens</th><th>Credits</th></tr></thead><tbody>{usage?.trend.map(row => <tr key={row.day}><td>{new Date(row.day).toLocaleDateString()}</td><td>{formatCount(row.calls)}</td><td>{formatCount(row.totalTokens)}</td><td>{formatCount(row.credits)}</td></tr>)}</tbody></table></div>
       <h3>Recent API calls</h3>
       {!usage?.recent?.length ? <p>No API calls recorded yet.</p> : <div className="usage-log"><table><thead><tr><th>Time</th><th>Service</th><th>Operation</th><th>Model</th><th>Status</th><th>Tokens</th><th>Duration</th></tr></thead><tbody>{usage.recent.map((row) => <tr key={row.id}><td>{formatClock(row.occurredAt)}</td><td>{row.service}</td><td>{row.operation}</td><td>{row.modelId || row.provider || "—"}</td><td>{row.status}</td><td>{formatCount(row.totalTokens ?? row.credits)}</td><td>{row.durationMs == null ? "—" : `${row.durationMs} ms`}</td></tr>)}</tbody></table></div>}
-      <h2>Resource usage</h2>
+      {showResources && <><h2>Resource usage</h2>
       <p>
         Sampled every {data?.intervalSec ?? 15}s. Rows older than {data?.retentionHours ?? 24} hours are deleted.
         Overhead is a /proc read plus one small Postgres insert — not a profiler.
@@ -2547,6 +2547,7 @@ function UsagePanel({ data, usage }: { data: MetricsPayload | null; usage: Usage
           </table>
         </div>
       )}
+      </>}
     </section>
   );
 }

@@ -33,7 +33,7 @@ function formatTime(value: string) {
   return new Date(value).toLocaleString("en-MY", { dateStyle: "medium", timeStyle: "medium" });
 }
 
-export default function ActivityLog() {
+export default function ActivityLog({ endpoint = "/api/activity" }: { endpoint?: string } = {}) {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -50,14 +50,14 @@ export default function ActivityLog() {
       if (tool.trim()) params.set("toolName", tool.trim());
       if (type) params.set("eventType", type);
       if (status) params.set("status", status);
-      const data = await request<ActivityResponse>(`/api/activity?${params}`);
+      const data = await request<ActivityResponse>(`${endpoint}?${params}`);
       setEvents(data.events);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not load activity");
     } finally {
       setBusy(false);
     }
-  }, [status, tool, type]);
+  }, [status, tool, type, endpoint]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void load(); }, 0);
