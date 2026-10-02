@@ -1,6 +1,7 @@
 import { DiError } from "./common.mjs";
 
-export const CALENDAR_SCHEMA_VERSION = "1.0";
+export const CALENDAR_SCHEMA_VERSION = "1.1";
+export const CALENDAR_SOURCES = ["sales", "procurement", "payments", "forms"];
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_RANGE_DAYS = 370;
 
@@ -55,9 +56,23 @@ function customDateEvents(row, defs, range, timezone, sourceTable, label) {
     }).filter(Boolean);
 }
 
-export function normalizeCalendarSources({ documents = [], payments = [], forms = [], customFieldDefs = [], range, timezone }) {
+export function validateCalendarOptions({ sources = CALENDAR_SOURCES, include_demo = false } = {}) {
+  if (!Array.isArray(sources) || !sources.length || sources.some((s) => !CALENDAR_SOURCES.includes(s))) {
+    throw new DiError(`Calendar sources must be selected from: ${CALENDAR_SOURCES.join(", ")}`);
+  }
+  if (typeof include_demo !== "boolean") throw new DiError("include_demo must be a boolean");
+  return { sources: [...new Set(sources)], include_demo };
+}
+
+function demoRecord(row) {
+  return row.demo === true || row.custom?.demo === true || row.custom?.demo === "true" || /^DEMO\b/i.test(row.note || row.notes || "");
+}
+
+export function normalizeCalendarSources({ documents = [], payments = [], forms = [], supplierDocuments = [], purchaseOrders = [], customFieldDefs = [], sources = CALENDAR_SOURCES, include_demo = false, range, timezone }) {
+  const options = validateCalendarOptions({ sources, include_demo });
+  const visible = (rows, source) => options.sources.includes(source) ? rows.filter((row) => include_demo || !demoRecord(row)) : [];
   const events = [];
-  for (const row of documents) {
+  for (const row of visible(documents, "sales")) {
     const customer = row.customer_name || "Unknown customer";
     if (row.doc_type === "quotation" && row.status === "issued") {
       const date = asDate(row.valid_until);
@@ -69,14 +84,48 @@ export function normalizeCalendarSources({ documents = [], payments = [], forms 
     }
     events.push(...customDateEvents(row, customFieldDefs, range, timezone, "document", row.number || "Document reminder"));
   }
-  for (const row of payments) {
+  for (const row of visible(payments, "payments")) {
     const date = asDate(row.received_on);
     if (date) events.push(event({ id: `payment-received:${row.id}`, kind: "payment_received", title: `Payment received ${row.number || ""}`.trim(), date, range, timezone, status: "recorded", severity: "info", source: { table: "di.payment", recordId: row.id, field: "received_on" }, detail: { number: row.number, amount: Number(row.amount || 0), method: row.method } }));
     events.push(...customDateEvents(row, customFieldDefs, range, timezone, "payment", row.number || "Payment reminder"));
   }
-  for (const row of forms) {
+  for (const row of visible(forms, "forms")) {
     const date = asDate(row.closes_at);
     if (date) events.push(event({ id: `form-close:${row.id}`, kind: "reminder", title: `${row.title || "Form"} closes`, date, range, timezone, status: date < range.from ? "expired" : "upcoming", severity: date < range.from ? "high" : "info", source: { table: "di.form_version", recordId: row.id, field: "settings.closes_at" }, detail: { form: row.title } }));
+  }
+  for (const row of visible(supplierDocuments, "procurement")) {
+    const quotation = row.doc_type === "quotation" && ["received", "accepted"].includes(row.status);
+    const invoice = row.doc_type === "invoice" && ["unpaid", "disputed"].includes(row.status);
+    if (!quotation && !invoice) continue;
+    const field = quotation ? "valid_until" : "due_date";
+    const date = asDate(row[field]);
+    if (!date) continue;
+    const overdue = date < range.from;
+    const disputed = row.status === "disputed";
+    events.push(event({
+      id: `supplier-${quotation ? "quotation-expiry" : "payment-due"}:${row.id}`,
+      kind: quotation ? "quotation_expiry" : "payment_due",
+      title: quotation ? `Supplier quotation ${row.number} expires` : `${disputed ? "Disputed bill" : "Supplier payment due"} ${row.number}`,
+      date, displayDate: overdue ? range.from : date, range, timezone,
+      status: disputed ? "disputed" : overdue ? (quotation ? "expired" : "overdue") : "upcoming",
+      severity: disputed || overdue ? "high" : "warning",
+      source: { table: "di.supplier_document", recordId: row.id, field },
+      detail: { number: row.number, supplier: row.supplier_name, total: Number(row.total || 0), note: row.note },
+      warnings: disputed ? ["Invoice is disputed; resolve the dispute before paying"] : [],
+    }));
+  }
+  for (const row of visible(purchaseOrders, "procurement")) {
+    if (!["issued", "partially_received"].includes(row.status)) continue;
+    const date = asDate(row.expected_date);
+    if (!date) continue;
+    const overdue = date < range.from;
+    events.push(event({
+      id: `po-delivery:${row.id}`, kind: "delivery_due", title: `Delivery due for ${row.number}`,
+      date, displayDate: overdue ? range.from : date, range, timezone,
+      status: overdue ? "late" : "upcoming", severity: overdue ? "high" : "warning",
+      source: { table: "di.purchase_order", recordId: row.id, field: "expected_date" },
+      detail: { number: row.number, supplier: row.supplier_name, total: Number(row.total || 0) },
+    }));
   }
   const seen = new Set();
   return events.filter((item) => item && !seen.has(item.id) && seen.add(item.id)).sort((a, b) => a.start.localeCompare(b.start) || a.title.localeCompare(b.title));
@@ -84,15 +133,19 @@ export function normalizeCalendarSources({ documents = [], payments = [], forms 
 
 export async function readCalendar(tx, args = {}) {
   const range = validateCalendarRange(args);
-  const [documents, payments, forms, defs, profile] = await Promise.all([
-    tx.query(`SELECT d.id,d.doc_type,d.number,d.status,d.valid_until,d.due_date,d.total,d.amount_paid,d.custom,c.name AS customer_name FROM di.document d LEFT JOIN di.customer c ON c.id=d.customer_id WHERE d.deleted_at IS NULL AND ((d.valid_until BETWEEN $1::date AND $2::date) OR (d.due_date BETWEEN $1::date AND $2::date) OR (d.valid_until < $1::date AND d.doc_type='quotation' AND d.status='issued') OR (d.due_date < $1::date AND d.doc_type='invoice' AND d.status IN ('issued','partially_paid')) OR d.custom <> '{}'::jsonb)`, [range.from, range.to]),
-    tx.query(`SELECT p.id,p.number,p.received_on,p.amount,p.method,p.custom FROM di.payment p WHERE p.deleted_at IS NULL AND p.status='recorded' AND (p.received_on BETWEEN $1::date AND $2::date OR p.custom <> '{}'::jsonb)`, [range.from, range.to]),
-    tx.query(`SELECT fv.id,f.title,fv.settings FROM di.form_version fv JOIN di.form f ON f.id=fv.form_id WHERE fv.status='published' AND fv.deleted_at IS NULL`, []),
-    tx.query(`SELECT entity,key,label,type FROM di.field_def WHERE deleted_at IS NULL AND type='date'`, []),
+  const options = validateCalendarOptions(args);
+  const scan = (source, sql, values = []) => options.sources.includes(source) ? tx.query(sql, values) : Promise.resolve({ rows: [] });
+  const [documents, payments, forms, defs, profile, supplierDocuments, purchaseOrders] = await Promise.all([
+    scan("sales", `SELECT d.id,d.doc_type,d.number,d.status,d.valid_until,d.due_date,d.total,d.amount_paid,d.custom,d.notes,c.name AS customer_name,(c.custom->>'demo' = 'true') AS demo FROM di.document d LEFT JOIN di.customer c ON c.id=d.customer_id WHERE d.deleted_at IS NULL AND ((d.valid_until BETWEEN $1::date AND $2::date) OR (d.due_date BETWEEN $1::date AND $2::date) OR (d.valid_until < $1::date AND d.doc_type='quotation' AND d.status='issued') OR (d.due_date < $1::date AND d.doc_type='invoice' AND d.status IN ('issued','partially_paid')) OR d.custom <> '{}'::jsonb)`, [range.from, range.to]),
+    scan("payments", `SELECT p.id,p.number,p.received_on,p.amount,p.method,p.custom FROM di.payment p WHERE p.deleted_at IS NULL AND p.status='recorded' AND (p.received_on BETWEEN $1::date AND $2::date OR p.custom <> '{}'::jsonb)`, [range.from, range.to]),
+    scan("forms", `SELECT fv.id,f.title,fv.settings,(fv.settings->>'demo' = 'true') AS demo FROM di.form_version fv JOIN di.form f ON f.id=fv.form_id WHERE fv.status='published' AND fv.deleted_at IS NULL`, []),
+    options.sources.some((s) => ["sales", "payments"].includes(s)) ? tx.query(`SELECT entity,key,label,type FROM di.field_def WHERE deleted_at IS NULL AND type='date'`, []) : Promise.resolve({ rows: [] }),
     tx.query(`SELECT timezone FROM di.company_profile WHERE tenant_id=di.current_tenant()`, []),
+    scan("procurement", `SELECT d.id,d.doc_type,d.number,d.status,d.valid_until,d.due_date,d.total,d.note,d.custom,s.name AS supplier_name,(s.custom->>'demo' = 'true') AS demo FROM di.supplier_document d JOIN di.supplier s ON s.id=d.supplier_id WHERE d.deleted_at IS NULL AND s.deleted_at IS NULL AND ((d.doc_type='quotation' AND d.status IN ('received','accepted') AND d.valid_until <= $1::date) OR (d.doc_type='invoice' AND d.status IN ('unpaid','disputed') AND d.due_date <= $1::date))`, [range.to]),
+    scan("procurement", `SELECT p.id,p.number,p.status,p.expected_date,p.total,p.notes,p.custom,s.name AS supplier_name,(s.custom->>'demo' = 'true') AS demo FROM di.purchase_order p JOIN di.supplier s ON s.id=p.supplier_id WHERE p.deleted_at IS NULL AND s.deleted_at IS NULL AND p.status IN ('issued','partially_received') AND p.expected_date <= $1::date`, [range.to]),
   ]);
   const timezone = args.timezone || profile.rows[0]?.timezone || range.timezone;
   validateCalendarRange({ ...range, timezone });
-  const formRows = forms.rows.map((row) => ({ id: row.id, title: row.title, closes_at: row.settings?.closes_at }));
-  return { schemaVersion: CALENDAR_SCHEMA_VERSION, range, timezone, events: normalizeCalendarSources({ documents: documents.rows, payments: payments.rows, forms: formRows, customFieldDefs: defs.rows, range, timezone }), warnings: [] };
+  const formRows = forms.rows.map((row) => ({ id: row.id, title: row.title, closes_at: row.settings?.closes_at, demo: row.demo }));
+  return { schemaVersion: CALENDAR_SCHEMA_VERSION, range: { ...range, timezone }, timezone, ...options, refreshedAt: new Date().toISOString(), events: normalizeCalendarSources({ documents: documents.rows, payments: payments.rows, forms: formRows, supplierDocuments: supplierDocuments.rows, purchaseOrders: purchaseOrders.rows, customFieldDefs: defs.rows, ...options, range, timezone }), warnings: [] };
 }

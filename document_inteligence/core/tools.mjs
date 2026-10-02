@@ -432,11 +432,13 @@ export const TOOLS = {
   },
   calendar_events: {
     agents: [CALENDAR],
-    description: "Read-only company calendar events for a bounded date range. Includes quotation expiry, unpaid invoice due dates, recorded payments, form deadlines, and date-typed custom-field reminders. Returns source provenance and review warnings; never changes records.",
+    description: "Refresh the company calendar from selected relevant database sources for a bounded range. Includes sales and supplier quotation expiry, unpaid/disputed invoice due dates, outstanding PO deliveries, recorded payments, form deadlines and custom date reminders. Returns stable event IDs, source provenance, warnings and refreshedAt; never changes business records.",
     input: {
       from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Visible range start, YYYY-MM-DD"),
       to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("Visible range end, YYYY-MM-DD"),
       timezone: z.string().optional().describe("IANA timezone; defaults to the company timezone"),
+      sources: z.array(z.enum(["sales", "procurement", "payments", "forms"])).min(1).optional().describe("Scan only these source groups; defaults to all four. Never accepts arbitrary tables or SQL."),
+      include_demo: z.boolean().optional().describe("Include explicitly marked demo records; false by default."),
     },
     run: readCalendar,
   },

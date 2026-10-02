@@ -2112,6 +2112,8 @@ const server = createServer(async (req, res) => {
           from: url.searchParams.get("from"),
           to: url.searchParams.get("to"),
           timezone: url.searchParams.get("timezone") || undefined,
+          sources: url.searchParams.get("sources") ?? undefined,
+          include_demo: url.searchParams.get("include_demo") ?? undefined,
         }));
       } catch (error) {
         json(res, 400, { error: error instanceof Error ? error.message : String(error) });

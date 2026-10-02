@@ -19,7 +19,8 @@ function scope(fn) {
 
 export async function demoCalendar(query = {}) {
   const range = validateCalendarRange({ from: query.from, to: query.to, timezone: query.timezone });
-  return scope((tx) => readCalendar(tx, range));
+  if (query.include_demo !== undefined && !["true", "false"].includes(query.include_demo)) throw new Error("include_demo must be true or false");
+  return scope((tx) => readCalendar(tx, { ...range, sources: query.sources === undefined ? undefined : query.sources.split(","), include_demo: query.include_demo === "true" }));
 }
 
 export async function demoState() {
