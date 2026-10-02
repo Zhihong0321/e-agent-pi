@@ -173,6 +173,7 @@ import {
   orchestratorAuthorized,
   setDispatchRuntime,
   startJobRunner,
+  stopJobRunner,
   completedJobCleanup,
   listJobs,
   jobReport,
@@ -1843,7 +1844,7 @@ async function bootServices() {
   boot.step = "scrapling";
   try {
     if (dbReady()) {
-      const result = await ensureScraplingForWebsite({ exclude: [WHATSAPP_AGENT_ID, ORCHESTRATOR_AGENT_ID, MEDIA_AI_AGENT_ID, ...DI_AGENT_IDS] });
+      const result = await ensureScraplingForWebsite({ exclude: [WHATSAPP_AGENT_ID, ORCHESTRATOR_AGENT_ID, MEDIA_AI_AGENT_ID, "ads-research", ...DI_AGENT_IDS] });
       logEvent(
         "info",
         result.skipped
@@ -3458,11 +3459,20 @@ server.listen(PORT, HOST, () => {
   void bootServices();
 });
 
+let shuttingDown = false;
 async function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
   logEvent("info", turnsInFlight ? `shutdown during ${turnsInFlight} in-flight turn(s)` : "shutdown");
   stopSampler();
   await stopCompanyResearch().catch(() => {});
   await stopAdsResearch().catch(() => {});
+  // MCP tools call this host over HTTP while a job is finishing. Keep the API,
+  // database and Pi pool available throughout the platform's shutdown grace.
+  const drained = await stopJobRunner({ timeoutMs: 300000, activeTurns: () => turnsInFlight });
+  logEvent(drained.drained ? "info" : "warn", drained.drained
+    ? "shutdown drain complete; active jobs persisted before stopping Pi"
+    : `shutdown drain timed out: jobs=${drained.activeJobs} turns=${drained.activeTurns}`);
   await Promise.allSettled([...piPool.values()].map((slot) => stopSlot(slot)));
   await stopWhatsappSidecar().catch(() => {});
   await closeAllSessions().catch(() => {});

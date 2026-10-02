@@ -502,7 +502,6 @@ function DemoWorkspace({ user, initialArea = "onboarding", onLogout }: { user: D
         <button className={area === "calendar" ? "active" : ""} onClick={() => setArea("calendar")}><Icon name="calendar"/><span>Company calendar</span><span className="demo-nav-count">04</span></button>
         <button className={area === "expenses" ? "active" : ""} onClick={() => setArea("expenses")}><Icon name="file"/><span>Expenses</span><span className="demo-nav-count">05</span></button>
         <button className={area === "procurement" ? "active" : ""} onClick={() => setArea("procurement")}><Icon name="database"/><span>Procurement</span><span className="demo-nav-count">06</span></button>
-        <button onClick={() => window.location.assign("/research")}><Icon name="file"/><span>Research library</span><span className="demo-nav-count">07</span></button>
       </nav>
       <div className="demo-rail-bottom"><span className="demo-live-dot"/> Live Document Intelligence <p>Changes are saved to this workspace.</p></div>
     </aside>

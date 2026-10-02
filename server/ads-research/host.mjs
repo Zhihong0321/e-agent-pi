@@ -6,6 +6,7 @@ import { DATA_DIR, ROOT, agentWorkspace } from "../paths.mjs";
 import { getAgent, getMcpServer, createMcpServer, updateMcpServer, seedSystemAgent, updateAgent } from "../catalog.mjs";
 import { ADS_RESEARCH_AGENT_ID, adsResearchAuthorized } from "./auth.mjs";
 import { AdsResearchStore } from "./store.mjs";
+import { resolveModelCredentials } from "../models.mjs";
 
 const PORTABLE_ROOT = process.env.ADS_RESEARCH_PORTABLE_ROOT?.trim()
   ? path.resolve(process.env.ADS_RESEARCH_PORTABLE_ROOT)
@@ -126,14 +127,19 @@ function reportUrl(id) {
 function topicOut(input) { return path.join(DATA_ROOT, "out", input.topic); }
 
 function safeOutput(text) { return String(text || "").replace(/(?:sk-|tvly-)[A-Za-z0-9_-]+/g, "[redacted]").slice(-4000); }
-function runPortable(input) {
+async function runPortable(input) {
+  const credentials = await resolveModelCredentials();
+  const selected = credentials.models.find(model => model.id === process.env.ADS_RESEARCH_MODEL_ID && model.available)
+    || credentials.models.find(model => model.id === credentials.defaultModelId && model.available)
+    || credentials.models.find(model => model.available);
+  const selectedKey = selected ? credentials.env[`${selected.envPrefix}_API_KEY`] : "";
+  const selectedBase = selected ? credentials.env[`${selected.envPrefix}_BASE_URL`] : "";
+  if (!selected || !selectedKey || !selectedBase) throw new Error("Ads research needs an available model API key in Settings");
   return new Promise((resolve, reject) => {
     const env = {
       PATH: process.env.PATH || "", HOME: process.env.HOME || process.env.USERPROFILE || "", NODE_PATH: process.env.NODE_PATH || "",
       ADS_CONFIG_ROOT: CONFIG_ROOT, DATA_ROOT, PUBLIC_BASE_URL: baseUrl(), HOSTED_MODE: "true", NODE_ENV: "production",
-      ...(process.env.ADS_LLM_BASE_URL ? { ADS_LLM_BASE_URL: process.env.ADS_LLM_BASE_URL } : {}),
-      ...(process.env.ADS_LLM_MODEL ? { ADS_LLM_MODEL: process.env.ADS_LLM_MODEL } : {}),
-      ...(process.env.ADS_LLM_KEY ? { ADS_LLM_KEY: process.env.ADS_LLM_KEY } : {}),
+      ADS_LLM_BASE_URL: selectedBase, ADS_LLM_MODEL: selected.model, ADS_LLM_KEY: selectedKey,
       ...(process.env.PLAYWRIGHT_BROWSERS_PATH ? { PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH } : {}),
     };
     const args = [PORTABLE_CLI, "run", "--topic", input.topic, "--lang", input.language, "--archive", "false"];
