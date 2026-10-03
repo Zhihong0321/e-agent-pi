@@ -1,5 +1,6 @@
 import { manageUsers, managePeople, listPeople, resolveIdentity, ensurePeopleTenant } from '../server/users.mjs';
 import { expenseUserForSession } from '../server/expense-session.mjs';
+import { diSessionUser } from '../server/di-session-user.mjs';
 // UIv2 host integration for Document Intelligence: boot (migrate, seed, register the
 // four micro-agents and their shared MCP server), per-agent tokens, the internal
 // endpoint the MCP server calls, and HTML -> PDF rendering.
@@ -118,7 +119,7 @@ export function diTokenFor(agentId, sessionId = '') {
 export function diAgentEnv(agent, port = process.env.PORT || "8080", sessionId = '') {
   const id = typeof agent === "string" ? agent : agent?.id || agent?.slug || "";
   if (!AGENTS[id]) return {};
-  const boundSession = id === 'di-expenses' ? sessionId : '';
+  const boundSession = sessionId;
   return { DI_AGENT: id, DI_TOKEN: diTokenFor(id, boundSession), DI_URL: `http://127.0.0.1:${port}`,
     ...(boundSession ? { DI_SESSION_ID: boundSession } : {}) };
 }
@@ -128,7 +129,7 @@ function agentFromRequest(req, body) {
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
   const agent = body?.agent;
   if (!token || !AGENTS[agent]) return null;
-  const sessionId = agent === 'di-expenses' ? String(req.headers['x-di-session'] || '') : '';
+  const sessionId = String(req.headers['x-di-session'] || '');
   const expected = Buffer.from(diTokenFor(agent, sessionId));
   const given = Buffer.from(token);
   return expected.length === given.length && timingSafeEqual(expected, given) ? agent : null;
@@ -188,12 +189,17 @@ export async function handleDiRequest(req, body, deps) {
   }
   if (!state.db) return { status: 503, body: { ok: false, error: "Document Intelligence is not initialised (database not connected?)" } };
   try {
-    const who = agent === 'di-expenses' ? await expenseUserForSession(String(req.headers['x-di-session'] || '')) : undefined;
+    const sessionId = String(req.headers['x-di-session'] || '');
+    const who = agent === 'di-expenses' ? await expenseUserForSession(sessionId)
+      : sessionId ? await diSessionUser(agent, sessionId) : undefined;
+    if (!who && ['di-documents', 'di-procurement', 'di-db', 'di-fde'].includes(agent)) {
+      throw new Error('Sign-in required: financial operations need an authenticated session owner');
+    }
     const result = await runTool(
       {
         db: state.db,
         tenantId: () => state.tenantId,
-        actor: "owner",
+        actor: who?.username || `system:${agent}`,
         asRole: state.asRole,
         resolveIdentity,
         who,
@@ -219,7 +225,7 @@ export async function handleDiRequest(req, body, deps) {
 export function diRunDeps({ workspace, who } = {}) {
   if (!state.db) throw new Error("Document Intelligence is not ready");
   return {
-    db: state.db, tenantId: () => state.tenantId, actor: "owner", asRole: state.asRole,
+    db: state.db, tenantId: () => state.tenantId, actor: who?.username || "system", asRole: state.asRole,
     workspace: (id) => workspace({ id, slug: id }), renderPdf,
     publicUrl: publicBaseUrl(), filesRoot: path.join(DATA_DIR, "files"), who,
   };

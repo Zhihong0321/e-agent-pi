@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import DbLog from "./db-log";
 
 type ActivityEvent = {
   id: string;
@@ -34,6 +35,11 @@ function formatTime(value: string) {
 }
 
 export default function ActivityLog({ endpoint = "/api/activity" }: { endpoint?: string } = {}) {
+  const [view, setView] = useState<"db" | "debug">("db");
+  return <><div className="activity-log-tabs" aria-label="Log views"><button type="button" aria-pressed={view === "db"} onClick={() => setView("db")}>DB Log</button><button type="button" aria-pressed={view === "debug"} onClick={() => setView("debug")}>Agent activity</button></div>{view === "db" ? <DbLog /> : <AgentActivityLog endpoint={endpoint} />}</>;
+}
+
+function AgentActivityLog({ endpoint }: { endpoint: string }) {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");

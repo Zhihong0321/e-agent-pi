@@ -44,7 +44,7 @@ export async function runTool(deps, { agent, tool, args = {} }) {
   const parsed = z.object(spec.input).safeParse(args ?? {});
   if (!parsed.success) throw new DiError(`Invalid input: ${formatZod(parsed.error)}`);
 
-  const ctx = { tenantId: await deps.tenantId(), actor: deps.actor || "owner", agent, asRole: deps.asRole };
+  const ctx = { tenantId: await deps.tenantId(), actor: deps.who?.username || deps.actor || "owner", actorUserId: deps.who?.id, agent, asRole: deps.asRole };
   const sharing = (owner) => ({
     root: deps.filesRoot || path.join(path.dirname(deps.workspace(owner)), "files"),
     companyId: ctx.tenantId, workspace: deps.workspace(owner), publicUrl: deps.publicUrl,
@@ -62,6 +62,7 @@ export async function runTool(deps, { agent, tool, args = {} }) {
       throw new DiError("Sign-in required: no signed-in user is attached to this call. Pass the identity code from your \"[... identity]\" line. If there is none, ask the user to sign in and chat with this clerk directly.");
     }
     ctx.actor = who.username;
+    ctx.actorUserId = who.id;
     callArgs = rest;
   }
   const receipts = spec.receipts

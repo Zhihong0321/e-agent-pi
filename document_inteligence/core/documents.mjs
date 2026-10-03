@@ -447,8 +447,13 @@ export async function updateDraft(tx, { document, set = {}, add_lines = [], upda
       },
       old.sort,
     );
-    await tx.query("UPDATE di.document_line SET deleted_at = now() WHERE id = $1", [old.id]);
-    await insertLine(tx, doc.id, line);
+    // Keep a draft line's identity so the database audit trigger captures an
+    // actual before/after edit. Historical values remain in the append-only log.
+    const fields = Object.keys(line);
+    await tx.query(
+      `UPDATE di.document_line SET ${fields.map((key, i) => `${key} = $${i + 1}`).join(", ")} WHERE id = $${fields.length + 1} AND document_id = $${fields.length + 2}`,
+      [...fields.map(key => typeof line[key] === "object" && line[key] !== null ? JSON.stringify(line[key]) : line[key]), old.id, doc.id],
+    );
   }
   const maxSort = (await tx.query("SELECT coalesce(max(sort), -1) AS s FROM di.document_line WHERE document_id = $1", [doc.id])).rows[0].s;
   for (const [i, input] of add_lines.entries()) await insertLine(tx, doc.id, await buildLine(tx, input, Number(maxSort) + 1 + i));

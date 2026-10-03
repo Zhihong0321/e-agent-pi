@@ -1045,9 +1045,9 @@ async function restartSlotClient(slot, agent, modelId) {
 async function getOrCreatePiSlot(agent, modelId, { sessionFile, sessionId } = {}) {
   const slot = await withPoolReserve(async () => {
     const bundleKey = await agentBundleKey(agent, modelId);
-    // Expense transports are bound to one chat, including across warm turns.
+    // Document Intelligence transports are bound to one chat, including across warm turns.
     // A process serving Alice can never be reused for Bob's session.
-    const key = agent.id === 'di-expenses' && sessionId ? `${bundleKey}:session:${sessionId}` : bundleKey;
+    const key = agent.id.startsWith('di-') && sessionId ? `${bundleKey}:session:${sessionId}` : bundleKey;
     let s = piPool.get(key);
     if (!s) {
       s = {
@@ -1056,7 +1056,7 @@ async function getOrCreatePiSlot(agent, modelId, { sessionFile, sessionId } = {}
         client: undefined,
         booting: undefined,
         agentId: agent.id,
-        identitySessionId: agent.id === 'di-expenses' ? sessionId : undefined,
+        identitySessionId: agent.id.startsWith('di-') ? sessionId : undefined,
         agentSlug: agent.slug || agent.id,
         modelId,
         activeStudioSessionId: null,
@@ -2150,7 +2150,7 @@ const server = createServer(async (req, res) => {
       } catch (error) { return json(res, 401, { error: error.message }); }
     }
     if (accountRoute && !user) return json(res, 401, { error: "Please sign in" });
-    if (req.method === "GET" && ["/api/demo/chat-logs", "/api/demo/usage", "/api/demo/activity", "/api/demo/metrics"].includes(pathname)) {
+    if (req.method === "GET" && ["/api/demo/chat-logs", "/api/demo/usage", "/api/demo/activity", "/api/demo/db-log", "/api/demo/metrics"].includes(pathname)) {
       const data = await demoObservability(pathname, url.searchParams, user);
       return data ? json(res, 200, data) : json(res, 403, { error: "Admin access required" });
     }

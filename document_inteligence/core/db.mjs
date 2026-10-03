@@ -79,8 +79,8 @@ export function withContext(db, ctx, fn) {
   return db.transaction(async (tx) => {
     if (ctx.asRole !== false) await tx.query("SET LOCAL ROLE di_app");
     await tx.query(
-      `SELECT set_config('di.tenant_id', $1, true), set_config('di.actor', $2, true), set_config('di.agent', $3, true)`,
-      [ctx.tenantId, ctx.actor || "owner", ctx.agent || ""],
+      `SELECT set_config('di.tenant_id', $1, true), set_config('di.actor', $2, true), set_config('di.agent', $3, true), set_config('di.actor_user_id', $4, true)`,
+      [ctx.tenantId, ctx.actor || "owner", ctx.agent || "", ctx.actorUserId || ""],
     );
     return fn(tx);
   });

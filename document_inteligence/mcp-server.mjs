@@ -31,7 +31,7 @@ async function callHost(tool, args) {
   const res = await fetch(`${url}/api/internal/di`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`,
-      ...(agent === 'di-expenses' ? { 'X-DI-Session': process.env.DI_SESSION_ID || '' } : {}) },
+      'X-DI-Session': process.env.DI_SESSION_ID || '' },
     body: JSON.stringify({ agent, tool, args }),
   });
   const data = await res.json().catch(() => ({}));

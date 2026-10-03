@@ -16,3 +16,15 @@ test('demo insights force account scope and reject privilege parameters', async 
   assert.deepEqual(await demoObservability('/api/demo/metrics', params, { id: 'admin', role: 'admin' }, services), { metrics: true });
   await assert.rejects(demoObservability('/api/demo/usage', params, null, services), /Please sign in/);
 });
+
+test('DB Log is admin-only and never accepts caller-provided account scope', async () => {
+  let calls = 0;
+  const services = { listDbAudit: async (options, user) => { calls++; return { options, user }; } };
+  const params = new URLSearchParams({ userId: 'admin', isAdmin: 'true', search: 'INV-001' });
+  assert.equal(await demoObservability('/api/demo/db-log', params, { id: 'me', role: 'user' }, services), null);
+  assert.equal(calls, 0);
+  const admin = { id: 'real-admin', role: 'admin' };
+  const result = await demoObservability('/api/demo/db-log', params, admin, services);
+  assert.equal(result.user, admin);
+  assert.equal(result.options.search, 'INV-001');
+});
