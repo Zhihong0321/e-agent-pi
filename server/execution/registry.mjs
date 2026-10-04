@@ -224,7 +224,7 @@ registerOperation({
   id: 'list_specialists',
   description: 'Live specialist roster: id, slug, name, headline, short description, skills and MCP names. Call once before planning; never cache across turns.',
   effect: 'control',
-  timeoutMs: 15_000,
+  timeoutMs: 60_000,
   inputSchema: z.object({}).describe('No arguments'),
   async execute() {
     if (!controlHandlers.listSpecialists) throw new Error('Specialist roster is not wired');
@@ -260,7 +260,7 @@ registerOperation({
   id: 'submit_plan',
   description: 'Validate and atomically queue a complete specialist plan. The host runs ready specialists, passes dependency evidence and records outcomes; do not poll between tasks (task_status shows progress).',
   effect: 'control',
-  timeoutMs: 30_000,
+  timeoutMs: 60_000,
   inputSchema: z.object({
     title: z.string().max(200).describe('Short plan title'),
     summary: z.string().max(2000).optional(),

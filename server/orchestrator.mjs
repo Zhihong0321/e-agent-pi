@@ -235,8 +235,10 @@ async function getTaskRow(id) {
 function parentSessionFrom(body) {
   const passed = typeof body?.parentSessionId === "string" ? body.parentSessionId.trim() : "";
   const active = runtime.activeOrchestratorSessionId?.() || "";
-  if (passed && passed !== active) throw new Error('Delegation cannot select another parent session');
-  return active;
+  // A pinned legacy chat still cannot be pointed at a different session.
+  // V2 passes the execution session and has no pinned chat.
+  if (passed && active && passed !== active) throw new Error('Delegation cannot select another parent session');
+  return passed || active;
 }
 
 export async function createPlan(input = {}) {
