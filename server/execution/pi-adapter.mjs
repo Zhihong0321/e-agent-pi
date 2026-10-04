@@ -8,7 +8,7 @@ import { killTree, rpcClientPid } from '../proc.mjs';
 import { agentEnv } from '../agent-env.mjs';
 import { applyPiEvent } from '../pi-stream.mjs';
 import { findModel, resolveModelCredentials } from '../models.mjs';
-import { PI_CLI_PATH, PI_PACKAGE_DIR, ROOT, RUNTIME_DIR, STORAGE } from '../paths.mjs';
+import { agentWorkspace, PI_CLI_PATH, PI_PACKAGE_DIR, ROOT, RUNTIME_DIR, STORAGE } from '../paths.mjs';
 import { buildPiArgs, materializeAgentRuntime, resolveToolProfile } from '../runtime.mjs';
 import { manifestRevisionOf } from './contracts.mjs';
 
@@ -69,7 +69,7 @@ export function piWorkerFactory(opts) {
 
     pi = new RpcClient({
       cliPath: PI_CLI_PATH,
-      cwd: opts.cwd || opts.workspace || profile.workspace || STORAGE,
+      cwd: opts.cwd || opts.workspace || profile.workspace || agentWorkspace(agent),
       provider: active.provider,
       model: active.model,
       env: agentEnv(profile.agentRow || profile, {

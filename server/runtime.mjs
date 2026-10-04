@@ -9,6 +9,7 @@ import { loadContextPack } from "./context-pack.mjs";
 import { getAgentSop } from "./sops.mjs";
 import { interpolatePiModels } from "./models.mjs";
 import {
+  DEFAULT_BUILTIN_TOOLS,
   DEFAULT_TOOL_PROFILE,
   TOOL_PROFILES,
   normalizeThinkingLevel,
@@ -218,7 +219,12 @@ export function buildPiArgs(opts) {
   const restricted = research || adsResearch;
   const profile = restricted ? TOOL_PROFILES.assistant : TOOL_PROFILES[normalizeToolProfile(opts.toolProfile)] || TOOL_PROFILES[DEFAULT_TOOL_PROFILE];
   if (profile.systemPrompt) args.push("--system-prompt", profile.systemPrompt);
-  if (profile.tools) args.push("--tools", profile.tools.join(","));
+  // --tools is an allowlist that hides extension tools (finish_run, share_file, MCP).
+  // Drop the builtins the profile does not allow instead, so host tools stay visible.
+  if (profile.tools) {
+    const excluded = DEFAULT_BUILTIN_TOOLS.filter((name) => !profile.tools.includes(name));
+    if (excluded.length) args.push("--exclude-tools", excluded.join(","));
+  }
   if (profile.noBuiltinTools) args.push("--no-builtin-tools");
   const thinkingLevel = normalizeThinkingLevel(opts.thinkingLevel);
   if (thinkingLevel) args.push("--thinking", thinkingLevel);

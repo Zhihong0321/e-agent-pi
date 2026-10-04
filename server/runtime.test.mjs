@@ -27,9 +27,10 @@ test("buildPiArgs: ops profile swaps the system prompt and limits tools to read+
   const promptIdx = args.indexOf("--system-prompt");
   assert.ok(promptIdx >= 0);
   assert.equal(args[promptIdx + 1], NON_CODING_SYSTEM_PROMPT);
-  const toolsIdx = args.indexOf("--tools");
+  const toolsIdx = args.indexOf("--exclude-tools");
   assert.ok(toolsIdx >= 0);
-  assert.equal(args[toolsIdx + 1], "read,bash");
+  assert.equal(args[toolsIdx + 1], "edit,write");
+  assert.equal(args.includes("--tools"), false);
   assert.equal(args.includes("--no-builtin-tools"), false);
 });
 
