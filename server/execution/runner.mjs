@@ -521,8 +521,9 @@ export async function cancelRun({ runRef, runKind, reason = 'Cancelled' }) {
     const claimed = await pool.query(
       `UPDATE orchestrator_tasks SET status='cancelled', stop_requested=true, generation=generation+1,
          error=$2, finished_at=NOW(), updated_at=NOW()
-       WHERE id=$1 AND status IN ('running','pending') RETURNING generation`,
+       WHERE id=$1 AND status IN ('running','pending') RETURNING generation, plan_id`,
       [runRef, JSON.stringify({ code: 'CANCELLED', message: reason })]);
+    if (!claimed.rows.length) return false;
     const nextGeneration = claimed.rows[0]?.generation;
     const state = [...activeAttempts.values()].find((s) => s.runRef === runRef);
     if (state) {
@@ -531,6 +532,11 @@ export async function cancelRun({ runRef, runKind, reason = 'Cancelled' }) {
       dispatch.setAttemptStopRequested(state.attemptId, true);
       state.controller.abort();
     }
+    await pool.query(
+      `UPDATE orchestrator_attempts SET status='cancelled', error=$2, finished_at=NOW()
+       WHERE task_id=$1 AND status='running'`,
+      [runRef, JSON.stringify({ code: 'CANCELLED', message: reason })]);
+    await refreshPlanStatusSafe(claimed.rows[0].plan_id);
     await store.recordEvent({ kind: 'run.generation_revoked', runRef, data: { generation: nextGeneration ?? null } }).catch(() => {});
     return true;
   }
