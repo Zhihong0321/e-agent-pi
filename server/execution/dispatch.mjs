@@ -190,7 +190,7 @@ async function executeOperation(op, ctx, args, binding, callId, services) {
     return journalAndRespond(op, binding, callId, args, result);
   } catch (error) {
     const execErr = error?.execCode ? execError(error.execCode, error.message) : execError('EXECUTION_FAILED', error?.message || 'Operation failed');
-    return journalFailure(op, ctx, binding, callId, args, execErr, services);
+    return journalFailure(op, ctx, binding, callId, args, readControlFailure(op, execErr), services);
   }
 }
 
@@ -228,10 +228,18 @@ async function executeSameTx(op, ctx, args, binding, callId, services, timeoutMs
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     const execErr = error?.execCode ? execError(error.execCode, error.message) : execError('EXECUTION_FAILED', error?.message || 'Operation failed');
-    return journalFailure(op, ctx, binding, callId, args, execErr, services);
+    return journalFailure(op, ctx, binding, callId, args, readControlFailure(op, execErr), services);
   } finally {
     client.release();
   }
+}
+
+/** A timed-out read or control call did not write. Unknown is only for writes. */
+function readControlFailure(op, execErr) {
+  if ((op.effect === 'read' || op.effect === 'control') && execErr?.effectState === 'unknown') {
+    return { ...execErr, effectState: 'none' };
+  }
+  return execErr;
 }
 
 async function journalFailure(op, _ctx, binding, callId, args, execErr) {

@@ -233,7 +233,7 @@ export async function runAgent({ kind, runRef, profile, user, ctx, input, images
       workerUrl: runKindOpts.workerUrl || config.workerUrl || null,
       user: user || null, ctx,
       signal: controller.signal, images: images || [],
-      onEvent: (event) => onEvent?.(event),
+      onEvent: (event, turn) => onEvent?.(event, turn),
       onToolEvent: (toolEvent) => {
         if (toolEvent.phase === 'start') {
           state.toolCalls += 1;
@@ -443,9 +443,14 @@ async function hasUnknownEffects(attemptId) {
 export async function finalizeRun(runRef, kind, outcome, { attemptId, generation, sessionId } = {}) {
   const status = outcome.status;
   const error = outcome.error || null;
+  const summary = outcome.summary || error?.message || '';
   const record = {
     status,
-    outcome: status === 'done' ? { summary: outcome.summary || '', outputs: outcome.outputs || {} } : null,
+    // Blocked and failed completions keep their summary so the chat can show it.
+    // Dependents still start only when status is done.
+    outcome: summary || outcome.outputs
+      ? { summary, outputs: outcome.outputs || {}, reasonCode: outcome.reasonCode || error?.code || null }
+      : null,
     error,
   };
   if (kind === 'chat') {
