@@ -498,6 +498,13 @@ export async function finalizeRun(runRef, kind, outcome, { attemptId, generation
   } finally {
     client.release();
   }
+  if (config.services.onTaskFinalized) {
+    try {
+      await config.services.onTaskFinalized({ taskId: runRef, status: record.status, outcome: record.outcome });
+    } catch (err) {
+      config.services.logEvent?.('warn', `onTaskFinalized error for ${runRef}: ${err?.message || err}`);
+    }
+  }
   if (planId) await refreshPlanStatusSafe(planId);
 }
 

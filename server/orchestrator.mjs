@@ -223,7 +223,7 @@ async function listTasks(planId) {
   return result.rows.map(mapTask);
 }
 
-async function getTaskRow(id) {
+export async function getTaskRow(id) {
   const result = await getPool().query(`SELECT ${TASK_SELECT} FROM orchestrator_tasks WHERE id = $1`, [id]);
   return mapTask(result.rows[0]);
 }
@@ -428,7 +428,7 @@ export async function refreshPlanStatus(planId) {
   if (!tasks.length) return;
   let status = "done";
   if (tasks.some((row) => row.status === "running")) status = "running";
-  else if (tasks.some((row) => row.status === "error")) status = "error";
+  else if (tasks.some((row) => row.status === "failed" || row.status === "error")) status = "failed";
   else if (tasks.some((row) => row.status === "blocked")) status = "blocked";
   else if (tasks.some((row) => row.status === "pending")) status = "queued";
   else if (tasks.every((row) => row.status === "cancelled")) status = "cancelled";

@@ -177,6 +177,7 @@ import {
   listSpecialists,
   taskStatus,
   refreshPlanStatus,
+  getTaskRow,
   ensureOrchestratorSchema,
 } from "./orchestrator.mjs";
 import { toolsFor as diToolsFor, AGENTS as DI_AGENTS } from "../document_inteligence/core/tools.mjs";
@@ -2022,6 +2023,24 @@ async function bootServices() {
             connectBinding: (binding) => import('./execution/mcp-adapter.mjs').then((m) => m.connectBinding(binding)),
             callExternal: (binding, toolName, args) => import('./execution/mcp-adapter.mjs').then((m) => m.callExternal(binding, toolName, args)),
           },
+          onTaskFinalized: async ({ taskId, status }) => {
+            if (status !== 'done') return;
+            try {
+              const task = await getTaskRow(taskId).catch(() => null);
+              if (!task) return;
+              const agentId = task.agentId || task.agent_id;
+              if (agentId === 'open-design-helper') {
+                await publishPrototypes({ dir: agentWorkspace({ id: 'open-design-helper', slug: 'open-design-helper' }), prefix: 'od' }).catch(() => {});
+                await publishPrototypes({ dir: agentWorkspace({ id: 'open-design-helper', slug: 'open-design-helper' }), prefix: 'proto' }).catch(() => {});
+              } else if (agentId === 'app-helper') {
+                await publishPrototypes({ dir: agentWorkspace({ id: 'app-helper', slug: 'app-helper' }), prefix: 'proto' }).catch(() => {});
+              } else if (agentId === 'website') {
+                await publishToHost().catch(() => {});
+              }
+            } catch (err) {
+              logEvent('warn', `onTaskFinalized error: ${err?.message || err}`);
+            }
+          },
         },
         workerFactory: piWorkerFactory,
       });
@@ -2235,6 +2254,12 @@ async function bootServices() {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url || "/", "http://localhost");
   const pathname = url.pathname;
+
+  if ((req.method === "GET" || req.method === "HEAD") && ["/", "/root", "/root/", "/index.html"].includes(pathname)) {
+    res.writeHead(302, { Location: `/demo${url.search}`, "Cache-Control": "no-store" });
+    res.end();
+    return;
+  }
 
   if (pathname === "/company-profile" || pathname.startsWith("/company-profile/")) {
     return handleCompanyProfile(req, res, url);

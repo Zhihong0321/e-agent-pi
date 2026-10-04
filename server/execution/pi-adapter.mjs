@@ -67,9 +67,12 @@ export function piWorkerFactory(opts) {
     });
     args.push('--extension', HOST_TOOLS_EXTENSION);
 
+    const cwd = opts.cwd || opts.workspace || profile.workspace || agentWorkspace(agent);
+    await mkdir(cwd, { recursive: true });
+
     pi = new RpcClient({
       cliPath: PI_CLI_PATH,
-      cwd: opts.cwd || opts.workspace || profile.workspace || agentWorkspace(agent),
+      cwd,
       provider: active.provider,
       model: active.model,
       env: agentEnv(profile.agentRow || profile, {

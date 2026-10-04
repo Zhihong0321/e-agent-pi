@@ -68,9 +68,14 @@ export function agentEnv(agent, extra = {}, from = process.env) {
     }
   }
 
-  env.PATH = ["/opt/scrapling/bin", from.PATH || process.env.PATH || ""]
+  const rawPath = from.PATH || from.Path || process.env.PATH || process.env.Path || "";
+  const nodeDir = path.dirname(process.execPath);
+  env.PATH = [nodeDir, "/opt/scrapling/bin", rawPath]
     .filter(Boolean)
     .join(path.delimiter);
+  if (process.platform === "win32") {
+    env.Path = env.PATH;
+  }
   env.HOME = from.HOME || os.homedir();
   env.USER = from.USER || from.USERNAME || "root";
   env.LANG = from.LANG || "C.UTF-8";

@@ -6,6 +6,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import path from "node:path";
 import { execError, redactArgs } from "./contracts.mjs";
 
 /** bindingKey: one live owner per server revision + credential scope. */
@@ -23,6 +24,31 @@ export function classifyEffect() {
   return 'external';
 }
 
+async function resolveBindingEnv(binding) {
+  const env = { ...(binding.env || {}) };
+  const port = process.env.PORT || '8080';
+  env.PORT = env.PORT || port;
+  if (!env.PATH && !env.Path) {
+    const nodeDir = path.dirname(process.execPath);
+    const rawPath = process.env.PATH || process.env.Path || '';
+    env.PATH = [nodeDir, '/opt/scrapling/bin', rawPath].filter(Boolean).join(path.delimiter);
+    if (process.platform === 'win32') {
+      env.Path = env.PATH;
+    }
+  }
+  if (binding.slug === 'ads-research') {
+    const { adsResearchEnv } = await import('../ads-research/auth.mjs');
+    Object.assign(env, adsResearchEnv('ads-research'));
+  } else if (binding.slug === 'media-ai') {
+    const { mediaAiEnv } = await import('../media-ai/auth.mjs');
+    Object.assign(env, mediaAiEnv('media-ai'));
+  } else if (binding.slug === 'company-research') {
+    const { researchEnv } = await import('../company-research/auth.mjs');
+    Object.assign(env, researchEnv('company-deep-research'));
+  }
+  return env;
+}
+
 /**
  * Approve + materialize the exposed tools of an external binding. Called once
  * per connection setup, not per model turn. Returns the frozen tool list.
@@ -38,12 +64,13 @@ export async function connectBinding(binding) {
   owners.set(key, owner);
   owner.ready = (async () => {
     try {
+      const stdioEnv = await resolveBindingEnv(binding);
       const transport = binding.url
         ? new StreamableHTTPClientTransport(new URL(binding.url))
         : new StdioClientTransport({
-            command: binding.command,
+            command: binding.command || process.execPath,
             args: binding.args || [],
-            env: { ...(binding.env || {}) },
+            env: stdioEnv,
           });
       const client = new Client({ name: 'execution-host', version: '1.0.0' });
       await client.connect(transport);
