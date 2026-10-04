@@ -177,6 +177,7 @@ import {
   listSpecialists,
   taskStatus,
   refreshPlanStatus,
+  ensureOrchestratorSchema,
 } from "./orchestrator.mjs";
 import { toolsFor as diToolsFor, AGENTS as DI_AGENTS } from "../document_inteligence/core/tools.mjs";
 import {
@@ -2045,6 +2046,7 @@ async function bootServices() {
         `document-intelligence ready (migrations: ${di.applied.join(", ") || "none"}; role separation: ${di.roleSeparation})`,
       );
       if (isExecutionReady()) {
+        await ensureOrchestratorSchema();
         const reconciled = await reconcileOnStartup();
         if (reconciled.tasks || reconciled.chats) logEvent("warn", `execution recovery: ${reconciled.tasks} task(s), ${reconciled.chats} chat run(s) interrupted`);
         startClaimLoop();

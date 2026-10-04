@@ -148,10 +148,6 @@ async function migrateOrchestratorSchema() {
       started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), finished_at TIMESTAMPTZ
     );
     CREATE INDEX IF NOT EXISTS orchestrator_plans_completed_idx ON orchestrator_plans(completed_at) WHERE status = 'done';
-    UPDATE orchestrator_plans p SET completed_at=COALESCE(
-      (SELECT MAX(t.updated_at) FROM orchestrator_tasks t WHERE t.plan_id=p.id), p.updated_at)
-      WHERE p.status='done' AND p.completed_at IS NULL
-      AND NOT EXISTS (SELECT 1 FROM orchestrator_tasks t WHERE t.plan_id=p.id AND t.status <> 'done');
   `);
 }
 
