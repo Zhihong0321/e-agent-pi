@@ -1,4 +1,4 @@
-import { requestUser, loginUser, logoutUser, sessionCookie as userSessionCookie, userManagementPrompt, procurementIdentityPrompt, fdeIdentityPrompt, manageUsers, managePeople } from './users.mjs';
+import { requestUser, loginUser, logoutUser, sessionCookie as userSessionCookie, userManagementPrompt, procurementIdentityPrompt, fdeIdentityPrompt } from './users.mjs';
 import { authenticateExpenseSession, withExpenseSession } from './expense-session.mjs';
 import { createHash, randomBytes } from "node:crypto";
 import { createReadStream } from "node:fs";
@@ -39,7 +39,6 @@ import { fileMime, listWorkspaceFiles, resolveWorkspaceFile, workspaceFingerprin
 import {
   BLUEPRINT_STATUSES,
   ensureBlueprintSchema,
-  getBlueprint,
   listBlueprintVersions,
   listBlueprints,
   setBlueprintStatus,
@@ -123,7 +122,7 @@ import {
   isPackageAgent,
   isProposalAgent,
 } from "./paths.mjs";
-import { applyPiEvent, createTurn, extractReply, serializeTurn } from "./pi-stream.mjs";
+import { applyPiEvent, createTurn, extractReply, parseTranscript, serializeTurn } from "./pi-stream.mjs";
 import {
   attachAgentResources,
   attachSkillToAllAgents,
@@ -158,7 +157,6 @@ import { ensureCompanyResearch, handleCompanyResearch, stopCompanyResearch } fro
 import { ensureAdsResearch, handleAdsResearch, stopAdsResearch } from "./ads-research/host.mjs";
 import { ensureMediaAi, handleMediaAi } from "./media-ai/host.mjs";
 import { ensureComposioMcp } from "./composio.mjs";
-import { ensureOrchestratorMcp } from "./orchestrator-mcp.mjs";
 import { ensureEeMailMcp } from "./ee-mail-mcp.mjs";
 import { handleEmailRequest } from "./ee-mail.mjs";
 import * as catalogApi from "./catalog.mjs";
@@ -166,18 +164,44 @@ import { getPool } from "./db.mjs";
 import {
   DI_AGENT_IDS,
   ensureDocumentIntelligence,
-  handleDiRequest,
   handlePublicForm,
+  diRunDeps,
 } from "../document_inteligence/host.mjs";
+import { runTool } from "../document_inteligence/core/actions.mjs";
 import {
-  handleOrchestratorAction,
-  orchestratorAuthorized,
   setDispatchRuntime,
   startJobRunner,
   completedJobCleanup,
   listJobs,
   jobReport,
+  listSpecialists,
+  taskStatus,
+  stopTask,
+  refreshPlanStatus,
 } from "./orchestrator.mjs";
+import { toolsFor as diToolsFor, AGENTS as DI_AGENTS } from "../document_inteligence/core/tools.mjs";
+import {
+  registerDiTool,
+  registerControlHandlers,
+  registerExternalMcpTools,
+} from "./execution/registry.mjs";
+import { setMigratedProfiles, isMigratedProfile, manifestForAgent, setDiToolIdProvider, RETIRED_INTERNAL_MCP_SLUGS } from "./execution/profiles.mjs";
+import {
+  initExecution,
+  startClaimLoop,
+  reconcileOnStartup,
+  drainExecution,
+  setLegacyLoadProvider,
+  acceptChatRun,
+  activeAttemptCount,
+  submitPlanHandler,
+  waitForChatRun,
+  isInitialized as isExecutionReady,
+} from "./execution/runner.mjs";
+import { handleExecutionToolRoute, handleExecutionStatusRoute, executionHealth } from "./execution/routes.mjs";
+import { piWorkerFactory, setModelsJsonProvider } from "./execution/pi-adapter.mjs";
+import { closeAllConnections as closeExecutionMcpConnections, connectBinding } from "./execution/mcp-adapter.mjs";
+import { ensureExecutionSchema } from "./execution/store.mjs";
 import {
   ensureWhatsappMcp,
   startWhatsappSidecar,
@@ -386,8 +410,7 @@ function wantsAuth(pathname, method = "GET") {
   if (pathname === "/api/browser" || pathname.startsWith("/api/browser/")) return true;
   if (pathname === "/api/whatsapp" || pathname.startsWith("/api/whatsapp/")) return true;
   if (pathname === "/api/np/health") return false;
-  if (pathname === "/api/internal/orchestrator") return false;
-  if (pathname === "/api/internal/di") return false;
+  if (pathname === "/api/internal/execution/tool") return false;
   if (pathname === "/api/internal/ee-mail") return false;
   if (pathname === "/api/internal/web-search") return false;
   if (pathname === "/api/np" || pathname.startsWith("/api/np/")) return true;
@@ -569,6 +592,14 @@ async function defaultChatAgentId() {
     if (orch) return orch.id;
   }
   return WEBSITE_AGENT_ID;
+}
+
+/** Compact roster + live company readiness for the submit_plan planning loop. */
+async function listSpecialistsPublic() {
+  return {
+    specialists: await listSpecialists(),
+    company_setup: await companyOnboardingStatus().catch(() => ({ available: false, minimum_ready: false })),
+  };
 }
 
 async function resolveAgentProfile(agentId) {
@@ -1925,14 +1956,84 @@ async function bootServices() {
     logEvent("error", `composio mcp failed: ${sanitizeError(error)}`);
   }
 
-  boot.step = "orchestrator-mcp";
+  boot.step = "execution-system";
   try {
     if (dbReady()) {
-      await ensureOrchestratorMcp();
-      logEvent("info", "orchestrator-dispatch mcp registered and attached to orchestrator");
+      await ensureExecutionSchema();
+      // Retired internal MCP proxies (document-intelligence, orchestrator-dispatch)
+      // from every agent's attachment: their tools are native operations now.
+      for (const slug of RETIRED_INTERNAL_MCP_SLUGS) {
+        try {
+          if (await getMcpServer(slug)) {
+            for (const agent of await listAgents()) {
+              await attachAgentResources(agent.id, { mcp: [slug], detach: true }).catch(() => {});
+            }
+          }
+        } catch (error) {
+          logEvent("error", `retire mcp ${slug}: ${sanitizeError(error)}`);
+        }
+      }
+
+      // Document Intelligence tools become canonical operations (same runTool
+      // handlers the /demo routes and public forms use).
+      for (const [agentId] of Object.entries(DI_AGENTS)) {
+        for (const tool of diToolsFor(agentId)) {
+          const needsUser = Boolean(tool.identity);
+          registerDiTool(tool.name, tool, agentId, needsUser);
+        }
+      }
+      setDiToolIdProvider((agentId) => diToolsFor(agentId).map((tool) => tool.name));
+
+      registerControlHandlers({
+        listSpecialists: listSpecialistsPublic,
+        companySetup: companyOnboardingStatus,
+        taskStatus: (input) => taskStatus(input),
+        stopTask: (input) => stopTask(input),
+        submitPlan: (ctx, args) => submitPlanHandler(ctx, args),
+      });
+
+      setModelsJsonProvider(buildPiModelsJson);
+      initExecution({
+        maxConcurrent: MAX_PI_SLOTS,
+        resolveModelId: async (agent, requestedModelId) => {
+          const catalog = await ensureCatalog();
+          const requested = requestedModelId || agent?.modelId || defaultModelId;
+          const entry = requested ? findModel(catalog, requested) : null;
+          if (!entry?.available) {
+            throw Object.assign(new Error(`No configured model is available for ${agent?.slug || agent?.id || 'this execution'}`), { execCode: 'MODEL_UNAVAILABLE' });
+          }
+          return entry.id;
+        },
+        workerUrl: `http://127.0.0.1:${process.env.PORT || 8080}`,
+        services: {
+          logEvent,
+          userLookup: async (userId) => {
+            const rows = await getPool().query('SELECT id, username, display_name, role, active FROM users WHERE id=$1', [userId]);
+            return rows.rows[0] || null;
+          },
+          getAgent,
+          profileFor: (agent) => manifestForAgent(agent),
+          refreshPlanStatus: (planId) => refreshPlanStatus(planId),
+          canDelegate: (profileId) => profileId === ORCHESTRATOR_AGENT_ID,
+          runTool,
+          diDeps: ({ ctx }) => diRunDeps({ workspace: agentWorkspace, who: ctx.user }),
+          mcpAdapter: {
+            connectBinding: (binding) => import('./execution/mcp-adapter.mjs').then((m) => m.connectBinding(binding)),
+            callExternal: (binding, toolName, args) => import('./execution/mcp-adapter.mjs').then((m) => m.callExternal(binding, toolName, args)),
+          },
+        },
+        workerFactory: piWorkerFactory,
+      });
+      // All Pi catalog profiles use the shared execution runner. AGY remains
+      // explicitly outside this set until its adapter passes the same contract.
+      const migratedAgents = (await listAgents()).filter((agent) => agent.engine !== 'agy');
+      setMigratedProfiles(migratedAgents.map((agent) => agent.id));
+      setLegacyLoadProvider(() => [...piPool.values()].filter((slot) => slot.busy).length);
+      // Claiming starts only after the DI host schema and tenant context are ready.
+      logEvent("info", "execution system configured (one runner, native tools, typed completion)");
     }
   } catch (error) {
-    logEvent("error", `orchestrator-dispatch mcp failed: ${sanitizeError(error)}`);
+    logEvent("error", `execution system failed: ${sanitizeError(error)}`);
   }
 
   boot.step = "document-intelligence";
@@ -1943,6 +2044,12 @@ async function bootServices() {
         "info",
         `document-intelligence ready (migrations: ${di.applied.join(", ") || "none"}; role separation: ${di.roleSeparation})`,
       );
+      if (isExecutionReady()) {
+        const reconciled = await reconcileOnStartup();
+        if (reconciled.tasks || reconciled.chats) logEvent("warn", `execution recovery: ${reconciled.tasks} task(s), ${reconciled.chats} chat run(s) interrupted`);
+        startClaimLoop();
+        logEvent("info", "execution system ready (DI host + one runner + native tools)");
+      }
     }
   } catch (error) {
     logEvent("error", `document-intelligence failed: ${sanitizeError(error)}`);
@@ -2043,6 +2150,26 @@ async function bootServices() {
   boot.step = "catalog";
   try {
     await ensureCatalog();
+    // Discover external MCP tools once at boot and register them as canonical
+    // host operations. Calls later use the same adapter with a tenant/user scope.
+    for (const agent of await listAgents()) {
+      for (const server of agent.mcp || []) {
+        if (RETIRED_INTERNAL_MCP_SLUGS.has(server.slug)) continue;
+        try {
+          const binding = {
+            ...server,
+            revision: String(server.updatedAt || server.updated_at || '1'),
+            scope: `catalog:${agent.id}`,
+            timeoutMs: Number(server.config?.timeoutMs) || 60_000,
+          };
+          const owner = await connectBinding(binding);
+          registerExternalMcpTools({ binding, tools: owner.tools, profileIds: [agent.id] });
+          logEvent("info", `external MCP ready ${server.slug} for ${agent.slug} (${owner.tools.length} tools)`);
+        } catch (error) {
+          logEvent("warn", `external MCP unavailable ${server.slug} for ${agent.slug}: ${sanitizeError(error)}`);
+        }
+      }
+    }
   } catch (error) {
     logEvent("error", `catalog failed: ${sanitizeError(error)}`);
   }
@@ -2078,7 +2205,8 @@ async function bootServices() {
   setDispatchRuntime({
     runAgentTurn: runManageTurn,
     maxSlots: () => MAX_PI_SLOTS,
-    runningCount: () => [...piPool.values()].filter((slot) => slot.busy).length,
+    // Shared host capacity: warm slots (legacy chat + v1 jobs) plus execution-system attempts.
+    runningCount: () => [...piPool.values()].filter((slot) => slot.busy).length + activeAttemptCount(),
     agentBusy: (agentId) => [...piPool.values()].some(slot => slot.agentId === agentId && slot.busy),
     activeOrchestratorSessionId: () => {
       for (const slot of piPool.values()) {
@@ -2201,30 +2329,13 @@ const server = createServer(async (req, res) => {
     if (await handleCompanyResearch(req, res, url, { authorized: (r) => authorized(r) || Boolean(user), readBody })) return;
     if (await handleAdsResearch(req, res, url, { authorized, readBody })) return;
     if (await handleMediaAi(req, res, url, { authorized, user })) return;
-    if (req.method === "POST" && pathname === "/api/internal/orchestrator") {
-      if (!orchestratorAuthorized(req)) {
-        json(res, 401, { error: "Unauthorized" });
-        return;
-      }
-      if (!dbReady()) {
-        json(res, 503, { error: "Database is not connected" });
-        return;
-      }
-      const body = JSON.parse((await readBody(req)) || "{}");
-      const outcome = ["list_users", "create_user", "update_user", "list_people", "create_person", "update_person"].includes(body.action)
-        ? await (['list_people', 'create_person', 'update_person'].includes(body.action)
-          ? managePeople(body.action, body, { tenantId: companyHostContext().tenantId }).then(result => ({ ok: true, result: JSON.stringify(result) })).catch(error => ({ ok: false, error: error.message }))
-          : manageUsers(body.action, body, { tenantId: companyHostContext().tenantId }).then(result => ({ ok: true, result: JSON.stringify(result) })).catch(error => ({ ok: false, error: error.message })))
-        : await handleOrchestratorAction(body);
-      json(res, outcome.ok ? 200 : 400, outcome);
-      return;
+    // Worker bridge for the execution system: attempt-scoped bearer token, one endpoint.
+    if (req.method === "POST" && pathname === "/api/internal/execution/tool") {
+      return handleExecutionToolRoute(req, res, { readBody, json });
     }
 
-    if (req.method === "POST" && pathname === "/api/internal/di") {
-      const body = JSON.parse((await readBody(req)) || "{}");
-      const outcome = await handleDiRequest(req, body, { workspace: agentWorkspace });
-      json(res, outcome.status, outcome.body);
-      return;
+    if (req.method === "GET" && pathname === "/api/execution/runs") {
+      return handleExecutionStatusRoute(req, res, url, { json, user, authorized });
     }
 
     if (req.method === "POST" && pathname === "/api/internal/ee-mail") {
@@ -2645,6 +2756,7 @@ const server = createServer(async (req, res) => {
         piPoolMax: MAX_PI_SLOTS,
         piKeepWarm: PI_KEEP_WARM,
         piWarm: poolWarmSummary(),
+        execution: executionHealth({ maxConcurrent: MAX_PI_SLOTS }),
       });
       return;
     }
@@ -3224,9 +3336,13 @@ const server = createServer(async (req, res) => {
       const prompt = packed.prompt
         ? `${packed.prompt}\n${trimmed || attachFallback(profile)}`
         : trimmed;
-      const chatPrompt = await enrichRestartPrompt(prompt, profile) + (user ? userManagementPrompt(req, user) : "")
-        + (user && profile.id === "di-procurement" ? procurementIdentityPrompt(req, user) : "")
-        + (user && profile.id === "di-fde" ? fdeIdentityPrompt(req, user) : "");
+      // Migrated profiles carry authority in the host-built TrustedContext, not
+      // in prompt-injected capabilities or identity codes.
+      const migrated = isMigratedProfile(profile.id);
+      const chatPrompt = await enrichRestartPrompt(prompt, profile)
+        + (user && !migrated ? userManagementPrompt(req, user) : "")
+        + (user && !migrated && profile.id === "di-procurement" ? procurementIdentityPrompt(req, user) : "")
+        + (user && !migrated && profile.id === "di-fde" ? fdeIdentityPrompt(req, user) : "");
       const storedUser =
         [trimmed, packed.sharedFiles?.length ? packed.sharedFiles.map(file => file.link).join("\n") : attachmentChatMarkup(packed.files)].filter(Boolean).join("\n\n") ||
         (packed.files.length ? `Attached: ${attachmentSummary(packed.files)}` : prompt);
@@ -3315,6 +3431,85 @@ const server = createServer(async (req, res) => {
                 images,
               })
             : chat(text, typeof modelId === "string" ? modelId : undefined, session, onEvent, images);
+
+        if (isMigratedProfile(profile.id) && session.engine !== "agy") {
+          // Execution-system path: durable run record, native host tools,
+          // typed completion. SSE remains presentation; the records are truth.
+          const submissionKey = typeof body.submissionKey === "string" && body.submissionKey.trim()
+            ? `ui:${body.submissionKey.trim()}`
+            : `turn:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+          let chatCompanyId = null;
+          try { chatCompanyId = companyHostContext().tenantId; } catch { chatCompanyId = null; }
+          try {
+            const { run, deduped } = await acceptChatRun({
+              session,
+              profile,
+              user,
+              prompt: chatPrompt,
+              images: packed.images,
+              modelId: typeof modelId === "string" ? modelId : session.modelId || defaultModelId,
+              submissionKey,
+              manifest: manifestForAgent(profile),
+              sessionFile: session.piSessionFile || null,
+              chatContext: { companyId: chatCompanyId },
+              onEvent,
+            });
+            if (deduped) {
+              // Transport retry of the same intentional message: reattach to the
+              // persisted run instead of executing it twice.
+              const settled = await waitForChatRun(run.id);
+              const history = await listMessages(session.id);
+              const lastAssistant = [...history].reverse().find((m) => m.role === "assistant");
+              const parsed = lastAssistant ? parseTranscript(lastAssistant.content) : null;
+              const active = defaultModelId ? findModel(modelCatalog ?? [], defaultModelId) : null;
+              const recovered = settled?.outcome?.summary || parsed?.text || extractReply(lastAssistant?.content ?? "") || "";
+              if (!res.writableEnded) {
+                writeSse(res, {
+                  type: "done",
+                  reply: recovered,
+                  blocks: parsed?.blocks ?? [],
+                  sessionId: session.id,
+                  session: publicSession({ ...session, preview: recovered || storedUser }, user),
+                  activeModelId: active?.id ?? defaultModelId,
+                  activeModel: active ? { id: active.id, label: active.label, provider: active.provider, model: active.model } : null,
+                  recoveredRun: { id: settled?.id, status: settled?.status, outcome: settled?.outcome || null, error: settled?.error || null },
+                });
+              }
+            } else {
+              const settled = await waitForChatRun(run.id);
+              const active = defaultModelId ? findModel(modelCatalog ?? [], defaultModelId) : null;
+              await persister.finish(lastTurn, false);
+              if (!res.writableEnded) {
+                writeSse(res, {
+                  type: "done",
+                  reply: lastTurn.text || settled?.outcome?.summary || "",
+                  blocks: JSON.parse(serializeTurn(lastTurn)).blocks,
+                  sessionId: session.id,
+                  session: publicSession({ ...session, preview: lastTurn.text || storedUser }, user),
+                  activeModelId: active?.id ?? defaultModelId,
+                  activeModel: active ? { id: active.id, label: active.label, provider: active.provider, model: active.model } : null,
+                  run: { id: settled?.id, status: settled?.status, error: settled?.error },
+                });
+              }
+              const wallMs = Date.now() - turnStartedAt;
+              void recordActivity({
+                ...activityBase,
+                eventType: "turn_completed",
+                status: settled?.status === "done" ? "completed" : "error",
+                durationMs: wallMs,
+                metadata: { runId: run.id, runStatus: settled?.status, runError: settled?.error?.code || null },
+              });
+            }
+          } catch (error) {
+            await persister.finish(lastTurn, false).catch(() => {});
+            void recordActivity({ ...activityBase, eventType: "turn_failed", status: "error", error: sanitizeError(error), durationMs: Date.now() - turnStartedAt });
+            if (!res.writableEnded) writeSse(res, { type: "error", error: sanitizeError(error), retryable: error?.retryable === true });
+          } finally {
+            clearInterval(heartbeat);
+            if (!res.writableEnded) res.end();
+          }
+          return;
+        }
 
         // Same-agent turns (and the publish/journal work below, which shares
         // the agent's git workspace) serialize per agent; different agents
@@ -3468,9 +3663,22 @@ async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   logEvent("info", turnsInFlight ? `shutdown during ${turnsInFlight} in-flight turn(s)` : "shutdown");
+  // Execution coordinator first: admission drains, claims stop, the bridge and
+  // database stay available while accepted runs finalize; at the deadline it
+  // cancels the rest and persists known/uncertain outcomes.
+  try {
+    const drained = await drainExecution({
+      timeoutMs: Number(process.env.EXEC_DRAIN_MS) || 45_000,
+      activeTurns: () => turnsInFlight + [...piPool.values()].filter((slot) => slot.busy).length,
+    });
+    logEvent("info", `execution drain: ${drained.drained ? "complete" : "deadline hit"} (activeRuns=${drained.activeRuns})`);
+  } catch (error) {
+    logEvent("error", `execution drain failed: ${sanitizeError(error)}`);
+  }
   stopSampler();
   await stopCompanyResearch().catch(() => {});
   await stopAdsResearch().catch(() => {});
+  await closeExecutionMcpConnections().catch(() => {});
   await Promise.allSettled([...piPool.values()].map((slot) => stopSlot(slot)));
   await stopWhatsappSidecar().catch(() => {});
   await closeAllSessions().catch(() => {});

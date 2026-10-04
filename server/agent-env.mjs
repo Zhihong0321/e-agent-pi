@@ -17,11 +17,9 @@ import {
   isPackageAgent,
   isSalesAgent,
   isTnbAgent,
-  isOrchestratorAgent,
   EE_MAIL_AGENT_IDS,
 } from "./paths.mjs";
 import { secret } from "./secrets.mjs";
-import { DISPATCH_TOKEN } from "./orchestrator.mjs";
 import { SEARCH_TOKEN, jinaKeys } from "./web-search.mjs";
 import { diAgentEnv } from "../document_inteligence/host.mjs";
 import { EE_MAIL_DISPATCH_TOKEN } from "./ee-mail.mjs";
@@ -159,10 +157,8 @@ export function agentEnv(agent, extra = {}, from = process.env) {
     if (token) env.OM_API_TOKEN = token;
   }
 
-  if (isOrchestratorAgent(agent)) {
-    env.ORCHESTRATOR_DISPATCH_URL = `http://127.0.0.1:${from.PORT || process.env.PORT || "8080"}`;
-    env.ORCHESTRATOR_DISPATCH_TOKEN = DISPATCH_TOKEN;
-  }
+  // Orchestrator delegation now runs through the execution system's native
+  // tools and worker bridge; no dispatch subprocess credentials are injected.
 
   // Document Intelligence micro-agents: per-agent token for /api/internal/di.
   Object.assign(env, diAgentEnv(agent, from.PORT || process.env.PORT || "8080"));

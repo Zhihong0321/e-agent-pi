@@ -1,0 +1,327 @@
+// Canonical operation registry. Every internal business operation the model can
+// call is defined ONCE here: schema, access policy, effect classification and
+// the real handler. Callers cannot pass module paths, SQL or handler names —
+// the registry resolves approved operation ids to handlers.
+// The same definitions generate the worker tool manifest (JSON schemas), so an
+// authenticated frontend route and an agent tool call share one handler path.
+import { z } from 'zod';
+import { managePeopleCore, listPeople, countUserAccounts } from '../people-service.mjs';
+import { updateCompanyProfile } from '../../document_inteligence/core/company.mjs';
+import { ToolManifestEntrySchema } from './contracts.mjs';
+
+const operations = new Map();
+const operationVariants = new Map(); // operation id -> Map(profile id, definition)
+const externalToolsByProfile = new Map();
+
+export function externalToolIdsForProfile(profileId) {
+  return [...(externalToolsByProfile.get(String(profileId)) || [])];
+}
+
+/** Register host-owned MCP tools as ordinary canonical operations. */
+export function registerExternalMcpTools({ binding, tools, profileIds = [] }) {
+  for (const tool of tools || []) {
+    const id = tool.name || `${binding.slug}__${tool.mcpTool}`;
+    registerOperation({
+      id,
+      description: tool.description || `${binding.slug}.${tool.mcpTool}`,
+      effect: 'external',
+      timeoutMs: binding.timeoutMs || 60_000,
+      profileIds,
+      inputSchema: z.record(z.string(), z.unknown()).optional().default({}),
+      mcpServer: binding.slug,
+      mcpTool: tool.mcpTool,
+      access: { user: true },
+      async execute(ctx, args, services) {
+        const adapter = services.mcpAdapter;
+        if (!adapter?.callExternal) throw Object.assign(new Error(`MCP ${binding.slug} adapter is unavailable`), { execCode: 'EXTERNAL_ERROR' });
+        const scopedBinding = {
+          ...binding,
+          scope: `company:${ctx.companyId || 'none'}:user:${ctx.userId || 'none'}`,
+        };
+        const response = await adapter.callExternal(scopedBinding, tool.mcpTool, args);
+        if (!response?.ok) throw Object.assign(new Error(response?.error?.message || 'External MCP call failed'), { execCode: response?.error?.code || 'EXTERNAL_ERROR' });
+        return { ...(response.data && typeof response.data === 'object' ? response.data : { value: response.data }), effects: response.effects || [] };
+      },
+    });
+    for (const profileId of profileIds) {
+      const ids = externalToolsByProfile.get(String(profileId)) || new Set();
+      ids.add(id);
+      externalToolsByProfile.set(String(profileId), ids);
+    }
+  }
+}
+
+export function registerOperation(def) {
+  const op = { version: 1, timeoutMs: 30_000, sameTx: false, access: {}, ...def };
+  if (!op.id || typeof op.execute !== 'function') throw new Error(`Operation ${op.id || '(unnamed)'} needs an id and execute`);
+  if (!op.inputSchema) throw new Error(`Operation ${op.id} needs an inputSchema`);
+  const profiles = Array.isArray(op.profileIds) ? op.profileIds : null;
+  if (profiles?.length) {
+    let variants = operationVariants.get(op.id);
+    if (!variants) operationVariants.set(op.id, variants = new Map());
+    for (const profile of profiles) variants.set(profile, op);
+    // Preserve the first canonical definition for generic lookup/tests.
+    if (!operations.has(op.id)) operations.set(op.id, op);
+  } else {
+    operations.set(op.id, op);
+  }
+  return op;
+}
+
+export function getOperation(id, profileId = null) {
+  const key = String(id || '');
+  return (profileId && operationVariants.get(key)?.get(profileId)) || operations.get(key) || null;
+}
+
+export function listOperations() {
+  return [...operations.values()];
+}
+
+/** Small explicit manifest for a profile: only permitted operations. */
+export function manifestFor(toolIds, profileId = null) {
+  const tools = [];
+  for (const id of toolIds || []) {
+    const op = getOperation(id, profileId);
+    if (!op) throw new Error(`Profile references unknown operation: ${id}`);
+    tools.push({
+      id: op.id,
+      description: op.description,
+      kind: op.effect === 'external' ? 'external' : op.effect === 'control' ? 'control' : op.effect,
+      inputSchema: z.toJSONSchema(op.inputSchema, { io: 'input' }),
+      ...(op.mcpServer ? { mcpServer: op.mcpServer, mcpTool: op.mcpTool } : {}),
+    });
+  }
+  return tools;
+}
+
+function requireUser(ctx) {
+  if (!ctx.userId) throw Object.assign(new Error('Sign-in required: this operation needs an authenticated user'), { execCode: 'SIGN_IN_REQUIRED' });
+  if (ctx.user && ctx.user.active === false) throw Object.assign(new Error('Current login is no longer active'), { execCode: 'PERMISSION_DENIED' });
+}
+
+function requireAdmin(ctx) {
+  requireUser(ctx);
+  if (ctx.user?.role !== 'admin') throw Object.assign(new Error('This operation requires an admin login'), { execCode: 'PERMISSION_DENIED' });
+}
+
+// ---------------------------------------------------------------- people family
+
+registerOperation({
+  id: 'count_user_accounts',
+  description: 'Count the company people and their workspace logins for this company: total people, how many have logins, contact-only people, active logins and admins. Use it for questions like "how many accounts do we have".',
+  effect: 'read',
+  timeoutMs: 10_000,
+  access: { user: true },
+  inputSchema: z.object({}).describe('No arguments'),
+  async execute(ctx) {
+    return countUserAccounts(ctx.companyId);
+  },
+});
+
+registerOperation({
+  id: 'list_people',
+  description: 'List this company\'s people: contact-only people and people with workspace logins, with name, position, department, email, phone, location and login status.',
+  effect: 'read',
+  timeoutMs: 15_000,
+  access: { user: true },
+  inputSchema: z.object({}).describe('No arguments'),
+  async execute(ctx) {
+    return listPeople(ctx.companyId);
+  },
+});
+
+const personFields = {
+  name: z.string().max(300).optional().describe('Full name (required for a new person)'),
+  position: z.string().max(300).optional(),
+  department: z.string().max(300).optional(),
+  email: z.string().max(300).optional().describe('Business email'),
+  phone: z.string().max(300).optional(),
+  location: z.string().max(300).optional(),
+  notes: z.string().max(2000).optional(),
+};
+
+registerOperation({
+  id: 'create_person',
+  description: 'Add a company person (contact-only by default). Login access can only be enabled by an admin login and needs username AND password. Never invent credentials; ask the user.',
+  effect: 'local_write',
+  sameTx: true,
+  timeoutMs: 15_000,
+  access: { user: true },
+  inputSchema: z.object({
+    ...personFields,
+    name: z.string().max(300).describe('Full name'),
+    username: z.string().max(64).optional().describe('Admin only: login username'),
+    password: z.string().max(256).optional().describe('Admin only: initial password; never repeat it back'),
+    role: z.enum(['admin', 'user']).optional(),
+    login_enabled: z.boolean().optional(),
+  }),
+  async execute(ctx, args) {
+    requireUser(ctx);
+    if (args.username !== undefined || args.password !== undefined) requireAdmin(ctx);
+    return managePeopleCore(ctx.tx, 'create_person', args, { tenantId: ctx.companyId, actorUser: ctx.user });
+  },
+});
+
+registerOperation({
+  id: 'update_person',
+  description: 'Update one company person by person_id (from list_people): contact fields, and admin-only login fields (username, password, role, active). Changing an email or phone to one that already exists is refused.',
+  effect: 'local_write',
+  sameTx: true,
+  timeoutMs: 15_000,
+  access: { user: true },
+  inputSchema: z.object({
+    ...personFields,
+    person_id: z.string().min(1).describe('The person to update, from list_people'),
+    username: z.string().max(64).optional(),
+    password: z.string().max(256).optional().describe('Admin only; never repeat it back'),
+    role: z.enum(['admin', 'user']).optional(),
+    active: z.boolean().optional().describe('Admin only: disable login with false'),
+    login_enabled: z.boolean().optional(),
+  }),
+  async execute(ctx, args) {
+    requireUser(ctx);
+    if (args.username !== undefined || args.password !== undefined || args.active !== undefined) requireAdmin(ctx);
+    return managePeopleCore(ctx.tx, 'update_person', args, { tenantId: ctx.companyId, actorUser: ctx.user });
+  },
+});
+
+// ---------------------------------------------------------------- company profile (local write slice)
+
+registerOperation({
+  id: 'update_company_profile',
+  description: 'Save fields of the shared company profile (only the fields you pass are changed). Fails with a conflict when expected_revision no longer matches. Known fields are listed by get_company_setup.',
+  effect: 'local_write',
+  sameTx: true,
+  timeoutMs: 15_000,
+  access: { user: true },
+  inputSchema: z.object({
+    expected_revision: z.number().int().optional().describe('Revision you last read; omitted revision checks are skipped'),
+    fields: z.record(z.string(), z.union([z.string(), z.number(), z.record(z.string(), z.string())]))
+      .describe('Field keys and values to save, e.g. {"company_name":"Acme","country":"MY"}'),
+  }),
+  async execute(ctx, args) {
+    requireUser(ctx);
+    const result = await updateCompanyProfile(ctx.tx, {
+      expected_revision: args.expected_revision,
+      source: 'user',
+      source_ref: `agent-run:${ctx.userId}`,
+      ...args.fields,
+    });
+    return { revision: result.company.revision, readiness: result.readiness, company_name: result.company.name };
+  },
+});
+
+// ---------------------------------------------------------------- control operations
+
+let controlHandlers = {
+  listSpecialists: null, companySetup: null, taskStatus: null, stopTask: null, submitPlan: null,
+};
+export function registerControlHandlers(next = {}) {
+  controlHandlers = { ...controlHandlers, ...next };
+}
+
+registerOperation({
+  id: 'list_specialists',
+  description: 'Live specialist roster: id, slug, name, headline, short description, skills and MCP names. Call once before planning; never cache across turns.',
+  effect: 'control',
+  timeoutMs: 15_000,
+  inputSchema: z.object({}).describe('No arguments'),
+  async execute() {
+    if (!controlHandlers.listSpecialists) throw new Error('Specialist roster is not wired');
+    return controlHandlers.listSpecialists();
+  },
+});
+
+registerOperation({
+  id: 'get_company_setup',
+  description: 'Read live minimum Company Profile readiness, missing fields, revision and the manual form link. Recheck after profile edits; do not rely on older chat status.',
+  effect: 'control',
+  timeoutMs: 15_000,
+  inputSchema: z.object({}).describe('No arguments'),
+  async execute() {
+    if (!controlHandlers.companySetup) throw new Error('Company setup status is not wired');
+    return controlHandlers.companySetup();
+  },
+});
+
+registerOperation({
+  id: 'task_status',
+  description: 'Latest submitted job for this chat, or a specific plan id, with per-task statuses, blockers and structured results.',
+  effect: 'control',
+  timeoutMs: 15_000,
+  inputSchema: z.object({ planId: z.string().optional().describe('Plan id; omit for the latest plan on this chat') }),
+  async execute(ctx, args) {
+    if (!controlHandlers.taskStatus) throw new Error('Task status is not wired');
+    return controlHandlers.taskStatus({ planId: args.planId, parentSessionId: ctx.sessionId, requestingSessionId: ctx.sessionId });
+  },
+});
+
+registerOperation({
+  id: 'submit_plan',
+  description: 'Validate and atomically queue a complete specialist plan. The host runs ready specialists, passes dependency evidence and records outcomes; do not poll between tasks (task_status shows progress).',
+  effect: 'control',
+  timeoutMs: 30_000,
+  inputSchema: z.object({
+    title: z.string().max(200).describe('Short plan title'),
+    summary: z.string().max(2000).optional(),
+    tasks: z.array(z.object({
+      id: z.string().max(80).optional().describe('Stable local id used in dependsOn'),
+      agent: z.string().describe('Specialist id or slug from list_specialists'),
+      title: z.string().max(200).optional(),
+      prompt: z.string().min(1).describe('Self-contained instructions for the specialist'),
+      dependsOn: z.array(z.string()).max(50).optional(),
+      acceptanceCriteria: z.array(z.string()).max(20).optional(),
+      checker: z.object({ agent: z.string(), checks: z.array(z.string()).min(1) }).nullable().optional(),
+    })).min(1).max(100).describe('The full task graph; stored atomically'),
+  }),
+  async execute(ctx, args) {
+    if (!controlHandlers.submitPlan) throw new Error('Plan submission is not wired');
+    return controlHandlers.submitPlan(ctx, args);
+  },
+});
+
+registerOperation({
+  id: 'stop_task',
+  description: 'Stop one running task of a submitted job by task id. Committed effects stay; remaining work is cancelled.',
+  effect: 'control',
+  timeoutMs: 15_000,
+  inputSchema: z.object({ taskId: z.string().min(1) }),
+  async execute(ctx, args) {
+    if (!controlHandlers.stopTask) throw new Error('Task cancellation is not wired');
+    return controlHandlers.stopTask({ taskId: args.taskId, requestingSessionId: ctx.sessionId });
+  },
+});
+
+// ---------------------------------------------------------------- DI domain tools
+
+const WRITE_NAME = /(save|create|issue|record|close|delete|cancel|decide|set_|receive|void|approve|reject|submit|link|file_|update|publish|flag|export|reset|undo)/;
+
+/**
+ * Register one Document Intelligence tool (from core/tools.mjs) as a canonical
+ * operation. The real handler stays runTool — transactions, role checks,
+ * artifacts and partial-effect behaviour are unchanged.
+ */
+export function registerDiTool(toolName, spec, agentId, needsUser) {
+  const input = { ...spec.input };
+  delete input.identity; // the host vouches for the acting user; never a model argument
+  const write = Boolean(spec.saveFile || spec.pdf || spec.report || WRITE_NAME.test(toolName));
+  registerOperation({
+    id: toolName,
+    description: spec.description,
+    effect: write ? 'local_write' : 'read',
+    timeoutMs: 120_000, // PDF rendering and browser-backed tools are slow by design
+    profileIds: [agentId],
+    access: { user: needsUser },
+    inputSchema: z.object(input),
+    async execute(ctx, args, services) {
+      const result = await services.runTool(services.diDeps({ ctx }), { agent: ctx.profileId, tool: toolName, args });
+      return result;
+    },
+    diTool: toolName,
+    artifactEffect: write,
+  });
+}
+
+export function manifestEntriesJson(toolIds) {
+  return manifestFor(toolIds).map((entry) => ToolManifestEntrySchema.parse(entry));
+}

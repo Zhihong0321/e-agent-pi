@@ -224,13 +224,13 @@ export function buildPiArgs(opts) {
   if (thinkingLevel) args.push("--thinking", thinkingLevel);
   const skills = [...(opts.skills || [])];
   if (restricted) skills.length = 0;
-  if (!research && imagenConfigured()) skills.push({ dirPath: IMAGEN_SKILL_DIR });
+  if (!restricted && imagenConfigured()) skills.push({ dirPath: IMAGEN_SKILL_DIR });
   for (const skill of skills) {
     if (skill.dirPath) args.push("--skill", skill.dirPath);
   }
   if (opts.mcpCount) args.push("--extension", MCP_ADAPTER_EXTENSION);
-  if (!research) args.push("--extension", path.join(ROOT, "agent", "extensions", "share-file.ts"));
-  if (!research && agentHasSubagents(opts.skills)) args.push("--extension", SUBAGENTS_EXTENSION);
+  if (!restricted) args.push("--extension", path.join(ROOT, "agent", "extensions", "share-file.ts"));
+  if (!restricted && agentHasSubagents(opts.skills)) args.push("--extension", SUBAGENTS_EXTENSION);
   if (opts.sessionFile) args.push("--session", opts.sessionFile);
   return args;
 }

@@ -2,16 +2,14 @@
 // HTTP client; this module runs in the host and owns Postgres + the specialist
 // turn runner (injected from server/index.mjs so we never import the Pi pool).
 import { companyOnboardingStatus } from '../document_inteligence/host.mjs';
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { createSession, getPool, getSession } from "./db.mjs";
 import { getAgent, listAgents } from "./catalog.mjs";
-import { managePeople } from "./users.mjs";
 import { ORCHESTRATOR_AGENT_ID } from "./paths.mjs";
 import { logEvent } from "./debug.mjs";
 import { compileJobTasks, parseJobReply, cleanupCutoff } from "./job-policy.mjs";
 
 export const RESULT_CHARS = 8000;
-export const DISPATCH_TOKEN = randomBytes(32).toString("hex");
 
 /** @type {{
  *   runAgentTurn?: (opts: { message: string; agentId: string; sessionId?: string; modelId?: string }) => Promise<{ reply?: string; session?: { id?: string } }>,
@@ -99,6 +97,10 @@ export async function ensureOrchestratorSchema() {
   return schemaReady;
 }
 
+export function resetOrchestratorSchemaMemoForTests() {
+  schemaReady = undefined;
+}
+
 async function migrateOrchestratorSchema() {
   const pool = getPool();
   await pool.query(`
@@ -139,6 +141,7 @@ async function migrateOrchestratorSchema() {
     ALTER TABLE orchestrator_tasks ADD COLUMN IF NOT EXISTS acceptance_criteria JSONB NOT NULL DEFAULT '[]'::jsonb;
     ALTER TABLE orchestrator_tasks ADD COLUMN IF NOT EXISTS lease_until TIMESTAMPTZ;
     ALTER TABLE orchestrator_tasks ADD COLUMN IF NOT EXISTS result_data JSONB;
+    ALTER TABLE orchestrator_tasks ADD COLUMN IF NOT EXISTS executor_version TEXT NOT NULL DEFAULT 'v1';
     CREATE TABLE IF NOT EXISTS orchestrator_attempts (
       id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES orchestrator_tasks(id) ON DELETE CASCADE,
       child_session_id TEXT, status TEXT NOT NULL, result TEXT, error TEXT,
@@ -422,7 +425,7 @@ async function setTask(id, patch, expectedStatus) {
   return getTaskRow(id);
 }
 
-async function refreshPlanStatus(planId) {
+export async function refreshPlanStatus(planId) {
   const tasks = await listTasks(planId);
   if (!tasks.length) return;
   let status = "done";
@@ -474,6 +477,7 @@ export function specialistPrompt(task, siblings = []) {
 
 async function runSpecialist(task, agent) {
   if (typeof runtime.runAgentTurn !== "function") throw new Error("Dispatch runtime is not ready");
+  activeJobTasks.add(task.id);
   const attemptId = randomUUID();
   const heartbeat = setInterval(() => {
     void getPool().query(`UPDATE orchestrator_tasks SET lease_until = NOW() + INTERVAL '2 minutes' WHERE id = $1 AND status = 'running'`, [task.id])
@@ -508,7 +512,7 @@ async function runSpecialist(task, agent) {
       [attemptId, current?.status === "running" ? "error" : current?.status || "error", message]);
     await refreshPlanStatus(task.planId);
     throw error;
-  } finally { clearInterval(heartbeat); }
+  } finally { clearInterval(heartbeat); activeJobTasks.delete(task.id); }
 }
 
 async function resolveTaskRef(taskId, input = {}) {
@@ -520,12 +524,19 @@ async function resolveTaskRef(taskId, input = {}) {
 }
 
 export async function dispatchTask(input = {}) {
+  if (runnerStopping) throw new Error("Server is draining active jobs for shutdown; dispatch is paused");
   await ensureOrchestratorSchema();
   const taskId = String(input.taskId || input.id || "").trim();
   if (!taskId) throw new Error("taskId is required");
   const task = await resolveTaskRef(taskId, input);
   if (!task) throw new Error("Unknown task");
-  if ((await getPlanRow(task.planId))?.autoRun) throw new Error("This job is managed by the runner; do not manually redispatch it");
+  const taskPlan = await getPlanRow(task.planId);
+  if (taskPlan?.autoRun) throw new Error("This job is managed by the runner; do not manually redispatch it");
+  // Model-supplied task IDs must remain inside the executing parent chat.
+  const activeParent = runtime.activeOrchestratorSessionId?.() || "";
+  if (activeParent && taskPlan && taskPlan.parentSessionId !== activeParent) {
+    throw new Error("Delegation cannot select another parent session");
+  }
   const agent = await resolveSpecialist(task.agentId);
   if (String(agent.slug || agent.id).startsWith('di-')) {
     const setup = await companyOnboardingStatus();
@@ -579,65 +590,6 @@ export async function stopTask(input = {}) {
   return { ok: true, task: next };
 }
 
-function textResult(payload) {
-  return typeof payload === "string" ? payload : JSON.stringify(payload, null, 2);
-}
-
-export async function handleOrchestratorAction(body = {}) {
-  const action = String(body.action || "").trim();
-  try {
-    // Model-supplied plan/task IDs must remain inside the executing parent chat.
-    if (['update_plan', 'dispatch_task', 'task_status', 'stop_task'].includes(action)) {
-      const parentSessionId = parentSessionFrom(body);
-      if (!parentSessionId) throw new Error('No active orchestrator chat for this request');
-      const taskRef = String(body.taskId || body.id || '').trim();
-      const task = taskRef ? await resolveTaskRef(taskRef, body) : null;
-      const planId = task?.planId || body.planId || (action === 'update_plan' ? body.id : null);
-      const plan = planId ? await getPlanRow(planId) : null;
-      if (plan && plan.parentSessionId !== parentSessionId) throw new Error('Delegation cannot access another parent session');
-    }
-    if (action === "list_specialists") {
-      return { ok: true, result: JSON.stringify({ specialists: await listSpecialists(), company_setup: await companyOnboardingStatus().catch(() => ({ available: false, minimum_ready: false })) }) };
-    }
-    if (action === "get_company_setup") {
-      return { ok: true, result: textResult(await companyOnboardingStatus()) };
-    }
-    if (["list_people", "create_person", "update_person"].includes(action)) {
-      const ctx = (await import("../document_inteligence/host.mjs")).companyHostContext();
-      return { ok: true, result: textResult(await managePeople(action, body, { tenantId: ctx.tenantId })) };
-    }
-    if (action === "create_plan") {
-      return { ok: true, result: textResult(await createPlan(body)) };
-    }
-    if (action === "submit_plan") {
-      return { ok: true, result: textResult(await submitPlan(body)) };
-    }
-    if (action === "update_plan") {
-      return { ok: true, result: textResult(await updatePlan(body)) };
-    }
-    if (action === "dispatch_task") {
-      return { ok: true, result: textResult(await dispatchTask(body)) };
-    }
-    if (action === "task_status") {
-      return { ok: true, result: textResult(await taskStatus(body)) };
-    }
-    if (action === "stop_task") {
-      return { ok: true, result: textResult(await stopTask(body)) };
-    }
-    return { ok: false, error: `Unknown action: ${action || "(none)"}` };
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) };
-  }
-}
-
-export function orchestratorAuthorized(req) {
-  const header = String(req.headers?.authorization || req.headers?.Authorization || "");
-  const bearer = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
-  const alt = String(req.headers?.["x-orchestrator-token"] || "").trim();
-  const token = bearer || alt;
-  return Boolean(token) && token === DISPATCH_TOKEN;
-}
-
 export function companyDispatchGate(agent, setup) {
   const slug = agent.slug || agent.id;
   const setupAgents = ['di-onboarding', 'di-db', 'di-templates'];
@@ -649,9 +601,12 @@ export function companyDispatchGate(agent, setup) {
 
 let runnerTimer;
 let ticking = false;
+let runnerStopping = false;
+const activeJobTasks = new Set();
 
 export async function startJobRunner() {
   await ensureOrchestratorSchema();
+  runnerStopping = false;
   if (runnerTimer) return;
   runnerTimer = setInterval(() => {
     void runJobTick().catch(error => logEvent("error", `job runner: ${error.message}`));
@@ -660,10 +615,24 @@ export async function startJobRunner() {
   void runJobTick().catch(error => logEvent("error", `job runner: ${error.message}`));
 }
 
+// Keep heartbeats, Pi processes and the host API alive until accepted work has
+// persisted its outcome. Pending descendants are left for the replacement host.
+export async function stopJobRunner({ timeoutMs = 300000, activeTurns = () => 0 } = {}) {
+  runnerStopping = true;
+  clearInterval(runnerTimer);
+  runnerTimer = null;
+  const deadline = Date.now() + Math.max(0, timeoutMs);
+  while ((ticking || activeJobTasks.size || activeTurns() > 0) && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, Math.min(25, deadline - Date.now())));
+  }
+  return { drained: !ticking && activeJobTasks.size === 0 && activeTurns() === 0,
+    activeJobs: activeJobTasks.size, activeTurns: activeTurns() };
+}
+
 // Claims are serialized across host processes. Running work keeps a heartbeat;
 // expired work is blocked for inspection, never blindly replayed after a crash.
 export async function runJobTick() {
-  if (ticking || typeof runtime.runAgentTurn !== "function") return;
+  if (runnerStopping || ticking || typeof runtime.runAgentTurn !== "function") return;
   ticking = true;
   let client;
   const claimed = [];
@@ -672,23 +641,25 @@ export async function runJobTick() {
     await client.query("BEGIN");
     const lock = await client.query("SELECT pg_try_advisory_xact_lock(73009121) AS locked");
     if (!lock.rows[0].locked) { await client.query("ROLLBACK"); return; }
+    // Legacy (v1) ownership only: v2 tasks belong to the execution runner.
     const stale = await client.query(`UPDATE orchestrator_tasks t SET status='blocked',error='Execution interrupted; inspect the child chat before submitting a revised job'
-      FROM orchestrator_plans p WHERE t.plan_id=p.id AND p.auto_run AND t.status='running'
+      FROM orchestrator_plans p WHERE t.plan_id=p.id AND p.auto_run AND t.status='running' AND t.executor_version='v1'
       AND (t.lease_until IS NULL OR t.lease_until < NOW()) RETURNING t.id,t.plan_id`);
     for (const task of stale.rows) await client.query(`UPDATE orchestrator_attempts SET status='blocked',error='Execution interrupted',finished_at=NOW()
       WHERE task_id=$1 AND status='running'`, [task.id]);
     // A failed or blocked dependency must never release its descendants.
     await client.query(`UPDATE orchestrator_tasks t SET status='blocked',error='A dependency failed, was blocked, or was cancelled'
-      FROM orchestrator_plans p WHERE t.plan_id=p.id AND p.auto_run AND t.status='pending'
+      FROM orchestrator_plans p WHERE t.plan_id=p.id AND p.auto_run AND t.status='pending' AND t.executor_version='v1'
       AND EXISTS (SELECT 1 FROM orchestrator_tasks d WHERE d.id=ANY(t.depends_on) AND d.status IN ('error','blocked','cancelled'))`);
     const running = await client.query(`SELECT agent_id FROM orchestrator_tasks WHERE status='running'`);
     const activeAgents = new Set(running.rows.map(row => row.agent_id));
+    const v1Running = await client.query(`SELECT COUNT(*)::int n FROM orchestrator_tasks WHERE status='running' AND executor_version='v1'`);
     let capacity = Math.max(0, Math.min(
-      maxParallelSlots(runtime.maxSlots?.() ?? 3) - running.rowCount,
-      (runtime.maxSlots?.() ?? 3) - (runtime.runningCount?.() ?? running.rowCount)
+      maxParallelSlots(runtime.maxSlots?.() ?? 3) - v1Running.rows[0].n,
+      (runtime.maxSlots?.() ?? 3) - (runtime.runningCount?.() ?? v1Running.rows[0].n)
     ));
     const candidates = await client.query(`SELECT t.* FROM orchestrator_tasks t JOIN orchestrator_plans p ON p.id=t.plan_id
-      WHERE p.auto_run AND t.status='pending'
+      WHERE p.auto_run AND t.status='pending' AND t.executor_version='v1'
       AND NOT EXISTS (SELECT 1 FROM unnest(t.depends_on) dep(id) LEFT JOIN orchestrator_tasks d ON d.id=dep.id WHERE d.status IS DISTINCT FROM 'done')
       ORDER BY p.created_at,t.sort_order`);
     for (const row of candidates.rows) {
