@@ -176,7 +176,6 @@ import {
   jobReport,
   listSpecialists,
   taskStatus,
-  stopTask,
   refreshPlanStatus,
 } from "./orchestrator.mjs";
 import { toolsFor as diToolsFor, AGENTS as DI_AGENTS } from "../document_inteligence/core/tools.mjs";
@@ -195,6 +194,7 @@ import {
   acceptChatRun,
   activeAttemptCount,
   submitPlanHandler,
+  stopTaskHandler,
   waitForChatRun,
   isInitialized as isExecutionReady,
 } from "./execution/runner.mjs";
@@ -1988,7 +1988,7 @@ async function bootServices() {
         listSpecialists: listSpecialistsPublic,
         companySetup: companyOnboardingStatus,
         taskStatus: (input) => taskStatus(input),
-        stopTask: (input) => stopTask(input),
+        stopTask: (input) => stopTaskHandler(input),
         submitPlan: (ctx, args) => submitPlanHandler(ctx, args),
       });
 
