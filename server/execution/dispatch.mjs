@@ -275,7 +275,9 @@ async function withTimeout(promise, timeoutMs, op) {
     return await Promise.race([
       promise,
       new Promise((_, reject) => {
-        timer = setTimeout(() => reject(Object.assign(new Error(`${op.id} exceeded its ${Math.round(timeoutMs / 1000)}s deadline`), { execCode: 'OPERATION_DEADLINE' }), timeoutMs));
+        timer = setTimeout(() => {
+          reject(Object.assign(new Error(`${op.id} exceeded its ${Math.round(timeoutMs / 1000)}s deadline`), { execCode: 'OPERATION_DEADLINE' }));
+        }, timeoutMs);
       }),
     ]);
   } finally {
