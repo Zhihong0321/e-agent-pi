@@ -64,20 +64,6 @@ export function resolveProfileManifest(agent, opts = {}) {
   };
 }
 
-/** Agents whose chat turns run through the execution system. */
-export function isMigratedProfile(agentId) {
-  return getMigratedSet().has(String(agentId || ''));
-}
-
-const migrated = new Set();
-export function setMigratedProfiles(ids) {
-  migrated.clear();
-  for (const id of ids || []) migrated.add(id);
-}
-function getMigratedSet() {
-  return migrated;
-}
-
 export const SCHEDULER_TOOL_IDS = [
   'schedule_agents',
   'schedule_preview',

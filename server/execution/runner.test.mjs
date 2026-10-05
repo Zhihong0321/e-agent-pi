@@ -100,8 +100,10 @@ function fakeWorkerFactory() {
           if (!result.ok) (factory.dispatchErrors ||= []).push({ toolId: 'finish_run', error: result.error });
         }
         if (action.error) throw action.error;
+        return { text: action.text ?? '' };
       },
       settledWithoutError: () => true,
+      sessionRef: () => factory.sessionRef || null,
       async dispose() {},
     };
     factory.lastWorker = worker;
@@ -218,6 +220,18 @@ async function startChatRun(overrides = {}) {
   return { ...result, factory };
 }
 
+/** Runs one specialist task (typed finish_run completion) to its terminal state and returns its row. */
+async function runSpecialistTask({ factory, prompt = 'Do the thing' }) {
+  setupRunner(factory, { services: { profileFor: (agent) => profiles.resolveProfileManifest(agent, { peopleTools: true }) } });
+  await runner.submitPlanHandler(
+    { sessionId: 'parent-chat', userId: admin.id, companyId: holder.tenantId, profileId: 'orchestrator', runRef: 'plan-run', requestId: randomUUID() },
+    { title: 'Specialist job', tasks: [{ id: 't1', agent: 'worker', prompt }] });
+  await runner.tick();
+  await settleTasks();
+  const row = (await holder.pool.query(`SELECT id, status, result, result_data, error FROM orchestrator_tasks`)).rows[0];
+  return { ...row, error: row.error ? JSON.parse(row.error) : null };
+}
+
 /** Each test gets a fresh embedded database and clean execution state. */
 function withDb(name, fn) {
   test(name, async () => {
@@ -230,22 +244,18 @@ function withDb(name, fn) {
 
 // ---------------------------------------------------------------- tests
 
-withDb('vertical slice: chat run calls native tools through the bridge and finalizes from typed completion', async () => {
+withDb('vertical slice: chat run calls native tools through the bridge and finalizes with Pi\'s own answer', async () => {
   const factory = fakeWorkerFactory();
-  factory.setScript((message, ctx) => {
-    if (ctx.promptIndex === 0) {
-      return {
-        toolCalls: [{ toolId: 'count_user_accounts', args: {} }, { toolId: 'list_people', args: {} }],
-        finishRun: { status: 'done', summary: 'Counted the company people', sourceCallIds: [], outputs: {} },
-      };
-    }
-    return { finishRun: { status: 'done', summary: 'done' } };
-  });
+  factory.setScript(() => ({
+    toolCalls: [{ toolId: 'count_user_accounts', args: {} }, { toolId: 'list_people', args: {} }],
+    text: 'Counted the company people',
+  }));
   const { run, deduped } = await startChatRun({ factory });
   assert.equal(deduped, false);
   const settled = await settleChat(run.id);
   assert.equal(settled.status, 'done', `run error: ${JSON.stringify(settled.error)}`);
-  assert.equal(settled.outcome.summary, 'Counted the company people');
+  assert.equal(settled.outcome.summary, 'Counted the company people', 'the run outcome carries the answer Pi wrote');
+  assert.equal(factory.lastWorker.promptsSeen().length, 1, 'no completion-only follow-up prompt for chat');
 
   const calls = await store.listToolCalls(run.id);
   assert.deepEqual(calls.map((c) => c.operationId).sort(), ['count_user_accounts', 'list_people']);
@@ -258,6 +268,46 @@ withDb('vertical slice: chat run calls native tools through the bridge and final
   assert.ok(!factory.lastWorker.promptsSeen()[0].includes('admin_capability'));
 });
 
+withDb('chat run: a Pi error stays a failure and the committed tool effect is kept', async () => {
+  const factory = fakeWorkerFactory();
+  factory.setScript(() => ({
+    toolCalls: [{ toolId: 'create_person', args: { name: 'Persisted' } }],
+    error: new Error('529: overloaded_error'),
+  }));
+  const { run } = await startChatRun({ factory });
+  const settled = await settleChat(run.id);
+  assert.equal(settled.status, 'failed');
+  assert.match(settled.error?.message, /overloaded_error/);
+  const calls = await store.listToolCalls(run.id);
+  assert.equal(calls.length, 1, 'the committed effect stays inspectable');
+  const member = await holder.pool.query(`SELECT name FROM di.company_member`);
+  assert.equal(member.rows[0]?.name, 'Persisted', 'the committed write remains');
+});
+
+withDb('chat run: Pi\'s session reference is saved before the run settles, and only when it changed', async () => {
+  const saved = [];
+  const ref = { sessionId: 'pi-session-1', sessionFile: '/data/storage/pi-session-1.jsonl' };
+  const factory = fakeWorkerFactory();
+  factory.sessionRef = ref;
+  factory.setScript(() => ({ text: 'hello' }));
+  setupRunner(factory, { services: { saveSessionRef: async (sessionId, value) => { saved.push({ sessionId, value }); } } });
+  const first = await runner.acceptChatRun({
+    session: { id: 'chat-ref', parentSessionId: null }, profile: CATALOG.orchestrator, user: admin, prompt: 'hi', images: [],
+    modelId: 'm', submissionKey: `k-${randomUUID()}`, manifest: orchestratorProfile(), chatContext: { companyId: holder.tenantId }, sessionFile: null,
+  });
+  await settleChat(first.run.id);
+  assert.deepEqual(saved, [{ sessionId: 'chat-ref', value: ref }]);
+
+  // The next turn resumes that file, so there is nothing new to save.
+  const second = await runner.acceptChatRun({
+    session: { id: 'chat-ref', parentSessionId: null }, profile: CATALOG.orchestrator, user: admin, prompt: 'done?', images: [],
+    modelId: 'm', submissionKey: `k-${randomUUID()}`, manifest: orchestratorProfile(), chatContext: { companyId: holder.tenantId },
+    sessionFile: ref.sessionFile,
+  });
+  await settleChat(second.run.id);
+  assert.equal(saved.length, 1);
+});
+
 withDb('completion protocol: missing completion gets one completion-only continuation with writes disabled', async () => {
   const factory = fakeWorkerFactory();
   let prompts = 0;
@@ -266,13 +316,12 @@ withDb('completion protocol: missing completion gets one completion-only continu
     if (prompts === 1) return {}; // ends without finish_run
     return { finishRun: { status: 'done', summary: 'repaired completion' } };
   });
-  const { run } = await startChatRun({ factory });
-  const settled = await settleChat(run.id);
-  assert.equal(settled.status, 'done');
-  assert.equal(settled.outcome.summary, 'repaired completion');
+  const task = await runSpecialistTask({ factory });
+  assert.equal(task.status, 'done');
+  assert.equal(task.result, 'repaired completion');
 
   // A second attempt at business writes during the continuation is refused.
-  prompts = 0;
+  await makeDb();
   const factory2 = fakeWorkerFactory();
   factory2.setScript((message, ctx) => {
     if (ctx.promptIndex === 0) return {};
@@ -281,9 +330,8 @@ withDb('completion protocol: missing completion gets one completion-only continu
       finishRun: { status: 'done', summary: 'trying to write after the fact' },
     };
   });
-  const second = await startChatRun({ factory: factory2, sessionId: 'chat-2', submissionKey: `k-${randomUUID()}` });
-  const settled2 = await settleChat(second.run.id);
-  assert.equal(settled2.status, 'done', 'the protocol repair completes; the refused write is not fatal');
+  const task2 = await runSpecialistTask({ factory: factory2 });
+  assert.equal(task2.status, 'done', 'the protocol repair completes; the refused write is not fatal');
   const people = await holder.pool.query(`SELECT COUNT(*)::int n FROM di.company_member`);
   assert.equal(people.rows[0].n, 0, 'no business write after the completion boundary');
 });
@@ -296,11 +344,11 @@ withDb('completion protocol: no completion after continuation records failed/COM
     }
     return {}; // never completes, even after the repair prompt
   });
-  const { run } = await startChatRun({ factory });
-  const settled = await settleChat(run.id);
-  assert.equal(settled.status, 'failed');
-  assert.equal(settled.error?.code, 'COMPLETION_MISSING');
-  const calls = await store.listToolCalls(run.id);
+  const task = await runSpecialistTask({ factory });
+  assert.equal(task.status, 'failed');
+  assert.equal(task.error?.code, 'COMPLETION_MISSING');
+  const attempt = await holder.pool.query(`SELECT id FROM orchestrator_attempts WHERE task_id=$1`, [task.id]);
+  const calls = await store.listToolCalls(attempt.rows[0].id);
   assert.equal(calls.length, 1, 'the committed effect stays inspectable');
   const member = await holder.pool.query(`SELECT name FROM di.company_member`);
   assert.equal(member.rows[0]?.name, 'Persisted', 'the committed write remains');
@@ -344,22 +392,21 @@ withDb('known business outputs are derived from persisted tool results, not mode
     toolCalls: [{ callId: 'c1', toolId: 'create_person', args: { name: 'Evidence' } }],
     finishRun: { status: 'done', summary: 'created', sourceCallIds: ['c1'], outputs: { person_id: 'fabricated-id' } },
   }));
-  const { run } = await startChatRun({ factory });
-  const settled = await settleChat(run.id);
-  assert.equal(settled.status, 'done');
-  assert.match(settled.outcome.outputs.person_id, /^[0-9a-f-]{36}$/, 'authoritative person id replaces the model claim');
+  const task = await runSpecialistTask({ factory });
+  assert.equal(task.status, 'done');
+  assert.match(task.result_data.outputs.person_id, /^[0-9a-f-]{36}$/, 'authoritative person id replaces the model claim');
 
   // A count claim that contradicts the count result is rejected.
+  await makeDb();
   const factory2 = fakeWorkerFactory();
   factory2.setScript(() => ({
     toolCalls: [{ callId: 'c2', toolId: 'count_user_accounts', args: {} }],
     finishRun: { status: 'done', summary: 'lies about the count', sourceCallIds: ['c2'], outputs: { company_people: 99 } },
   }));
-  const second = await startChatRun({ factory: factory2, sessionId: 'chat-3', submissionKey: `k-${randomUUID()}` });
-  const settled2 = await settleChat(second.run.id);
-  assert.equal(settled2.status, 'failed');
-  assert.equal(settled2.error?.code, 'COMPLETION_MISSING', 'a rejected completion is terminal per the reliability contract');
-  const events2 = await store.listEvents({ runRef: second.run.id });
+  const task2 = await runSpecialistTask({ factory: factory2 });
+  assert.equal(task2.status, 'failed');
+  assert.equal(task2.error?.code, 'COMPLETION_MISSING', 'a rejected completion is terminal per the reliability contract');
+  const events2 = await store.listEvents({ runRef: task2.id });
   assert.ok(events2.some((e) => e.kind === 'completion.rejected' && e.data?.code === 'COMPLETION_INVALID'),
     'the rejection reason stays inspectable');
 });

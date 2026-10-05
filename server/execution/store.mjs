@@ -207,6 +207,34 @@ export async function findChatRunBySubmission(sessionId, submissionKey) {
   return result.rows[0] || null;
 }
 
+/**
+ * History for chats saved before Pi answers were stored: an assistant message whose
+ * transcript has no text takes the summary recorded on the finished run that was active
+ * when the message was created. Nothing is rewritten in storage.
+ */
+export async function withRecordedAnswers(sessionId, messages) {
+  const transcripts = new Map();
+  for (const message of messages) {
+    if (message.role !== 'assistant' || typeof message.content !== 'string' || message.content[0] !== '{') continue;
+    try {
+      const transcript = JSON.parse(message.content);
+      if (transcript?.v === 1 && !transcript.text && !transcript.streaming) transcripts.set(message, transcript);
+    } catch { /* plain text message */ }
+  }
+  if (!transcripts.size) return messages;
+  const runs = (await db().query(
+    `SELECT created_at AS "createdAt", finished_at AS "finishedAt", outcome FROM execution_runs
+     WHERE session_id=$1 AND kind='chat' AND status='done' AND outcome IS NOT NULL ORDER BY created_at`, [sessionId])).rows;
+  return messages.map((message) => {
+    const transcript = transcripts.get(message);
+    if (!transcript) return message;
+    const at = new Date(message.createdAt).getTime();
+    const run = runs.find((r) => new Date(r.createdAt).getTime() <= at && (!r.finishedAt || new Date(r.finishedAt).getTime() >= at));
+    const summary = run?.outcome?.summary;
+    return summary ? { ...message, content: JSON.stringify({ ...transcript, text: summary }) } : message;
+  });
+}
+
 export async function updateChatRun(id, patch, expectedGeneration) {
   const fields = [];
   const values = [];

@@ -3,9 +3,13 @@
 // drive exactly the same SSE protocol, retry/resume behaviour and session bookkeeping.
 import { useEffect, useRef, useState } from "react";
 import { setTurnBusy } from "../src/sw-refresh";
+let clientSubmissionSequence = 0;
+function newClientSubmissionKey() {
+  return globalThis.crypto?.randomUUID?.() || `client-${++clientSubmissionSequence}`;
+}
+
 import {
   AGENT_KEY,
-  CONTINUE_PROMPT,
   FALLBACK_AGENT,
   SESSION_KEY,
   agentLiveUrl,
@@ -414,10 +418,10 @@ export function useStudio({ userId }: { userId?: string } = {}) {
     }
   };
 
-  const send = async (text = message, opts?: { resume?: boolean; sessionId?: string; files?: PendingFile[] }) => {
+  const send = async (text = message, opts?: { resume?: boolean; sessionId?: string; files?: PendingFile[]; submissionKey?: string }) => {
     const resume = Boolean(opts?.resume);
     const trimmed = text.trim();
-    const files = resume ? [] : opts?.files ?? pendingFiles;
+    const files = opts?.files ?? (resume ? [] : pendingFiles);
     if (!resume && ((!trimmed && !files.length) || loading)) return;
     if (resume && abortRef.current?.signal.aborted) return;
     if (!resume) {
@@ -492,14 +496,16 @@ export function useStudio({ userId }: { userId?: string } = {}) {
       setLiveStatus("");
       setHistory((prev) => prev.map((msg) => (msg.streaming ? { ...msg, streaming: false } : msg)));
       // The user left and came back while the turn ran: the screen holds a stale copy, so fetch the finished transcript.
-      if (detachedRef.current && sessionIdRef.current === activeId) {
+      if ((detachedRef.current || recovered) && sessionIdRef.current === activeId) {
         detachedRef.current = false;
         loadHistory(activeId);
       }
     };
+    let recovered = false;
     let gotDone = false;
     let gotAgentError = false;
     let retry = false;
+    const submissionKey = opts?.submissionKey || (resume ? undefined : newClientSubmissionKey());
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -511,6 +517,7 @@ export function useStudio({ userId }: { userId?: string } = {}) {
           agentId: agent?.id,
           engine: selectedEngine,
           attachments: files,
+          ...(submissionKey ? { submissionKey } : {}),
         }),
         signal: ac.signal,
       });
@@ -535,13 +542,15 @@ export function useStudio({ userId }: { userId?: string } = {}) {
           }
           if (event.type === "done") {
             gotDone = true;
+            // A replayed submission carries only the saved answer; the saved transcript is fetched once idle.
+            recovered = Boolean(event.recoveredRun);
             const runError = event.run?.error || event.recoveredRun?.error;
             if (runError?.message) setError(runError.message);
             else setError("");
             patchAssistant((msg) => ({
               ...msg,
-              content: resume && event.reply ? `${msg.content}\n\n${event.reply}`.trim() : (event.reply ?? msg.content),
-              blocks: resume && event.blocks ? [...(msg.blocks ?? []), ...event.blocks] : (event.blocks ?? msg.blocks),
+              content: event.reply || msg.content,
+              blocks: event.blocks ?? msg.blocks,
               streaming: false,
             }));
             if (event.session) {
@@ -581,10 +590,10 @@ export function useStudio({ userId }: { userId?: string } = {}) {
     if (retry && !ac.signal.aborted && resumeAttempt.current < 8) {
       resumeAttempt.current += 1;
       setError("");
-      setLiveStatus("Host dropped the turn — continuing…");
+      setLiveStatus("Connection dropped — reconnecting…");
       setLoading(true);
       patchAssistant((msg) => {
-        const note = "Host restarted mid-turn. Continuing…";
+        const note = "Connection dropped. Reconnecting to your request…";
         const blocks = msg.blocks ?? [];
         if (blocks.some((block) => block.type === "note" && block.text === note)) return msg;
         return { ...msg, streaming: true, blocks: [...blocks, { type: "note", text: note }] };
@@ -595,7 +604,8 @@ export function useStudio({ userId }: { userId?: string } = {}) {
         finishIdle();
         return;
       }
-      return send(CONTINUE_PROMPT, { resume: true, sessionId: activeId });
+      // Same payload and key: the host reattaches to the run it already accepted.
+      return send(text, { resume: true, sessionId: activeId, files, submissionKey });
     }
     if (retry && !ac.signal.aborted) {
       setError("Host kept dropping the turn. Send another message to resume.");

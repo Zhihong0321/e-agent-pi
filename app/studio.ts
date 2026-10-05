@@ -215,9 +215,6 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return data;
 }
 
-export const CONTINUE_PROMPT =
-  "The previous turn was cut off by a host restart. Continue the same task immediately from where you left off. Do not wait. Do not ask the user to confirm.";
-
 export function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }

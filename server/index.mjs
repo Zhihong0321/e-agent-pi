@@ -123,7 +123,7 @@ import {
   isPackageAgent,
   isProposalAgent,
 } from "./paths.mjs";
-import { applyPiEvent, createTurn, extractReply, parseTranscript, serializeTurn } from "./pi-stream.mjs";
+import { applyPiEvent, createTurn, extractReply, serializeTurn } from "./pi-stream.mjs";
 import {
   attachAgentResources,
   attachSkillToAllAgents,
@@ -194,7 +194,7 @@ import {
   registerControlHandlers,
   registerExternalMcpTools,
 } from "./execution/registry.mjs";
-import { setMigratedProfiles, isMigratedProfile, manifestForAgent, setDiToolIdProvider, RETIRED_INTERNAL_MCP_SLUGS } from "./execution/profiles.mjs";
+import { manifestForAgent, setDiToolIdProvider, RETIRED_INTERNAL_MCP_SLUGS } from "./execution/profiles.mjs";
 import {
   initExecution,
   startClaimLoop,
@@ -211,7 +211,7 @@ import {
 import { handleExecutionToolRoute, handleExecutionStatusRoute, executionHealth } from "./execution/routes.mjs";
 import { piWorkerFactory, setModelsJsonProvider } from "./execution/pi-adapter.mjs";
 import { closeAllConnections as closeExecutionMcpConnections, connectBinding } from "./execution/mcp-adapter.mjs";
-import { ensureExecutionSchema } from "./execution/store.mjs";
+import { ensureExecutionSchema, findChatRunBySubmission, withRecordedAnswers } from "./execution/store.mjs";
 import {
   ensureWhatsappMcp,
   startWhatsappSidecar,
@@ -1261,6 +1261,42 @@ function writeSse(res, data) {
   res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
+/** runId -> promise of the chat turn this process is serving (run settled and transcript saved). */
+const chatTurnsInFlight = new Map();
+
+/**
+ * Reattach a browser retry to the run it already submitted. The answer is the one recorded
+ * for that run, never whichever assistant message happens to be latest in the chat.
+ */
+async function replayChatRun(res, session, user, run) {
+  const settled = await (chatTurnsInFlight.get(run.id) ?? waitForChatRun(run.id));
+  const answer = settled?.status === "done" ? settled.outcome?.summary || "" : "";
+  const active = defaultModelId ? findModel(modelCatalog ?? [], defaultModelId) : null;
+  if (res.writableEnded) return;
+  writeSse(res, {
+    type: "done",
+    reply: answer,
+    sessionId: session.id,
+    session: publicSession({ ...session, preview: answer }, user),
+    activeModelId: active?.id ?? defaultModelId,
+    activeModel: active ? { id: active.id, label: active.label, provider: active.provider, model: active.model } : null,
+    recoveredRun: { id: settled?.id, status: settled?.status, outcome: settled?.outcome || null, error: settled?.error || null },
+  });
+}
+
+/** Open the SSE response for a chat turn. */
+function openChatStream(res) {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+    "Access-Control-Allow-Origin": "*",
+  });
+  if (typeof res.flushHeaders === "function") res.flushHeaders();
+  res.socket?.setNoDelay?.(true);
+}
+
 /**
  * Save the live Pi transcript as it grows so a tab close still leaves history in Postgres.
  * @param {string} sessionId
@@ -2037,6 +2073,7 @@ async function bootServices() {
           },
           getAgent,
           profileFor: (agent) => manifestForAgent(agent),
+          saveSessionRef: (sessionId, ref) => updateSession(sessionId, { piSessionId: ref.sessionId, piSessionFile: ref.sessionFile }),
           refreshPlanStatus: (planId) => refreshPlanStatus(planId),
           canDelegate: (profileId) => profileId === ORCHESTRATOR_AGENT_ID,
           runTool,
@@ -2066,10 +2103,6 @@ async function bootServices() {
         },
         workerFactory: piWorkerFactory,
       });
-      // All Pi catalog profiles use the shared execution runner. AGY remains
-      // explicitly outside this set until its adapter passes the same contract.
-      const migratedAgents = (await listAgents()).filter((agent) => agent.engine !== 'agy');
-      setMigratedProfiles(migratedAgents.map((agent) => agent.id));
       setLegacyLoadProvider(() => [...piPool.values()].filter((slot) => slot.busy).length);
       // Claiming starts only after the DI host schema and tenant context are ready.
       logEvent("info", "execution system configured (one runner, native tools, typed completion)");
@@ -2112,7 +2145,6 @@ async function bootServices() {
   try {
     if (ensureScheduler && dbReady()) {
       await ensureScheduler({ pool: getPool(), catalog: catalogApi, log: logEvent });
-      setMigratedProfiles((await listAgents()).filter(agent => agent.engine !== 'agy').map(agent => agent.id));
       schedulerWorker = createSchedulerWorker({ pool: getPool(), log: logEvent,
         runAgentJob: runScheduledAgent, getRun: recoverScheduledRun, sendEmail,
         userLookup: async id => (await getPool().query('SELECT id,username,role,active,company_tenant_id FROM users WHERE id=$1',[id])).rows[0] || null,
@@ -3164,7 +3196,7 @@ const server = createServer(async (req, res) => {
         return;
       }
       if (dbReady() && user && !await getSession(sessionId, user.id)) return json(res, 404, { error: "Session not found" });
-      json(res, 200, { sessionId, messages: dbReady() ? await listMessages(sessionId) : [] });
+      json(res, 200, { sessionId, messages: dbReady() ? await withRecordedAnswers(sessionId, await listMessages(sessionId)) : [] });
       return;
     }
 
@@ -3228,7 +3260,7 @@ const server = createServer(async (req, res) => {
         if (req.method === "GET") {
           json(res, 200, {
             session: publicSession(session, user),
-            messages: await listMessages(sessionId),
+            messages: await withRecordedAnswers(sessionId, await listMessages(sessionId)),
           });
           return;
         }
@@ -3380,6 +3412,31 @@ const server = createServer(async (req, res) => {
         engine: session.engine || "pi",
         modelId: typeof modelId === "string" ? modelId : session.modelId || defaultModelId,
       };
+      // Pi agents run on the execution runner, decided by the agent's own engine (AGY keeps its adapter).
+      // Capabilities and identity come from the host-built TrustedContext, not from prompt injection.
+      const runsOnRunner = profile.engine !== "agy";
+      const clientKey = typeof body.submissionKey === "string" ? body.submissionKey.trim() : "";
+      const submissionKey = clientKey ? `ui:${clientKey}` : `turn:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+      // A browser retry of a message the host already accepted: reattach to its run. The message is
+      // neither stored again nor executed again.
+      const acceptedRun = clientKey && runsOnRunner && session.engine !== "agy"
+        ? await findChatRunBySubmission(session.id, submissionKey)
+        : null;
+      if (acceptedRun) {
+        openChatStream(res);
+        const replayHeartbeat = setInterval(() => {
+          if (!res.writableEnded) res.write(`: ping ${Date.now()}\n\n`);
+        }, 5000);
+        try {
+          await replayChatRun(res, session, user, acceptedRun);
+        } catch (error) {
+          if (!res.writableEnded) writeSse(res, { type: "error", error: sanitizeError(error), retryable: true });
+        } finally {
+          clearInterval(replayHeartbeat);
+          if (!res.writableEnded) res.end();
+        }
+        return;
+      }
       let packed = { prompt: "", images: [], files: [] };
       try {
         packed = await materializeAttachments(agentWorkspace(profile), attachments);
@@ -3399,13 +3456,10 @@ const server = createServer(async (req, res) => {
       const prompt = packed.prompt
         ? `${packed.prompt}\n${trimmed || attachFallback(profile)}`
         : trimmed;
-      // Migrated profiles carry authority in the host-built TrustedContext, not
-      // in prompt-injected capabilities or identity codes.
-      const migrated = isMigratedProfile(profile.id);
       const chatPrompt = await enrichRestartPrompt(prompt, profile)
-        + (user && !migrated ? userManagementPrompt(req, user) : "")
-        + (user && !migrated && profile.id === "di-procurement" ? procurementIdentityPrompt(req, user) : "")
-        + (user && !migrated && profile.id === "di-fde" ? fdeIdentityPrompt(req, user) : "");
+        + (user && !runsOnRunner ? userManagementPrompt(req, user) : "")
+        + (user && !runsOnRunner && profile.id === "di-procurement" ? procurementIdentityPrompt(req, user) : "")
+        + (user && !runsOnRunner && profile.id === "di-fde" ? fdeIdentityPrompt(req, user) : "");
       const storedUser =
         [trimmed, packed.sharedFiles?.length ? packed.sharedFiles.map(file => file.link).join("\n") : attachmentChatMarkup(packed.files)].filter(Boolean).join("\n\n") ||
         (packed.files.length ? `Attached: ${attachmentSummary(packed.files)}` : prompt);
@@ -3433,15 +3487,7 @@ const server = createServer(async (req, res) => {
         }
       }
 
-      res.writeHead(200, {
-        "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-cache, no-transform",
-        Connection: "keep-alive",
-        "X-Accel-Buffering": "no",
-        "Access-Control-Allow-Origin": "*",
-      });
-      if (typeof res.flushHeaders === "function") res.flushHeaders();
-      res.socket?.setNoDelay?.(true);
+      openChatStream(res);
       writeSse(res, { type: "session", sessionId: session.id, session: publicSession(session, user) });
 
       const persister = createTurnPersister(
@@ -3495,12 +3541,9 @@ const server = createServer(async (req, res) => {
               })
             : chat(text, typeof modelId === "string" ? modelId : undefined, session, onEvent, images);
 
-        if (isMigratedProfile(profile.id) && session.engine !== "agy") {
-          // Execution-system path: durable run record, native host tools,
-          // typed completion. SSE remains presentation; the records are truth.
-          const submissionKey = typeof body.submissionKey === "string" && body.submissionKey.trim()
-            ? `ui:${body.submissionKey.trim()}`
-            : `turn:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+        if (runsOnRunner && session.engine !== "agy") {
+          // Execution-system path: durable run record, native host tools, Pi's own
+          // answer. SSE remains presentation; the records are truth.
           let chatCompanyId = null;
           try { chatCompanyId = companyHostContext().tenantId; } catch { chatCompanyId = null; }
           try {
@@ -3518,34 +3561,23 @@ const server = createServer(async (req, res) => {
               onEvent,
             });
             if (deduped) {
-              // Transport retry of the same intentional message: reattach to the
-              // persisted run instead of executing it twice.
-              const settled = await waitForChatRun(run.id);
-              const history = await listMessages(session.id);
-              const lastAssistant = [...history].reverse().find((m) => m.role === "assistant");
-              const parsed = lastAssistant ? parseTranscript(lastAssistant.content) : null;
-              const active = defaultModelId ? findModel(modelCatalog ?? [], defaultModelId) : null;
-              const recovered = settled?.outcome?.summary || parsed?.text || extractReply(lastAssistant?.content ?? "") || "";
-              if (!res.writableEnded) {
-                writeSse(res, {
-                  type: "done",
-                  reply: recovered,
-                  blocks: parsed?.blocks ?? [],
-                  sessionId: session.id,
-                  session: publicSession({ ...session, preview: recovered || storedUser }, user),
-                  activeModelId: active?.id ?? defaultModelId,
-                  activeModel: active ? { id: active.id, label: active.label, provider: active.provider, model: active.model } : null,
-                  recoveredRun: { id: settled?.id, status: settled?.status, outcome: settled?.outcome || null, error: settled?.error || null },
-                });
-              }
+              // Two simultaneous posts of the same message: the other one owns the turn.
+              await replayChatRun(res, session, user, run);
             } else {
-              const settled = await waitForChatRun(run.id);
+              // The run settles and its transcript is saved before the terminal response goes out;
+              // a retry arriving meanwhile waits on the same promise.
+              const turnSaved = (async () => {
+                const result = await waitForChatRun(run.id);
+                await persister.finish(lastTurn, false);
+                return result;
+              })();
+              chatTurnsInFlight.set(run.id, turnSaved);
+              const settled = await turnSaved.finally(() => chatTurnsInFlight.delete(run.id));
               const active = defaultModelId ? findModel(modelCatalog ?? [], defaultModelId) : null;
-              await persister.finish(lastTurn, false);
               if (!res.writableEnded) {
                 writeSse(res, {
                   type: "done",
-                  reply: lastTurn.text || settled?.outcome?.summary || "",
+                  reply: lastTurn.text,
                   blocks: JSON.parse(serializeTurn(lastTurn)).blocks,
                   sessionId: session.id,
                   session: publicSession({ ...session, preview: lastTurn.text || storedUser }, user),

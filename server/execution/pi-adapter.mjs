@@ -2,6 +2,7 @@
 // No warm reuse — session, token, tool and event bindings die with the process,
 // which is what makes the attempt-scoped worker token safe.
 import { RpcClient } from '@earendil-works/pi-coding-agent';
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { killTree, rpcClientPid } from '../proc.mjs';
@@ -27,14 +28,24 @@ export function setModelsJsonProvider(fn) {
 export function piWorkerFactory(opts) {
   const { profile, manifest, token, attemptId, sessionFile, signal } = opts;
   const workerUrl = opts.workerUrl || `http://127.0.0.1:${process.env.PORT || 8080}`;
+  // Chat turns are ordinary Pi conversations: no finish_run, the final answer is Pi's own text.
+  const isChat = opts.runKind === 'chat';
   let pi = null;
   let pid = null;
+  let piSession = null;
   let completionAccepted = false;
   let lastError = '';
   let modelTurns = 0;
   const runtimeDir = path.join(RUNTIME_DIR, 'execution', attemptId);
 
   async function start() {
+    // Pi would silently create a blank conversation at a missing --session path.
+    if (sessionFile && !existsSync(sessionFile)) {
+      throw Object.assign(
+        new Error(`The saved conversation for this chat is missing (${path.basename(sessionFile)}), so it cannot be resumed`),
+        { execCode: 'SESSION_UNAVAILABLE' },
+      );
+    }
     const modelsJson = modelsJsonProvider ? await modelsJsonProvider() : JSON.parse(await readFile(path.join(RUNTIME_DIR, '..', 'models.json'), 'utf8').catch(() => '{}'));
     const mcpServers = (manifest.mcpServers || []).map((server) => ({ ...server }));
     await mkdir(runtimeDir, { recursive: true });
@@ -79,6 +90,7 @@ export function piWorkerFactory(opts) {
         EXECUTION_WORKER_URL: workerUrl,
         EXECUTION_WORKER_TOKEN: token,
         EXECUTION_MANIFEST_FILE: manifestFile,
+        EXECUTION_RUN_KIND: opts.runKind || '',
         PI_CODING_AGENT_DIR: runtimeDir,
         PI_PACKAGE_DIR,
       }),
@@ -86,6 +98,10 @@ export function piWorkerFactory(opts) {
     });
     await pi.start();
     pid = rpcClientPid(pi);
+    if (isChat) {
+      const state = await pi.getState();
+      if (state?.sessionFile) piSession = { sessionId: state.sessionId, sessionFile: state.sessionFile };
+    }
   }
 
   function assertSignal() {
@@ -111,7 +127,7 @@ export function piWorkerFactory(opts) {
           modelTurns += 1;
           lastError = event.message.errorMessage ? String(event.message.errorMessage) : null;
         }
-        if (event?.type === 'tool_execution_end' && String(event.toolName || '') === 'finish_run') {
+        if (!isChat && event?.type === 'tool_execution_end' && String(event.toolName || '') === 'finish_run') {
           if (finishRunAccepted(event.result)) completionAccepted = true;
           if (completionAccepted) {
             // Acknowledged completion boundary: stop further model turns with
@@ -133,6 +149,7 @@ export function piWorkerFactory(opts) {
       else await pi.prompt(message);
       await settled;
       if (lastError && !completionAccepted) throw new Error(lastError);
+      return { text: currentTurn.text };
     } catch (error) {
       if (signal?.aborted) throw Object.assign(new Error('Run was aborted'), { execCode: 'CANCELLED' });
       throw error;
@@ -152,6 +169,8 @@ export function piWorkerFactory(opts) {
     prompt,
     modelTurns: () => modelTurns,
     settledWithoutError: () => !lastError,
+    /** Pi's own session identity, once its file exists on disk (a never-written session has nothing to resume). */
+    sessionRef: () => (piSession && existsSync(piSession.sessionFile) ? piSession : null),
     markCompletionAccepted: () => { completionAccepted = true; },
     async dispose() {
       signal?.removeEventListener('abort', onAbort);

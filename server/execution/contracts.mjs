@@ -30,6 +30,7 @@ export const ERROR_CODES = {
   CANCELLED: { kind: 'execution', effectState: 'none' },
   REQUEST_DEADLINE: { kind: 'availability', effectState: 'none' },
   MODEL_UNAVAILABLE: { kind: 'availability', effectState: 'none' },
+  SESSION_UNAVAILABLE: { kind: 'availability', effectState: 'none' },
   STALE_ATTEMPT: { kind: 'permission', effectState: 'none' },
 };
 

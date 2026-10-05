@@ -86,6 +86,9 @@ export default function hostToolsExtension(pi: import("@earendil-works/pi-coding
     });
   }
 
+  // Chat turns end with Pi's ordinary answer; only background tasks submit a typed completion.
+  if (process.env.EXECUTION_RUN_KIND === "chat") return;
+
   pi.registerTool({
     name: "finish_run",
     label: "Finish run",

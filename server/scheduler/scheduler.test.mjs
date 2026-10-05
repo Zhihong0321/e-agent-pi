@@ -5,7 +5,7 @@ import {ensureSchedulerSchema,setSchedulerPool} from './store.mjs';
 import {setSchedulerCatalog} from './actions.mjs';
 import {createSchedule,listCompanySchedules,getSchedule,updateScheduleService,pauseScheduleService,resumeScheduleService,cancelScheduleService,getScheduleHistoryService} from './service.mjs';
 import {computeOccurrences,localToUtc,validateTimingRule} from './timing.mjs';
-import {manifestForAgent,setMigratedProfiles,SCHEDULER_TOOL_IDS} from '../execution/profiles.mjs';
+import {manifestForAgent,SCHEDULER_TOOL_IDS} from '../execution/profiles.mjs';
 import {getOperation} from '../execution/registry.mjs';
 import {createSchedulerWorker} from './worker.mjs';
 const owner={id:'alice',role:'user',active:true,company_tenant_id:'company-a'};
@@ -54,7 +54,7 @@ test('durable scheduler persistence, access controls, dispatch and recovery',asy
    assert.equal((await listCompanySchedules({...bob,user:{...bob.user,role:'admin'}})).schedules.length,1);
   });
   await t.test('Scheduler AI tools expose every scheduling action and persist through the native handler',async()=>{
-   setMigratedProfiles(['scheduler']);const profile=manifestForAgent({id:'scheduler',slug:'scheduler',toolProfile:'assistant'});
+   const profile=manifestForAgent({id:'scheduler',slug:'scheduler',toolProfile:'assistant'});
    for(const id of SCHEDULER_TOOL_IDS) assert.ok(profile.manifest.toolIds.includes(id),id);
    assert.deepEqual((await getOperation('schedule_agents').execute()).agents.map(a=>a.id),['research']);
    const created=await getOperation('schedule_create').execute({...ctx,tx:pg},{title:'Native AI scheduled job',preset:'agent_job',timing:future,action:{agent_id:'research',prompt:'Native instructions'}});

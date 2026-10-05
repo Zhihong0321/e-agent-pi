@@ -1,16 +1,19 @@
 import assert from 'node:assert/strict';
 import test, { mock } from 'node:test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const root = await mkdtemp(path.join(tmpdir(), 'pi-adapter-test-'));
 let batches = [];
+let aborts = 0;
+let piSessionFile = path.join(root, 'new-session.jsonl');
 mock.module('@earendil-works/pi-coding-agent', { namedExports: { RpcClient: class {
   async start() {}
   onEvent(fn) { this.listener = fn; return () => { this.listener = null; }; }
   async prompt() { for (const event of batches.shift()) this.listener(event); }
-  async abort() {}
+  async getState() { return { sessionId: 'pi-session', sessionFile: piSessionFile }; }
+  async abort() { aborts += 1; }
   async stop() {}
 } } });
 mock.module('../proc.mjs', { namedExports: { killTree: async () => {}, rpcClientPid: () => null } });
@@ -61,4 +64,46 @@ test('the intentional abort after accepted completion is not a user-visible erro
   await worker.prompt('hi');
   assert.ok(!events.some(event => event.type === 'error'));
   await worker.dispose();
+});
+
+const finishAccepted = { type: 'tool_execution_end', toolName: 'finish_run', toolCallId: 'finish', result: { details: { ok: true, data: { accepted: true } } } };
+const textDelta = delta => ({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta } });
+
+test('a chat turn returns the answer Pi wrote and is never aborted by a finish_run call', async () => {
+  aborts = 0;
+  batches = [[{ type: 'agent_start' }, finishAccepted, textDelta('Done, '), textDelta('the login is enabled.'), assistant(), settled]];
+  const worker = piWorkerFactory({ profile: { id: 'test' }, manifest: { manifest: {} }, attemptId: 'chat-answer', runKind: 'chat' });
+  await worker.start();
+  const answer = await worker.prompt('enable it');
+  assert.equal(answer.text, 'Done, the login is enabled.');
+  assert.equal(aborts, 0);
+  await worker.dispose();
+});
+
+test('a task still stops at its accepted completion', async () => {
+  aborts = 0;
+  batches = [[finishAccepted, assistant('Request aborted'), settled]];
+  const worker = piWorkerFactory({ profile: { id: 'test' }, manifest: { manifest: {} }, attemptId: 'task-stop', runKind: 'task' });
+  await worker.start();
+  await worker.prompt('go');
+  assert.equal(aborts, 1);
+  await worker.dispose();
+});
+
+test('a chat session reference comes from Pi and exists only once its file is written', async () => {
+  piSessionFile = path.join(root, 'written-later.jsonl');
+  const worker = piWorkerFactory({ profile: { id: 'test' }, manifest: { manifest: {} }, attemptId: 'chat-ref', runKind: 'chat' });
+  await worker.start();
+  assert.equal(worker.sessionRef(), null, 'nothing to resume before Pi writes the file');
+  await writeFile(piSessionFile, '{}\n');
+  assert.deepEqual(worker.sessionRef(), { sessionId: 'pi-session', sessionFile: piSessionFile });
+  await worker.dispose();
+});
+
+test('a saved conversation whose file is missing is reported, not replaced by a blank one', async () => {
+  const worker = piWorkerFactory({
+    profile: { id: 'test' }, manifest: { manifest: {} }, attemptId: 'chat-missing', runKind: 'chat',
+    sessionFile: path.join(root, 'gone.jsonl'),
+  });
+  await assert.rejects(worker.start(), error => error.execCode === 'SESSION_UNAVAILABLE' && /cannot be resumed/.test(error.message));
 });

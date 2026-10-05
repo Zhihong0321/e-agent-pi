@@ -198,7 +198,8 @@ async function runChatAgent({ runId, session, profile, user, prompt, images, mod
 
 /**
  * Execute one attempt with the shared lifecycle: bind attempt → start worker →
- * prompt → typed completion → finalize. Chat and specialists both land here.
+ * prompt → outcome → finalize. Chat and specialists both land here; a chat turn's
+ * outcome is Pi's own answer, a specialist's is its typed finish_run completion.
  */
 export async function runAgent({ kind, runRef, profile, user, ctx, input, images, deadlineAt, limits, manifest, onEvent, runKindOpts = {}, generation = 0, capacityOwned = kind === 'chat' }) {
   const attemptId = kind === 'chat' ? runRef : newId();
@@ -224,6 +225,12 @@ export async function runAgent({ kind, runRef, profile, user, ctx, input, images
   let worker = null;
   let heartbeat = null;
   let deadlineTimer = null;
+  // Pi's conversation reference is saved before the run is finalized, so the next turn resumes it.
+  const saveSessionRef = async () => {
+    const ref = worker?.sessionRef?.();
+    if (!ref || ref.sessionFile === runKindOpts.sessionFile || !config.services.saveSessionRef) return;
+    await config.services.saveSessionRef(ctx.sessionId, ref);
+  };
   try {
     worker = await config.workerFactory({
       profile, manifest, token: workerToken, attemptId, runRef, runKind: kind,
@@ -265,10 +272,12 @@ export async function runAgent({ kind, runRef, profile, user, ctx, input, images
     await worker.start();
     if (controller.signal.aborted) throw Object.assign(new Error('Deadline reached before the worker started'), { execCode: 'REQUEST_DEADLINE' });
 
-    await worker.prompt(input, { onEvent: turnCountingOnEvent });
+    const answer = await worker.prompt(input, { onEvent: turnCountingOnEvent });
+    if (kind === 'chat') await saveSessionRef();
 
+    // Chat turns have no typed completion: Pi settling without error is the outcome.
     let proposal = state.accepted ? state.proposal : null;
-    if (!proposal && !controller.signal.aborted && worker.settledWithoutError?.()) {
+    if (kind !== 'chat' && !proposal && !controller.signal.aborted && worker.settledWithoutError?.()) {
       // Completion-only continuation: repairs the protocol, never reruns work; writes disabled.
       dispatch.disableAttemptWrites(attemptId);
       await worker.prompt(COMPLETION_ONLY_PROMPT, { onEvent: turnCountingOnEvent });
@@ -276,7 +285,9 @@ export async function runAgent({ kind, runRef, profile, user, ctx, input, images
     }
 
     let outcome;
-    if (state.accepted && proposal) {
+    if (kind === 'chat' && !state.cancelRequested && !controller.signal.aborted) {
+      outcome = { status: 'done', summary: answer?.text || '', outputs: {} };
+    } else if (state.accepted && proposal) {
       outcome = alignCheckerCompletion(runKindOpts.taskKind, proposal);
     } else if (state.cancelRequested || (controller.signal.aborted && (await isStopRequested(runRef, kind)))) {
       outcome = { status: 'cancelled', summary: 'Cancelled before completion; committed effects are retained', outputs: {} };
@@ -294,6 +305,9 @@ export async function runAgent({ kind, runRef, profile, user, ctx, input, images
   } catch (error) {
     const execErr = error?.execCode ? execError(error.execCode, error.message) : execError('EXECUTION_FAILED', error?.message || 'Run failed');
     const status = state.cancelRequested ? 'cancelled' : 'failed';
+    if (kind === 'chat') {
+      await saveSessionRef().catch((saveError) => config.services.logEvent?.('error', `chat run ${runRef}: could not save the Pi session reference: ${saveError?.message || saveError}`));
+    }
     try {
       await finalizeRun(runRef, kind, status === 'cancelled'
         ? { status, summary: 'Cancelled; committed effects are retained', outputs: {} }
