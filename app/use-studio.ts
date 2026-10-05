@@ -498,6 +498,7 @@ export function useStudio({ userId }: { userId?: string } = {}) {
       }
     };
     let gotDone = false;
+    let gotAgentError = false;
     let retry = false;
     try {
       const res = await fetch("/api/chat", {
@@ -556,11 +557,14 @@ export function useStudio({ userId }: { userId?: string } = {}) {
             const pushed = event.host.pushed ?? event.host.git?.pushed;
             setPublishOk(!failed && (pushed === true || (event.host.git == null && !failed)));
           }
-          if (event.type === "error" && event.error) setError(event.error);
+          if (event.type === "error" && event.error) {
+            gotAgentError = event.retryable !== true;
+            setError(event.error);
+          }
         }, () => {
           pulseRef.current = Date.now();
         });
-        if (!gotDone && !ac.signal.aborted) retry = true;
+        if (!gotDone && !gotAgentError && !ac.signal.aborted) retry = true;
       }
     } catch (err) {
       if ((err as { name?: string }).name === "AbortError") {

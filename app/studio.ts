@@ -111,6 +111,7 @@ export type StreamEvent = {
   isError?: boolean;
   phase?: string;
   error?: string;
+  retryable?: boolean;
   status?: string;
   reply?: string;
   blocks?: TurnBlock[];
@@ -403,7 +404,10 @@ export async function readSse(res: Response, onEvent: (event: StreamEvent) => vo
         if (!line.startsWith("data:")) continue;
         const payload = line.slice(5).trim();
         if (!payload) continue;
-        onEvent(JSON.parse(payload) as StreamEvent);
+        const event: unknown = JSON.parse(payload);
+        if (event && typeof event === "object" && "type" in event && typeof event.type === "string") {
+          onEvent(event as StreamEvent);
+        }
       }
       sep = buf.indexOf("\n\n");
     }

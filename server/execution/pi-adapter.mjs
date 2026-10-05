@@ -94,6 +94,7 @@ export function piWorkerFactory(opts) {
 
   async function prompt(message, { onEvent } = {}) {
     assertSignal();
+    lastError = null;
     const currentTurn = { blocks: [], text: '' };
     let settle;
     const settled = new Promise((resolve, reject) => { settle = { resolve, reject }; });
@@ -108,7 +109,7 @@ export function piWorkerFactory(opts) {
         if (event?.type === 'agent_settled') { settle.resolve(); return; }
         if (event?.type === 'message_end' && event.message?.role === 'assistant') {
           modelTurns += 1;
-          if (event.message.errorMessage) lastError = String(event.message.errorMessage);
+          lastError = event.message.errorMessage ? String(event.message.errorMessage) : null;
         }
         if (event?.type === 'tool_execution_end' && String(event.toolName || '') === 'finish_run') {
           if (finishRunAccepted(event.result)) completionAccepted = true;
@@ -120,7 +121,7 @@ export function piWorkerFactory(opts) {
         }
         const mapped = applyPiEvent(currentTurn, event);
         onEvent?.(event, currentTurn);
-        opts.onEvent?.(mapped, currentTurn);
+        if (mapped) opts.onEvent?.(mapped, currentTurn);
       } catch {
         /* event mapping must never kill the run */
       }
@@ -131,6 +132,7 @@ export function piWorkerFactory(opts) {
       if (opts.images?.length) await pi.prompt(message, opts.images);
       else await pi.prompt(message);
       await settled;
+      if (lastError && !completionAccepted) throw new Error(lastError);
     } catch (error) {
       if (signal?.aborted) throw Object.assign(new Error('Run was aborted'), { execCode: 'CANCELLED' });
       throw error;
