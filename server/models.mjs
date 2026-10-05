@@ -9,6 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CATALOG_FILE = path.join(__dirname, "..", "agent", "model-catalog.json");
 
 const DEFAULT_BASE_URL = {
+  MINIMAX: "https://api.minimax.io/v1",
   CAVOTI: "https://cavoti.com/v1",
   KIMI: "https://api2.cmkey.cn/v1",
   GLM53: "https://vectide.cn/v1",
@@ -117,7 +118,9 @@ export async function testModelRoundTrip(entry, env) {
           : {
               model: entry.model,
               messages: [{ role: "user", content: "ping" }],
-              max_tokens: 8,
+              ...(entry.envPrefix === "MINIMAX"
+                ? { max_completion_tokens: 2048, reasoning_effort: "low" }
+                : { max_tokens: 8 }),
               stream: Boolean(entry.requiresStream),
             },
       ),
@@ -151,6 +154,11 @@ export async function testModelRoundTrip(entry, env) {
  */
 export function interpolatePiModels(modelsJson) {
   const data = JSON.parse(modelsJson);
+  const minimax = secret("minimax_api_key");
+  if (data.providers?.["minimax-m-plan"]) {
+    if (minimax) data.providers["minimax-m-plan"].apiKey = minimax;
+    data.providers["minimax-m-plan"].baseUrl = secret("minimax_base_url") || DEFAULT_BASE_URL.MINIMAX;
+  }
   const cavoti = secret("cavoti_api_key");
   const kimi = secret("kimi_api_key");
   const glm53 = secret("glm53_api_key");

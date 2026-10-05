@@ -1,7 +1,6 @@
 // Second stress test: 20 edge cases through the real DI MCP server, with the checker in the loop.
-// Requires OPENCODE_GO_TOKEN_PLAN and OPENCODE_GO_PLAN_BASE_URL (worker and, by default, checker judge).
+// Requires MINIMAX_API_KEY and MINIMAX_BASE_URL (worker and, by default, checker judge).
 // Run from this folder with: node test/manual-pi-edge-eval.mjs [count] [--no-checker]
-import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runStressTest } from "./pi-harness.mjs";
@@ -57,23 +56,21 @@ export async function fixtures(fixture) {
 }
 
 /** OpenCode Go provider entry for the exact worker model. */
-export function opencodeGo(modelId, name) {
+export function minimaxPlan(modelId, name) {
   return {
-    baseUrl: process.env.OPENCODE_GO_PLAN_BASE_URL, api: "openai-completions", authHeader: true, apiKey: "$OPENCODE_GO_TOKEN_PLAN",
-    // Go rejects requests that omit this header. One id per process keeps routing stable across the run.
-    headers: { "x-opencode-session": process.env.DI_EVAL_SESSION || randomUUID() },
-    compat: { supportsDeveloperRole: false, supportsReasoningEffort: true },
-    models: [{ id: modelId, name, input: ["text"], contextWindow: 64000, maxTokens: 8192 }],
+    baseUrl: process.env.MINIMAX_BASE_URL || "https://api.minimax.io/v1", api: "openai-completions", authHeader: true, apiKey: "$MINIMAX_API_KEY",
+    compat: { supportsDeveloperRole: false, supportsReasoningEffort: true, requiresReasoningContentOnAssistantMessages: true, maxTokensField: "max_completion_tokens" },
+    models: [{ id: modelId, name, reasoning: true, input: ["text", "image"], contextWindow: 1000000, maxTokens: 32768, thinkingLevelMap: { minimal: "low", off: "low" } }],
   };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  if (!process.env.OPENCODE_GO_TOKEN_PLAN || !process.env.OPENCODE_GO_PLAN_BASE_URL) {
-    throw new Error("Exact opencode-go/deepseek-v4.1-flash run requires OPENCODE_GO_TOKEN_PLAN and OPENCODE_GO_PLAN_BASE_URL");
+  if (!process.env.MINIMAX_API_KEY) {
+    throw new Error("Exact minimax-m-plan/MiniMax-M3.1-Flash-Preview run requires MINIMAX_API_KEY and MINIMAX_BASE_URL");
   }
-  const modelId = "deepseek-v4.1-flash";
+  const modelId = "MiniMax-M3.1-Flash-Preview";
   await runStressTest({
-    name: "di-pi-edge-eval", scenarios, fixtures, provider: "opencode-go", modelId,
-    providerConfig: opencodeGo(modelId, "DeepSeek V4.1 Flash"),
+    name: "di-pi-edge-eval", scenarios, fixtures, provider: "minimax-m-plan", modelId,
+    providerConfig: minimaxPlan(modelId, "MiniMax M3.1 Flash Preview"),
   });
 }

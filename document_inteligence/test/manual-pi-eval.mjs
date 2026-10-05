@@ -1,6 +1,6 @@
 // First stress test: 10 prompts along the normal business path, with the checker in the loop.
 // Worker model: GRAFT_* from the root .env (DI_EVAL_MODEL overrides the model id).
-// Checker judge: OPENCODE_GO_TOKEN_PLAN (or DI_CHECKER_*), see checker/judge.mjs.
+// Checker judge: MINIMAX_API_KEY (or DI_CHECKER_*), see checker/judge.mjs.
 // Run from this folder with: node test/manual-pi-eval.mjs [count] [--no-checker]
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -45,8 +45,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     env: { GRAFT_API_KEY: secrets.GRAFT_API_KEY },
     providerConfig: {
       baseUrl: secrets.GRAFT_BASE_URL, api: "openai-completions", authHeader: true, apiKey: "$GRAFT_API_KEY",
-      compat: { supportsDeveloperRole: false, supportsReasoningEffort: false },
-      models: [{ id: modelId, name: "Evaluation model", input: ["text"], contextWindow: 64000, maxTokens: 8192 }],
+      compat: { supportsDeveloperRole: false, supportsReasoningEffort: true, requiresReasoningContentOnAssistantMessages: true, maxTokensField: "max_completion_tokens" },
+      models: [{ id: modelId, name: "Evaluation model", reasoning: true, input: ["text", "image"], contextWindow: 1000000, maxTokens: 32768, thinkingLevelMap: { minimal: "low", off: "low" } }],
     },
   });
 }

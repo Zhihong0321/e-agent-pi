@@ -66,7 +66,9 @@ async function once(cfg, prompt, maxTokens, signal) {
     headers: { 'content-type': 'application/json', authorization: `Bearer ${cfg.apiKey}` },
     body: JSON.stringify({
       model: cfg.model,
-      max_tokens: maxTokens,
+      ...(cfg.model === 'MiniMax-M3.1-Flash-Preview'
+        ? { max_completion_tokens: Math.max(maxTokens, 8192), reasoning_effort: 'low' }
+        : { max_tokens: maxTokens }),
       messages: [{ role: 'user', content: prompt }],
     }),
     signal,

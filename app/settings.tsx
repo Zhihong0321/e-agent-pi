@@ -4,6 +4,8 @@ import ActivityLog from "./activity-log";
 import ChatLogs from "./chat-logs";
 
 type Settings = {
+  minimaxApiKeySet: boolean;
+  minimaxBaseUrl: string;
   tavilyApiKeySet: boolean;
   tavilyKeysSet: boolean[];
   braveKeysSet: boolean[];
@@ -245,6 +247,8 @@ export default function SettingsPage() {
     braveKeys: Array.from({ length: 3 }, () => ""),
     exaKeys: Array.from({ length: 3 }, () => ""),
     cavotiApiKey: "",
+    minimaxApiKey: "",
+    minimaxBaseUrl: "",
     cavotiBaseUrl: "",
     kimiApiKey: "",
     kimiBaseUrl: "",
@@ -345,6 +349,7 @@ export default function SettingsPage() {
     setForm((prev) => ({
       ...prev,
       cavotiBaseUrl: data.cavotiBaseUrl,
+      minimaxBaseUrl: data.minimaxBaseUrl,
       kimiBaseUrl: data.kimiBaseUrl,
       glm53BaseUrl: data.glm53BaseUrl,
       opencodeGoBaseUrl: data.opencodeGoBaseUrl,
@@ -697,6 +702,8 @@ export default function SettingsPage() {
         method: "PUT",
         body: JSON.stringify({
           cavoti_api_key: form.cavotiApiKey,
+          minimax_api_key: form.minimaxApiKey,
+          minimax_base_url: form.minimaxBaseUrl,
           cavoti_base_url: form.cavotiBaseUrl,
           kimi_api_key: form.kimiApiKey,
           kimi_base_url: form.kimiBaseUrl,
@@ -747,6 +754,7 @@ export default function SettingsPage() {
       setForm((prev) => ({ ...prev, tavilyKeys: Array.from({ length: 5 }, () => "") }));
       setForm(prev => ({ ...prev, braveKeys: Array.from({ length: 3 }, () => ""), exaKeys: Array.from({ length: 3 }, () => "") }));
       setJinaTest(null);
+      setForm((prev) => ({ ...prev, minimaxApiKey: "" }));
       setForm((prev) => ({ ...prev, jinaKeys: Array.from({ length: JINA_SLOTS }, () => ""), cavotiApiKey: "", kimiApiKey: "", glm53ApiKey: "", opencodeGoApiKey: "", hiveAiApiKey: "", yerplanApiKey: "", imagenApiKey: "", githubToken: "", pgProxyToken: "", eeHtmlApiKey: "", eeMailApiKey: "", settingsPassword: "", afaPasskey: "", tnbPassword: "", salesPgProxyToken: "", googleAdsClientSecret: "", googleAdsDeveloperToken: "", googleAdsRefreshToken: "", omApiToken: "", composioApiKey: "" }));
       if (data.proposal?.lastError) {
         setError(data.proposal.lastError);
@@ -1207,7 +1215,21 @@ export default function SettingsPage() {
                 />
               </label>
 
-              <h2>OpenCode GO</h2>
+              <h2>MiniMax M Plan</h2>
+              <p>MiniMax M3.1 Flash Preview for text, coding, tools and image understanding.</p>
+              <label>
+                API key {settings?.minimaxApiKeySet ? <em>saved</em> : <em>missing</em>}
+                <input type="password" value={form.minimaxApiKey}
+                  onChange={(event) => setForm({ ...form, minimaxApiKey: event.target.value })}
+                  placeholder={settings?.minimaxApiKeySet ? "••••••••  (unchanged)" : "Paste M Plan key"} />
+              </label>
+              <label>
+                Base URL
+                <input value={form.minimaxBaseUrl}
+                  onChange={(event) => setForm({ ...form, minimaxBaseUrl: event.target.value })} />
+              </label>
+
+              <h2>OpenCode GO (previous provider)</h2>
               <p>
                 One key unlocks GLM 5.3 Flash, Qwen 3.8 Flash and DeepSeek V4 Flash Vision. Quota-based plan; the
                 base URL must keep the <code>/go/</code> segment.

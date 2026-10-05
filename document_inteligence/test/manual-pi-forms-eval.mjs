@@ -1,12 +1,12 @@
 // Forms reasoning test: 16 prompts for Form Designer, Form Clerk, Records Clerk and Document
 // Agent through the real DI MCP server, with the checker in the loop. Prompts and acceptance
 // checks are in ../forms-test-prompts.md.
-// Requires OPENCODE_GO_TOKEN_PLAN and OPENCODE_GO_PLAN_BASE_URL (worker and, by default, checker judge).
+// Requires MINIMAX_API_KEY and MINIMAX_BASE_URL (worker and, by default, checker judge).
 // Run from this folder with: node test/manual-pi-forms-eval.mjs [count] [--no-checker]
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runStressTest } from "./pi-harness.mjs";
-import { opencodeGo } from "./manual-pi-edge-eval.mjs";
+import { minimaxPlan } from "./manual-pi-edge-eval.mjs";
 
 export const scenarios = [
   ["di-forms", "Make me a job report form for my technicians."],
@@ -95,12 +95,12 @@ export async function fixtures(fixture, { submit }) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  if (!process.env.OPENCODE_GO_TOKEN_PLAN || !process.env.OPENCODE_GO_PLAN_BASE_URL) {
-    throw new Error("This run requires OPENCODE_GO_TOKEN_PLAN and OPENCODE_GO_PLAN_BASE_URL");
+  if (!process.env.MINIMAX_API_KEY) {
+    throw new Error("This run requires MINIMAX_API_KEY and MINIMAX_BASE_URL");
   }
-  const modelId = process.env.DI_EVAL_MODEL || "deepseek-v4.1-flash";
+  const modelId = process.env.DI_EVAL_MODEL || "MiniMax-M3.1-Flash-Preview";
   await runStressTest({
-    name: "di-pi-forms-eval", scenarios, fixtures, provider: "opencode-go", modelId,
-    providerConfig: opencodeGo(modelId, modelId),
+    name: "di-pi-forms-eval", scenarios, fixtures, provider: "minimax-m-plan", modelId,
+    providerConfig: minimaxPlan(modelId, modelId),
   });
 }

@@ -14,6 +14,7 @@ import { handleDemoExpenses } from "./demo-expenses.mjs";
 import { handleDemoProcurement } from "./demo-procurement.mjs";
 import path from "node:path";
 import { RpcClient } from "@earendil-works/pi-coding-agent";
+import { migrateMiniMaxPlan } from "./model-plan.mjs";
 import {
   closeDb,
   connectDb,
@@ -1674,6 +1675,8 @@ async function resetPiPool({ agentId } = {}) {
 /** The models.json text Pi should see: bundled catalog plus saved provider base URLs. Pure. */
 async function buildPiModelsJson() {
   const raw = JSON.parse(await readFile(BUNDLED_MODELS, "utf8"));
+  const minimax = secret("minimax_base_url");
+  if (minimax && raw.providers["minimax-m-plan"]) raw.providers["minimax-m-plan"].baseUrl = minimax;
   const cavoti = secret("cavoti_base_url");
   const kimi = secret("kimi_base_url");
   const glm53 = secret("glm53_base_url");
@@ -1773,6 +1776,11 @@ async function bootServices() {
   try {
     if (dbReady()) {
       await seedAgentCatalog();
+      const modelMigration = await migrateMiniMaxPlan();
+      if (!modelMigration.skipped) {
+        defaultModelId = modelMigration.modelId;
+        logEvent("info", `MiniMax M Plan selected for ${modelMigration.agents} agents and ${modelMigration.sessions} chats`);
+      }
       const counts = await catalogCounts();
       logEvent("info", `agents=${counts.agents} skills=${counts.skills} mcp=${counts.mcp}`);
     }

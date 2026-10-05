@@ -226,7 +226,9 @@ export function buildPiArgs(opts) {
     if (excluded.length) args.push("--exclude-tools", excluded.join(","));
   }
   if (profile.noBuiltinTools) args.push("--no-builtin-tools");
-  const thinkingLevel = normalizeThinkingLevel(opts.thinkingLevel);
+  const requestedThinking = normalizeThinkingLevel(opts.thinkingLevel);
+  const thinkingLevel = opts.provider === "minimax-m-plan" && (!requestedThinking || ["off", "minimal"].includes(requestedThinking))
+    ? "low" : requestedThinking;
   if (thinkingLevel) args.push("--thinking", thinkingLevel);
   const skills = [...(opts.skills || [])];
   if (restricted) skills.length = 0;

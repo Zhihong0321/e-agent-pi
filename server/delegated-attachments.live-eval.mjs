@@ -23,8 +23,8 @@ import { runTool, describeError } from "../document_inteligence/core/actions.mjs
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const modelsFile = process.argv[2];
 if (!modelsFile) throw new Error("Pass the Pi models.json containing a configured vision provider");
-const provider = process.argv[3] || "opencode-go";
-const model = process.argv[4] || "deepseek-v4.1-flash";
+const provider = process.argv[3] || "minimax-m-plan";
+const model = process.argv[4] || "MiniMax-M3.1-Flash-Preview";
 const dir = await mkdtemp(path.join(process.env.HANDOFF_EVAL_ROOT || os.tmpdir(), "expense-handoff-live-"));
 const workspace = path.join(dir, "clerk");
 const sourceWorkspace = path.join(dir, "orchestrator");
@@ -75,7 +75,7 @@ const host = http.createServer(async (req, res) => {
 await new Promise(resolve => host.listen(0, "127.0.0.1", resolve));
 const models = JSON.parse(await readFile(modelsFile, "utf8"));
 assert.ok(models.providers[provider].models.find(m => m.id === model)?.input.includes("image"));
-models.providers[provider].headers = { ...models.providers[provider].headers, "x-opencode-session": randomUUID() };
+if (provider === "opencode-go") models.providers[provider].headers = { ...models.providers[provider].headers, "x-opencode-session": randomUUID() };
 await writeFile(path.join(runtime, "models.json"), JSON.stringify(models));
 await writeFile(path.join(runtime, "settings.json"), JSON.stringify({ packages: [] }));
 await writeFile(path.join(runtime, "auth.json"), "{}");

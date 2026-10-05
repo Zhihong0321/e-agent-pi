@@ -33,7 +33,7 @@ const ROOT = path.join(__dirname, "..");
 // ---------- CONFIG ----------
 
 function parseArgs(argv) {
-  const out = { model: "glm-5.3-flash", credential: "OPENCODE_GO_TOKEN_PLAN", strictTools: true, cases: null, timeoutMs: 60000 };
+  const out = { model: "MiniMax-M3.1-Flash-Preview", credential: "MINIMAX_M_PLAN", strictTools: true, cases: null, timeoutMs: 60000, reasoningEffort: "low" };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--model") out.model = argv[++i];
@@ -51,6 +51,9 @@ function parseArgs(argv) {
 const VAULT_PATH = process.env.MODEL_BENCH_VAULT || "D:/Tools/my-vault/vault.json";
 
 async function loadCredential(name) {
+  if (name === "MINIMAX_M_PLAN" && process.env.MINIMAX_API_KEY) {
+    return { secret: process.env.MINIMAX_API_KEY, baseUrl: process.env.MINIMAX_BASE_URL || "https://api.minimax.io/v1" };
+  }
   const vault = JSON.parse(await readFile(VAULT_PATH, "utf8"));
   const cred = vault.credentials.find((c) => c.name === name);
   if (!cred) throw new Error(`Credential "${name}" not found in ${VAULT_PATH}`);
@@ -150,7 +153,7 @@ const MOCK = {
 
 async function chatCompletion({ baseUrl, apiKey, model, messages, tools, toolChoice, sessionId, timeoutMs, reasoningEffort }) {
   const url = `${String(baseUrl).replace(/\/+$/, "")}/chat/completions`;
-  const body = { model, messages, max_tokens: 800, temperature: 0 };
+  const body = { model, messages, max_completion_tokens: 8192, temperature: 0 };
   if (tools) body.tools = tools;
   if (toolChoice) body.tool_choice = toolChoice;
   if (reasoningEffort) body.reasoning_effort = reasoningEffort;
@@ -163,7 +166,7 @@ async function chatCompletion({ baseUrl, apiKey, model, messages, tools, toolCho
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
-        "x-opencode-session": sessionId, // OpenCode GO routes by session; 400s without it.
+        ...(baseUrl.includes("opencode.ai") ? { "x-opencode-session": sessionId } : {}),
       },
       body: JSON.stringify(body),
       signal: controller.signal,

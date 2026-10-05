@@ -9,6 +9,8 @@ export const BRAVE_KEY_NAMES = Array.from({ length: 3 }, (_, i) => `brave_api_ke
 export const EXA_KEY_NAMES = Array.from({ length: 3 }, (_, i) => `exa_api_key_${i + 1}`);
 
 const KEYS = [
+  "minimax_api_key",
+  "minimax_base_url",
   "tavily_api_key",
   ...TAVILY_KEY_NAMES,
   ...BRAVE_KEY_NAMES,
@@ -69,7 +71,9 @@ export const DEFAULT_PASSWORD = "eternalgy2026";
 let cache = {};
 
 export function secret(key) {
-  return String(cache[key] ?? "").trim();
+  const envValue = key === "minimax_api_key" ? process.env.MINIMAX_API_KEY
+    : key === "minimax_base_url" ? process.env.MINIMAX_BASE_URL : "";
+  return String(cache[key] || envValue || "").trim();
 }
 
 export async function loadSecrets() {
@@ -96,6 +100,7 @@ export async function saveSecrets(patch) {
     if ([...JINA_KEY_NAMES, ...TAVILY_KEY_NAMES, ...BRAVE_KEY_NAMES, ...EXA_KEY_NAMES, 'tavily_api_key'].includes(key)) await setSetting(key, "");
   }
   const secretFields = new Set([
+    "minimax_api_key",
     ...JINA_KEY_NAMES,
     ...TAVILY_KEY_NAMES,
     ...BRAVE_KEY_NAMES,
@@ -134,6 +139,8 @@ export async function saveSecrets(patch) {
 
 export function publicSettings() {
   return {
+    minimaxApiKeySet: Boolean(secret("minimax_api_key")),
+    minimaxBaseUrl: secret("minimax_base_url") || "https://api.minimax.io/v1",
     braveKeysSet: BRAVE_KEY_NAMES.map(key => Boolean(secret(key))),
     exaKeysSet: EXA_KEY_NAMES.map(key => Boolean(secret(key))),
     tavilyApiKeySet: Boolean(secret("tavily_api_key") || process.env.TAVILY_API_KEY || TAVILY_KEY_NAMES.some(key => secret(key))),
@@ -187,6 +194,7 @@ export function publicSettings() {
 
 export function secretFlags() {
   return {
+    minimaxApiKey: Boolean(secret("minimax_api_key")),
     tavilyApiKey: Boolean(secret("tavily_api_key") || process.env.TAVILY_API_KEY || TAVILY_KEY_NAMES.some(key => secret(key))),
     cavotiApiKey: Boolean(secret("cavoti_api_key")),
     kimiApiKey: Boolean(secret("kimi_api_key")),

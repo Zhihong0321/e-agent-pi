@@ -61,6 +61,13 @@ test("buildPiArgs: an invalid or missing thinking level omits the flag", () => {
   assert.equal(buildPiArgs({ ...baseOpts, toolProfile: "coding" }).includes("--thinking"), false);
 });
 
+test("MiniMax always gets a supported reasoning level", () => {
+  for (const thinkingLevel of [undefined, "off", "minimal", "low", "high", "xhigh"]) {
+    const args = buildPiArgs({ ...baseOpts, provider: "minimax-m-plan", thinkingLevel });
+    assert.equal(args[args.indexOf("--thinking") + 1], ["high", "xhigh"].includes(thinkingLevel) ? thinkingLevel : "low");
+  }
+});
+
 test("skillsNeedBash / resolveToolProfile: assistant falls back to ops when a skill shells out", async (t) => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "pi-skill-"));
   t.after(() => rm(dir, { recursive: true, force: true }));

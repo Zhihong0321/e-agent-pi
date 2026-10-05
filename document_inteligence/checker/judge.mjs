@@ -1,13 +1,13 @@
 // The judge: one small model call that returns JSON. No tools, no role prompt, no history.
-// Default: glm-5.3-flash on OpenCode Go, a different model family from the workers.
+// Default: MiniMax M3.1 Flash Preview through M Plan.
 import { randomUUID } from "node:crypto";
 import { recordApiUsage } from "../../server/usage.mjs";
 
 export function judgeConfigFromEnv(env = process.env) {
   return {
-    baseUrl: (env.DI_CHECKER_BASE_URL || env.OPENCODE_GO_PLAN_BASE_URL || "https://opencode.ai/zen/go/v1").replace(/\/+$/, ""),
-    apiKey: env.DI_CHECKER_API_KEY || env.OPENCODE_GO_TOKEN_PLAN || "",
-    model: env.DI_CHECKER_MODEL || "glm-5.3-flash",
+    baseUrl: (env.DI_CHECKER_BASE_URL || env.MINIMAX_BASE_URL || "https://api.minimax.io/v1").replace(/\/+$/, ""),
+    apiKey: env.DI_CHECKER_API_KEY || env.MINIMAX_API_KEY || "",
+    model: env.DI_CHECKER_MODEL || "MiniMax-M3.1-Flash-Preview",
     reasoningEffort: env.DI_CHECKER_REASONING || "low",
     timeoutMs: Number(env.DI_CHECKER_TIMEOUT_MS || 90000),
   };
@@ -23,14 +23,14 @@ export function parseJsonReply(text) {
 
 /** @returns {(system: string, user: string) => Promise<any>} */
 export function createJudge(config = judgeConfigFromEnv()) {
-  if (!config.apiKey) throw new Error("Checker judge needs DI_CHECKER_API_KEY or OPENCODE_GO_TOKEN_PLAN");
+  if (!config.apiKey) throw new Error("Checker judge needs DI_CHECKER_API_KEY or MINIMAX_API_KEY");
   return async (system, user) => {
     const headers = { "Content-Type": "application/json", Authorization: `Bearer ${config.apiKey}` };
     if (config.baseUrl.includes("opencode.ai")) headers["x-opencode-session"] = randomUUID();
     const body = {
       model: config.model,
       temperature: 0,
-      max_tokens: 1200,
+      max_completion_tokens: 8192,
       messages: [{ role: "system", content: system }, { role: "user", content: user }],
     };
     if (config.reasoningEffort) body.reasoning_effort = config.reasoningEffort;

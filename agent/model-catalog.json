@@ -1,5 +1,15 @@
 [
   {
+    "id": "MiniMax-M3.1-Flash-Preview",
+    "label": "MiniMax M3.1 Flash Preview (M Plan)",
+    "shortLabel": "M3.1 Flash",
+    "provider": "minimax-m-plan",
+    "model": "MiniMax-M3.1-Flash-Preview",
+    "vaultCredential": "MINIMAX_M_PLAN",
+    "envPrefix": "MINIMAX",
+    "vision": true
+  },
+  {
     "id": "gpt-5.6-luna",
     "label": "GPT-5.6 Luna",
     "shortLabel": "Luna",

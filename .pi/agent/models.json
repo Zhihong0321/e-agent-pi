@@ -1,5 +1,29 @@
 {
   "providers": {
+    "minimax-m-plan": {
+      "baseUrl": "https://api.minimax.io/v1",
+      "api": "openai-completions",
+      "apiKey": "$MINIMAX_API_KEY",
+      "authHeader": true,
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": true,
+        "requiresReasoningContentOnAssistantMessages": true,
+        "maxTokensField": "max_completion_tokens"
+      },
+      "models": [
+        {
+          "id": "MiniMax-M3.1-Flash-Preview",
+          "name": "MiniMax M3.1 Flash Preview (M Plan)",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+          "contextWindow": 1000000,
+          "maxTokens": 32768,
+          "thinkingLevelMap": { "off": "low", "minimal": "low", "low": "low", "medium": "medium", "high": "high", "xhigh": "xhigh" }
+        }
+      ]
+    },
     "cavoti": {
       "baseUrl": "https://cavoti.com/v1",
       "api": "openai-completions",
