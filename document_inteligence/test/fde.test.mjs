@@ -136,9 +136,9 @@ test("the FDE has only its own tools, and only an admin may use them", async () 
   for (const tool of toolsFor("di-fde")) assert.ok(text.includes(`\`${tool.name}\``), `the role prompt never mentions ${tool.name}`);
 
   const { fdeAs } = await setup();
-  await rejects(fdeAs("aisyah")("fde_describe"), /Only an admin/);
-  await rejects(fdeAs("aisyah")("fde_apply", { changeset: mileage() }), /Only an admin/);
-  await rejects(fdeAs("aisyah")("fde_revert", { scope: "all" }), /Only an admin/);
+  await rejects(fdeAs("aisyah")("fde_describe"), /Only a Superadmin/);
+  await rejects(fdeAs("aisyah")("fde_apply", { changeset: mileage() }), /Only a Superadmin/);
+  await rejects(fdeAs("aisyah")("fde_revert", { scope: "all" }), /Only a Superadmin/);
   await rejects(runTool({ db: null, tenantId: () => "x" }, { agent: "di-fde", tool: "fde_describe", args: {} }), /Sign-in required/);
 });
 

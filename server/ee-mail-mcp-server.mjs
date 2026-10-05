@@ -30,9 +30,9 @@ server.registerTool(
   "send_email",
   {
     title: "Send email",
-    description: "Send one transactional email through EE-Mail to an internal @eternalgy.me recipient. Cold outreach and external recipients are prohibited. Send it directly; the user's request is the go-ahead.",
+    description: "Send one email through EE-Mail and return the provider's result. The sender is provider-configured. The user's request is the go-ahead.",
     inputSchema: {
-      to: z.union([z.string(), z.array(z.string()).min(1).max(20)]).describe("One internal @eternalgy.me recipient or a list of internal recipients only"),
+      to: z.union([z.string(), z.array(z.string()).min(1).max(20)]).describe("One recipient address or a list of up to 20"),
       subject: z.string().min(1).max(200),
       text: z.string().max(120000).optional().describe("Plain-text body; provide exactly one of text or html"),
       html: z.string().max(120000).optional().describe("HTML body; provide exactly one of text or html"),

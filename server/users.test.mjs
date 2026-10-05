@@ -64,8 +64,8 @@ test('expense identity codes are random per turn, and only honoured while fresh'
   const mint = () => expenseIdentityPrompt(req, { username: 'sam', role: 'user' });
   const first = mint();
   const code = first.match(/identity="([a-f0-9]{32})"/)[1];
-  assert.match(first, /\[Expense identity: sam \(regular user\)/);
-  assert.match(expenseIdentityPrompt(req, { username: 'root', role: 'admin' }), /root \(admin\)/);
+  assert.match(first, /\[Expense identity: sam \(User\)/);
+  assert.match(expenseIdentityPrompt(req, { username: 'root', role: 'admin' }), /root \(Superadmin\)/);
   assert.notEqual(code, mint().match(/identity="([a-f0-9]{32})"/)[1]);
   assert.equal(await resolveIdentity('invented'), null);
   assert.equal(await resolveIdentity(undefined), null);

@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 const authorization = { admin_capability: z.string().describe('Current host-provided admin authorization from this turn') };
 const profile = {
-  username: z.string().optional(), display_name: z.string().optional(), password: z.string().optional(), role: z.enum(['admin', 'user']).optional(), tier: z.string().optional(),
+  username: z.string().optional(), display_name: z.string().optional(), password: z.string().optional(), role: z.enum(['superadmin', 'department_head', 'user', 'admin']).optional().describe('superadmin, department_head (needs a department) or user'), tier: z.string().optional(),
   name: z.string().optional(), position: z.string().optional(), department: z.string().optional(), email: z.string().optional(), phone: z.string().optional(), location: z.string().optional(), notes: z.string().optional(),
   login_enabled: z.boolean().optional(), active: z.boolean().optional(), user: z.string().optional(), user_id: z.string().optional(), person_id: z.string().uuid().optional(), member_id: z.string().uuid().optional(), id: z.string().uuid().optional(),
 };

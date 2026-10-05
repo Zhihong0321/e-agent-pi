@@ -86,21 +86,21 @@ const AGENT_CARDS = {
     userFacing: true,
     headline: "Suppliers, purchase orders and what to pay",
     description:
-      "Keeps suppliers, records the quotations and invoices they send, drafts purchase orders from them, records goods received, and checks every invoice against what was ordered and received before it is paid. Admins issue POs and mark invoices paid; anyone signed in can draft and record.",
+      "Keeps suppliers, records the quotations and invoices they send, drafts purchase orders from them, records goods received, and checks every invoice against what was ordered and received before it is paid. A Superadmin or the department head issues POs and marks invoices paid; anyone signed in can draft and record.",
   },
   "di-fde": {
     color: "violet",
     userFacing: true,
     headline: "Teach the system your company's rules",
     description:
-      "Admin only. Turns a business rule (for example: mileage claims need a route screenshot and the distance) into extra categories, fields and checks on claims, and a short SOP for the agent. Previews every change first; each one can be undone or reset to the defaults.",
+      "Superadmin only. Changes the company's rules: expense claim checks (previewed, undoable) and any agent's SOP. For example: mileage claims need a route screenshot and the distance.",
   },
   "di-expenses": {
     color: "rose",
     userFacing: true,
     headline: "File receipts and run the monthly claim",
     description:
-      "Takes receipts (photos, screenshots, PDFs) and files them as expense claims for the signed-in user, groups every claim into a monthly submission by the company's cut-off day, lets admins approve or reject, and produces the claim submission report. Regular users only see their own claims.",
+      "Takes receipts (photos, screenshots, PDFs) and files them as expense claims for the signed-in user, groups every claim into a monthly submission by the company's cut-off day, lets Superadmins and department heads approve or reject, and produces the claim submission report. Regular users only see their own claims.",
   },
 };
 

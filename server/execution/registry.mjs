@@ -18,6 +18,10 @@ import {
   getScheduleHistoryService,
 } from '../scheduler/service.mjs';
 import { schedulableAgents } from '../scheduler/actions.mjs';
+import { getAgent } from '../catalog.mjs';
+import { clearAgentSop, getAgentSop, saveAgentSop } from '../sops.mjs';
+import { agentWorkspace } from '../paths.mjs';
+import { isSuperadmin, normalizeRole } from '../roles.mjs';
 import { ToolManifestEntrySchema } from './contracts.mjs';
 
 const operations = new Map();
@@ -106,14 +110,18 @@ export function manifestFor(toolIds, profileId = null) {
 }
 
 function requireUser(ctx) {
-  if (!ctx.userId) throw Object.assign(new Error('Sign-in required: this operation needs an authenticated user'), { execCode: 'SIGN_IN_REQUIRED' });
+  if (!ctx.userId) throw Object.assign(new Error('Sign-in required: the host attached no signed-in user to this run. If the person is signed in, report this as a system fault.'), { execCode: 'SIGN_IN_REQUIRED' });
   if (ctx.user && ctx.user.active === false) throw Object.assign(new Error('Current login is no longer active'), { execCode: 'PERMISSION_DENIED' });
 }
 
 function requireAdmin(ctx) {
   requireUser(ctx);
-  if (ctx.user?.role !== 'admin') throw Object.assign(new Error('This operation requires an admin login'), { execCode: 'PERMISSION_DENIED' });
+  if (!isSuperadmin(ctx.user)) throw Object.assign(new Error('This operation needs a Superadmin login'), { execCode: 'PERMISSION_DENIED' });
 }
+
+const roleInput = z.enum(['superadmin', 'department_head', 'user', 'admin']).optional()
+  .describe('Superadmin only: superadmin, department_head (needs a department) or user')
+  .transform((value) => (value === undefined ? undefined : normalizeRole(value)));
 
 // ---------------------------------------------------------------- people family
 
@@ -163,7 +171,7 @@ registerOperation({
     name: z.string().max(300).describe('Full name'),
     username: z.string().max(64).optional().describe('Admin only: login username'),
     password: z.string().max(256).optional().describe('Admin only: initial password; never repeat it back'),
-    role: z.enum(['admin', 'user']).optional(),
+    role: roleInput,
     login_enabled: z.boolean().optional(),
   }),
   async execute(ctx, args) {
@@ -185,14 +193,76 @@ registerOperation({
     person_id: z.string().min(1).describe('The person to update, from list_people'),
     username: z.string().max(64).optional(),
     password: z.string().max(256).optional().describe('Admin only; never repeat it back'),
-    role: z.enum(['admin', 'user']).optional(),
+    role: roleInput,
     active: z.boolean().optional().describe('Admin only: disable login with false'),
     login_enabled: z.boolean().optional(),
   }),
   async execute(ctx, args) {
     requireUser(ctx);
-    if (args.username !== undefined || args.password !== undefined || args.active !== undefined) requireAdmin(ctx);
+    if (args.username !== undefined || args.password !== undefined || args.active !== undefined || args.role !== undefined) requireAdmin(ctx);
     return managePeopleCore(ctx.tx, 'update_person', args, { tenantId: ctx.companyId, actorUser: ctx.user });
+  },
+});
+
+// ---------------------------------------------------------------- agent SOPs (Superadmin)
+
+// The SOP is the agent-specific procedure injected into that agent's prompt on every run
+// (runtime.mjs). The Superadmin changes it in chat; the Settings page edits the same row.
+const SOP_PROFILES = ['orchestrator', 'di-fde'];
+const FDE_BLOCK = /<!-- fde:start -->[\s\S]*?<!-- fde:end -->/;
+
+async function sopAgent(ref) {
+  const agent = await getAgent(String(ref || '').trim());
+  if (!agent) throw Object.assign(new Error(`Unknown agent: ${ref}. list_specialists gives the ids.`), { execCode: 'NOT_FOUND' });
+  return agent;
+}
+
+/** The Forward Deploy Engineer owns a marked block inside an SOP; a full rewrite keeps it. */
+export function keepManagedSopBlock(previous, next) {
+  const block = String(previous || '').match(FDE_BLOCK)?.[0];
+  const text = String(next || '').trim();
+  if (!block || FDE_BLOCK.test(text)) return text;
+  return text ? `${text}\n\n${block}` : block;
+}
+
+registerOperation({
+  id: 'get_agent_sop',
+  description: 'Read one agent\'s saved SOP: the operating rules injected into that agent\'s prompt on every run. Superadmin only.',
+  effect: 'read',
+  timeoutMs: 15_000,
+  profileIds: SOP_PROFILES,
+  access: { user: true },
+  inputSchema: z.object({ agent: z.string().min(1).describe('Agent id or slug, e.g. orchestrator or di-documents') }),
+  async execute(ctx, args) {
+    requireAdmin(ctx);
+    const agent = await sopAgent(args.agent);
+    const sop = await getAgentSop(agent.id);
+    return { agent: agent.id, name: agent.name, sop: sop?.content ?? null, updated_at: sop?.updatedAt ?? null, updated_by: sop?.createdBy ?? null };
+  },
+});
+
+registerOperation({
+  id: 'save_agent_sop',
+  description: 'Replace one agent\'s SOP with the complete new text; "" removes it. Takes effect from that agent\'s next run. Superadmin only.',
+  effect: 'local_write',
+  timeoutMs: 15_000,
+  profileIds: SOP_PROFILES,
+  access: { user: true },
+  inputSchema: z.object({
+    agent: z.string().min(1).describe('Agent id or slug, e.g. orchestrator or di-documents'),
+    content: z.string().max(120_000).describe('The complete new SOP text (not a diff); "" removes the SOP'),
+  }),
+  async execute(ctx, args) {
+    requireAdmin(ctx);
+    const agent = await sopAgent(args.agent);
+    const previous = await getAgentSop(agent.id);
+    const content = keepManagedSopBlock(previous?.content, args.content);
+    if (!content) {
+      const removed = await clearAgentSop(agent.id, agentWorkspace(agent));
+      return { agent: agent.id, name: agent.name, removed, applies: 'from its next run' };
+    }
+    const sop = await saveAgentSop(agent.id, content, ctx.user?.username || ctx.userId);
+    return { agent: agent.id, name: agent.name, saved: true, characters: sop.content.length, applies: 'from its next run' };
   },
 });
 
@@ -372,7 +442,7 @@ registerOperation({
     visibility: z.enum(['company', 'private']).optional().describe('Visibility: company (default) or private'),
     timezone: z.string().optional().describe('IANA timezone; defaults to company timezone'),
     timing: z.record(z.string(), z.unknown()).optional().describe('Timing: timed {date,time}, daily {time}, weekly {time,daysOfWeek:[0..6]}, monthly {time,dayOfMonth}, cron {expression:"0 9 * * 1"}. Use explicit IANA timezone.'),
-    action: z.record(z.string(), z.unknown()).optional().describe('Action: agent_job {agent_id from schedule_agents, prompt}; reminder {message}; email_reminder {to, subject, text} (recipients must be @eternalgy.me; create it directly, the user\'s request is the go-ahead)'),
+    action: z.record(z.string(), z.unknown()).optional().describe('Action: agent_job {agent_id from schedule_agents, prompt}; reminder {message}; email_reminder {to, subject, text} (create it directly; the user\'s request is the go-ahead)'),
   }),
   async execute(ctx, args) {
     return createSchedule(ctx, args, ctx.tx);

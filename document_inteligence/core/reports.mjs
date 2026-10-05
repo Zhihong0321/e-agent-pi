@@ -5,7 +5,7 @@
 // Forward Deploy Engineer can add a report without a deploy and a report can never show more than the
 // person running it may see.
 import { DiError, round2, todayMY } from "./common.mjs";
-import { EXPENSE_CATEGORIES, addMonths, defaultMonth, getSettings, isAdmin, scopeClause } from "./expenses.mjs";
+import { EXPENSE_CATEGORIES, addMonths, claimScopeLabel, defaultMonth, getSettings, isAdmin, scopeClause } from "./expenses.mjs";
 import { mergeCategories, reportsOf, availableReports } from "./expense-policy.mjs";
 
 export const REPORT_LIMITS = { group_by: 2, measures: 8, per_company: 10, rows: 5000 };
@@ -217,7 +217,7 @@ export async function executeReport(tx, spec, { month, who, now = new Date() }) 
   return {
     report: { slug: spec.slug, title: spec.title },
     period: { basis: spec.period_basis, month: period },
-    scope: isAdmin(who) ? "all claims" : "your claims only",
+    scope: claimScopeLabel(who),
     columns: grouped.columns, rows: grouped.rows, totals: grouped.totals,
     row_count: rows.length, truncated,
     markdown: toMarkdown(grouped, spec),

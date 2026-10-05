@@ -20,6 +20,8 @@ const round = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 const USERS = {
   "tok-admin": { id: "u-admin", username: "admin", display_name: "Admin", role: "admin", email: null },
   "tok-aisyah": { id: "u-aisyah", username: "aisyah", display_name: "Aisyah Rahman", role: "user", email: "aisyah@acme.test" },
+  "tok-hana": { id: "u-hana", username: "hana", display_name: "Hana Ops", role: "department_head", department: "Ops", email: "hana@acme.test" },
+  "tok-sam": { id: "u-sam", username: "sam", display_name: "Sam Sales", role: "user", department: "Sales", email: "sam@acme.test" },
 };
 
 const rejects = async (promise, pattern) => {
@@ -203,7 +205,7 @@ test("procurement", async (t) => {
   });
 
   await t.test("only an admin issues; issuing numbers, freezes and makes the PDF", async () => {
-    await rejects(aisyah("issue_po", { po }), /Only an admin can issue/);
+    await rejects(aisyah("issue_po", { po }), /Only a Superadmin can issue/);
     const out = await admin("issue_po", { po });
     po = out.po.number;
     assert.equal(po, "PO-2026-0001");
@@ -268,7 +270,7 @@ test("procurement", async (t) => {
   });
 
   await t.test("paying: admin only, final, and a mismatch needs the user's confirmation", async () => {
-    await rejects(aisyah("set_supplier_invoice_status", { invoice: inv1, status: "paid" }), /Only an admin can mark an invoice paid/);
+    await rejects(aisyah("set_supplier_invoice_status", { invoice: inv1, status: "paid" }), /Only a Superadmin can mark this invoice paid/);
     const over = await aisyah("record_supplier_document", { doc_type: "invoice", supplier: maju, supplier_ref: "INV-5530", doc_date: "2026-10-02", total: 300, po });
     assert.equal(over.match.status, "review");
     assert.match(over.match.issues.join(" "), /more than PO-2026-0001/);
@@ -277,7 +279,7 @@ test("procurement", async (t) => {
     const disputed = await aisyah("set_supplier_invoice_status", { invoice: over.document.number, status: "disputed", reason: "We never ordered this extra item" });
     assert.equal(disputed.document.status, "disputed");
     await rejects(admin("set_supplier_invoice_status", { invoice: over.document.number, status: "paid", confirm_mismatch: false }), /does not match/);
-    await rejects(aisyah("set_supplier_invoice_status", { invoice: over.document.number, status: "void", reason: "x" }), /Only an admin/);
+    await rejects(aisyah("set_supplier_invoice_status", { invoice: over.document.number, status: "void", reason: "x" }), /Only a Superadmin/);
     const voided = await admin("set_supplier_invoice_status", { invoice: over.document.number, status: "void", reason: "Supplier agreed to cancel it" });
     assert.equal(voided.document.status, "void");
     await rejects(admin("set_supplier_invoice_status", { invoice: over.document.number, status: "paid" }), /is void and final/);
@@ -292,7 +294,7 @@ test("procurement", async (t) => {
   await t.test("cancel: admin, with a reason, only before goods arrive and with no live invoice", async () => {
     const q2 = (await aisyah("record_supplier_document", { doc_type: "quotation", supplier: solar, supplier_ref: "SP-100", doc_date: "2026-09-30", total: 540, lines: [{ description: "MC4 connector pair", quantity: 100, unit_price: 5, tax_rate: 8 }] })).document.number;
     const draft = await aisyah("create_po_draft", { from_quotation: q2, order_date: "2026-09-20", expected_date: "2026-09-30" });
-    await rejects(aisyah("cancel_po", { po: draft.po.number, reason: "changed mind" }), /Only an admin/);
+    await rejects(aisyah("cancel_po", { po: draft.po.number, reason: "changed mind" }), /Only a Superadmin/);
     await rejects(admin("cancel_po", { po: draft.po.number }), /Invalid input|reason/);
     const issued = await admin("issue_po", { po: draft.po.number });
     assert.equal(issued.po.number, "PO-2026-0002");
@@ -430,3 +432,20 @@ ${html}`); } };
 });
 
 const CABLES_FOR_HTML = [{ description: "<b>x</b>", quantity: 1, unit_price: 1, tax_rate: 0 }];
+
+test("a department head issues and cancels their own department's orders, nobody else's", async () => {
+  const { as } = await setup();
+  const supplier = (await as("sam")("save_supplier", { name: "Kedai Kabel Sdn Bhd", email: "orders@kabel.example" })).supplier.code;
+  const ops = (await as("hana")("create_po_draft", { supplier, lines: cableLines })).po;
+  const sales = (await as("sam")("create_po_draft", { supplier, lines: cableLines })).po;
+  assert.equal(ops.department, "Ops", "the drafter's department is stamped on the PO");
+  assert.equal(sales.department, "Sales");
+
+  await rejects(as("hana")("issue_po", { po: sales.number }), /Only a Superadmin or the Sales department head can issue/);
+  await rejects(as("sam")("issue_po", { po: ops.number }), /Only a Superadmin or the Ops department head can issue/);
+  const issued = await as("hana")("issue_po", { po: ops.number });
+  assert.equal(issued.po.status, "issued");
+  await rejects(as("sam")("cancel_po", { po: issued.po.number, reason: "changed mind" }), /Only a Superadmin or the Ops department head/);
+  assert.equal((await as("hana")("cancel_po", { po: issued.po.number, reason: "Supplier delayed" })).po.status, "cancelled");
+  assert.equal((await as("admin")("issue_po", { po: sales.number })).po.status, "issued", "a Superadmin approves any department");
+});

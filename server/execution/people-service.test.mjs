@@ -121,7 +121,18 @@ test('people service refuses duplicates, login creation without credentials, and
 
   await assert.rejects(() => inTx(pool, tenantId, 'create_person',
     { name: 'Bob', username: 'bob', password: '1234' }, { ...asAdmin(tenantId), actorUser: { ...admin, role: 'user' } }),
-    /Login access can only be managed by an admin/);
+    /Logins and roles can only be managed by a Superadmin/);
+
+  // A department head acts for one department, so the role needs one.
+  await assert.rejects(() => inTx(pool, tenantId, 'create_person',
+    { name: 'Dee', username: 'dee', password: '1234', role: 'department_head' }, asAdmin(tenantId)), /department head needs a department/);
+  const head = await inTx(pool, tenantId, 'create_person',
+    { name: 'Dee', username: 'dee', password: '1234', role: 'department head', department: 'Sales' }, asAdmin(tenantId));
+  assert.equal(head.person.role, 'department_head');
+  assert.equal(head.person.role_label, 'Department head');
+  const promoted = await inTx(pool, tenantId, 'update_person', { person_id: first.person.id, username: 'amy', password: '1234', role: 'superadmin' }, asAdmin(tenantId));
+  assert.equal(promoted.person.role, 'admin', 'Superadmin keeps the stored admin key');
+  assert.equal(promoted.person.role_label, 'Superadmin');
 
   // A login that belongs to another company is refused.
   await pool.query(`INSERT INTO users (id, username, display_name, password_hash, role, company_tenant_id)

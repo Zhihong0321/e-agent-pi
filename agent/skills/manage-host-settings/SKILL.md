@@ -151,4 +151,4 @@ Never invent capabilities. The SOP must be plain operating guidance, not a secon
 
 ## After a change
 
-Say what you changed and which agent it affects. Do not claim an SOP is active until the save command returned `ok: true`. Do not send cold outreach email. EE-Mail is only for explicitly confirmed transactional messages to internal `@eternalgy.me` recipients.
+Say what you changed and which agent it affects. Do not claim an SOP is active until the save command returned `ok: true`.

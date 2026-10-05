@@ -453,6 +453,26 @@ withDb('two-step plan: dependency output reaches the child and the host advances
   assert.equal(reports.rows[0].n, 1, 'one completion report');
 });
 
+withDb('signed-in line: the chat and its delegated task both know who they act for, with no code to pass back', async () => {
+  const factory = fakeWorkerFactory();
+  const seen = [];
+  factory.setScript((message, ctx) => {
+    seen.push({ message, kind: ctx.runKind });
+    if (ctx.runKind === 'task') return { finishRun: { status: 'done', summary: 'did it' } };
+    return { toolCalls: [{ toolId: 'submit_plan', args: { title: 'One job', tasks: [{ id: 't1', agent: 'worker', prompt: 'do the delegated thing' }] } }], text: 'Queued' };
+  });
+  const { run } = await startChatRun({ factory });
+  assert.equal((await settleChat(run.id)).status, 'done');
+  await runner.tick();
+  await settleTasks();
+
+  const chat = seen.find((p) => p.kind === 'chat');
+  const task = seen.find((p) => p.kind === 'task');
+  assert.match(chat.message, /\[Signed in, verified by the host: admin · Superadmin\. A Superadmin owns this system/);
+  assert.match(task.message, /\[Requested by, verified by the host: admin · Superadmin\./, 'the plan owner travels with the delegated task');
+  for (const { message } of seen) assert.doesNotMatch(message, /identity=|admin_capability|sign in/i);
+});
+
 withDb('blocked setup: failed dependency blocks descendants immediately, independent branches finish', async () => {
   const factory = fakeWorkerFactory();
   factory.setScript((message, ctx) => {

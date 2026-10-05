@@ -122,7 +122,7 @@ export async function dispatchTool(binding, rawBody, services = {}) {
     // a previously successful result.
     const user = binding.userId && services.userLookup ? await services.userLookup(binding.userId, binding) : null;
     const ctx = { ...ctxBase, user };
-    if (op.access?.user && !user) return toolError(callId, execError('SIGN_IN_REQUIRED', 'Sign-in required for this operation'));
+    if (op.access?.user && !user) return toolError(callId, execError('SIGN_IN_REQUIRED', 'Sign-in required: the host attached no signed-in user to this run. If the person is signed in, report this as a system fault; never ask a signed-in user to sign in again.'));
     if (Array.isArray(op.access?.roles) && (!user || !op.access.roles.includes(user.role))) {
       return toolError(callId, execError('PERMISSION_DENIED', 'This operation requires a permitted host role'));
     }

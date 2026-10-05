@@ -60,16 +60,18 @@ test('durable scheduler persistence, access controls, dispatch and recovery',asy
    const created=await getOperation('schedule_create').execute({...ctx,tx:pg},{title:'Native AI scheduled job',preset:'agent_job',timing:future,action:{agent_id:'research',prompt:'Native instructions'}});
    assert.equal(created.action.config.agent_id,'research');assert.equal(created.schedule.owner_user_id,'alice');
   });
-  await t.test('reject stale edits, invalid agent IDs and external email recipients without partial records; no second confirmation is needed',async()=>{
+  await t.test('reject stale edits, invalid agent IDs and invalid email addresses without partial records; any domain, no second confirmation',async()=>{
    const {schedule}=await create();
    await assert.rejects(updateScheduleService(ctx,{schedule_id:schedule.id,expected_revision:99,title:'No'}),e=>e.code==='CONFLICT');
    const before=(await pool.query('SELECT count(*)::int n FROM schedules')).rows[0].n;
    await assert.rejects(create({preset:'agent_job',action:{agent_id:'missing',prompt:'Hi'}}),/existing runnable/);
    await assert.rejects(create({preset:'agent_job',action:{agent_id:'scheduler',prompt:'Hi'}}),/cannot schedule itself/);
-   await assert.rejects(create({preset:'email_reminder',action:{to:['test@example.com'],subject:'Test',text:'Hi'}}),/eternalgy\.me/);
+   await assert.rejects(create({preset:'email_reminder',action:{to:['not-an-address'],subject:'Test',text:'Hi'}}),/valid email addresses/);
    assert.equal((await pool.query('SELECT count(*)::int n FROM schedules')).rows[0].n,before);
    const direct=await create({preset:'email_reminder',action:{to:['test@eternalgy.me'],subject:'Test',text:'Hi'}});
    assert.equal(direct.schedule.action.config.to[0],'test@eternalgy.me');
+   const external=await create({preset:'email_reminder',action:{to:['client@example.com'],subject:'Test',text:'Hi'}});
+   assert.equal(external.schedule.action.config.to[0],'client@example.com','no domain limit');
   });
   await t.test('pause, update, resume and cancel preserve revisions and action payload',async()=>{
    const {schedule}=await create();

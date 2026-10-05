@@ -76,10 +76,14 @@ export const SCHEDULER_TOOL_IDS = [
   'schedule_history',
 ];
 
+/** Superadmin-only SOP tools (the tool checks the role): the user-facing Orchestrator and the Forward Deploy Engineer. */
+export const SOP_TOOL_IDS = ['get_agent_sop', 'save_agent_sop'];
+
 /**
  * Manifest rules per agent: the orchestrator gets people + control (planning)
- * operations; Document Intelligence agents get their native DI tools; every
- * migrated profile gets finish_run through the worker bridge.
+ * + SOP operations; Document Intelligence agents get their native DI tools (the
+ * Forward Deploy Engineer also the SOP tools); every migrated profile gets
+ * finish_run through the worker bridge.
  */
 export function manifestForAgent(agent) {
   const id = String(agent?.id || '');
@@ -87,10 +91,13 @@ export function manifestForAgent(agent) {
   const isOrchestrator = id === 'orchestrator' || slug === 'orchestrator';
   const isDi = id.startsWith('di-');
   const isScheduler = id === 'scheduler' || slug === 'scheduler';
+  const extraToolIds = isOrchestrator ? SOP_TOOL_IDS
+    : isDi ? [...diToolIdsFor(id), ...(id === 'di-fde' ? SOP_TOOL_IDS : [])]
+      : isScheduler ? SCHEDULER_TOOL_IDS : [];
   return resolveProfileManifest(agent, {
     peopleTools: isOrchestrator,
     controlTools: isOrchestrator,
-    extraToolIds: isDi ? diToolIdsFor(id) : isScheduler ? SCHEDULER_TOOL_IDS : [],
+    extraToolIds,
   });
 }
 

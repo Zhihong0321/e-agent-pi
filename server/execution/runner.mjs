@@ -9,6 +9,7 @@ import { execError, FinishRunSchema, newId, stableStringify } from './contracts.
 import * as store from './store.mjs';
 import * as dispatch from './dispatch.mjs';
 import { DEFAULT_LIMITS, EXECUTOR_VERSION } from './profiles.mjs';
+import { signedInLine } from '../roles.mjs';
 
 const config = {
   maxConcurrent: 3,
@@ -272,7 +273,7 @@ export async function runAgent({ kind, runRef, profile, user, ctx, input, images
     await worker.start();
     if (controller.signal.aborted) throw Object.assign(new Error('Deadline reached before the worker started'), { execCode: 'REQUEST_DEADLINE' });
 
-    const answer = await worker.prompt(input, { onEvent: turnCountingOnEvent });
+    const answer = await worker.prompt(withSignedInLine(input, user, kind), { onEvent: turnCountingOnEvent });
     if (kind === 'chat') await saveSessionRef();
 
     // Chat turns have no typed completion: Pi settling without error is the outcome.
@@ -332,6 +333,15 @@ const COMPLETION_ONLY_PROMPT = [
   'otherwise "blocked" with reasonCode and what is missing, or "failed" with reasonCode and what went wrong.',
   'Do not try to redo any work.',
 ].join(' ');
+
+/**
+ * Every run tells the model, in plain words, who it acts for and their role. The host
+ * resolved that user itself (request session, plan owner or schedule owner), so there is
+ * no code for the model to pass back and nothing that expires mid-workflow.
+ */
+export function withSignedInLine(input, user, kind) {
+  return `${String(input ?? '')}\n\n${signedInLine(user, { requestedBy: kind === 'task' })}`;
+}
 
 async function isStopRequested(runRef, kind) {
   try {

@@ -8,6 +8,7 @@
 // Every handler takes (tx, args, { who, receipts, now }). `who` is the signed-in host user
 // ({ id, username, display_name, role, email? }); the host supplies it, never the model.
 import { DiError, addDays, isUuid, isoDate, nextNumber, round2, todayMY, validateCustom } from "./common.mjs";
+import { departmentKey, isDepartmentHead, isSuperadmin } from "../../server/roles.mjs";
 import {
   DEFAULT_KIND, availableReports, blockedMessage, checkClaim, issueMessages, loadPolicy, mergeCategories, policySummary, visibleCustom, withKinds,
 } from "./expense-policy.mjs";
@@ -32,7 +33,18 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 const pad = (n) => String(n).padStart(2, "0");
 const num = (v) => Number(v) || 0;
 export const isDate = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s)) && !Number.isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().startsWith(String(s));
-export const isAdmin = (who) => who?.role === "admin";
+/** Superadmin (server/roles.mjs): sees and manages every claim. */
+export const isAdmin = (who) => isSuperadmin(who);
+
+/** Which claims `who` sees: all (Superadmin), their department's (department head) or their own. */
+export function claimScope(who) {
+  return isSuperadmin(who) ? "all" : isDepartmentHead(who) ? "department" : "own";
+}
+
+export function claimScopeLabel(who) {
+  const scope = claimScope(who);
+  return scope === "all" ? "all claims" : scope === "department" ? `${String(who.department).trim()} department's claims` : "your claims only";
+}
 
 // ---------------------------------------------------------------- cut-off arithmetic (pure)
 
@@ -92,7 +104,7 @@ async function resolveClaimant(tx, who, claimant) {
   if (!isAdmin(who)) {
     const self = [who.username, who.display_name, who.email].filter(Boolean).map((v) => String(v).toLowerCase());
     if (self.includes(q.toLowerCase())) return resolveClaimant(tx, who, null);
-    throw new DiError("Only an admin can file a claim for someone else. Leave claimant empty to file your own.");
+    throw new DiError("Only a Superadmin can file a claim for someone else. Leave claimant empty to file your own.");
   }
   let rows;
   if (isUuid(q)) rows = (await tx.query("SELECT id, name, email, user_id FROM di.company_member WHERE id = $1 AND deleted_at IS NULL", [q])).rows;
@@ -109,15 +121,29 @@ async function resolveClaimant(tx, who, claimant) {
   return { user_id: m.user_id ?? null, member_id: m.id, name: m.name, email: m.email };
 }
 
-/** SQL fragment limiting claims (alias c) to what `who` may see, plus an optional claimant filter. */
-export function scopeClause(who, claimant, startAt) {
+/**
+ * SQL fragment limiting claims (alias c) to what `who` may see, plus an optional claimant filter.
+ * A department head sees their own claims and those of people whose company record names their
+ * department. `ownOnly` narrows a department head to their own claims (editing, withdrawing).
+ */
+export function scopeClause(who, claimant, startAt, { ownOnly = false } = {}) {
   const parts = [];
   const values = [];
   const next = (v) => { values.push(v); return `$${startAt + values.length - 1}`; };
-  if (!isAdmin(who)) {
+  const scope = claimScope(who);
+  if (scope === "own" || (ownOnly && scope === "department")) {
     if (claimant) throw new DiError("Regular users only see their own claims.");
     parts.push(`c.claimant_user_id = ${next(who.id)}`);
-  } else if (claimant) {
+    return { sql: ` AND ${parts.join(" AND ")}`, values };
+  }
+  if (scope === "department") {
+    const me = next(who.id);
+    const dept = next(departmentKey(who.department));
+    parts.push(`(c.claimant_user_id = ${me}
+      OR c.claimant_member_id IN (SELECT m.id FROM di.company_member m WHERE m.deleted_at IS NULL AND lower(btrim(m.department)) = ${dept})
+      OR c.claimant_user_id IN (SELECT m.user_id FROM di.company_member m WHERE m.deleted_at IS NULL AND m.user_id IS NOT NULL AND lower(btrim(m.department)) = ${dept}))`);
+  }
+  if (claimant) {
     const q = String(claimant).trim();
     if (isUuid(q)) {
       const p = next(q);
@@ -209,7 +235,7 @@ export async function getExpenseSettings(tx, _args, { who, now = new Date() } = 
 
 export async function setExpenseSettings(tx, input = {}, { who, now = new Date() } = {}) {
   requireWho(who);
-  if (!isAdmin(who)) throw new DiError("Only an admin can change expense settings.");
+  if (!isAdmin(who)) throw new DiError("Only a Superadmin can change expense settings.");
   const current = await getSettings(tx);
   const patch = {};
   if (input.cutoff_day !== undefined) {
@@ -296,10 +322,10 @@ function shapeClaim(row, receipts = [], batch = null) {
   };
 }
 
-async function findClaim(tx, ref, who, { lock = false } = {}) {
+async function findClaim(tx, ref, who, { lock = false, ownOnly = false } = {}) {
   const q = String(ref ?? "").trim();
   if (!q) throw new DiError("Give the claim number (EXP-2026-0001) or id");
-  const scope = scopeClause(who, null, 2);
+  const scope = scopeClause(who, null, 2, { ownOnly });
   const where = isUuid(q) ? "c.id = $1::uuid" : "upper(c.number) = upper($1)";
   const row = (await tx.query(
     `SELECT c.* FROM di.expense_claim c WHERE ${where} AND c.deleted_at IS NULL${scope.sql}${lock ? " FOR UPDATE" : ""}`,
@@ -465,7 +491,7 @@ export async function fileClaim(tx, input = {}, { who, receipts = [], now = new 
 
 export async function updateClaim(tx, input = {}, { who, receipts = [], now = new Date() } = {}) {
   requireWho(who);
-  const { row, batch } = await findClaim(tx, input.claim, who, { lock: true });
+  const { row, batch } = await findClaim(tx, input.claim, who, { lock: true, ownOnly: true });
   if (batch?.status === "closed") throw new DiError(`${row.number} is in the closed ${batchLabel(batch)} and can't change.`);
   if (row.status !== "submitted") throw new DiError(`${row.number} is ${row.status}; only a pending (submitted) claim can be edited. A reviewer can reject it first, or withdraw it and file a new one.`);
   const settings = await getSettings(tx);
@@ -596,17 +622,19 @@ export async function listClaims(tx, input = {}, { who } = {}) {
     })),
     has_more: rows.length > limit,
     totals: shapeTotals(totals),
-    scope: isAdmin(who) ? "all claims" : "your claims only",
+    scope: claimScopeLabel(who),
   };
 }
 
 export async function reviewClaim(tx, { claim, decision, note } = {}, { who } = {}) {
   requireWho(who);
-  if (!isAdmin(who)) throw new DiError("Only an admin can approve or reject claims.");
+  const scope = claimScope(who);
+  if (scope === "own") throw new DiError("Only a Superadmin or the claimant's department head can approve or reject claims.");
   if (!["approve", "reject"].includes(decision)) throw new DiError("decision must be approve or reject");
   const cleanNote = cleanText(note, "note", 500);
   if (decision === "reject" && !cleanNote) throw new DiError("Give a reason (note) when rejecting a claim so the claimant knows why.");
   const { row, batch } = await findClaim(tx, claim, who, { lock: true });
+  if (scope === "department" && row.claimant_user_id === who.id) throw new DiError(`${row.number} is your own claim; a Superadmin reviews it.`);
   if (batch?.status === "closed") throw new DiError(`${row.number} is in the closed ${batchLabel(batch)} and can't change.`);
   if (row.status === "withdrawn") throw new DiError(`${row.number} was withdrawn by the claimant.`);
   const status = decision === "approve" ? "approved" : "rejected";
@@ -623,10 +651,10 @@ export async function reviewClaim(tx, { claim, decision, note } = {}, { who } = 
 
 export async function withdrawClaim(tx, { claim, reason } = {}, { who } = {}) {
   requireWho(who);
-  const { row, batch } = await findClaim(tx, claim, who, { lock: true });
+  const { row, batch } = await findClaim(tx, claim, who, { lock: true, ownOnly: true });
   if (batch?.status === "closed") throw new DiError(`${row.number} is in the closed ${batchLabel(batch)} and can't change.`);
   if (row.status === "withdrawn") throw new DiError(`${row.number} is already withdrawn.`);
-  if (row.status === "approved") throw new DiError(`${row.number} is already approved; ask an admin to reject it first.`);
+  if (row.status === "approved") throw new DiError(`${row.number} is already approved; ask a Superadmin or your department head to reject it first.`);
   const updated = (await tx.query(
     "UPDATE di.expense_claim SET status = 'withdrawn', custom = custom || $1::jsonb WHERE id = $2 RETURNING *",
     [JSON.stringify({ withdrawn_reason: cleanText(reason, "reason", 300), withdrawn_by: who.username }), row.id],
@@ -650,14 +678,14 @@ export async function listSubmissions(tx, { limit } = {}, { who, now = new Date(
   return {
     cutoff_day: settings.cutoff_day, currency: settings.currency,
     submissions: rows.map((r) => ({ ...shapeBatch(r), days_left: r.status === "open" ? daysBetween(today, isoDate(r.cutoff_date)) : null, totals: shapeTotals(r) })),
-    scope: isAdmin(who) ? "all claims" : "your claims only",
+    scope: claimScopeLabel(who),
   };
 }
 
 /** Admin only. Freezes the submission; returns a `report` request the host turns into the final PDF. */
 export async function closeSubmission(tx, { month, carry_forward_pending = false } = {}, { who } = {}) {
   requireWho(who);
-  if (!isAdmin(who)) throw new DiError("Only an admin can close a monthly submission.");
+  if (!isAdmin(who)) throw new DiError("Only a Superadmin can close a monthly submission.");
   const batch = await batchByMonth(tx, month);
   if (!batch) throw new DiError(`No claims have been filed for ${month} yet, so there is no submission to close.`);
   if (batch.status === "closed") throw new DiError(`${batchLabel(batch)} is already closed.`);
@@ -709,7 +737,7 @@ export async function loadSubmissionData(tx, { batchId, month, claimant }, { who
     batch: shapeBatch(batch),
     claims: rows.map((r) => shapeClaim(r, receipts.get(r.id) ?? [], batch)),
     company: profile, currency: settings.currency, cutoff_day: settings.cutoff_day,
-    scope: isAdmin(who) ? "all" : "own", claimant_filter: claimant ? String(claimant) : null,
+    scope: claimScope(who), claimant_filter: claimant ? String(claimant) : null,
   };
 }
 

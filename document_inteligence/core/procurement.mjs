@@ -9,6 +9,7 @@
 // Every handler takes (tx, args, { who, receipts, now }); `who` is the signed-in host user.
 import { DiError, addDays, isUuid, isoDate, nameSimilarity, nextNumber, normEmail, normPhone, normRegNo, round2, todayMY } from "./common.mjs";
 import { isAdmin, isDate, requireWho } from "./expenses.mjs";
+import { headsDepartment } from "../../server/roles.mjs";
 import { money } from "./templates.mjs";
 
 const num = (v) => Number(v) || 0;
@@ -231,7 +232,7 @@ function shapePo(po, lines, supplier, today = todayMY()) {
     overdue: Boolean(expected && PO_OPEN.includes(po.status) && expected < today),
     ship_to: po.ship_to ?? null, payment_terms_days: po.payment_terms_days == null ? null : Number(po.payment_terms_days), currency: po.currency,
     subtotal: num(po.subtotal), tax_total: num(po.tax_total), total: num(po.total), notes: po.notes ?? null,
-    issued_by: po.issued_by ?? null, cancel_reason: po.cancel_reason ?? null, pdf_path: po.pdf_path ?? null,
+    department: po.department ?? null, issued_by: po.issued_by ?? null, cancel_reason: po.cancel_reason ?? null, pdf_path: po.pdf_path ?? null,
     progress: { ordered: roundQty(ordered), received: roundQty(received) },
     lines: lines.map(shapeLine),
   };
@@ -296,9 +297,9 @@ export async function createPoDraft(tx, input = {}, { who, now = new Date() } = 
   if (!expected_date) warnings.push("No expected delivery date yet");
   if (!supplier.email) warnings.push(`${supplier.name} has no email recorded`);
   const po = (await tx.query(
-    `INSERT INTO di.purchase_order (supplier_id, order_date, expected_date, ship_to, payment_terms_days, currency, notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-    [supplier.id, order_date, expected_date, text(input.ship_to, "ship_to", 300), input.payment_terms_days ?? supplier.payment_terms_days ?? null, currency, text(input.notes, "notes", 1000)],
+    `INSERT INTO di.purchase_order (supplier_id, order_date, expected_date, ship_to, payment_terms_days, currency, notes, department)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+    [supplier.id, order_date, expected_date, text(input.ship_to, "ship_to", 300), input.payment_terms_days ?? supplier.payment_terms_days ?? null, currency, text(input.notes, "notes", 1000), String(who.department ?? "").trim() || null],
   )).rows[0];
   await writeLines(tx, po.id, norm);
   if (source) {
@@ -383,11 +384,23 @@ export async function listPos(tx, { status, supplier, query, limit } = {}, { who
   };
 }
 
-/** Admin only. Takes the PO number and freezes the order; the host then renders the PDF from `report`. */
+/**
+ * A Superadmin approves every order; a department head the orders drafted in their department
+ * (the drafter's department is stamped on the PO). Invoices follow their linked PO.
+ */
+function mayApprove(who, department) {
+  return isAdmin(who) || headsDepartment(who, department);
+}
+
+function approverOnly(action, department) {
+  return new DiError(`Only a Superadmin${department ? ` or the ${department} department head` : ""} can ${action}.`);
+}
+
+/** Superadmin, or the PO's department head. Takes the PO number and freezes the order; the host then renders the PDF from `report`. */
 export async function issuePo(tx, { po } = {}, { who, now = new Date() } = {}) {
   requireWho(who);
-  if (!isAdmin(who)) throw new DiError("Only an admin can issue a purchase order.");
   const row = await loadPo(tx, po, { lock: true });
+  if (!mayApprove(who, row.department)) throw approverOnly("issue this purchase order", row.department);
   if (row.status !== "draft") throw new DiError(`${poNumber(row)} is ${row.status}; only a draft can be issued.`);
   const { lines, supplier } = await poWithLines(tx, row);
   if (!lines.length || num(row.total) <= 0) throw new DiError("A purchase order needs at least one line with a price before it can be issued.");
@@ -406,9 +419,9 @@ export async function issuePo(tx, { po } = {}, { who, now = new Date() } = {}) {
 
 export async function cancelPo(tx, { po, reason } = {}, { who } = {}) {
   requireWho(who);
-  if (!isAdmin(who)) throw new DiError("Only an admin can cancel a purchase order.");
   const cleanReason = text(reason, "reason", 300, { required: true });
   const row = await loadPo(tx, po, { lock: true });
+  if (!mayApprove(who, row.department)) throw approverOnly("cancel this purchase order", row.department);
   if (row.status === "cancelled") throw new DiError(`${poNumber(row)} is already cancelled.`);
   if (!["draft", "issued"].includes(row.status)) throw new DiError(`${poNumber(row)} is ${row.status}: goods have already arrived, so it can no longer be cancelled.`);
   const live = (await tx.query("SELECT number FROM di.supplier_document WHERE po_id = $1 AND doc_type = 'invoice' AND status <> 'void' AND deleted_at IS NULL", [row.id])).rows;
@@ -670,7 +683,8 @@ export async function setInvoiceStatus(tx, input = {}, { who, now = new Date() }
     if (row.status !== "unpaid") throw new DiError(`${row.number} is ${row.status}; only an unpaid invoice can be disputed.`);
     patch = { status: "disputed", dispute_reason: text(input.reason, "reason", 400, { required: true }) };
   } else {
-    if (!isAdmin(who)) throw new DiError(`Only an admin can mark an invoice ${status === "unpaid" ? "resolved" : status}.`);
+    const department = row.po_id ? (await tx.query("SELECT department FROM di.purchase_order WHERE id = $1", [row.po_id])).rows[0]?.department ?? null : null;
+    if (!mayApprove(who, department)) throw approverOnly(`mark this invoice ${status === "unpaid" ? "resolved" : status}`, department);
     if (status === "unpaid") {
       if (row.status !== "disputed") throw new DiError(`${row.number} is not disputed.`);
       patch = { status: "unpaid", dispute_reason: null };

@@ -16,14 +16,16 @@ test("email host authorizes documents and orchestrator", async () => {
   assert.equal((await handleEmailRequest({ headers: { authorization: "Bearer wrong-token" } }, { agent: "orchestrator" })).status, 401);
 });
 
-test("validateEmailRequest needs no confirmation, only internal recipients and one body", () => {
+test("validateEmailRequest needs no confirmation, any recipient domain and one body", () => {
   assert.throws(() => validateEmailRequest({ to: "staff@eternalgy.me", subject: "Hi", text: "Hello", html: "<p>Hello</p>" }), /exactly one/);
-  assert.throws(() => validateEmailRequest({ to: "a@example.com", subject: "Hi", text: "Hello" }), /only sends transactional email/);
   assert.deepEqual(validateEmailRequest({ to: " staff@eternalgy.me ", subject: " Hi ", text: "Hello" }), {
     to: ["staff@eternalgy.me"],
     subject: "Hi",
     text: "Hello",
   });
+  // No domain limit: the Superadmin removed it (2026-10-06).
+  assert.deepEqual(validateEmailRequest({ to: ["zhihong@eternalgy.com", "client@example.com"], subject: "Hi", text: "Hello" }).to,
+    ["zhihong@eternalgy.com", "client@example.com"]);
 });
 
 test("sendEmail posts to the service root /send and omits sender", async () => {

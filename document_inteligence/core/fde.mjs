@@ -60,7 +60,7 @@ export function mergeManagedBlock(existing, markdown) {
 
 function requireAdmin(who) {
   if (!who) throw new DiError("Sign-in required");
-  if (!isAdmin(who)) throw new DiError("Only an admin can change the company's rules. Ask an admin to do it.");
+  if (!isAdmin(who)) throw new DiError("Only a Superadmin can change the company's rules.");
 }
 
 const text = (value, label, max, { required = true } = {}) => {

@@ -120,7 +120,7 @@ export function renderExpenseReportHtml(data, { images = new Map(), generatedOn 
   const closed = batch.status === "closed";
   const name = company?.name || company?.legal_name || "Company";
   const addr = addressLines(company?.address).join(", ");
-  const filtered = data.claimant_filter || data.scope === "own";
+  const filtered = data.claimant_filter || data.scope !== "all";
   const claimantRows = sum.claimants.map((p) => `
     <h2>${esc(p.name)} <small>${esc(p.email || "")} · ${p.totals.count} claim${p.totals.count === 1 ? "" : "s"}</small></h2>
     <table class="claims"><colgroup><col style="width:15%"><col style="width:12%"><col><col style="width:14%"><col style="width:10%"><col style="width:13%"><col style="width:10%"></colgroup><thead><tr><th>No.</th><th>Date</th><th>Merchant</th><th>Category</th><th>Payment</th><th>Status</th><th class="r">Amount</th></tr></thead><tbody>
@@ -204,7 +204,7 @@ export async function publishExpenseReport(env, req) {
   }
   const html = renderExpenseReportHtml(data, { images, generatedOn: todayMY() });
   if (!env.renderPdf || !env.workspaceDir || !env.publish) return { pdf: { skipped: "no PDF renderer on this host", html_chars: html.length } };
-  const rel = `reports/expense-claims-${data.batch.period_key}${data.claimant_filter ? `-${slug(data.claimant_filter)}` : data.scope === "own" ? "-mine" : ""}${data.batch.status === "closed" ? "" : "-draft"}.pdf`;
+  const rel = `reports/expense-claims-${data.batch.period_key}${data.claimant_filter ? `-${slug(data.claimant_filter)}` : data.scope === "own" ? "-mine" : data.scope === "department" ? "-department" : ""}${data.batch.status === "closed" ? "" : "-draft"}.pdf`;
   await mkdir(path.dirname(path.join(env.workspaceDir, rel)), { recursive: true });
   await env.renderPdf(html, path.join(env.workspaceDir, rel));
   const file = await env.publish(rel);

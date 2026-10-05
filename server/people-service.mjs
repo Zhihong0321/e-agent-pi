@@ -8,6 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import { getPool } from './db.mjs';
 import { hashPassword } from './users.mjs';
+import { departmentKey, isSuperadmin, normalizeRole, roleLabel } from './roles.mjs';
 
 export const personTextFields = ['name', 'position', 'department', 'email', 'phone', 'location', 'notes'];
 const personSelect = `m.id AS member_id, m.user_id,
@@ -50,6 +51,7 @@ export function publicPerson(row) {
     notes: row.notes || '',
     username: row.username || null,
     role: row.role || null,
+    role_label: row.role ? roleLabel(row.role) : null,
     tier: row.tier || null,
     has_login: hasLogin,
     login_active: hasLogin ? Boolean(row.login_active) : false,
@@ -102,11 +104,16 @@ async function userForPerson(tx, input, member) {
 function validateAccount(input, current) {
   const username = input.username === undefined ? current?.username : String(input.username).trim().toLowerCase();
   if (username !== undefined && username !== null && !/^[a-z0-9][a-z0-9_.-]{0,63}$/.test(username)) throw new Error('Username must contain 1–64 letters, digits, dots, underscores or hyphens');
-  if (input.role !== undefined && !['admin', 'user'].includes(input.role)) throw new Error('Invalid role');
+  if (input.role !== undefined && !normalizeRole(input.role)) throw new Error('Invalid role: use superadmin, department_head or user');
   if (input.active !== undefined && typeof input.active !== 'boolean') throw new Error('Invalid active status');
   if (input.login_enabled !== undefined && typeof input.login_enabled !== 'boolean') throw new Error('Invalid login status');
   for (const key of ['tier', 'display_name']) if (input[key] !== undefined && (typeof input[key] !== 'string' || input[key].length > 100 || (key === 'tier' && !input[key].trim()))) throw new Error(`Invalid ${key}`);
   return username;
+}
+
+/** A department head acts for one department, so the role needs one to mean anything. */
+function assertHeadHasDepartment(role, department) {
+  if (role === 'department_head' && !departmentKey(department)) throw new Error('A department head needs a department; set department too');
 }
 
 async function protectAdminChange(tx, current, role, active) {
@@ -229,7 +236,7 @@ export async function managePeopleCore(tx, action, input = {}, context = {}) {
   if (memberId && !member) throw new Error('Company person not found');
   let user = await userForPerson(tx, input, member);
   if (user?.company_tenant_id && user.company_tenant_id !== tenantId) throw new Error('That login belongs to another company');
-  if (accountRequested(input) && actor.role !== 'admin') throw new Error('Login access can only be managed by an admin');
+  if (accountRequested(input) && !isSuperadmin(actor)) throw new Error('Logins and roles can only be managed by a Superadmin');
   if (input.user !== undefined || input.user_id !== undefined) {
     if (!user) throw new Error('User account not found');
     const linked = (await tx.query('SELECT * FROM di.company_member WHERE user_id=$1 AND deleted_at IS NULL FOR UPDATE', [user.id])).rows;
@@ -256,9 +263,11 @@ export async function managePeopleCore(tx, action, input = {}, context = {}) {
   if (wantsNewLogin) {
     if (input.username === undefined || input.password === undefined) throw new Error('Username and password are required to enable login');
     const username = validateAccount(input);
+    const role = normalizeRole(input.role) || 'user';
+    assertHeadHasDepartment(role, patch.department ?? member?.department);
     user = (await tx.query(`INSERT INTO users(id, username, display_name, password_hash, role, tier, active, email, phone, position, department, location, notes, company_tenant_id)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`, [
-      randomUUID(), username, input.display_name ?? name, hashPassword(input.password), input.role || 'user', input.tier || 'standard', input.active ?? true,
+      randomUUID(), username, input.display_name ?? name, hashPassword(input.password), role, input.tier || 'standard', input.active ?? true,
       email, patch.phone ?? member?.phone ?? null, patch.position ?? member?.position ?? null, patch.department ?? member?.department ?? null,
       patch.location ?? member?.location ?? null, patch.notes ?? member?.notes ?? null, tenantId,
     ])).rows[0];
@@ -266,8 +275,9 @@ export async function managePeopleCore(tx, action, input = {}, context = {}) {
     const username = validateAccount(input, user);
     const previousRole = user.role;
     const previousActive = user.active;
-    const role = input.role ?? previousRole;
+    const role = normalizeRole(input.role) ?? previousRole;
     const active = input.login_enabled === false ? false : (input.active ?? previousActive);
+    assertHeadHasDepartment(role, patch.department !== undefined ? patch.department : (member?.department ?? user.department));
     await protectAdminChange(tx, user, role, active);
     const passwordHash = input.password === undefined ? user.password_hash : hashPassword(input.password);
     user = (await tx.query(`UPDATE users SET username=$2, display_name=$3, password_hash=$4, role=$5, tier=$6, active=$7,

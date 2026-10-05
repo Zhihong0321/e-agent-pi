@@ -4,7 +4,7 @@ Support one-time jobs and reminders, daily/weekly/monthly recurrence, and standa
 
 Presets and action fields:
 - reminder: {message}. Its delivery is recorded in the Schedules page; it does not send a push notification.
-- email_reminder: {to: [addresses], subject, text, confirm: true}. Internal @eternalgy.me recipients only. Set confirm only after the user authorizes the recipients, content, and delivery timing.
+- email_reminder: {to: [addresses], subject, text}. The user's request is the go-ahead; ask only for a missing recipient, content or time.
 - agent_job: {agent_id, prompt}. Call schedule_agents to find the exact existing runnable agent ID. Never invent an ID, substitute another agent, or schedule yourself. Save the user's task instructions.
 - note: dated workspace note, without running an AI agent.
 

@@ -22,6 +22,7 @@ const USERS = {
   "tok-admin": { id: "u-admin", username: "admin", display_name: "Admin", role: "admin", email: null },
   "tok-aisyah": { id: "u-aisyah", username: "aisyah", display_name: "Aisyah Rahman", role: "user", email: "aisyah@acme.test" },
   "tok-daniel": { id: "u-daniel", username: "daniel", display_name: "Daniel Lee", role: "user", email: "daniel@acme.test" },
+  "tok-hana": { id: "u-hana", username: "hana", display_name: "Hana Ops", role: "department_head", department: "Ops", email: "hana@acme.test" },
 };
 
 const rejects = async (promise, pattern) => {
@@ -160,7 +161,7 @@ test("expense claims", async (t) => {
     await rejects(aisyah("file_claim", claim({ merchant: "Other", amount: 5, receipts: ["notes.txt"] })), /not a file in your workspace|Receipts must be chat attachments/);
     const fake = await inbox("evil.jpg", "", Buffer.from("MZ\x90\x00 this is not an image"));
     await rejects(aisyah("file_claim", claim({ merchant: "Other", amount: 5, receipts: [fake] })), /is not a JPEG, PNG, WebP, GIF or PDF/);
-    await rejects(aisyah("file_claim", claim({ merchant: "Other", amount: 5, claimant: "Daniel Lee", receipts: [ok] })), /Only an admin can file a claim for someone else/);
+    await rejects(aisyah("file_claim", claim({ merchant: "Other", amount: 5, claimant: "Daniel Lee", receipts: [ok] })), /Only a Superadmin can file a claim for someone else/);
     const count = (await db.query("SELECT count(*)::int AS n FROM di.expense_claim")).rows[0].n;
     assert.equal(count, 1, "nothing was written by any refused call");
   });
@@ -230,7 +231,7 @@ test("expense claims", async (t) => {
   });
 
   await t.test("only an admin reviews, and a rejection needs a reason", async () => {
-    await rejects(aisyah("review_claim", { claim: a1, decision: "approve" }), /Only an admin/);
+    await rejects(aisyah("review_claim", { claim: a1, decision: "approve" }), /Only a Superadmin or the claimant's department head/);
     await rejects(admin("review_claim", { claim: a2, decision: "reject" }), /Give a reason/);
     const approved = await admin("review_claim", { claim: a1, decision: "approve" });
     assert.equal(approved.claim.status, "approved");
@@ -269,7 +270,7 @@ test("expense claims", async (t) => {
   });
 
   await t.test("closing needs the pending claims dealt with, then freezes everything", async () => {
-    await rejects(aisyah("close_monthly_submission", { month: "2026-10" }), /Only an admin/);
+    await rejects(aisyah("close_monthly_submission", { month: "2026-10" }), /Only a Superadmin/);
     await rejects(admin("close_monthly_submission", { month: "2026-10" }), /still pending/);
     await rejects(admin("close_monthly_submission", { month: "2025-01" }), /No claims have been filed/);
     const closed = await admin("close_monthly_submission", { month: "2026-10", carry_forward_pending: true });
@@ -326,7 +327,7 @@ test("expense claims", async (t) => {
     clock.now = new Date("2026-10-08T04:00:00Z");
     const first = await user("file_claim", claim({ expense_date: "2026-10-07", amount: 20, no_receipt_reason: "app booking" }));
     assert.equal(first.claim.submission.period_key, "2026-10", "filed on the 8th, cut-off 10");
-    await rejects(user("set_expense_settings", { cutoff_day: 5 }), /Only an admin/);
+    await rejects(user("set_expense_settings", { cutoff_day: 5 }), /Only a Superadmin/);
     await rejects(b("set_expense_settings", { cutoff_day: 31 }), /1 to 28/);
     await rejects(b("set_expense_settings", {}), /at least one setting/);
     const changed = await b("set_expense_settings", { cutoff_day: 5 });
@@ -411,4 +412,23 @@ ${html}`); } };
   assert.match(receiptHtml, /A &amp; B/);
   assert.ok((await db.query("SELECT count(*)::int AS n FROM di.expense_claim WHERE custom->>'demo' = 'true'")).rows[0].n === 12);
   assert.ok(dir);
+});
+
+test("a department head sees and reviews their department's claims, never their own or another department's", async () => {
+  const { as, inbox } = await setup();
+  const [hana, daniel, aisyah, admin] = ["hana", "daniel", "aisyah", "admin"].map((who) => as(who));
+  const ops = (await daniel("file_claim", claim({ receipts: [await inbox("d.png")] }))).claim.number;
+  const sales = (await aisyah("file_claim", claim({ merchant: "Taxi", receipts: [await inbox("a.png")] }))).claim.number;
+  const own = (await hana("file_claim", claim({ merchant: "Parking", amount: 8, receipts: [await inbox("h.png")] }))).claim.number;
+
+  const seen = await hana("list_claims");
+  assert.deepEqual(seen.claims.map((c) => c.number).sort(), [ops, own].sort(), "Daniel is in Ops; Aisyah is in Sales");
+  assert.equal(seen.scope, "Ops department's claims");
+  assert.equal((await hana("review_claim", { claim: ops, decision: "approve" })).claim.status, "approved");
+  await rejects(hana("review_claim", { claim: sales, decision: "approve" }), /not found/);
+  await rejects(hana("review_claim", { claim: own, decision: "approve" }), /your own claim; a Superadmin reviews it/);
+  await rejects(hana("withdraw_claim", { claim: ops }), /not found/);
+  await rejects(hana("close_monthly_submission", { month: "2026-10" }), /Only a Superadmin/);
+  await rejects(aisyah("review_claim", { claim: ops, decision: "reject", note: "no" }), /Only a Superadmin or the claimant's department head/);
+  assert.equal((await admin("review_claim", { claim: own, decision: "approve" })).claim.status, "approved");
 });

@@ -2068,7 +2068,7 @@ async function bootServices() {
         services: {
           logEvent,
           userLookup: async (userId) => {
-            const rows = await getPool().query('SELECT id, username, display_name, role, active FROM users WHERE id=$1', [userId]);
+            const rows = await getPool().query('SELECT id, username, display_name, role, active, department, position FROM users WHERE id=$1', [userId]);
             return rows.rows[0] || null;
           },
           getAgent,
@@ -2147,7 +2147,7 @@ async function bootServices() {
       await ensureScheduler({ pool: getPool(), catalog: catalogApi, log: logEvent });
       schedulerWorker = createSchedulerWorker({ pool: getPool(), log: logEvent,
         runAgentJob: runScheduledAgent, getRun: recoverScheduledRun, sendEmail,
-        userLookup: async id => (await getPool().query('SELECT id,username,role,active,company_tenant_id FROM users WHERE id=$1',[id])).rows[0] || null,
+        userLookup: async id => (await getPool().query('SELECT id,username,display_name,role,active,department,company_tenant_id FROM users WHERE id=$1',[id])).rows[0] || null,
       });
       logEvent("info", "scheduler host initialized and scheduler agent registered");
     }

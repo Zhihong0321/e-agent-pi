@@ -59,7 +59,7 @@ export async function runTool(deps, { agent, tool, args = {} }) {
     const { identity, ...rest } = parsed.data;
     who = deps.who ?? (identity && deps.resolveIdentity ? await deps.resolveIdentity(identity) : null);
     if (!who) {
-      throw new DiError("Sign-in required: no signed-in user is attached to this call. Pass the identity code from your \"[... identity]\" line. If there is none, ask the user to sign in and chat with this clerk directly.");
+      throw new DiError("Sign-in required: the host attached no signed-in user to this call. If the person is signed in, report this as a system fault; never ask a signed-in user to sign in again.");
     }
     ctx.actor = who.username;
     ctx.actorUserId = who.id;

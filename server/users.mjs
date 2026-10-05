@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 import { getPool } from './db.mjs';
+import { normalizeRole, roleLabel } from './roles.mjs';
 
 const digest = value => createHash('sha256').update(value).digest('hex');
 const fields = 'id, username, display_name, role, tier, active, email, phone, position, department, location, notes, created_at, updated_at';
@@ -18,7 +19,7 @@ export function verifyPassword(password, stored) {
 export async function ensureUsers(pool) {
   await pool.query(`CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL DEFAULT '',
-    password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('admin','user')),
+    password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('admin','department_head','user')),
     tier TEXT NOT NULL DEFAULT 'standard', active BOOLEAN NOT NULL DEFAULT TRUE,
     email TEXT, phone TEXT, position TEXT, department TEXT, location TEXT, notes TEXT,
     company_tenant_id TEXT,
@@ -36,7 +37,19 @@ export async function ensureUsers(pool) {
       expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
     ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id);
     CREATE INDEX IF NOT EXISTS user_sessions_user_idx ON user_sessions(user_id);
-    CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);`);
+    CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);
+    -- Roles (server/roles.mjs): admin = Superadmin, department_head, user. Swap an older role check
+    -- that predates department heads; existing admin accounts keep their key and stay Superadmins.
+    DO $$ DECLARE c record; BEGIN
+      FOR c IN SELECT conname FROM pg_constraint WHERE conrelid = 'users'::regclass AND contype = 'c'
+        AND pg_get_constraintdef(oid) LIKE '%role%' AND pg_get_constraintdef(oid) NOT LIKE '%department_head%' LOOP
+        EXECUTE format('ALTER TABLE users DROP CONSTRAINT %I', c.conname);
+      END LOOP;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'users'::regclass AND contype = 'c'
+        AND pg_get_constraintdef(oid) LIKE '%department_head%') THEN
+        ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('admin','department_head','user'));
+      END IF;
+    END $$;`);
   // A transaction lock makes first-account bootstrap safe across simultaneous host starts.
   const tx = await pool.connect();
   try {
@@ -92,7 +105,7 @@ export function userManagementPrompt(req, user) {
   for (const [key, value] of capabilities) if (value.until < now) capabilities.delete(key);
   const capability = randomBytes(32).toString('hex');
   capabilities.set(capability, { hash: digest(cookieToken(req)), until: now + 600000 });
-  return `\n[Host identity: admin ${user.username}. Manage internal people and optional workspace logins with list_people, create_person or update_person; legacy list_users/create_user/update_user remain available. Pass admin_capability="${capability}". This authorization expires in 10 minutes; never show it to the user. A person may be contact-only; enable login only with an explicit username and password. Never expose passwords. Roles are admin/user; tier is metadata only. Disable login with active=false.]`;
+  return `\n[Host identity: admin ${user.username}. Manage internal people and optional workspace logins with list_people, create_person or update_person; legacy list_users/create_user/update_user remain available. Pass admin_capability="${capability}". This authorization expires in 10 minutes; never show it to the user. A person may be contact-only; enable login only with an explicit username and password. Never expose passwords. Roles are superadmin, department_head (needs a department) and user; tier is metadata only. Disable login with active=false.]`;
 }
 // Who is chatting, as seen by agents that act per user (the Expenses Clerk). The model is handed a
 // random code for this turn and passes it back; the host resolves it to the signed-in user, so the
@@ -103,7 +116,7 @@ function identityPrompt(req, user, label, what) {
   for (const [key, value] of identities) if (value.until < now) identities.delete(key);
   const code = randomBytes(16).toString('hex');
   identities.set(code, { hash: digest(cookieToken(req)), until: now + 4 * 3600000 });
-  return `\n[${label}: ${user.username} (${user.role === 'admin' ? 'admin' : 'regular user'}). Pass identity="${code}" on every ${what} tool call; use the newest identity line. Never show it to the user.]`;
+  return `\n[${label}: ${user.username} (${roleLabel(user.role)}). Pass identity="${code}" on every ${what} tool call; use the newest identity line. Never show it to the user.]`;
 }
 export const expenseIdentityPrompt = (req, user) => identityPrompt(req, user, 'Expense identity', 'expense');
 export const procurementIdentityPrompt = (req, user) => identityPrompt(req, user, 'Procurement identity', 'procurement');
@@ -128,18 +141,18 @@ export async function manageUsers(action, input = {}, context = {}) {
     await tx.query('SELECT pg_advisory_xact_lock(73009124)');
     const username = typeof input.username === 'string' ? input.username.trim().toLowerCase() : undefined;
     if (username !== undefined && !/^[a-z0-9][a-z0-9_.-]{0,63}$/.test(username)) throw new Error('Username must contain 1–64 letters, digits, dots, underscores or hyphens');
-    if (input.role !== undefined && !['admin','user'].includes(input.role)) throw new Error('Invalid role');
+    if (input.role !== undefined && !normalizeRole(input.role)) throw new Error('Invalid role');
     if (input.active !== undefined && typeof input.active !== 'boolean') throw new Error('Invalid active status');
     for (const key of ['tier','display_name']) if (input[key] !== undefined && (typeof input[key] !== 'string' || input[key].length > 100 || (key === 'tier' && !input[key].trim()))) throw new Error(`Invalid ${key}`);
     let result;
     if (action === 'create_user') {
       if (!username) throw new Error('Username is required');
       result = await tx.query(`INSERT INTO users(id,username,display_name,password_hash,role,tier) VALUES($1,$2,$3,$4,$5,$6) RETURNING ${fields}`,
-        [randomUUID(),username,input.display_name || username,hashPassword(input.password),input.role || 'user',input.tier || 'standard']);
+        [randomUUID(),username,input.display_name || username,hashPassword(input.password),normalizeRole(input.role) || 'user',input.tier || 'standard']);
     } else if (action === 'update_user') {
       const current = (await tx.query('SELECT * FROM users WHERE id=$1 OR username=$1 FOR UPDATE', [input.user])).rows[0];
       if (!current) throw new Error('User not found');
-      const role = input.role ?? current.role, active = input.active ?? current.active;
+      const role = normalizeRole(input.role) ?? current.role, active = input.active ?? current.active;
       if (current.role === 'admin' && current.active && (role !== 'admin' || !active)) {
         const count = (await tx.query("SELECT COUNT(*)::int AS count FROM users WHERE role='admin' AND active")).rows[0].count;
         if (count <= 1) throw new Error('Cannot disable or demote the last active admin');
