@@ -1,4 +1,72 @@
 /* Research Library Panel within Demo Workspace */
+.res-outer-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+.res-mode-container {
+  display: flex;
+  gap: 12px;
+  background: #f1f5f3;
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+}
+
+.res-mode-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+
+.res-mode-btn:hover {
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--ink);
+}
+
+.res-mode-btn.active {
+  background: #ffffff;
+  color: #155d4a;
+  border-color: rgba(21, 93, 74, 0.2);
+  box-shadow: 0 4px 12px rgba(21, 93, 74, 0.08);
+}
+
+.res-mode-btn span {
+  font-size: 22px;
+}
+
+.res-mode-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.res-mode-text strong {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.res-mode-text small {
+  font-size: 11px;
+  color: #84928a;
+  margin-top: 2px;
+}
+
+.res-mode-btn.active .res-mode-text small {
+  color: #3b7b65;
+}
+
 .res-panel {
   background: #fff;
   border: 1px solid var(--line);

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { SignalReportsPanel } from "./signals";
 import "./research.css";
 
 export type ResearchItem = {
@@ -106,6 +107,20 @@ export function ResearchPanel({
   onNotice: (message: string) => void;
   onRequestNew?: () => void;
 }) {
+  const [researchMode, setResearchMode] = useState<"signals" | "dossiers">(() => {
+    const p = new URLSearchParams(window.location.search);
+    const tab = p.get("tab");
+    if (tab === "dossiers") return "dossiers";
+    return "signals"; // default to signals so Company Signal Research is front-and-center
+  });
+
+  const switchMode = (mode: "signals" | "dossiers") => {
+    setResearchMode(mode);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", mode);
+    window.history.replaceState(null, "", url.toString());
+  };
+
   const [data, setData] = useState<ResearchHistory | null>(null);
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
@@ -335,7 +350,40 @@ export function ResearchPanel({
   const selectedItem = data?.items.find((i) => i.id === selectedId) || null;
 
   return (
-    <section className="res-panel" aria-label="Company research library">
+    <div className="res-outer-wrapper">
+      <div className="res-mode-container" role="tablist" aria-label="Research types">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={researchMode === "signals"}
+          className={`res-mode-btn ${researchMode === "signals" ? "active" : ""}`}
+          onClick={() => switchMode("signals")}
+        >
+          <span>📈</span>
+          <div className="res-mode-text">
+            <strong>上市标的异动与催化研报 (Company Signal Research)</strong>
+            <small>公开发行股票 · 逐字核验市场异动、业绩催化剂与长期研报追踪</small>
+          </div>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={researchMode === "dossiers"}
+          className={`res-mode-btn ${researchMode === "dossiers" ? "active" : ""}`}
+          onClick={() => switchMode("dossiers")}
+        >
+          <span>🏢</span>
+          <div className="res-mode-text">
+            <strong>企业工商与尽调档案 (Company Dossiers)</strong>
+            <small>私营企业工商信息 (SSM) 与互联网证据底稿 ({data?.total || 0} 份档案)</small>
+          </div>
+        </button>
+      </div>
+
+      {researchMode === "signals" ? (
+        <SignalReportsPanel user={user} onNotice={onNotice} />
+      ) : (
+        <section className="res-panel" aria-label="Company research library">
       {/* Panel Header */}
       <header className="res-head">
         <div>
@@ -859,5 +907,7 @@ export function ResearchPanel({
         </div>
       )}
     </section>
+      )}
+    </div>
   );
 }
