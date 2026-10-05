@@ -121,7 +121,7 @@ export function piWorkerFactory(opts) {
         }
         const mapped = applyPiEvent(currentTurn, event);
         onEvent?.(event, currentTurn);
-        if (mapped) opts.onEvent?.(mapped, currentTurn);
+        if (mapped && !(completionAccepted && mapped.type === 'error')) opts.onEvent?.(mapped, currentTurn);
       } catch {
         /* event mapping must never kill the run */
       }

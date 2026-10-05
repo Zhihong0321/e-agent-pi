@@ -112,6 +112,8 @@ export type StreamEvent = {
   phase?: string;
   error?: string;
   retryable?: boolean;
+  run?: { status?: string; error?: { message?: string } | null };
+  recoveredRun?: { status?: string; error?: { message?: string } | null };
   status?: string;
   reply?: string;
   blocks?: TurnBlock[];

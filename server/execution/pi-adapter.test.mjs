@@ -49,3 +49,16 @@ test('a successful SDK retry clears an earlier provider error', async () => {
   assert.equal(worker.settledWithoutError(), true);
   await worker.dispose();
 });
+
+test('the intentional abort after accepted completion is not a user-visible error', async () => {
+  batches = [[
+    { type: 'tool_execution_end', toolName: 'finish_run', toolCallId: 'finish', result: { details: { ok: true, data: { accepted: true } } } },
+    assistant('Request aborted'), settled,
+  ]];
+  const events = [];
+  const worker = piWorkerFactory({ profile: { id: 'test' }, manifest: { manifest: {} }, attemptId: 'completed', onEvent: event => events.push(event) });
+  await worker.start();
+  await worker.prompt('hi');
+  assert.ok(!events.some(event => event.type === 'error'));
+  await worker.dispose();
+});

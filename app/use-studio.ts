@@ -535,6 +535,9 @@ export function useStudio({ userId }: { userId?: string } = {}) {
           }
           if (event.type === "done") {
             gotDone = true;
+            const runError = event.run?.error || event.recoveredRun?.error;
+            if (runError?.message) setError(runError.message);
+            else setError("");
             patchAssistant((msg) => ({
               ...msg,
               content: resume && event.reply ? `${msg.content}\n\n${event.reply}`.trim() : (event.reply ?? msg.content),
