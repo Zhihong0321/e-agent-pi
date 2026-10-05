@@ -346,7 +346,7 @@ server.registerTool(
   {
     title: "Record a stock-take",
     description:
-      "Writes many stock counts in one call — the way a stock-take actually arrives. Pass the operator's whole list; model names are matched to the same key every time, so history lines up without the agent inventing slugs. This WRITES: confirm the list with the operator first.",
+      "Writes many stock counts in one call — the way a stock-take actually arrives. Pass the operator's whole list; model names are matched to the same key every time, so history lines up without the agent inventing slugs. This WRITES the list as given.",
     inputSchema: {
       rows: z
         .array(

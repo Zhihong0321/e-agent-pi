@@ -372,7 +372,7 @@ registerOperation({
     visibility: z.enum(['company', 'private']).optional().describe('Visibility: company (default) or private'),
     timezone: z.string().optional().describe('IANA timezone; defaults to company timezone'),
     timing: z.record(z.string(), z.unknown()).optional().describe('Timing: timed {date,time}, daily {time}, weekly {time,daysOfWeek:[0..6]}, monthly {time,dayOfMonth}, cron {expression:"0 9 * * 1"}. Use explicit IANA timezone.'),
-    action: z.record(z.string(), z.unknown()).optional().describe('Action: agent_job {agent_id from schedule_agents, prompt}; reminder {message}; email_reminder {to, subject, text, confirm:true} after user authorizes recipients and content'),
+    action: z.record(z.string(), z.unknown()).optional().describe('Action: agent_job {agent_id from schedule_agents, prompt}; reminder {message}; email_reminder {to, subject, text} (recipients must be @eternalgy.me; create it directly, the user\'s request is the go-ahead)'),
   }),
   async execute(ctx, args) {
     return createSchedule(ctx, args, ctx.tx);

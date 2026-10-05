@@ -3,12 +3,12 @@ import http from "node:http";
 import { test } from "node:test";
 import { sendEmail, validateEmailRequest, handleEmailRequest, EE_MAIL_DISPATCH_TOKEN } from "./ee-mail.mjs";
 
-test("email host authorizes documents and orchestrator, while requiring confirmation", async () => {
+test("email host authorizes documents and orchestrator", async () => {
   const req = { headers: { authorization: `Bearer ${EE_MAIL_DISPATCH_TOKEN}` } };
   for (const agent of ["di-documents", "orchestrator"]) {
     const result = await handleEmailRequest(req, { agent });
     assert.equal(result.status, 400);
-    assert.match(result.body.error, /confirm=true/);
+    assert.match(result.body.error, /valid email addresses/);
   }
   for (const agent of ["website", "di-payments", "", undefined]) {
     assert.equal((await handleEmailRequest(req, { agent })).status, 401);
@@ -16,11 +16,10 @@ test("email host authorizes documents and orchestrator, while requiring confirma
   assert.equal((await handleEmailRequest({ headers: { authorization: "Bearer wrong-token" } }, { agent: "orchestrator" })).status, 401);
 });
 
-test("validateEmailRequest requires explicit confirmation and one body", () => {
-  assert.throws(() => validateEmailRequest({ to: "a@example.com", subject: "Hi", text: "Hello" }), /confirm=true/);
-  assert.throws(() => validateEmailRequest({ confirm: true, to: "staff@eternalgy.me", subject: "Hi", text: "Hello", html: "<p>Hello</p>" }), /exactly one/);
-  assert.throws(() => validateEmailRequest({ confirm: true, to: "a@example.com", subject: "Hi", text: "Hello" }), /only sends transactional email/);
-  assert.deepEqual(validateEmailRequest({ confirm: true, to: " staff@eternalgy.me ", subject: " Hi ", text: "Hello" }), {
+test("validateEmailRequest needs no confirmation, only internal recipients and one body", () => {
+  assert.throws(() => validateEmailRequest({ to: "staff@eternalgy.me", subject: "Hi", text: "Hello", html: "<p>Hello</p>" }), /exactly one/);
+  assert.throws(() => validateEmailRequest({ to: "a@example.com", subject: "Hi", text: "Hello" }), /only sends transactional email/);
+  assert.deepEqual(validateEmailRequest({ to: " staff@eternalgy.me ", subject: " Hi ", text: "Hello" }), {
     to: ["staff@eternalgy.me"],
     subject: "Hi",
     text: "Hello",

@@ -9,7 +9,7 @@ import { EE_MAIL_DISPATCH_TOKEN } from "./ee-mail.mjs";
 
 const SERVER = path.join(path.dirname(fileURLToPath(import.meta.url)), "ee-mail-mcp-server.mjs");
 
-test("ee-mail MCP is a separate, confirmed-send tool with host authorization", async () => {
+test("ee-mail MCP is a separate send tool with host authorization", async () => {
   let body;
   const host = http.createServer(async (req, res) => {
     let raw = "";
@@ -38,11 +38,10 @@ test("ee-mail MCP is a separate, confirmed-send tool with host authorization", a
         const tools = await client.listTools();
         assert.deepEqual(tools.tools.map((tool) => tool.name), ["send_email"]);
         const sent = await client.callTool({ name: "send_email", arguments: {
-          to: "a@example.com", subject: "Confirmed", text: "Hello", confirm: true,
+          to: "a@example.com", subject: "Hello", text: "Hello",
         } });
         assert.equal(sent.isError, undefined);
         assert.equal(body.agent, agent);
-        assert.equal(body.confirm, true);
       } finally {
         await client.close();
       }
@@ -50,7 +49,7 @@ test("ee-mail MCP is a separate, confirmed-send tool with host authorization", a
 
     const forged = await connect("wrong-token");
     const denied = await forged.callTool({ name: "send_email", arguments: {
-      to: "a@example.com", subject: "No", text: "Should fail", confirm: true,
+      to: "a@example.com", subject: "No", text: "Should fail",
     } });
     assert.equal(denied.isError, true);
     assert.match(denied.content[0].text, /Unauthorized/);

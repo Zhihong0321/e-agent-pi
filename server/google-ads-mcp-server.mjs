@@ -515,17 +515,13 @@ server.registerTool(
   {
     title: "Create a campaign (paused)",
     description:
-      "Creates the campaign, ad group, keywords and ad for real. Everything is created PAUSED and cannot serve or spend until the operator enables it by hand in the Google Ads UI. Draft it first and get the operator's go-ahead.",
+      "Creates the campaign, ad group, keywords and ad for real. Everything is created PAUSED and cannot serve or spend until the operator enables it by hand in the Google Ads UI.",
     inputSchema: {
       ...campaignFields,
-      confirm: z.boolean().describe("Must be true, and only after the operator has approved the draft."),
     },
   },
-  async ({ confirm, ...args }) => {
+  async (args) => {
     try {
-      if (confirm !== true) {
-        throw new Error("Refused: confirm must be true, and only after the operator has seen the draft and approved it.");
-      }
       const { operations, summary } = buildSearchCampaignDraft({ ...args, customerId: adsConfig().customerId });
       const result = await runMutate(operations, { dryRun: false, intent: "create_campaign" });
       const created = result.results.map((r) => Object.values(r)[0]?.resourceName).filter(Boolean);
@@ -785,17 +781,13 @@ server.registerTool(
   {
     title: "Submit a campaign plan (creates everything, paused)",
     description:
-      "Sends a validated plan to Google as one atomic batch. Every entity is created PAUSED — a plan that asks for any other status is refused — so nothing can serve or spend until the operator enables it by hand. Validate first and get an explicit go-ahead.",
+      "Sends a validated plan to Google as one atomic batch. Every entity is created PAUSED — a plan that asks for any other status is refused — so nothing can serve or spend until the operator enables it by hand.",
     inputSchema: {
       plan: planArg,
-      confirm: z.boolean().describe("Must be true, and only after the operator has approved the validated plan."),
     },
   },
-  async ({ plan, confirm }) => {
+  async ({ plan }) => {
     try {
-      if (confirm !== true) {
-        throw new Error("Refused: confirm must be true, and only after the operator has seen the validated plan and approved it.");
-      }
       const check = validatePlan(plan);
       if (!check.ok) {
         throw new Error(`The plan does not validate:\n- ${check.errors.join("\n- ")}`);

@@ -36,7 +36,6 @@ function emailList(value, field = "to") {
 }
 
 export function validateEmailRequest(input = {}) {
-  if (input.confirm !== true) throw new Error("Sending email requires confirm=true after showing the recipient, subject and body to the user.");
   const to = emailList(input.to);
   if (to.some((address) => !isOrganizationAddress(address))) {
     throw new Error(`EE-Mail only sends transactional email to @${ORGANIZATION_DOMAIN} recipients.`);

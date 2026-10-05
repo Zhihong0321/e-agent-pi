@@ -9,7 +9,7 @@ export async function validateAction(preset, action = {}, { title, note } = {}) 
   if (preset === 'reminder') return { message: String(action.message || note || title).trim().slice(0, 4000) };
   if (preset === 'email_reminder') {
     const { validateEmailRequest } = await import('../ee-mail.mjs');
-    return validateEmailRequest({ ...action, confirm: action.confirm === true });
+    return validateEmailRequest({ ...action });
   }
   if (preset !== 'agent_job') throw new Error('Choose note, reminder, email_reminder, or agent_job');
   const agent = await catalog.getAgent?.(String(action.agent_id || ''));
