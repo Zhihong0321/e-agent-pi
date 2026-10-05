@@ -16,7 +16,8 @@
     "pi:version": "pi --version",
     "test": "npm run build",
     "test:company-research": "node --test server/company-research/*.test.mjs",
-    "test:ads-research": "node --test server/ads-research/*.test.mjs"
+    "test:ads-research": "node --test server/ads-research/*.test.mjs",
+    "test:scheduler": "node --experimental-test-module-mocks --test server/scheduler/*.test.mjs"
   },
   "dependencies": {
     "@composio/core": "^0.18.1",
@@ -31,7 +32,8 @@
     "react-dom": "19.2.6",
     "read-excel-file": "^9.3.10",
     "tldts": "7.4.16",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "cron-parser": "5.10.1"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",

@@ -7,6 +7,17 @@
 import { z } from 'zod';
 import { managePeopleCore, listPeople, countUserAccounts } from '../people-service.mjs';
 import { updateCompanyProfile } from '../../document_inteligence/core/company.mjs';
+import {
+  previewSchedule,
+  createSchedule,
+  listCompanySchedules,
+  updateScheduleService,
+  pauseScheduleService,
+  resumeScheduleService,
+  cancelScheduleService,
+  getScheduleHistoryService,
+} from '../scheduler/service.mjs';
+import { schedulableAgents } from '../scheduler/actions.mjs';
 import { ToolManifestEntrySchema } from './contracts.mjs';
 
 const operations = new Map();
@@ -321,6 +332,157 @@ export function registerDiTool(toolName, spec, agentId, needsUser) {
     artifactEffect: write,
   });
 }
+
+// ---------------------------------------------------------------- scheduler operations
+
+registerOperation({
+  id: 'schedule_agents', description: 'List existing runnable AI agents and their exact IDs for scheduling.',
+  effect: 'read', profileIds: ['scheduler'], access: { user: true }, timeoutMs: 15_000,
+  inputSchema: z.object({}), async execute() { return { agents: await schedulableAgents() }; },
+});
+
+registerOperation({
+  id: 'schedule_preview',
+  description: 'Preview interpreted timezone, next occurrences and validity of a schedule timing rule.',
+  effect: 'read',
+  profileIds: ['scheduler'],
+  access: { user: true },
+  timeoutMs: 15_000,
+  inputSchema: z.object({
+    timing: z.record(z.string(), z.unknown()).describe('Timing: timed {date,time}, daily {time}, weekly {time,daysOfWeek:[0..6]}, monthly {time,dayOfMonth}, cron {expression:"0 9 * * 1"}. Use explicit IANA timezone.'),
+    timezone: z.string().optional().describe('IANA timezone; defaults to company timezone'),
+    preset: z.enum(['note', 'reminder', 'email_reminder', 'agent_job']).optional(),
+  }),
+  async execute(ctx, args) {
+    return previewSchedule(args);
+  },
+});
+
+registerOperation({
+  id: 'schedule_create',
+  description: 'Create a calendar schedule, dated note, email reminder, or AI job. Computes the next occurrence and sets initial revision to 1.',
+  effect: 'local_write',
+  profileIds: ['scheduler'],
+  access: { user: true },
+  timeoutMs: 15_000,
+  inputSchema: z.object({
+    title: z.string().min(1).max(200).describe('Title of the scheduled item'),
+    note: z.string().max(2000).optional().describe('Optional note or description'),
+    preset: z.enum(['note', 'reminder', 'email_reminder', 'agent_job']).optional().describe('Schedule preset: note, reminder (workspace), email_reminder, or agent_job'),
+    visibility: z.enum(['company', 'private']).optional().describe('Visibility: company (default) or private'),
+    timezone: z.string().optional().describe('IANA timezone; defaults to company timezone'),
+    timing: z.record(z.string(), z.unknown()).optional().describe('Timing: timed {date,time}, daily {time}, weekly {time,daysOfWeek:[0..6]}, monthly {time,dayOfMonth}, cron {expression:"0 9 * * 1"}. Use explicit IANA timezone.'),
+    action: z.record(z.string(), z.unknown()).optional().describe('Action: agent_job {agent_id from schedule_agents, prompt}; reminder {message}; email_reminder {to, subject, text, confirm:true} after user authorizes recipients and content'),
+  }),
+  async execute(ctx, args) {
+    return createSchedule(ctx, args, ctx.tx);
+  },
+});
+
+registerOperation({
+  id: 'schedule_list',
+  description: 'List schedules for the company, filterable by date range, status, or preset. Private items are only visible to their creator.',
+  effect: 'read',
+  profileIds: ['scheduler'],
+  access: { user: true },
+  timeoutMs: 15_000,
+  inputSchema: z.object({
+    from: z.string().optional().describe('Start date filter (YYYY-MM-DD)'),
+    to: z.string().optional().describe('End date filter (YYYY-MM-DD)'),
+    status: z.enum(['active', 'paused', 'completed', 'cancelled', 'all']).optional(),
+    preset: z.enum(['note', 'reminder', 'email_reminder', 'agent_job', 'all']).optional(),
+    limit: z.number().int().positive().max(100).optional(),
+  }),
+  async execute(ctx, args) {
+    return listCompanySchedules(ctx, args, ctx.tx);
+  },
+});
+
+registerOperation({
+  id: 'schedule_update',
+  description: 'Update a schedule (title, note, timing, visibility). Fails with conflict if expected_revision does not match.',
+  effect: 'local_write',
+  profileIds: ['scheduler'],
+  access: { user: true },
+  timeoutMs: 15_000,
+  inputSchema: z.object({
+    schedule_id: z.string().describe('ID of the schedule to update'),
+    expected_revision: z.number().int().describe('Current revision from last read; rejects if outdated'),
+    title: z.string().max(200).optional(),
+    note: z.string().max(2000).optional(),
+    visibility: z.enum(['company', 'private']).optional(),
+    timezone: z.string().optional(),
+    timing: z.record(z.string(), z.unknown()).optional(),
+    action: z.record(z.string(), z.unknown()).optional(),
+  }),
+  async execute(ctx, args) {
+    return updateScheduleService(ctx, args, ctx.tx);
+  },
+});
+
+registerOperation({
+  id: 'schedule_pause',
+  description: 'Pause an active schedule so it stops producing or dispatching occurrences.',
+  effect: 'local_write',
+  profileIds: ['scheduler'],
+  access: { user: true },
+  timeoutMs: 15_000,
+  inputSchema: z.object({
+    schedule_id: z.string().describe('ID of the schedule to pause'),
+    expected_revision: z.number().int().optional().describe('Expected revision for concurrency check'),
+  }),
+  async execute(ctx, args) {
+    return pauseScheduleService(ctx, args, ctx.tx);
+  },
+});
+
+registerOperation({
+  id: 'schedule_resume',
+  description: 'Resume a paused schedule and recompute its next due time.',
+  effect: 'local_write',
+  profileIds: ['scheduler'],
+  access: { user: true },
+  timeoutMs: 15_000,
+  inputSchema: z.object({
+    schedule_id: z.string().describe('ID of the schedule to resume'),
+    expected_revision: z.number().int().optional().describe('Expected revision for concurrency check'),
+  }),
+  async execute(ctx, args) {
+    return resumeScheduleService(ctx, args, ctx.tx);
+  },
+});
+
+registerOperation({
+  id: 'schedule_cancel',
+  description: 'Cancel a schedule permanently. Stops future occurrences.',
+  effect: 'local_write',
+  profileIds: ['scheduler'],
+  access: { user: true },
+  timeoutMs: 15_000,
+  inputSchema: z.object({
+    schedule_id: z.string().describe('ID of the schedule to cancel'),
+    expected_revision: z.number().int().optional().describe('Expected revision for concurrency check'),
+  }),
+  async execute(ctx, args) {
+    return cancelScheduleService(ctx, args, ctx.tx);
+  },
+});
+
+registerOperation({
+  id: 'schedule_history',
+  description: 'Inspect past execution and dispatch occurrences for a schedule.',
+  effect: 'read',
+  profileIds: ['scheduler'],
+  access: { user: true },
+  timeoutMs: 15_000,
+  inputSchema: z.object({
+    schedule_id: z.string().describe('ID of the schedule'),
+    limit: z.number().int().positive().max(50).optional(),
+  }),
+  async execute(ctx, args) {
+    return getScheduleHistoryService(ctx, args, ctx.tx);
+  },
+});
 
 export function manifestEntriesJson(toolIds) {
   return manifestFor(toolIds).map((entry) => ToolManifestEntrySchema.parse(entry));

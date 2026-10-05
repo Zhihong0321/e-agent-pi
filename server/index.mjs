@@ -158,14 +158,12 @@ import { ensureCompanyResearch, handleCompanyResearch, stopCompanyResearch } fro
 import { ensureCompanySignalResearch, handleCompanySignalResearch, stopCompanySignalResearch } from "./company-signal-research/host.mjs";
 import { ensureAdsResearch, handleAdsResearch, stopAdsResearch } from "./ads-research/host.mjs";
 import { ensureMediaAi, handleMediaAi } from "./media-ai/host.mjs";
-let ensureScheduler = null;
-let handleSchedulerRoutes = null;
-try {
-  const schedHost = await import("./scheduler/host.mjs").catch(() => null);
-  ensureScheduler = schedHost?.ensureScheduler || null;
-  const schedRoutes = await import("./scheduler/routes.mjs").catch(() => null);
-  handleSchedulerRoutes = schedRoutes?.handleSchedulerRoutes || null;
-} catch {}
+import { ensureScheduler } from './scheduler/host.mjs';
+import { handleSchedulerRoutes } from './scheduler/routes.mjs';
+import { createSchedulerWorker } from './scheduler/worker.mjs';
+import { runScheduledAgent, recoverScheduledRun } from './scheduler/agent-jobs.mjs';
+import { sendEmail } from './ee-mail.mjs';
+let schedulerWorker = null;
 import { ensureComposioMcp } from "./composio.mjs";
 import { ensureEeMailMcp } from "./ee-mail-mcp.mjs";
 import { handleEmailRequest } from "./ee-mail.mjs";
@@ -2114,6 +2112,11 @@ async function bootServices() {
   try {
     if (ensureScheduler && dbReady()) {
       await ensureScheduler({ pool: getPool(), catalog: catalogApi, log: logEvent });
+      setMigratedProfiles((await listAgents()).filter(agent => agent.engine !== 'agy').map(agent => agent.id));
+      schedulerWorker = createSchedulerWorker({ pool: getPool(), log: logEvent,
+        runAgentJob: runScheduledAgent, getRun: recoverScheduledRun, sendEmail,
+        userLookup: async id => (await getPool().query('SELECT id,username,role,active,company_tenant_id FROM users WHERE id=$1',[id])).rows[0] || null,
+      });
       logEvent("info", "scheduler host initialized and scheduler agent registered");
     }
   } catch (error) {
@@ -2278,6 +2281,7 @@ async function bootServices() {
 
   boot.step = "ready";
   await startJobRunner();
+  schedulerWorker?.start();
   boot.ready = true;
   logEvent("info", "boot complete");
 
@@ -3721,6 +3725,7 @@ let shuttingDown = false;
 async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
+  schedulerWorker?.stop();
   logEvent("info", turnsInFlight ? `shutdown during ${turnsInFlight} in-flight turn(s)` : "shutdown");
   // Execution coordinator first: admission drains, claims stop, the bridge and
   // database stay available while accepted runs finalize; at the deadline it
@@ -3734,6 +3739,7 @@ async function shutdown() {
   } catch (error) {
     logEvent("error", `execution drain failed: ${sanitizeError(error)}`);
   }
+  await schedulerWorker?.idle();
   stopSampler();
   await stopCompanyResearch().catch(() => {});
   await stopCompanySignalResearch().catch(() => {});

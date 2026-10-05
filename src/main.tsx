@@ -6,6 +6,7 @@ import SigninPage from "../app/signin/page";
 import WebHome from "../app/web/page";
 import DemoPage from "../app/demo/page";
 import CalendarPage from "../app/calendar";
+import SchedulesPage from '../app/schedules';
 import MediaKitPage from "../app/media-kit";
 import ResearchPage from "../app/research";
 import SignalsPage from "../app/signals";
@@ -28,6 +29,7 @@ const research = path === "/research" || path.startsWith("/research/");
 const web = path.startsWith("/web");
 const demo = path === "/demo" || path.startsWith("/demo/");
 const calendar = path === "/calendar" || path.startsWith("/calendar/");
+const schedules = path === '/schedules' || path.startsWith('/schedules/');
 const mediaKit = path === "/media-kit" || path.startsWith("/media-kit/");
 const admin = path === "/admin" || path.startsWith("/admin/");
 const legacySettings = path === "/settings" || path.startsWith("/settings/");
@@ -41,6 +43,6 @@ if (path.startsWith("/test-agy")) {
   window.location.replace(`/demo${window.location.search}${window.location.hash}`);
 } else {
   createRoot(document.getElementById("root")!).render(
-    <StrictMode>{mobile || (root && mobileDevice) ? <MobileHome /> : signals ? <SignalsPage /> : research ? <ResearchPage /> : mediaKit ? <MediaKitPage /> : calendar ? <CalendarPage /> : demo ? <DemoPage /> : web ? <WebHome /> : admin ? <SettingsPage /> : signin ? <SigninPage /> : <DemoPage />}</StrictMode>,
+    <StrictMode>{mobile || (root && mobileDevice) ? <MobileHome /> : schedules ? <SchedulesPage/> : signals ? <SignalsPage /> : research ? <ResearchPage /> : mediaKit ? <MediaKitPage /> : calendar ? <CalendarPage /> : demo ? <DemoPage /> : web ? <WebHome /> : admin ? <SettingsPage /> : signin ? <SigninPage /> : <DemoPage />}</StrictMode>,
   );
 }

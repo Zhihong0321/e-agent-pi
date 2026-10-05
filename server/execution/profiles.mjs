@@ -78,6 +78,18 @@ function getMigratedSet() {
   return migrated;
 }
 
+export const SCHEDULER_TOOL_IDS = [
+  'schedule_agents',
+  'schedule_preview',
+  'schedule_create',
+  'schedule_list',
+  'schedule_update',
+  'schedule_pause',
+  'schedule_resume',
+  'schedule_cancel',
+  'schedule_history',
+];
+
 /**
  * Manifest rules per agent: the orchestrator gets people + control (planning)
  * operations; Document Intelligence agents get their native DI tools; every
@@ -88,10 +100,11 @@ export function manifestForAgent(agent) {
   const slug = String(agent?.slug || '');
   const isOrchestrator = id === 'orchestrator' || slug === 'orchestrator';
   const isDi = id.startsWith('di-');
+  const isScheduler = id === 'scheduler' || slug === 'scheduler';
   return resolveProfileManifest(agent, {
     peopleTools: isOrchestrator,
     controlTools: isOrchestrator,
-    extraToolIds: isDi ? diToolIdsFor(id) : [],
+    extraToolIds: isDi ? diToolIdsFor(id) : isScheduler ? SCHEDULER_TOOL_IDS : [],
   });
 }
 
