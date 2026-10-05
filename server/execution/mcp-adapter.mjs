@@ -45,6 +45,9 @@ async function resolveBindingEnv(binding) {
   } else if (binding.slug === 'company-research') {
     const { researchEnv } = await import('../company-research/auth.mjs');
     Object.assign(env, researchEnv('company-deep-research'));
+  } else if (binding.slug === 'company-signal-research') {
+    const { signalResearchEnv } = await import('../company-signal-research/auth.mjs');
+    Object.assign(env, signalResearchEnv('company-signal-research'));
   }
   return env;
 }

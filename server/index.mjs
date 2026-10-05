@@ -155,8 +155,17 @@ import { ensureGoogleAdsMcp } from "./google-ads-mcp.mjs";
 import { ensureOmMcp } from "./om-mcp.mjs";
 import { ensureWebSearchMcp } from "./web-search-mcp.mjs";
 import { ensureCompanyResearch, handleCompanyResearch, stopCompanyResearch } from "./company-research/host.mjs";
+import { ensureCompanySignalResearch, handleCompanySignalResearch, stopCompanySignalResearch } from "./company-signal-research/host.mjs";
 import { ensureAdsResearch, handleAdsResearch, stopAdsResearch } from "./ads-research/host.mjs";
 import { ensureMediaAi, handleMediaAi } from "./media-ai/host.mjs";
+let ensureScheduler = null;
+let handleSchedulerRoutes = null;
+try {
+  const schedHost = await import("./scheduler/host.mjs").catch(() => null);
+  ensureScheduler = schedHost?.ensureScheduler || null;
+  const schedRoutes = await import("./scheduler/routes.mjs").catch(() => null);
+  handleSchedulerRoutes = schedRoutes?.handleSchedulerRoutes || null;
+} catch {}
 import { ensureComposioMcp } from "./composio.mjs";
 import { ensureEeMailMcp } from "./ee-mail-mcp.mjs";
 import { handleEmailRequest } from "./ee-mail.mjs";
@@ -1944,6 +1953,13 @@ async function bootServices() {
     logEvent("error", `company research init failed: ${sanitizeError(error)}`);
   }
 
+  boot.step = "company-signal-research";
+  try {
+    if (dbReady()) await ensureCompanySignalResearch({ log: logEvent });
+  } catch (error) {
+    logEvent("error", `company signal research init failed: ${sanitizeError(error)}`);
+  }
+
   boot.step = "ads-research";
   try {
     if (dbReady()) await ensureAdsResearch({ log: logEvent });
@@ -2092,6 +2108,16 @@ async function bootServices() {
     }
   } catch (error) {
     logEvent("error", `media-ai failed: ${sanitizeError(error)}`);
+  }
+
+  boot.step = "scheduler";
+  try {
+    if (ensureScheduler && dbReady()) {
+      await ensureScheduler({ pool: getPool(), catalog: catalogApi, log: logEvent });
+      logEvent("info", "scheduler host initialized and scheduler agent registered");
+    }
+  } catch (error) {
+    logEvent("error", `scheduler failed: ${sanitizeError(error)}`);
   }
 
   boot.step = "ee-mail-mcp";
@@ -2362,8 +2388,10 @@ const server = createServer(async (req, res) => {
       workspaceFor: async (id) => { const agent = await getAgent(id); return agent ? agentWorkspace(agent) : null; },
     })) return;
     if (await handleCompanyResearch(req, res, url, { authorized: (r) => authorized(r) || Boolean(user), readBody })) return;
+    if (await handleCompanySignalResearch(req, res, url, { authorized: (r) => authorized(r) || Boolean(user), readBody })) return;
     if (await handleAdsResearch(req, res, url, { authorized, readBody })) return;
     if (await handleMediaAi(req, res, url, { authorized, user })) return;
+    if (handleSchedulerRoutes && await handleSchedulerRoutes(req, res, url, { authorized, user, readBody, json })) return;
     // Worker bridge for the execution system: attempt-scoped bearer token, one endpoint.
     if (req.method === "POST" && pathname === "/api/internal/execution/tool") {
       return handleExecutionToolRoute(req, res, { readBody, json });
@@ -3712,6 +3740,7 @@ async function shutdown() {
   }
   stopSampler();
   await stopCompanyResearch().catch(() => {});
+  await stopCompanySignalResearch().catch(() => {});
   await stopAdsResearch().catch(() => {});
   await closeExecutionMcpConnections().catch(() => {});
   await Promise.allSettled([...piPool.values()].map((slot) => stopSlot(slot)));
