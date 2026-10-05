@@ -87,29 +87,29 @@ export function deriveCompanyProfile(seed) {
   // 1. Utilities / Tenaga Nasional Berhad
   if (/tnb|tenaga|5347|utility|utilities|power grid/i.test(norm)) {
     return {
-      core_business: 'Peninsular Malaysia monopoly transmission & distribution (T&D) network operator and integrated electricity generation utility.',
+      core_business: '西马半岛独家垄断输配电网络运营商（IBR激励监管框架下）及综合电力公用事业龙头。',
       revenue_segments: [
-        'Regulated Transmission & Distribution (T&D under IBR framework)',
-        'Thermal & Renewable Power Generation (Coal, Natural Gas, Hydro, Large Scale Solar)',
-        'Customer Electricity Retailing & Green Tariffs',
+        '监管电网输配电业务（IBR框架下的核心准许资产基数回报收入）',
+        '传统及可再生能源发电（燃煤、天然气、大型水力及大型太阳能LSS）',
+        '终端电力零售、商业售电与绿色关税服务（Green Electricity Tariff）',
       ],
       unit_economics_kpis: [
-        'Regulated Asset Base (RAB) allowable return (WACC)',
-        'Imbalance Cost Pass-Through (ICPT) fuel under/over recovery balance',
-        'Electricity sales volume growth (% YoY) and Peak demand (MW)',
-        'Capital expenditure (Capex) on grid modernization and energy transition',
+        '监管资产基数（RAB）准许加权平均资本成本回报率（WACC）',
+        '成本转嫁机制（ICPT燃料成本补差 / 月度自动燃料调整AFA）应收账款平衡',
+        '全半岛售电量年度同比增速（% YoY）与最高用电负荷峰值（MW/GW）',
+        '国家能源转型路线图（NETR）电网强化及跨国区域互联资本开支（Capex）',
       ],
       primary_battlegrounds: [
-        'Regulatory Period 4 (RP4, 2025–2027) parameter finalization and allowable WACC return',
-        'Surging electricity baseload demand from Johor and Cyberjaya AI Data Center clusters (GW pipeline)',
-        'Fuel cost stabilization (moderating coal and gas prices) reducing working capital pressure',
-        'National Energy Transition Roadmap (NETR) grid reinforcement capital commitments',
+        '监管周期4（RP4, 2025–2027）最终参数落地与准许WACC回报率锁定',
+        '柔佛州与赛城（Cyberjaya）AI超级数据中心算力集群激增的电网接入与负荷交付',
+        '全球煤炭与天然气价格回落企稳对运营资金压力的有效释放',
+        '可再生能源消纳与东盟区域电网互联带来的额外电网资本开支与资产池扩容',
       ],
       custom_research_questions: [
-        'What are the expected allowable return (WACC) and capex ceiling parameters under Regulatory Period 4 (RP4)?',
-        'How much incremental electricity demand (MW/GW) has TNB secured through Electricity Supply Agreements (ESA) with data center operators?',
-        'How has the moderation in global coal and gas costs impacted TNB’s net ICPT receivables and cash flow position?',
-        'What is TNB’s planned grid capital expenditure allocation to support regional renewable energy integration and interconnectors?',
+        '在能源委员会（ST）核定的第四监管期（RP4）中，准许回报率（WACC）与资本开支上限具体为何？',
+        'TNB目前与数据中心运营商签署的供电协议（ESA）已锁定多少增量负荷需求（MW/GW）？',
+        '全球燃料成本回落如何改善TNB政府电费补贴（ICPT/AFA）应收款项与经营现金流？',
+        'TNB为支持高压电网升级与可再生能源并网，未来三年的年度资本开支预算与执行节奏如何？',
       ],
       targeted_search_terms: [
         'RP4', 'Regulatory Period 4', 'IBR', 'ICPT', 'tariff', 'data center', 'electricity demand', 'NETR', 'grid capex', 'coal cost',
@@ -120,29 +120,29 @@ export function deriveCompanyProfile(seed) {
   // 2. Semiconductor / AI Hardware (Nvidia, TSMC, etc.)
   if (/semiconductor|chip|hardware|nvda|nvidia|tsmc|gpu|processor/i.test(norm)) {
     return {
-      core_business: 'Accelerated computing and semiconductor architecture designing GPUs, interconnects, and AI software stacks.',
+      core_business: '加速计算与半导体架构先锋，研发生产高端GPU加速芯片、高速互联架构及全栈AI系统软件。',
       revenue_segments: [
-        'Compute & Data Center (AI model training and inference accelerators)',
-        'High-speed Networking (InfiniBand & Spectrum-X Ethernet switches)',
-        'Workstation & Gaming Visual Computing',
+        '计算与数据中心集群业务（AI超算集群大模型训练与推理加速卡）',
+        '高速网络互联产品线（InfiniBand与Spectrum-X以太网交换系统）',
+        '专业图形工作站与游戏视觉计算芯片',
       ],
       unit_economics_kpis: [
-        'Data Center revenue growth (% YoY & QoQ)',
-        'Gross profit margin (% after advanced packaging and wafer costs)',
-        'Hyperscaler capital expenditure trajectory (Microsoft, Meta, Google, Amazon)',
-        'Advanced packaging capacity availability (TSMC CoWoS allocation)',
+        '数据中心业务营收同比及环比增速（% YoY & QoQ）',
+        '先进封装（CoWoS）及先进制程代工成本后的综合毛利率（Gross Margin %）',
+        '超大规模云厂商（Hyperscalers: 微软、Meta、谷歌、亚马逊）资本开支指引趋势',
+        '台积电CoWoS先进封装产能与HBM高带宽内存供应链供给充裕度',
       ],
       primary_battlegrounds: [
-        'Next-generation chip architecture production ramp and rack deployment timelines',
-        'Hyperscaler multi-year AI capital spending durability and return on investment (ROI)',
-        'US export control regulations compliance and international market traction',
-        'Ethernet AI networking adoption competing with legacy InfiniBand solutions',
+        '下一代AI芯片架构量产爬坡、液冷机柜系统出货与交付节点',
+        '头部云厂商多年度AI基础设施资本投入的持续性与投资回报率（ROI）',
+        '出口管制法规合规性与全球定制合规芯片的商业化渗透',
+        '以太网AI网络架构与专有InfiniBand生态的市场份额博弈',
       ],
       custom_research_questions: [
-        'Are next-generation GPU server rack shipments on schedule without packaging or cooling bottlenecks?',
-        'What are Tier-1 cloud service providers guiding for forward AI infrastructure capital expenditures?',
-        'How are gross margins trending under higher advanced memory (HBM) and packaging bill-of-materials?',
-        'What is the revenue contribution from geopolitical export-compliant product variants?',
+        '下一代GPU服务器整机柜出货是否按既定节奏交付，是否存在散热或互联瓶颈？',
+        '北美顶级云服务商对未来多季度的AI算力资本开支指引是否出现上修或分化？',
+        '在HBM及先进封装成本占比上升背景下，综合毛利率能否维持指引区间？',
+        '合规特定市场芯片对总收入的贡献占比与新订单签署节奏如何？',
       ],
       targeted_search_terms: [
         'data center revenue', 'hyperscaler capex', 'Blackwell', 'CoWoS', 'gross margin', 'networking', 'export controls', 'HBM',
@@ -153,28 +153,27 @@ export function deriveCompanyProfile(seed) {
   // 3. Banking & Financial Institutions
   if (/bank|banking|financial|maybank|cimb|public bank|jpmorgan/i.test(norm)) {
     return {
-      core_business: 'Commercial banking, corporate lending, retail wealth management, and treasury operations.',
+      core_business: '综合商业银行与金融机构，涵盖企业贷款、零售财富管理、投行与资金营运。',
       revenue_segments: [
-        'Net Interest Income (Interest earned on loans minus cost of customer deposits)',
-        'Non-Interest Income (Fee-based wealth management, investment banking, forex, treasury)',
-        'Islamic Banking and Shariah-compliant financing assets',
+        '净利息收入（贷款利息收益与存款成本利差）',
+        '非利息收入（财富管理手续费、投行业务、外汇与资金营运收益）',
+        '伊斯兰银行合规金融资产与融资分部',
       ],
       unit_economics_kpis: [
-        'Net Interest Margin (NIM) compression/expansion',
-        'Gross Impaired Loan (GIL) ratio and loan loss coverage',
-        'Loan growth rate (% YoY across retail mortgages, auto, SME, and corporate)',
-        'Cost-to-Income Ratio (CIR) and Return on Equity (ROE)',
+        '净息差水平（NIM）收窄或扩张幅度',
+        '总不良贷款率（GIL Ratio）及拨备覆盖率（Loss Coverage）',
+        '按揭、汽车、中小微企业及大企业贷款综合年化增速（% YoY）',
+        '成本收入比（CIR）与净资产收益率（ROE）',
       ],
       primary_battlegrounds: [
-        'Central bank interest rate (OPR) trajectory and deposit pricing competition',
-        'Credit asset quality and commercial real estate / SME default risk',
-        'Fee income diversification through wealth management and digital banking',
+        '央行基准利率（OPR）周期走势与存款价格竞争压力',
+        '信贷资产质量演变与商业地产/中小企业违约风险防范',
+        '财富管理及数字化银行对非息手续费收入的拉动多元化',
       ],
       custom_research_questions: [
-        'What is the quarterly Net Interest Margin (NIM) trajectory amidst deposit competition?',
-        'How are gross impaired loan ratios and credit loss provisions trending across retail and corporate portfolios?',
-        'What is the annualized loan growth rate compared to industry benchmarks?',
-        'What are the capital adequacy ratio and dividend payout commitments for the current fiscal year?',
+        '本季度在激烈的存款竞争下，净息差（NIM）表现如何？',
+        '零售与对公资产组合的总不良贷款率与信贷拨备成本趋势如何？',
+        '年化贷款增速是否符合行业基准？核心资本充足率与股息派发承诺如何？',
       ],
       targeted_search_terms: [
         'Net Interest Margin', 'NIM', 'impaired loans', 'credit cost', 'OPR', 'loan growth', 'wealth management', 'ROE',
@@ -184,27 +183,27 @@ export function deriveCompanyProfile(seed) {
 
   // 4. Default / General Listed Company Fallback
   return {
-    core_business: `Public listed enterprise operating primarily within the ${seed.sector || 'commercial'} sector.`,
+    core_business: `主营业务深耕于 ${seed.sector || '商业与工业'} 领域的上市企业。`,
     revenue_segments: [
-      'Core Operational Product/Service Sales',
-      'Value-added Services & Recurring Contracts',
-      'Regional & Export Markets',
+      '核心主营产品与服务运营销售',
+      '高附加值增值服务与长期复购签约',
+      '区域市场及海外出口业务',
     ],
     unit_economics_kpis: [
-      'Operating Revenue and Net Profit Margins',
-      'EBITDA growth and Free Cash Flow generation',
-      'Capital expenditure (Capex) and Debt-to-Equity leverage',
+      '主营业务收入增速及净利润率表现',
+      'EBITDA增长及自由现金流（FCF）充裕度',
+      '年度资本开支（Capex）及资产负债杠杆率',
     ],
     primary_battlegrounds: [
-      'Topline revenue expansion vs. inflationary operating costs',
-      'Management forward revenue/earnings guidance and market share defense',
-      'Strategic capital allocation, dividends, and merger & acquisition activity',
+      '营收顶层扩张与通胀营运成本控制之间的平衡',
+      '管理层最新季度/年度业绩前瞻指引与市场份额防守',
+      '战略资本分配、分红派息政策及战略并购整合',
     ],
     custom_research_questions: [
-      'What are the primary revenue and margin drivers reported in the latest quarterly filing?',
-      'Has management revised forward guidance or announced major contract milestones?',
-      'Are there material legal, regulatory, or competitive headwinds impacting operations?',
-      'How is free cash flow trending to support ongoing capital expenditure and shareholder returns?',
+      '最新财报季中揭示的核心收入与毛利率核心驱动力是什么？',
+      '管理层是否对未来业绩指引进行调整，或有重大商业订单签约？',
+      '是否存在重大法律诉讼、监管政策合规或激烈行业竞争风险？',
+      '自由现金流能否持续支撑当前资本开支与股东分红回报计划？',
     ],
     targeted_search_terms: [
       'quarterly results', 'revenue guidance', 'operating margin', 'order book', 'capex', 'dividend', 'contract win',
@@ -394,14 +393,14 @@ export function reconcileSignalDossier({
     conviction: Math.min(1, Math.round(((uniqueSignals.length * 0.15) + (Math.abs(bullishCount - bearishCount) * 0.1)) * 100) / 100),
     primary_catalysts: uniqueSignals.filter(s => s.impact === 'bullish').map(s => s.headline).slice(0, 4),
     key_risks: uniqueSignals.filter(s => s.impact === 'bearish').map(s => s.headline).slice(0, 4),
-    summary: `${seed.name} (${seed.company_uid}): ${uniqueSignals.length} market-moving signals identified (${bullishCount} bullish, ${bearishCount} bearish).`,
+    summary: `${seed.name} (${seed.company_uid}): 识别出 ${uniqueSignals.length} 项关键市场异动信号（${bullishCount} 项利多，${bearishCount} 项利空，${volatileCount} 项中性/高波动）。`,
   };
 
   const trendObservation = verifiedRuns.map(r => r.trend_observation).find(Boolean) || {
     trajectory: previousReports.length === 0 ? 'first_report' : 'stable',
     synthesis: previousReports.length === 0
-      ? `Initial baseline signal report established for ${seed.name}.`
-      : `Stacked report on top of ${previousReports.length} prior historical checkpoint(s).`,
+      ? `已建立 ${seed.name} 首期纵向基准研报档案，锁定核心监管指标与追踪锚点。`
+      : `本期报告叠加上期历史记录（已累计追踪 ${previousReports.length} 期），持续观测催化剂落地与风险演变。`,
     materialized_catalysts: [],
     unresolved_risks: [],
   };
