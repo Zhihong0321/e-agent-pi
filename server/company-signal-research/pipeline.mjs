@@ -173,11 +173,13 @@ export async function researchCompanySignals({
   result.meta.searchProviders = budget.providers || {};
   result.meta.budgets = { ...budget.used };
 
-  const status = runs.some(r => r.status === 'ok') ? 'complete' : 'failed';
+  const status = runs.some(r => ['S1', 'S2', 'S3', 'S4', 'ST'].includes(r.lane)
+    && ['ok', 'partial'].includes(r.status) && r.findings) ? 'complete' : 'failed';
+  const error = status === 'failed' ? 'No research lane produced accepted findings; inspect lane errors before retrying' : null;
   await emit({
     type: 'wave',
     wave: 3,
-    status: 'complete',
+    status,
     sequence: result.sequence,
     bias: result.thesis.bias,
     conviction: result.thesis.conviction,
@@ -186,6 +188,7 @@ export async function researchCompanySignals({
 
   return {
     status,
+    error,
     result,
     seed,
     evidence,

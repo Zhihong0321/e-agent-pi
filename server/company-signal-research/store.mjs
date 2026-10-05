@@ -344,13 +344,13 @@ export class SignalResearchStore {
       UPDATE company_signal_dossiers
       SET status = $2,
           result = $3,
-          error = NULL,
+          error = $5,
           lease_until = NULL,
           lease_token = NULL,
           updated_at = NOW()
       WHERE id = $1 AND ($4::UUID IS NULL OR (status = 'running' AND lease_token = $4 AND lease_until > NOW()))
       RETURNING id, company_uid
-    `, [id, status, result, token || null]);
+    `, [id, status, result, token || null, outcome.error || null]);
 
     if (token && !q.rows.length) throw new Error('Research job lease lost');
 

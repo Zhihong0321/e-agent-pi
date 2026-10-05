@@ -215,7 +215,9 @@ export class PiSignalResearchRunner {
           });
           transcript.push({ type: 'assistant', message: event.message });
           if (event.message.stopReason === 'error') stop(event.message.errorMessage || 'Model provider failed');
-          if (tokens >= this.tokenBudget && !accepted) stop('token_budget_exhausted');
+          // message_end precedes tool execution; let the final submission be validated.
+          const submitting = event.message.content?.some(part => part.type === 'toolCall' && part.name === 'submit_signals');
+          if (tokens >= this.tokenBudget && !accepted && !submitting) stop('token_budget_exhausted');
         }
       });
 

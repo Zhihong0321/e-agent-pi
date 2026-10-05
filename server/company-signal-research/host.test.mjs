@@ -75,6 +75,14 @@ test('SignalResearchStore handles entities, queued dossiers, and stacked reports
   const catalysts = await store.listCatalysts('AAPL.NASDAQ');
   assert.equal(catalysts.length, 1);
   assert.equal(catalysts[0].headline, 'Q3 iPhone revenue hits record');
+
+  const claimed2 = await store.claim();
+  await store.finish(claimed2.id, {
+    status: 'failed', seed, result: { signals: [] }, error: 'No research lane produced accepted findings',
+  }, claimed2.lease_token);
+  const failed = await store.get(q2.id);
+  assert.equal(failed.status, 'failed');
+  assert.equal(failed.error, 'No research lane produced accepted findings');
 });
 
 test('company-signal-research HTTP API and MCP server work end-to-end', async () => {
