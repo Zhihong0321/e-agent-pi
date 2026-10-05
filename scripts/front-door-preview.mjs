@@ -7,6 +7,7 @@ import path from "node:path";
 const root = path.resolve(process.argv[3] || "dist");
 const user = { id: "preview-user", username: "judha", display_name: "Judha Maygustya", role: "admin", tier: "pro" };
 const sessions = [{ id: "recent-1", title: "Getting to know my company", userId: user.id, agentId: "orchestrator", engine: "pi", updatedAt: Date.now() }];
+const transcripts = new Map([["recent-1", [{ id: "old-message", role: "assistant", content: "Welcome back. Let’s work on your company profile." }]]]);
 const mime = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json", ".woff2": "font/woff2" };
 http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
@@ -16,15 +17,20 @@ http.createServer(async (req, res) => {
       if (url.pathname === "/api/demo/me") data = { user };
       else if (url.pathname === "/api/demo/state") data = { profile: { company: { name: "Acme Studio", country: "MY", currency: "MYR" }, readiness: { minimum_ready: false } }, people: [], members: [], customers: [], invoices: [] };
       else if (url.pathname === "/api/agents") data = { agents: [{ id: "orchestrator", slug: "orchestrator", name: "e", userFacing: true, engine: "pi" }] };
-      else if (url.pathname === "/api/models") data = { models: [{ id: "preview-model", name: "Preview", available: true }] };
+      else if (url.pathname === "/api/models") data = { models: [{ id: "preview-model", label: "Preview", shortLabel: "Test", provider: "Fixture", available: true }], agyModels: [] };
       else if (url.pathname === "/api/sessions") {
         if (req.method === "POST") {
           let body = ""; for await (const chunk of req) body += chunk;
           const session = { ...sessions[0], id: `new-${Date.now()}`, title: JSON.parse(body).title || "New chat" };
           sessions.unshift(session); data = { session };
         } else data = { sessions };
-      } else if (url.pathname === "/api/messages") data = { messages: url.searchParams.get("sessionId") === "recent-1" ? [{ id: "old-message", role: "assistant", content: "Welcome back. Let’s work on your company profile." }] : [] };
-      else if (url.pathname === "/api/chat") { res.writeHead(200, { "Content-Type": "text/event-stream" }); res.end('data: {"type":"text","delta":"I can help with that."}\n\ndata: {"type":"done"}\n\n'); return; }
+      } else if (url.pathname === "/api/messages") data = { messages: transcripts.get(url.searchParams.get("sessionId")) || [] };
+      else if (url.pathname === "/api/chat") {
+        let body = ""; for await (const chunk of req) body += chunk;
+        const input = JSON.parse(body);
+        transcripts.set(input.sessionId, [...(transcripts.get(input.sessionId) || []), { id: `user-${Date.now()}`, role: "user", content: input.message }, { id: `reply-${Date.now()}`, role: "assistant", content: "I can help with that." }]);
+        res.writeHead(200, { "Content-Type": "text/event-stream" }); res.end('data: {"type":"text","delta":"I can help with that."}\n\ndata: {"type":"done"}\n\n'); return;
+      }
       else if (url.pathname === "/api/files") data = { files: [] };
       else if (url.pathname === "/api/demo/activity") data = { events: [] };
       else if (url.pathname === "/api/demo/db-log") data = { entries: [], nextCursor: null };
