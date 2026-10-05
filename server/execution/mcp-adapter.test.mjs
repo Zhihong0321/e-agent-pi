@@ -47,11 +47,25 @@ test('external MCP: real handshake, frozen tool list and normalized results', { 
 
 test('external MCP: timeouts become unknown outcomes, not resends', { concurrency: false }, async () => {
   await assert.doesNotReject(() => connectBinding(binding({ slug: 'test-timeout' })));
+  const startedAt = performance.now();
   const result = await callExternal(binding({ slug: 'test-timeout', timeoutMs: 300 }), 'slow_tool', {});
+  assert.ok(performance.now() - startedAt >= 900, 'the 1000ms minimum timeout must elapse before rejection');
   assert.equal(result.ok, false);
   assert.equal(result.error.code, 'EXTERNAL_TIMEOUT');
   assert.equal(result.error.effectState, 'unknown');
   await closeAllConnections();
+});
+
+test('external MCP: responses inside the configured deadline do not time out immediately', { concurrency: false }, async () => {
+  const delayedBinding = binding({ slug: 'test-delayed', timeoutMs: 1500 });
+  try {
+    await connectBinding(delayedBinding);
+    const result = await callExternal(delayedBinding, 'echo', { message: 'delayed response', delayMs: 150 });
+    assert.equal(result.ok, true);
+    assert.equal(result.data.text, 'echo: delayed response');
+  } finally {
+    await closeAllConnections();
+  }
 });
 
 test('external MCP: unavailable server fails explicitly without touching other bindings', { concurrency: false }, async () => {

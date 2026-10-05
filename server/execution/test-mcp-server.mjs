@@ -9,11 +9,14 @@ const server = new McpServer({ name: "execution-test-external", version: "1.0.0"
 
 server.registerTool("echo", {
   description: "Echo the message back with a structured note.",
-  inputSchema: { message: z.string() },
-}, async ({ message }) => ({
-  content: [{ type: "text", text: `echo: ${message}` }],
-  structuredContent: { text: `echo: ${message}`, note: "structured value" },
-}));
+  inputSchema: { message: z.string(), delayMs: z.number().int().min(0).max(2000).optional() },
+}, async ({ message, delayMs = 0 }) => {
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+  return {
+    content: [{ type: "text", text: `echo: ${message}` }],
+    structuredContent: { text: `echo: ${message}`, note: "structured value" },
+  };
+});
 
 server.registerTool("fail_tool", {
   description: "Always reports a tool-level error (isError).",

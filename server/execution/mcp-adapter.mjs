@@ -121,7 +121,9 @@ export async function callExternal(binding, toolName, args = {}) {
     const result = await Promise.race([
       owner.client.callTool({ name: toolName, arguments: args }),
       new Promise((_, reject) => {
-        timer = setTimeout(() => reject(Object.assign(new Error(`${binding.slug}.${toolName} timed out`), { execCode: 'EXTERNAL_TIMEOUT' }), timeoutMs));
+        timer = setTimeout(() => {
+          reject(Object.assign(new Error(`${binding.slug}.${toolName} timed out`), { execCode: 'EXTERNAL_TIMEOUT' }));
+        }, timeoutMs);
       }),
     ]);
     owner.lastChecked = new Date().toISOString();
