@@ -195,7 +195,7 @@ export default function Home() {
               {tab === "live" && <LiveTab host={host} publishing={publishing} onPublish={() => void publishHost()}/>}
               {tab === "files" && <FilesTab files={files} agentId={selected.id} onOpen={(src, alt) => { setMenuOpen(false); setMedia({ src, alt }); }}/>}
             </div>
-            <nav className="mobile-workspace-links" aria-label="Workspace pages"><a href="/demo">Company workspace</a><a href="/calendar">Calendar</a><a href="/research">Research library</a><a href="/settings#logs">Chat logs</a><a href="/settings#usage">Usage</a><a href="/settings"><IconSettings/> Settings</a></nav>
+            <nav className="mobile-workspace-links" aria-label="Workspace pages"><a href="/demo">Company workspace</a><a href="/calendar">Calendar</a><a href="/research">Research library</a><a href="/demo?area=signals">Company signals</a><a href="/settings#logs">Chat logs</a><a href="/settings#usage">Usage</a><a href="/settings"><IconSettings/> Settings</a></nav>
           </div>
         </div>}
 

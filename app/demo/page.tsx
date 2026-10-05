@@ -8,29 +8,8 @@ import { ProcurementPanel } from "./procurement";
 import { ResearchPanel } from "./research";
 import { SignalReportsPanel } from "./signals";
 import { ObservabilityPanel } from "./observability";
-import { MediaKitView } from "../media-kit";
-import "./theme.css";
 
-type Area = "home" | "onboarding" | "people" | "calendar" | "expenses" | "procurement" | "research" | "signals" | "logs" | "usage" | "activity" | "media-kit";
-
-const workspaceSections: { area: Area; label: string; icon: string }[] = [
-  { area: "home", label: "Home", icon: "home" },
-  { area: "onboarding", label: "Company profile", icon: "grid" },
-  { area: "people", label: "Company people", icon: "users" },
-  { area: "calendar", label: "Calendar", icon: "calendar" },
-  { area: "expenses", label: "Expenses", icon: "file" },
-  { area: "procurement", label: "Procurement", icon: "database" },
-  { area: "research", label: "Research library", icon: "search" },
-  { area: "signals", label: "Signal research", icon: "trend" },
-  { area: "media-kit", label: "Media Kit", icon: "spark" },
-];
-const insightSections: { area: Area; label: string; icon: string }[] = [
-  { area: "logs", label: "Chat logs", icon: "chat" },
-  { area: "usage", label: "Usage", icon: "grid" },
-  { area: "activity", label: "Activity", icon: "clock" },
-];
-const validAreas = [...workspaceSections, ...insightSections].map(section => section.area);
-
+type Area = "onboarding" | "people" | "workspace" | "calendar" | "expenses" | "procurement" | "research" | "signals" | "logs" | "usage" | "activity";
 const logHeadings = {
   logs: { title: "Chat logs", description: "Browse saved conversations and delegated agent transcripts." },
   usage: { title: "Usage Dashboard", description: "Track API calls, tokens, and usage by provider and model." },
@@ -40,8 +19,13 @@ type CalendarEvent = { id: string; kind: string; title: string; start: string; e
 type Profile = { name: string; legalName: string; registration: string; country: string; businessType: string; businessActivity: string; website: string; email: string; phone: string; headquarters: string; billingAddress: string; currency: string; taxStatus: string; tin: string; paymentTerms: string };
 type CompanyMember = { id: string; member_id?: string | null; user_id?: string | null; name: string; position: string; department: string; email: string; phone: string; location: string; username?: string | null; has_login?: boolean; login_active?: boolean; role?: string | null };
 type MemberDraft = Omit<CompanyMember, "id" | "user_id" | "has_login" | "login_active"> & { id?: string; user_id?: string | null; has_login?: boolean; login_enabled?: boolean; username?: string; new_password?: string; role?: "admin" | "user" };
+type Customer = { id: string; name: string; email: string; contact: string };
+type Invoice = { id: string; number: string; customer: string; description: string; amount: number; due: string; status: "Draft" | "Issued" | "Paid"; created: string };
+
 const initialProfile: Profile = { name: "", legalName: "", registration: "", country: "MY", businessType: "", businessActivity: "", website: "", email: "", phone: "", headquarters: "", billingAddress: "", currency: "MYR", taxStatus: "", tin: "", paymentTerms: "" };
 const emptyMember: MemberDraft = { name: "", position: "", department: "", email: "", phone: "", location: "", login_enabled: false, username: "", new_password: "", role: "user" };
+const initialCustomers: Customer[] = [];
+const initialInvoices: Invoice[] = [];
 const profileSections: { title: string; description: string; fields: { key: keyof Profile; label: string; hint: string }[] }[] = [
   { title: "Business identity", description: "Who you are and what you do", fields: [
     { key: "name", label: "Company name", hint: "Trading name" }, { key: "legalName", label: "Legal name", hint: "Registered name, if different" },
@@ -65,9 +49,6 @@ const guidedKeys: (keyof Profile)[] = ["name", "businessType", "businessActivity
 
 function Icon({ name, size = 18 }: { name: string; size?: number }) {
   const paths: Record<string, React.ReactNode> = {
-    home: <><path d="m3 10 9-7 9 7v10H3V10Z"/><path d="M9 20v-7h6v7"/></>,
-    clock: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
-    logout: <><path d="M9 4H4v16h5M10 12h11m-4-4 4 4-4 4"/></>,
     spark: <><path d="m12 2 1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8L12 2Z"/><path d="m19 17 .6 1.4L21 19l-1.4.6L19 21l-.6-1.4L17 19l1.4-.6L19 17Z"/></>,
     chat: <><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l-2 2v-7.5A7.5 7.5 0 1 1 20 11.5Z"/><path d="M7 10h9M7 14h6"/></>,
     grid: <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
@@ -101,12 +82,6 @@ export function CalendarPanel() {
   const loadVersion = useRef(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
-  const [showScheduleModal, setShowScheduleModal] = useState(false);
-  const [scheduleForm, setScheduleForm] = useState({ title: "", note: "", date: "", preset: "note", visibility: "company" });
-  const [scheduleSubmitting, setScheduleSubmitting] = useState(false);
-  const [scheduleError, setScheduleError] = useState("");
-
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
   const monthLabel = cursor.toLocaleDateString("en", { month: "long", year: "numeric" });
@@ -137,60 +112,11 @@ export function CalendarPanel() {
   useEffect(() => { void load(); return () => { loadVersion.current += 1; }; }, [from, to, source, includeDemo]);
   const selectedEvents = visible.filter((event) => event.start === selected);
   const selectedEvent = visible.find((event) => event.id === selectedEventId) || null;
+  return <section className="calendar-panel" aria-label="Company calendar"><div className="calendar-head"><div><div className="demo-panel-kicker"><Icon name="calendar" size={16}/> COMPANY CALENDAR</div><h2>{monthLabel}</h2><p>Dates from selected company records. Refresh to read the latest deadlines.</p></div><div className="calendar-actions"><button className="calendar-today" disabled={loading} onClick={() => void load()}>Refresh</button><button className="demo-icon-button" onClick={() => setCursor(new Date(year, month - 1, 1))} aria-label="Previous month">←</button><button className="calendar-today" onClick={() => { const now = new Date(); setCursor(new Date(now.getFullYear(), now.getMonth(), 1)); }}>Today</button><button className="demo-icon-button" onClick={() => setCursor(new Date(year, month + 1, 1))} aria-label="Next month">→</button></div></div><div className="calendar-toolbar" style={{ flexWrap: "wrap", gap: 12 }}><span>{loading ? "Reading company records…" : `${visible.length} date${visible.length === 1 ? "" : "s"}`}</span><select aria-label="Calendar sources" value={source} onChange={(event) => setSource(event.target.value)}><option value="all">All sources</option><option value="sales">Sales deadlines</option><option value="procurement">Procurement deadlines</option><option value="payments">Payment history</option><option value="forms">Form deadlines</option></select><label><input type="checkbox" checked={includeDemo} onChange={(event) => setIncludeDemo(event.target.checked)}/> Include demo records</label><select aria-label="Filter calendar events" value={kind} onChange={(event) => setKind(event.target.value)}><option value="all">All dates</option><option value="quotation_expiry">Quotation expiry</option><option value="payment_due">Payment due</option><option value="delivery_due">Deliveries due</option><option value="payment_received">Payments received</option><option value="reminder">Reminders</option></select>{refreshedAt && <small>Last refreshed {new Date(refreshedAt).toLocaleTimeString("en-MY")}</small>}</div>{error && <div className="calendar-error" role="alert">{error}</div>}<div className="calendar-layout"><div className="calendar-grid" aria-label={monthLabel}><div className="calendar-weekdays">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <span key={day}>{day}</span>)}</div><div className="calendar-cells">{cells.map((date, index) => { const dayEvents = date ? byDay.get(date) || [] : []; return <button key={`${date || "blank"}-${index}`} className={`calendar-cell${date === selected ? " selected" : ""}${!date ? " blank" : ""}`} disabled={!date} onClick={() => date && setSelected(date)} aria-label={date || "Outside month"}>{date && <><strong>{Number(date.slice(-2))}</strong><div className="calendar-dots">{dayEvents.slice(0, 3).map((event) => <i key={event.id} className={event.kind}/>)}</div>{dayEvents.length > 3 && <small>+{dayEvents.length - 3}</small>}</>}</button>; })}</div></div><aside className="calendar-agenda"><div className="calendar-agenda-head"><span>{selected ? new Date(`${selected}T00:00:00`).toLocaleDateString("en", { weekday: "long", month: "short", day: "numeric" }) : "Select a date"}</span><strong>{selectedEvents.length}</strong></div>{selectedEvents.length === 0 && !loading && <div className="calendar-empty">No dates on this day.<br/><small>Use the arrows to explore the next due dates.</small></div>}{selectedEvents.map((event) => <button className="calendar-event" key={event.id} onClick={() => { setSelected(event.start); setSelectedEventId(event.id); }}><span className={`calendar-event-mark ${event.kind}`}/><span><strong>{event.title}</strong><small>{String(event.detail.customer || event.detail.supplier || event.detail.form || event.detail.number || event.detail.label || event.source.field || "Company record")}</small>{event.needsReview && <em>Needs review</em>}</span></button>)}{selectedEvent && <div className="calendar-detail" role="dialog" aria-label="Calendar event details"><div><strong>{selectedEvent.title}</strong><button onClick={() => setSelectedEventId(null)} aria-label="Close event details">×</button></div><dl><dt>Date</dt><dd>{selectedEvent.start}{selectedEvent.detail.sourceDate && selectedEvent.detail.sourceDate !== selectedEvent.start ? ` · source ${String(selectedEvent.detail.sourceDate)}` : ""}</dd><dt>Status</dt><dd>{selectedEvent.status}</dd><dt>Source</dt><dd>{selectedEvent.source.table} · {selectedEvent.source.field}</dd>{Boolean(selectedEvent.detail.customer) && <><dt>Customer</dt><dd>{String(selectedEvent.detail.customer)}</dd></>}{Boolean(selectedEvent.detail.supplier) && <><dt>Supplier</dt><dd>{String(selectedEvent.detail.supplier)}</dd></>}{selectedEvent.detail.balance !== undefined && <><dt>Balance</dt><dd>{String(selectedEvent.detail.balance)}</dd></>}{selectedEvent.warnings.length > 0 && <><dt>Review</dt><dd>{selectedEvent.warnings.join("; ")}</dd></>}</dl></div>}</aside></div></section>;
+}
 
-  const handleCreateSchedule = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setScheduleSubmitting(true);
-    setScheduleError("");
-    try {
-      await demoJson("/api/schedules", {
-        title: scheduleForm.title,
-        note: scheduleForm.note,
-        preset: scheduleForm.preset,
-        visibility: scheduleForm.visibility,
-        timing: { kind: "date", date: scheduleForm.date, all_day: true },
-      });
-      setShowScheduleModal(false);
-      await load();
-    } catch (err) {
-      setScheduleError(err instanceof Error ? err.message : "Failed to create schedule");
-    } finally {
-      setScheduleSubmitting(false);
-    }
-  };
-
-  const handlePauseSchedule = async (id: string) => {
-    try {
-      await demoJson(`/api/schedules/${encodeURIComponent(id)}/pause`, {});
-      await load();
-      setSelectedEventId(null);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to pause schedule");
-    }
-  };
-
-  const handleResumeSchedule = async (id: string) => {
-    try {
-      await demoJson(`/api/schedules/${encodeURIComponent(id)}/resume`, {});
-      await load();
-      setSelectedEventId(null);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to resume schedule");
-    }
-  };
-
-  const handleCancelSchedule = async (id: string) => {
-    if (!window.confirm("Are you sure you want to cancel this schedule?")) return;
-    try {
-      await demoJson(`/api/schedules/${encodeURIComponent(id)}/cancel`, {});
-      await load();
-      setSelectedEventId(null);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to cancel schedule");
-    }
-  };
-
-  return <section className="calendar-panel" aria-label="Company calendar"><div className="calendar-head"><div><div className="demo-panel-kicker"><Icon name="calendar" size={16}/> COMPANY CALENDAR</div><h2>{monthLabel}</h2><p>Dates from selected company records. Refresh to read the latest deadlines.</p></div><div className="calendar-actions"><button className="calendar-today" onClick={() => { setScheduleForm({ title: "", note: "", date: selected || new Date().toISOString().slice(0, 10), preset: "note", visibility: "company" }); setScheduleError(""); setShowScheduleModal(true); }}>+ Schedule</button><button className="calendar-today" disabled={loading} onClick={() => void load()}>Refresh</button><button className="demo-icon-button" onClick={() => setCursor(new Date(year, month - 1, 1))} aria-label="Previous month">←</button><button className="calendar-today" onClick={() => { const now = new Date(); setCursor(new Date(now.getFullYear(), now.getMonth(), 1)); }}>Today</button><button className="demo-icon-button" onClick={() => setCursor(new Date(year, month + 1, 1))} aria-label="Next month">→</button></div></div><div className="calendar-toolbar" style={{ flexWrap: "wrap", gap: 12 }}><span>{loading ? "Reading company records…" : `${visible.length} date${visible.length === 1 ? "" : "s"}`}</span><select aria-label="Calendar sources" value={source} onChange={(event) => setSource(event.target.value)}><option value="all">All sources</option><option value="sales">Sales deadlines</option><option value="procurement">Procurement deadlines</option><option value="payments">Payment history</option><option value="forms">Form deadlines</option><option value="schedules">Schedules & Notes</option></select><label><input type="checkbox" checked={includeDemo} onChange={(event) => setIncludeDemo(event.target.checked)}/> Include demo records</label><select aria-label="Filter calendar events" value={kind} onChange={(event) => setKind(event.target.value)}><option value="all">All dates</option><option value="quotation_expiry">Quotation expiry</option><option value="payment_due">Payment due</option><option value="delivery_due">Deliveries due</option><option value="payment_received">Payments received</option><option value="reminder">Reminders</option></select>{refreshedAt && <small>Last refreshed {new Date(refreshedAt).toLocaleTimeString("en-MY")}</small>}</div>{error && <div className="calendar-error" role="alert">{error}</div>}<div className="calendar-layout"><div className="calendar-grid" aria-label={monthLabel}><div className="calendar-weekdays">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => <span key={day}>{day}</span>)}</div><div className="calendar-cells">{cells.map((date, index) => { const dayEvents = date ? byDay.get(date) || [] : []; return <button key={`${date || "blank"}-${index}`} className={`calendar-cell${date === selected ? " selected" : ""}${!date ? " blank" : ""}`} disabled={!date} onClick={() => date && setSelected(date)} aria-label={date || "Outside month"}>{date && <><strong>{Number(date.slice(-2))}</strong><div className="calendar-dots">{dayEvents.slice(0, 3).map((event) => <i key={event.id} className={event.kind}/>)}</div>{dayEvents.length > 3 && <small>+{dayEvents.length - 3}</small>}</>}</button>; })}</div></div><aside className="calendar-agenda"><div className="calendar-agenda-head"><span>{selected ? new Date(`${selected}T00:00:00`).toLocaleDateString("en", { weekday: "long", month: "short", day: "numeric" }) : "Select a date"}</span><strong>{selectedEvents.length}</strong></div>{selectedEvents.length === 0 && !loading && <div className="calendar-empty">No dates on this day.<br/><small>Use the arrows to explore the next due dates.</small></div>}{selectedEvents.map((event) => <button className="calendar-event" key={event.id} onClick={() => { setSelected(event.start); setSelectedEventId(event.id); }}><span className={`calendar-event-mark ${event.kind}`}/><span><strong>{event.title}</strong><small>{String(event.detail.customer || event.detail.supplier || event.detail.form || event.detail.number || event.detail.label || event.source.field || "Company record")}</small>{event.needsReview && <em>Needs review</em>}</span></button>)}{selectedEvent && <div className="calendar-detail" role="dialog" aria-label="Calendar event details"><div><strong>{selectedEvent.title}</strong><button onClick={() => setSelectedEventId(null)} aria-label="Close event details">×</button></div><dl><dt>Date</dt><dd>{selectedEvent.start}{selectedEvent.detail.sourceDate && selectedEvent.detail.sourceDate !== selectedEvent.start ? ` · source ${String(selectedEvent.detail.sourceDate)}` : ""}</dd><dt>Status</dt><dd>{selectedEvent.status}</dd><dt>Source</dt><dd>{selectedEvent.source.table} · {selectedEvent.source.field}</dd>{Boolean(selectedEvent.detail.customer) && <><dt>Customer</dt><dd>{String(selectedEvent.detail.customer)}</dd></>}{Boolean(selectedEvent.detail.supplier) && <><dt>Supplier</dt><dd>{String(selectedEvent.detail.supplier)}</dd></>}{Boolean(selectedEvent.detail.note) && <><dt>Note</dt><dd>{String(selectedEvent.detail.note)}</dd></>}{selectedEvent.detail.balance !== undefined && <><dt>Balance</dt><dd>{String(selectedEvent.detail.balance)}</dd></>}{selectedEvent.warnings.length > 0 && <><dt>Review</dt><dd>{selectedEvent.warnings.join("; ")}</dd></>}</dl>{selectedEvent.source.table === "schedules" && <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>{selectedEvent.status === "active" && <button className="calendar-today" onClick={() => void handlePauseSchedule(selectedEvent.source.recordId)}>Pause</button>}{selectedEvent.status === "paused" && <button className="calendar-today" onClick={() => void handleResumeSchedule(selectedEvent.source.recordId)}>Resume</button>}{selectedEvent.status !== "cancelled" && <button className="calendar-today" style={{ color: "#e11d48" }} onClick={() => void handleCancelSchedule(selectedEvent.source.recordId)}>Cancel</button>}</div>}</div>}</aside></div>{showScheduleModal && <div className="demo-modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowScheduleModal(false); }}><div className="demo-modal" role="dialog" aria-modal="true" aria-label="New schedule"><div className="demo-modal-head"><span className="demo-modal-icon"><Icon name="calendar" size={22}/></span><button onClick={() => setShowScheduleModal(false)} aria-label="Close"><Icon name="close" size={18}/></button></div><h2>New schedule or note</h2><p>Create a calendar note, reminder, or automated job.</p>{scheduleError && <div className="calendar-error" role="alert">{scheduleError}</div>}<form onSubmit={handleCreateSchedule}><label>Preset<select value={scheduleForm.preset} onChange={(e) => setScheduleForm(prev => ({ ...prev, preset: e.target.value }))}><option value="note">Note (Calendar item; no timed execution)</option><option value="email_reminder">Email reminder (Timed notification)</option><option value="agent_job">AI job (Automated agent execution)</option></select></label><label>Title<input required placeholder="e.g. Site visit with updated quotation" value={scheduleForm.title} onChange={(e) => setScheduleForm(prev => ({ ...prev, title: e.target.value }))}/></label><div className="demo-form-row"><label>Date<input required type="date" value={scheduleForm.date} onChange={(e) => setScheduleForm(prev => ({ ...prev, date: e.target.value }))}/></label><label>Visibility<select value={scheduleForm.visibility} onChange={(e) => setScheduleForm(prev => ({ ...prev, visibility: e.target.value }))}><option value="company">Company (Visible to team)</option><option value="private">Private (Only you)</option></select></label></div><label>Note or instructions<textarea rows={3} placeholder="Additional details, agenda, or context..." value={scheduleForm.note} onChange={(e) => setScheduleForm(prev => ({ ...prev, note: e.target.value }))} style={{ width: "100%", padding: "8px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, fontFamily: "inherit" }}/></label><div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}><button type="button" className="calendar-today" onClick={() => setShowScheduleModal(false)}>Cancel</button><button className="demo-primary" type="submit" disabled={scheduleSubmitting}><Icon name="plus" size={17}/> {scheduleSubmitting ? "Saving…" : "Save schedule"}</button></div></form></div></div>}</section>;
+function money(amount: number, currency = "MYR") {
+  return new Intl.NumberFormat("en-MY", { style: "currency", currency: currency || "MYR", maximumFractionDigits: 2 }).format(amount);
 }
 
 function nextMissing(profile: Profile) {
@@ -352,7 +278,7 @@ function PeoplePanel({ members, draft, setDraft, onSave, onNavigate, onNotice, i
         <button className="demo-primary" type="submit"><Icon name="plus" size={16}/> {draft.id ? "Update person" : "Save person"}</button>
       </form>
     </div>
-    <div className="demo-next-card"><span className="demo-next-icon"><Icon name="spark" size={20}/></span><div><strong>{members.length ? "Your team is on record" : "Add a key contact"}</strong><p>{members.length ? "Future tasks can refer to the right person and department." : "You can continue and add people later."}</p><button onClick={onNavigate}>Back to your workspace <Icon name="arrow" size={15}/></button></div></div>
+    <div className="demo-next-card"><span className="demo-next-icon"><Icon name="spark" size={20}/></span><div><strong>{members.length ? "Your team is on record" : "Add a key contact"}</strong><p>{members.length ? "Future tasks can refer to the right person and department." : "You can continue and add people later."}</p><button onClick={onNavigate}>Continue to function demo <Icon name="arrow" size={15}/></button></div></div>
   </aside>;
 }
 
@@ -360,6 +286,8 @@ type DemoState = {
   profile: { company: Record<string, unknown>; readiness: { minimum_ready: boolean } };
   members: Array<Record<string, unknown>>;
   people?: Array<Record<string, unknown>>;
+  customers: Array<Record<string, unknown>>;
+  invoices: Array<Record<string, unknown>>;
 };
 
 async function demoJson<T>(url: string, body?: unknown): Promise<T> {
@@ -392,9 +320,8 @@ function profileFromDb(raw: Record<string, unknown>): Profile {
 
 type DemoUser = { id: string; username: string; display_name: string; role: string; tier: string };
 
-export default function DemoPage({ initialArea = "home" }: { initialArea?: Area } = {}) {
-  const requestedArea = new URLSearchParams(window.location.search).get("area") as Area | null;
-  const resolvedArea = requestedArea && validAreas.includes(requestedArea) ? requestedArea : validAreas.includes(initialArea) ? initialArea : "home";
+export default function DemoPage({ initialArea = "onboarding" }: { initialArea?: Area } = {}) {
+  const resolvedArea: Area = (typeof window !== "undefined" && (new URLSearchParams(window.location.search).get("area") as Area | null)) || initialArea;
   const [user, setUser] = useState<DemoUser | null>(null);
   const [checking, setChecking] = useState(true);
   const [username, setUsername] = useState("");
@@ -413,7 +340,7 @@ export default function DemoPage({ initialArea = "home" }: { initialArea?: Area 
   return <DemoWorkspace key={user.id} user={user} initialArea={resolvedArea} onLogout={async () => { await demoJson("/api/demo/logout", {}); window.sessionStorage.removeItem(`di-demo-session-${user.id}`); window.location.assign("/demo"); }}/ >;
 }
 
-function DemoWorkspace({ user, initialArea = "home", onLogout }: { user: DemoUser; initialArea?: Area; onLogout: () => Promise<void> }) {
+function DemoWorkspace({ user, initialArea = "onboarding", onLogout }: { user: DemoUser; initialArea?: Area; onLogout: () => Promise<void> }) {
   const studio = useStudio({ userId: user.id });
   const [area, setArea] = useState<Area>(initialArea);
   const logArea = area === "logs" || area === "usage" || area === "activity" ? area : null;
@@ -425,25 +352,27 @@ function DemoWorkspace({ user, initialArea = "home", onLogout }: { user: DemoUse
   const [profile, setProfile] = useState<Profile>(initialProfile);
   const [companyMembers, setCompanyMembers] = useState<CompanyMember[]>([]);
   const [memberDraft, setMemberDraft] = useState<MemberDraft>(emptyMember);
+  const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
+  const [invoices, setInvoices] = useState<Invoice[]>(initialInvoices);
+  const [ready, setReady] = useState(false);
   const restoredSession = useRef(false);
   const profileRevision = useRef<number>(0);
   const [draft, setDraft] = useState("");
-  const [chatSearch, setChatSearch] = useState("");
   const [attachments, setAttachments] = useState<File[]>([]);
   const [notice, setNotice] = useState("");
-  const [loggingOut, setLoggingOut] = useState(false);
-  const logout = async () => {
-    setLoggingOut(true);
-    try { await onLogout(); }
-    catch (error) {
-      setNotice(error instanceof Error ? error.message : "Could not log out. Please try again.");
-      setLoggingOut(false);
-    }
-  };
+  const [modal, setModal] = useState<"invoice" | "customer" | null>(null);
+  const [selectedInvoice, setSelectedInvoice] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("All records");
+  const [invoiceForm, setInvoiceForm] = useState({ customer: "", description: "", amount: "", due: "" });
+  const [customerForm, setCustomerForm] = useState({ name: "", email: "", contact: "" });
   const fileInput = useRef<HTMLInputElement>(null);
   const chatEnd = useRef<HTMLDivElement>(null);
   const doneCount = profileLabels.filter(({ key }) => String(profile[key]).trim()).length;
   const essentialCount = [profile.name, profile.country, profile.businessType, profile.businessActivity, profile.email || profile.phone, profile.billingAddress, profile.currency, profile.taxStatus].filter(Boolean).length;
+  const activeInvoice = invoices.find((invoice) => invoice.id === selectedInvoice);
+  const filteredInvoices = invoices.filter((invoice) => (filter === "All records" || invoice.status === filter) && `${invoice.number} ${invoice.customer} ${invoice.description}`.toLowerCase().includes(search.toLowerCase()));
+
   useEffect(() => { chatEnd.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [studio.history, area]);
   useEffect(() => { if (notice) { const timer = window.setTimeout(() => setNotice(""), 4500); return () => window.clearTimeout(timer); } }, [notice]);
 
@@ -456,6 +385,17 @@ function DemoWorkspace({ user, initialArea = "home", onLogout }: { user: DemoUse
       position: String(member.position || ""), department: String(member.department || ""), email: String(member.email || ""),
       phone: String(member.phone || ""), location: String(member.location || ""), username: member.username ? String(member.username) : null,
       has_login: Boolean(member.has_login), login_active: Boolean(member.login_active), role: member.role ? String(member.role) : null })));
+    const nextCustomers = data.customers.map((customer) => ({ id: String(customer.id), name: String(customer.name || ""),
+      email: String(customer.email || ""), contact: String(customer.code || "") }));
+    setCustomers(nextCustomers);
+    setInvoiceForm((old) => ({ ...old, customer: nextCustomers.some((customer) => customer.id === old.customer)
+      ? old.customer : nextCustomers[0]?.id || "" }));
+    setInvoices(data.invoices.map((invoice) => ({ id: String(invoice.id), number: String(invoice.number || "Draft"),
+      customer: (invoice.customer as { name?: string } | null)?.name || "", description: (invoice.lines as Array<{ description?: string }> | undefined)?.map((line) => line.description).filter(Boolean).join("; ") || "",
+      amount: Number(invoice.total || 0), due: String(invoice.due_date || ""),
+      status: invoice.status === "draft" ? "Draft" : invoice.status === "paid" ? "Paid" : "Issued",
+      created: String(invoice.issue_date || "") })));
+    setReady(true);
   };
 
   useEffect(() => {
@@ -529,41 +469,77 @@ function DemoWorkspace({ user, initialArea = "home", onLogout }: { user: DemoUse
     } catch (error) { setNotice(error instanceof Error ? error.message : "Could not save company person"); }
   };
 
-  const displayName = user.display_name || user.username;
-  const recentChats = studio.sessions.filter(session => (session.title || "Untitled chat").toLowerCase().includes(chatSearch.toLowerCase())).slice(0, 5);
-  const sectionTitle = [...workspaceSections, ...insightSections].find(section => section.area === area)?.label || "Home";
-  const newChat = () => {
-    setArea("home"); setDraft(""); setAttachments([]);
-    window.sessionStorage.removeItem(`di-demo-session-${user.id}`);
-    void studio.startNewChat(undefined, undefined, `${displayName} · Chat`);
+  const createInvoice = async (event: FormEvent) => {
+    event.preventDefault();
+    const amount = Number(invoiceForm.amount);
+    if (!invoiceForm.customer || !invoiceForm.description.trim() || !Number.isFinite(amount) || amount <= 0 || !invoiceForm.due) return;
+    try {
+      const data = await demoJson<{ result: { document: { id: string } } }>("/api/demo/action", { action: "invoice", invoice: invoiceForm });
+      setSelectedInvoice(data.result.document.id); setModal(null);
+      setInvoiceForm({ customer: invoiceForm.customer, description: "", amount: "", due: "" });
+      await loadState(); setNotice("Draft invoice created in Document Intelligence");
+    } catch (error) { setNotice(error instanceof Error ? error.message : "Could not create invoice"); }
   };
-  const navigation = (sections: typeof workspaceSections) => sections.map(section => <button key={section.area} type="button" className={area === section.area ? "active" : ""} aria-current={area === section.area ? "page" : undefined} onClick={() => setArea(section.area)}><Icon name={section.icon}/><span>{section.label}</span></button>);
 
-  return <div className={`di-demo${area === "home" ? " demo-home" : ""}`}>
+  const createCustomer = async (event: FormEvent) => {
+    event.preventDefault();
+    const name = customerForm.name.trim();
+    if (!name || !customerForm.email.trim()) return;
+    try {
+      const data = await demoJson<{ result: { customer: { id: string } } }>("/api/demo/action", { action: "customer", customer: { name, email: customerForm.email.trim() } });
+      setInvoiceForm((old) => ({ ...old, customer: data.result.customer.id }));
+      setCustomerForm({ name: "", email: "", contact: "" }); setModal(null);
+      await loadState(); setNotice(`${name} added to CRM`);
+    } catch (error) { setNotice(error instanceof Error ? error.message : "Could not add customer"); }
+  };
+
+  const issueInvoice = async (id: string) => {
+    try {
+      await demoJson("/api/demo/action", { action: "issue", id });
+      await loadState(); setNotice("Invoice issued");
+    } catch (error) { setNotice(error instanceof Error ? error.message : "Invoice is not ready to issue"); }
+  };
+
+  const exportCsv = () => {
+    const rows = [["Number", "Customer", "Description", "Amount", "Due date", "Status"], ...filteredInvoices.map((invoice) => [invoice.number, invoice.customer, invoice.description, String(invoice.amount), invoice.due, invoice.status])];
+    const csv = rows.map((row) => row.map((value) => `"${value.replaceAll('"', '""')}"`).join(",")).join("\r\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a"); link.href = url; link.download = "demo-invoices.csv"; link.click(); URL.revokeObjectURL(url);
+  };
+
+  return <div className="di-demo">
     <aside className="demo-rail">
       <a className="demo-brand" href="/demo" aria-label="e by Eternalgy"><span className="demo-brand-mark"><img src="/branding/e-logo.png" alt=""/></span><span><strong>e</strong><small>by Eternalgy</small></span></a>
-      <label className="demo-sidebar-search"><Icon name="search" size={16}/><input aria-label="Search chats" value={chatSearch} onChange={event => setChatSearch(event.target.value)} placeholder="Search chats"/><span aria-hidden="true">⌕</span></label>
-      <div className="demo-navigation"><div className="demo-rail-label">WORKSPACE</div>
-      <nav aria-label="Workspace sections">{navigation(workspaceSections)}</nav>
-      <div className="demo-rail-label demo-insights-label">INSIGHTS</div>
-      <nav className="demo-insights-nav" aria-label="Workspace insights">{navigation(insightSections)}</nav></div>
-      <div className="demo-recent-chats"><div className="demo-rail-label">RECENT CHATS</div>{recentChats.length ? recentChats.map(session => <button type="button" key={session.id} className={session.id === studio.sessionId ? "active" : ""} disabled={studio.loading} onClick={() => { setArea("home"); studio.openSession(session.id); }} title={session.title || "Untitled chat"}>{session.title || "Untitled chat"}</button>) : <p>{chatSearch ? "No matching chats" : "Your conversations will appear here."}</p>}</div>
-      <div className="demo-rail-bottom"><span className="demo-profile-avatar">{displayName.slice(0, 1).toUpperCase()}</span><div><strong>{displayName}</strong><small>{user.role === "admin" ? "Workspace admin" : "Workspace member"}</small></div><button type="button" aria-label="Log out" title="Log out" disabled={loggingOut} onClick={() => void logout()}><Icon name="logout" size={16}/></button></div>
+      <div className="demo-rail-label">EXPLORE</div>
+      <nav aria-label="Demo sections">
+        <button className={area === "onboarding" ? "active" : ""} onClick={() => setArea("onboarding")}><Icon name="chat"/><span>Onboarding</span><span className="demo-nav-count">01</span></button>
+        <button className={area === "people" ? "active" : ""} onClick={() => setArea("people")}><Icon name="users"/><span>Company people</span><span className="demo-nav-count">02</span></button>
+        <button className={area === "workspace" ? "active" : ""} onClick={() => setArea("workspace")}><Icon name="grid"/><span>Function demo</span><span className="demo-nav-count">03</span></button>
+        <button className={area === "calendar" ? "active" : ""} onClick={() => setArea("calendar")}><Icon name="calendar"/><span>Company calendar</span><span className="demo-nav-count">04</span></button>
+        <button className={area === "expenses" ? "active" : ""} onClick={() => setArea("expenses")}><Icon name="file"/><span>Expenses</span><span className="demo-nav-count">05</span></button>
+        <button className={area === "procurement" ? "active" : ""} onClick={() => setArea("procurement")}><Icon name="database"/><span>Procurement</span><span className="demo-nav-count">06</span></button>
+        <button className={area === "research" ? "active" : ""} aria-current={area === "research" ? "page" : undefined} onClick={() => setArea("research")}><Icon name="file"/><span>Research library</span><span className="demo-nav-count">07</span></button>
+        <button className={area === "signals" ? "active" : ""} aria-current={area === "signals" ? "page" : undefined} onClick={() => setArea("signals")}><Icon name="trend"/><span>Company signals</span><span className="demo-nav-count">08</span></button>
+        <button onClick={() => window.location.assign("/media-kit")}><Icon name="spark"/><span>Media Kit</span><span className="demo-nav-count">09</span></button>
+        <button className={area === "logs" ? "active" : ""} aria-current={area === "logs" ? "page" : undefined} onClick={() => setArea("logs")}><Icon name="chat"/><span>Chat logs</span><span className="demo-nav-count">10</span></button>
+        <button className={area === "usage" ? "active" : ""} aria-current={area === "usage" ? "page" : undefined} onClick={() => setArea("usage")}><Icon name="grid"/><span>Usage Dashboard</span><span className="demo-nav-count">11</span></button>
+        <button className={area === "activity" ? "active" : ""} aria-current={area === "activity" ? "page" : undefined} onClick={() => setArea("activity")}><Icon name="database"/><span>Activity log</span><span className="demo-nav-count">12</span></button>
+      </nav>
+      <div className="demo-rail-bottom"><span className="demo-live-dot"/> Live Document Intelligence <p>Changes are saved to this workspace.</p></div>
     </aside>
 
     <main className="demo-main">
-      <header className="demo-topbar"><div className="demo-breadcrumb">{area === "home" ? <span className="demo-assistant-pill"><Icon name="spark" size={17}/><strong>e assistant</strong><span className={studio.loading ? "demo-connection working" : "demo-connection"} role="status">{studio.loading ? "Working…" : studio.agents.length ? "Connected" : "Connecting…"}</span></span> : <><span className="demo-workspace-name">Workspace</span><span>/</span><strong>{sectionTitle}</strong></>}</div><div className="demo-top-actions"><button type="button" className="demo-new-chat" disabled={studio.loading || !studio.agents.length} onClick={newChat}><Icon name="plus" size={15}/> New chat</button><button type="button" className="demo-mobile-logout" aria-label="Log out" disabled={loggingOut} onClick={() => void logout()}><Icon name="logout" size={16}/></button><span className="demo-top-avatar" title={displayName}>{displayName.slice(0, 1).toUpperCase()}</span></div></header>
+      <header className="demo-topbar"><div className="demo-breadcrumb">Document Intelligence <span>/</span> <strong>{logArea ? logHeadings[logArea].title : (area === "onboarding" ? "Onboarding" : area === "people" ? "Company people" : area === "calendar" ? "Company calendar" : area === "expenses" ? "Expense claims" : area === "procurement" ? "Procurement" : area === "research" ? "Research library" : area === "signals" ? "Company signals" : "Function demo")}</strong></div><div className="demo-top-actions"><span className="demo-badge">{user.display_name || user.username} · {user.role}</span><button className="demo-exit" onClick={() => void onLogout().catch(error => setNotice(error.message))}>Sign out</button><a href="/" className="demo-exit">Back to app <Icon name="arrow" size={15}/></a></div></header>
       <div className="demo-content">
-        {area === "media-kit" ? <MediaKitView embedded /> : <>
-        {area !== "home" && <div className="demo-heading"><div><div className="demo-eyebrow">{logArea ? "WORKSPACE INSIGHTS" : area === "onboarding" ? "STEP 01 · GETTING STARTED" : area === "people" ? "STEP 02 · KNOW YOUR TEAM" : area === "calendar" ? "LIVE COMPANY SIGNALS" : area === "expenses" ? "RECEIPTS TO REPORT" : area === "procurement" ? "BUY WITH CONFIDENCE" : area === "research" ? "COMPANY INTELLIGENCE" : area === "signals" ? "MARKET SIGNALS & CATALYSTS" : "STEP 03 · EXPLORE CAPABILITIES"}</div><h1>{logArea ? logHeadings[logArea].title : area === "onboarding" ? "Set up your workspace" : area === "people" ? "Meet your company people" : area === "calendar" ? "One calendar for every date" : area === "expenses" ? "Claims, grouped by cut-off" : area === "procurement" ? "Quotes, orders, deliveries, bills" : area === "research" ? "Company research library" : area === "signals" ? "Company signal research" : "Make work happen"}</h1><p>{logArea ? logHeadings[logArea].description : area === "onboarding" ? "Tell the assistant about your business and watch your profile take shape." : area === "people" ? "Share a key contact, their position and department, so future work reaches the right person." : area === "calendar" ? "The Calendar AI reads your company records and keeps the important dates together." : area === "expenses" ? "File a receipt, and the Expenses Clerk groups every claim into the month’s submission and prepares the report." : area === "procurement" ? "Record what suppliers send, draft purchase orders, log deliveries, and check every invoice against the order before paying." : area === "research" ? "Evidence-backed company dossiers, web verification, and published intelligence reports." : area === "signals" ? "Longitudinal market signals, earnings catalysts, and layered multi-cycle stock research dossiers." : "Create records and see the invoice database update instantly."}</p></div></div>}
-        {logArea ? <ObservabilityPanel area={logArea} isAdmin={user.role === "admin"}/> : area === "calendar" ? <CalendarPanel/> : area === "expenses" ? <ExpensesPanel user={user} onNotice={setNotice}/> : area === "procurement" ? <ProcurementPanel user={user} onNotice={setNotice}/> : area === "research" ? <ResearchPanel user={user} onNotice={setNotice}/> : area === "signals" ? <SignalReportsPanel user={user} onNotice={setNotice}/> : <div className={`demo-layout${area === "home" ? " demo-home-layout" : ""}`}>
-          <section className={`demo-chat-card${studio.history.length === 0 ? " is-empty" : ""}`} aria-label={`${area} chat`}>
+        <div className="demo-heading"><div><div className="demo-eyebrow">{logArea ? "WORKSPACE INSIGHTS" : area === "onboarding" ? "STEP 01 · GETTING STARTED" : area === "people" ? "STEP 02 · KNOW YOUR TEAM" : area === "calendar" ? "LIVE COMPANY SIGNALS" : area === "expenses" ? "RECEIPTS TO REPORT" : area === "procurement" ? "BUY WITH CONFIDENCE" : area === "research" ? "COMPANY INTELLIGENCE" : area === "signals" ? "MARKET SIGNALS & CATALYSTS" : "STEP 03 · EXPLORE CAPABILITIES"}</div><h1>{logArea ? logHeadings[logArea].title : area === "onboarding" ? "Set up your workspace" : area === "people" ? "Meet your company people" : area === "calendar" ? "One calendar for every date" : area === "expenses" ? "Claims, grouped by cut-off" : area === "procurement" ? "Quotes, orders, deliveries, bills" : area === "research" ? "Company research library" : area === "signals" ? "Company Signal Analysis AI" : "Make work happen"}</h1><p>{logArea ? logHeadings[logArea].description : area === "onboarding" ? "Tell the assistant about your business and watch your profile take shape." : area === "people" ? "Share a key contact, their position and department, so future work reaches the right person." : area === "calendar" ? "The Calendar AI reads your company records and keeps the important dates together." : area === "expenses" ? "File a receipt, and the Expenses Clerk groups every claim into the month’s submission and prepares the report." : area === "procurement" ? "Record what suppliers send, draft purchase orders, log deliveries, and check every invoice against the order before paying." : area === "research" ? "Evidence-backed company dossiers, web verification, and published intelligence reports." : area === "signals" ? "Longitudinal market signals, earnings catalysts, and layered multi-cycle stock research dossiers." : "Create records and see the invoice database update instantly."}</p></div>{area === "workspace" && <button className="demo-primary demo-heading-button" onClick={() => setModal("invoice")}><Icon name="plus" size={17}/> New invoice</button>}</div>
+        {logArea ? <ObservabilityPanel area={logArea} isAdmin={user.role === "admin"}/> : area === "calendar" ? <CalendarPanel/> : area === "expenses" ? <ExpensesPanel user={user} onNotice={setNotice}/> : area === "procurement" ? <ProcurementPanel user={user} onNotice={setNotice}/> : area === "research" ? <ResearchPanel user={user} onNotice={setNotice}/> : area === "signals" ? <SignalReportsPanel user={user} onNotice={setNotice}/> : <div className="demo-layout">
+          <section className="demo-chat-card" aria-label={`${area} chat`}>
             <div className={`demo-card-head${studio.loading ? " is-working" : ""}`}>
               <div className="demo-agent-identity">
                 <div className="demo-agent-avatar"><img src="/branding/e-logo.png" alt=""/></div>
                 <div className="demo-agent-label">
                   <strong>{"e"}</strong>
-                  <span role="status" title={studio.loading ? studio.liveStatus : undefined}><i aria-hidden="true"/> {studio.loading ? "Working…" : studio.agents.length ? "Connected" : "Connecting…"}</span>
+                  <span role="status" title={studio.loading ? studio.liveStatus : undefined}><i aria-hidden="true"/> {studio.loading ? "Working…" : ready && studio.agents.length ? "Connected" : "Connecting…"}</span>
                 </div>
               </div>
               <div className="demo-session-user-tag" title={`Chat session marked for ${user.display_name || user.username} (${user.role})`}>
@@ -588,26 +564,21 @@ function DemoWorkspace({ user, initialArea = "home", onLogout }: { user: DemoUse
                   ))}
                 </select>
               )}
+              <button className="demo-new-chat" disabled={studio.loading || !studio.agents.length} onClick={() => { window.sessionStorage.removeItem(`di-demo-session-${user.id}`); void studio.startNewChat(undefined, undefined, `${user.display_name || user.username} · ${area.charAt(0).toUpperCase() + area.slice(1)}`); }}>New chat</button>
+              <button className="demo-more" aria-label="About this demo" title="Live Document Intelligence" onClick={() => setNotice(`Chat session for ${user.display_name || user.username} (${user.role}). Chat uses ${"e"} through the agent pipeline.`)}>···</button>
             </div>
-            <div className="demo-chat-scroll">{studio.history.length > 0 && <div className="demo-chat-date">YOUR CONVERSATION</div>}{studio.history.length === 0 && <div className="demo-welcome"><div className="demo-welcome-orb" aria-hidden="true"/><h1>Hello, {displayName.split(" ")[0]}.<br/>How can I <span>help you today?</span></h1><p>A little less busywork. A little more possibility.</p></div>}{studio.history.map((message, index) => <div className={`demo-message ${message.role}`} key={message.id ?? index}><div className="demo-message-avatar">{message.role === "assistant" ? <img src="/branding/e-logo.png" alt=""/> : (user.display_name || user.username).slice(0, 1).toUpperCase()}</div><div className="demo-message-body"><div className="demo-message-name">{message.role === "assistant" ? "e" : (user.display_name || user.username)}</div><div className="demo-bubble"><ChatCopy text={message.content || (message.streaming ? studio.liveStatus || "Working…" : "")} agentId={studio.selected.id} streaming={message.streaming} onOpen={(src, alt) => studio.setMedia({ src, alt })}/>{message.role === "assistant" && message.blocks?.filter((block) => block.type === "tool" || block.type === "note").map((block, blockIndex) => <div className="demo-agent-activity" key={blockIndex}>{block.type === "tool" ? `${block.running ? "Running" : block.isError ? "Failed" : "Used"} ${block.name}` : block.text}{block.type === "tool" && block.shared_files?.map((file) => <a href={file.url} key={file.id} target="_blank" rel="noopener noreferrer">{file.name}</a>)}</div>)}</div></div></div>)}{studio.error && <div className="demo-chat-error" role="alert">{studio.error}</div>}<div ref={chatEnd}/></div>
-            <div className="demo-composer-wrap">{attachments.length > 0 && <div className="demo-attachments">{attachments.map((file, index) => <span key={`${file.name}-${index}`}><Icon name="file" size={14}/>{file.name}<button aria-label={`Remove ${file.name}`} onClick={() => setAttachments(old => old.filter((_, i) => i !== index))}><Icon name="close" size={12}/></button></span>)}</div>}
-              <form className="demo-composer" onSubmit={event => { event.preventDefault(); void sendMessage(); }}>
-                <input ref={fileInput} type="file" accept="application/pdf,image/*" multiple hidden onChange={event => addFiles(event.target.files)}/>
-                <div className="demo-composer-input"><Icon name="spark" size={18}/><textarea aria-label="Message" rows={3} disabled={studio.loading} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void sendMessage(); } }} placeholder={area === "onboarding" ? "Tell me about your business…" : area === "people" ? "Share a person's details…" : "Ask a question, share an idea, or give me something to work on…"}/></div>
-                <div className="demo-composer-toolbar"><button type="button" className="demo-attach" disabled={studio.loading} onClick={() => fileInput.current?.click()} aria-label="Attach PDF or image" title="Attach PDF or image"><Icon name="upload" size={16}/><span>Attach file</span></button><span className="demo-composer-file-hint">PDF & images</span><button type="submit" className="demo-send" disabled={studio.loading || !studio.agents.length || (!draft.trim() && !attachments.length)} aria-label="Send message"><Icon name="arrow" size={18}/></button></div>
-              </form>
-              <div className="demo-composer-note">Press Enter to send · Shift + Enter for a new line</div>
-            </div>
-            {studio.history.length === 0 && <div className="demo-suggestions" aria-label="Get started"><button type="button" onClick={() => setArea("onboarding")}><Icon name="grid" size={15}/> Set up my company</button><button type="button" onClick={() => setArea("expenses")}><Icon name="file" size={15}/> Manage expenses</button><button type="button" onClick={() => setArea("research")}><Icon name="search" size={15}/> Explore research</button></div>}
+            <div className="demo-chat-scroll"><div className="demo-chat-date">TODAY</div>{studio.history.length === 0 && <div className="demo-message assistant"><div className="demo-message-avatar"><img src="/branding/e-logo.png" alt=""/></div><div className="demo-message-body"><div className="demo-message-name">{"e"}</div><div className="demo-bubble">Hi! Tell me about your company or upload a document. I’m ready to help.</div></div></div>}{studio.history.map((message, index) => <div className={`demo-message ${message.role}`} key={message.id ?? index}><div className="demo-message-avatar">{message.role === "assistant" ? <img src="/branding/e-logo.png" alt=""/> : (user.display_name || user.username).slice(0, 1).toUpperCase()}</div><div className="demo-message-body"><div className="demo-message-name">{message.role === "assistant" ? "e" : (user.display_name || user.username)}</div><div className="demo-bubble"><ChatCopy text={message.content || (message.streaming ? studio.liveStatus || "Working…" : "")} agentId={studio.selected.id} streaming={message.streaming} onOpen={(src, alt) => studio.setMedia({ src, alt })}/>{message.role === "assistant" && message.blocks?.filter((block) => block.type === "tool" || block.type === "note").map((block, blockIndex) => <div className="demo-agent-activity" key={blockIndex}>{block.type === "tool" ? `${block.running ? "Running" : "Used"} ${block.name}` : block.text}{block.type === "tool" && block.shared_files?.map((file) => <a href={file.url} key={file.id} target="_blank" rel="noopener noreferrer">{file.name}</a>)}</div>)}</div></div></div>)}{studio.error && <div className="demo-chat-error" role="alert">{studio.error}</div>}<div ref={chatEnd}/></div>
+            {area === "onboarding" ? <div className="demo-suggestions"><span>TRY SAYING</span><button onClick={() => sendMessage("My company is Acme Studio")}>My company is Acme Studio</button><button onClick={() => sendMessage("My email is hello@acme.example")}>Add business email</button></div> : area === "people" ? <div className="demo-suggestions"><span>TRY SAYING</span><button onClick={() => sendMessage("Name: Maya Tan; Position: Operations Manager; Department: Operations; Email: maya@acme.example")}>Share example contact</button><button onClick={() => sendMessage("Name: Daniel Lee")}>Start with a name</button></div> : <div className="demo-suggestions"><span>QUICK ACTIONS</span><button onClick={() => setModal("invoice")}><Icon name="file" size={14}/> New invoice</button><button onClick={() => setModal("customer")}><Icon name="users" size={14}/> Add CRM entry</button></div>}
+            <div className="demo-composer-wrap">{attachments.length > 0 && <div className="demo-attachments">{attachments.map((file, index) => <span key={`${file.name}-${index}`}><Icon name="file" size={14}/>{file.name}<button aria-label={`Remove ${file.name}`} onClick={() => setAttachments((old) => old.filter((_, i) => i !== index))}><Icon name="close" size={12}/></button></span>)}</div>}<form className="demo-composer" onSubmit={(event) => { event.preventDefault(); void sendMessage(); }}><input ref={fileInput} type="file" accept="application/pdf,image/*" multiple hidden onChange={(event) => addFiles(event.target.files)}/><button type="button" className="demo-attach" disabled={studio.loading} onClick={() => fileInput.current?.click()} aria-label="Attach PDF or image" title="Attach PDF or image"><Icon name="upload" size={19}/></button><input aria-label="Message" disabled={studio.loading} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={area === "onboarding" ? "Tell me about your business..." : area === "people" ? "Share a person's details..." : "What would you like to create?"}/><button type="submit" className="demo-send" disabled={studio.loading || !studio.agents.length} aria-label="Send message"><Icon name="send" size={17}/></button></form><div className="demo-composer-note">PDF and images accepted · Files are processed by the agent</div></div>
           </section>
 
-          {area === "onboarding" ? <OnboardingPanel profile={profile} setProfile={setProfile} doneCount={doneCount} essentialCount={essentialCount} onSave={(key, value) => { void saveProfile(key, value); }} onNavigate={() => setArea("people")}/> : area === "people" ? <PeoplePanel members={companyMembers} draft={memberDraft} setDraft={setMemberDraft} onSave={saveCompanyMember} onNavigate={() => setArea("home")} onNotice={setNotice} isAdmin={user.role === "admin"}/> : null}
+          {area === "onboarding" ? <OnboardingPanel profile={profile} setProfile={setProfile} doneCount={doneCount} essentialCount={essentialCount} onSave={(key, value) => { void saveProfile(key, value); }} onNavigate={() => setArea("people")}/> : area === "people" ? <PeoplePanel members={companyMembers} draft={memberDraft} setDraft={setMemberDraft} onSave={saveCompanyMember} onNavigate={() => setArea("workspace")} onNotice={setNotice} isAdmin={user.role === "admin"}/> : <aside className="demo-side"><div className="demo-panel database-panel"><div className="demo-db-top"><div><div className="demo-panel-kicker"><Icon name="database" size={16}/> DATABASE VIEWER</div><h2>Invoice table</h2><p>Live Document Intelligence invoice records</p></div><button onClick={exportCsv} className="demo-icon-button" title="Export visible rows as CSV" aria-label="Export CSV"><Icon name="download" size={17}/></button></div><div className="demo-db-stat"><span className="demo-live-dot"/> di.document <span className="demo-db-total">{invoices.length} rows</span></div><div className="demo-db-tools"><label><Icon name="search" size={16}/><input aria-label="Search invoices" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search invoices..."/></label><select aria-label="Filter invoices" value={filter} onChange={(event) => setFilter(event.target.value)}><option>All records</option><option>Draft</option><option>Issued</option><option>Paid</option></select></div><div className="demo-table-wrap"><table><thead><tr><th>Invoice</th><th>Customer</th><th>Amount</th><th>Status</th></tr></thead><tbody>{filteredInvoices.map((invoice) => <tr key={invoice.id} className={selectedInvoice === invoice.id ? "selected" : ""} onClick={() => setSelectedInvoice(invoice.id)}><td><strong>{invoice.number}</strong><small>{invoice.created}</small></td><td>{invoice.customer}</td><td>{money(invoice.amount, profile.currency)}</td><td><span className={`demo-status ${invoice.status.toLowerCase()}`}>{invoice.status}</span></td></tr>)}</tbody></table>{filteredInvoices.length === 0 && <div className="demo-empty">No matching invoices.</div>}</div>{activeInvoice && <div className="demo-record-detail"><div><span>SELECTED RECORD</span><button onClick={() => setSelectedInvoice(null)} aria-label="Close invoice detail"><Icon name="close" size={14}/></button></div><strong>{activeInvoice.number}</strong><p>{activeInvoice.description}</p><dl><dt>Customer</dt><dd>{activeInvoice.customer}</dd><dt>Due date</dt><dd>{activeInvoice.due}</dd><dt>Total</dt><dd>{money(activeInvoice.amount, profile.currency)}</dd></dl>{activeInvoice.status === "Draft" && <button className="demo-issue" onClick={() => void issueInvoice(activeInvoice.id)}>Mark as issued <Icon name="arrow" size={14}/></button>}</div>}</div><div className="demo-crm-strip"><div><Icon name="users" size={17}/><strong>CRM contacts</strong><span>{customers.length}</span></div><p>{customers.map((customer) => customer.name).join(" · ")}</p><button onClick={() => setModal("customer")}>Add a contact <Icon name="arrow" size={14}/></button></div><div className="demo-crm-strip"><div><Icon name="users" size={17}/><strong>Company people</strong><span>{companyMembers.length}</span></div><p>{companyMembers.length ? companyMembers.map((person) => `${person.name} · ${person.position} (${person.department})`).join(" · ") : "No company people shared yet"}</p><button onClick={() => setArea("people")}>View company people <Icon name="arrow" size={14}/></button></div></aside>}
         </div>}
-        </>}
       </div>
     </main>
 
     {studio.media && <div className="demo-media-viewer" role="dialog" aria-modal="true" aria-label={studio.media.alt || "Image preview"}><button type="button" aria-label="Close image preview" onClick={() => studio.setMedia(null)}><Icon name="close" size={18}/></button><img src={studio.media.src} alt={studio.media.alt || "Attached image"}/></div>}
     {notice && <div className="demo-toast" role="status"><Icon name="check" size={16}/>{notice}<button onClick={() => setNotice("")} aria-label="Dismiss"><Icon name="close" size={13}/></button></div>}
+    {modal && <div className="demo-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setModal(null); }}><div className="demo-modal" role="dialog" aria-modal="true" aria-label={modal === "invoice" ? "Create invoice" : "Add CRM entry"}><div className="demo-modal-head"><span className="demo-modal-icon"><Icon name={modal === "invoice" ? "file" : "users"} size={22}/></span><button onClick={() => setModal(null)} aria-label="Close"><Icon name="close" size={18}/></button></div><h2>{modal === "invoice" ? "Create a new invoice" : "Add a CRM entry"}</h2><p>{modal === "invoice" ? "Create a draft invoice in Document Intelligence." : "Record a customer so they can be used on future invoices."}</p>{modal === "invoice" ? <form onSubmit={createInvoice}><label>Customer<select value={invoiceForm.customer} onChange={(event) => setInvoiceForm((old) => ({ ...old, customer: event.target.value }))}>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></label><label>Description<input required value={invoiceForm.description} onChange={(event) => setInvoiceForm((old) => ({ ...old, description: event.target.value }))} placeholder="e.g. Website design services"/></label><div className="demo-form-row"><label>Amount ({profile.currency || "MYR"})<input required type="number" min="0.01" step="0.01" value={invoiceForm.amount} onChange={(event) => setInvoiceForm((old) => ({ ...old, amount: event.target.value }))} placeholder="0.00"/></label><label>Due date<input required type="date" value={invoiceForm.due} onChange={(event) => setInvoiceForm((old) => ({ ...old, due: event.target.value }))}/></label></div><button className="demo-primary" type="submit"><Icon name="plus" size={17}/> Create draft invoice</button></form> : <form onSubmit={createCustomer}><label>Company or customer name<input required value={customerForm.name} onChange={(event) => setCustomerForm((old) => ({ ...old, name: event.target.value }))} placeholder="e.g. Willow & Co"/></label><label>Email address<input required type="email" value={customerForm.email} onChange={(event) => setCustomerForm((old) => ({ ...old, email: event.target.value }))} placeholder="hello@example.com"/></label><label>Primary contact<input value={customerForm.contact} onChange={(event) => setCustomerForm((old) => ({ ...old, contact: event.target.value }))} placeholder="Full name (optional)"/></label><button className="demo-primary" type="submit"><Icon name="plus" size={17}/> Add to CRM</button></form>}</div></div>}
   </div>;
 }
