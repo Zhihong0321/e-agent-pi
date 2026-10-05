@@ -247,3 +247,49 @@ test('reconcileSignalDossier stacks new reports on top of historical reports to 
   assert.match(md, /ACCELERATING/);
   assert.match(md, /Report #1/);
 });
+
+test('market-data resolves global stock symbols and renders 7-day SVG price chart', async () => {
+  const { resolveStockSymbol, renderPriceChartHtml, fetchStockPriceData } = await import('./market-data.mjs');
+
+  assert.equal(resolveStockSymbol({ ticker: '5347', exchange: 'BURSA' }), '5347.KL');
+  assert.equal(resolveStockSymbol({ ticker: 'TNB', exchange: 'BURSA' }), '5347.KL');
+  assert.equal(resolveStockSymbol({ ticker: '700', exchange: 'HKEX' }), '0700.HK');
+  assert.equal(resolveStockSymbol({ ticker: 'D05', exchange: 'SGX' }), 'D05.SI');
+  assert.equal(resolveStockSymbol({ ticker: 'AAPL', exchange: 'NASDAQ' }), 'AAPL');
+
+  // Test HTML rendering with mock data
+  const mockMarketData = {
+    symbol: '5347.KL',
+    currency: 'MYR',
+    exchangeName: 'KLS',
+    currentPrice: 13.00,
+    sevenDayChange: -0.14,
+    sevenDayChangePercent: -1.07,
+    sevenDayHigh: 13.28,
+    sevenDayLow: 12.72,
+    regularMarketVolume: 2291400,
+    totalVolume: 50400000,
+    tradingViewSymbol: 'MYX:TENAGA',
+    points: [
+      { date: '2026-09-25', open: 13.10, high: 13.28, low: 13.10, close: 13.14, volume: 5767700, changePercent: 0 },
+      { date: '2026-09-28', open: 13.16, high: 13.24, low: 13.10, close: 13.16, volume: 5724300, changePercent: 0.15 },
+      { date: '2026-09-29', open: 12.94, high: 13.00, low: 12.72, close: 12.72, volume: 10054700, changePercent: -3.34 },
+      { date: '2026-09-30', open: 12.80, high: 13.12, low: 12.76, close: 12.96, volume: 10433500, changePercent: 1.89 },
+      { date: '2026-10-01', open: 12.96, high: 13.04, low: 12.86, close: 12.90, volume: 8385400, changePercent: -0.46 },
+      { date: '2026-10-02', open: 13.00, high: 13.12, low: 12.86, close: 12.96, volume: 7744200, changePercent: 0.47 },
+      { date: '2026-10-05', open: 12.96, high: 13.04, low: 12.96, close: 13.00, volume: 2291400, changePercent: 0.31 },
+    ],
+  };
+
+  const html = renderPriceChartHtml(mockMarketData, { ticker: '5347', exchange: 'BURSA' });
+  assert.match(html, /5347\.KL/);
+  assert.match(html, /13\.00/);
+  assert.match(html, /pill-down/);
+  assert.match(html, /price-svg-chart/);
+  assert.match(html, /TradingView/);
+
+  // Test fallback for null data
+  const emptyHtml = renderPriceChartHtml(null, { ticker: 'TEST', exchange: 'UNKNOWN' });
+  assert.match(emptyHtml, /empty-chart/);
+});
+

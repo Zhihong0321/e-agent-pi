@@ -1,6 +1,7 @@
 import { SignalSeed, reconcileSignalDossier, deriveCompanyProfile } from './core.mjs';
 import { SignalBudget, createSignalEvidenceTools } from './adapters.mjs';
 import { settleBatch } from './concurrency.mjs';
+import { fetchStockPriceData } from './market-data.mjs';
 
 export async function researchCompanySignals({
   seed: input,
@@ -69,8 +70,14 @@ export async function researchCompanySignals({
   // Lookback time range: if previous report exists within last 7 days, use 'week', else 'month'
   const timeRange = seed.lookback_days <= 7 ? 'week' : seed.lookback_days <= 31 ? 'month' : 'year';
 
-  // 1. Parallel targeted search discovery for market-moving signals
+  let marketData = null;
+
+  // 1. Parallel targeted search discovery for market-moving signals & 7-day stock price action
   await Promise.allSettled([
+    lane('discovery_market_data', async () => {
+      marketData = await fetchStockPriceData(seed);
+      return marketData;
+    }),
     lane('discovery_financials', async () => {
       const q = `"${seed.name}" OR "${seed.ticker}" (earnings OR revenue OR profit OR guidance OR quarterly results)`;
       return tools.search({ query: q, time_range: timeRange, topic: 'news' }, 'discovery_financials');
@@ -155,6 +162,7 @@ export async function researchCompanySignals({
   const result = reconcileSignalDossier({
     seed,
     profile,
+    marketData,
     previousReports,
     evidence,
     runs,

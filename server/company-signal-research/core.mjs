@@ -354,6 +354,7 @@ export function checkedSignalFindings(input, evidence) {
 export function reconcileSignalDossier({
   seed,
   profile,
+  marketData = null,
   previousReports = [],
   evidence = [],
   runs = [],
@@ -457,6 +458,7 @@ export function reconcileSignalDossier({
     thesis: latestSynthesis,
     delta_summary: latestSynthesis.summary,
     profile: companyProfile,
+    market_data: marketData,
     trend: {
       ...trendObservation,
       history_timeline: historyTimeline,

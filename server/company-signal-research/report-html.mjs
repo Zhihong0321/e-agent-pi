@@ -1,3 +1,5 @@
+import { renderPriceChartHtml } from './market-data.mjs';
+
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 const BIAS_CONFIG = {
@@ -514,6 +516,286 @@ export function renderSignalReportHtml(d) {
       font-size: 12px;
       color: #94a3b8;
       line-height: 1.4;
+    }
+
+    /* ==========================================================================
+       7-DAY MARKET PRICE CHART COMPONENT (二级市场价格走势)
+       ========================================================================== */
+    .market-chart-card {
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 14px;
+      padding: 22px 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    }
+
+    .market-chart-card.empty-chart {
+      background: rgba(15, 23, 42, 0.4);
+      border: 1px dashed var(--border);
+    }
+
+    .chart-card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 16px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .chart-primary-info {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .chart-title-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .chart-live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 10px #10b981;
+      display: inline-block;
+      animation: pulseDot 2s infinite ease-in-out;
+    }
+
+    @keyframes pulseDot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+
+    .chart-symbol-badge {
+      font-family: monospace;
+      font-size: 14px;
+      font-weight: 800;
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.14);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      padding: 2px 8px;
+      border-radius: 6px;
+    }
+
+    .chart-exchange-tag {
+      font-size: 11px;
+      font-weight: 700;
+      color: #94a3b8;
+      background: rgba(255, 255, 255, 0.06);
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+
+    .chart-heading {
+      font-size: 14px;
+      font-weight: 700;
+      color: #f1f5f9;
+    }
+
+    .chart-price-display {
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .price-big-wrap {
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+    }
+
+    .price-value {
+      font-size: 32px;
+      font-weight: 900;
+      color: #ffffff;
+      font-family: monospace;
+      letter-spacing: -0.5px;
+    }
+
+    .price-currency {
+      font-size: 15px;
+      font-weight: 700;
+      color: #94a3b8;
+    }
+
+    .change-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 800;
+      font-family: monospace;
+    }
+
+    .change-pill.pill-up {
+      background: rgba(16, 185, 129, 0.16);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.2);
+    }
+
+    .change-pill.pill-down {
+      background: rgba(244, 63, 94, 0.16);
+      color: #fb7185;
+      border: 1px solid rgba(244, 63, 94, 0.4);
+      box-shadow: 0 0 12px rgba(244, 63, 94, 0.2);
+    }
+
+    .change-period {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 500;
+      margin-left: 4px;
+    }
+
+    .chart-view-tabs {
+      display: flex;
+      gap: 8px;
+      background: rgba(0, 0, 0, 0.25);
+      padding: 4px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+
+    .chart-tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .chart-tab-btn.active {
+      background: #1e293b;
+      color: #38bdf8;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+
+    .chart-tab-btn:hover:not(.active) {
+      color: #ffffff;
+    }
+
+    .chart-quick-metrics {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .q-metric-pill {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      padding: 6px 12px;
+      border-radius: 6px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      font-size: 12px;
+    }
+
+    .q-label {
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .q-val {
+      color: #f1f5f9;
+      font-weight: 700;
+      font-family: monospace;
+    }
+
+    .svg-chart-wrapper {
+      width: 100%;
+      overflow: hidden;
+      border-radius: 8px;
+      background: rgba(10, 15, 28, 0.5);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      padding: 10px 0 4px;
+    }
+
+    .price-svg-chart {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .chart-point {
+      cursor: pointer;
+      transition: r 0.2s, stroke-width 0.2s;
+    }
+
+    .chart-point:hover {
+      r: 6.5px;
+      stroke-width: 3.5px;
+    }
+
+    .chart-legend-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 10px;
+      padding: 0 4px;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend-color-line {
+      width: 14px;
+      height: 3px;
+      border-radius: 2px;
+      display: inline-block;
+    }
+
+    .legend-color-bar {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      background: rgba(16, 185, 129, 0.4);
+      display: inline-block;
+    }
+
+    .legend-item.note {
+      color: #64748b;
+      font-size: 11px;
+    }
+
+    .chart-empty-text {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin-top: 10px;
+    }
+
+    .chart-badge-offline {
+      font-size: 11px;
+      color: #94a3b8;
+      background: rgba(255, 255, 255, 0.06);
+      padding: 2px 8px;
+      border-radius: 4px;
     }
 
     /* Top Sources Navigator */
@@ -1239,6 +1521,9 @@ export function renderSignalReportHtml(d) {
           </div>
         </div>
       </div>
+
+      <!-- 标的二级市场 7日价格走势图与量价全景 (Price Chart) -->
+      ${renderPriceChartHtml(d.market_data, d)}
 
       <!-- 核心信源直达导航 (Key Sources Read 1st) -->
       <div class="hero-sources-nav">
