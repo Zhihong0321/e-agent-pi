@@ -244,6 +244,64 @@ export class SignalResearchStore {
     return { items: rows.rows, total: Number(count.rows[0].total), limit, offset };
   }
 
+  async listCompanies({ query = '', limit = 50, offset = 0 } = {}) {
+    const where = `($1 = '' OR POSITION(LOWER($1) IN LOWER(e.name)) > 0 OR POSITION(LOWER($1) IN LOWER(e.ticker)) > 0 OR POSITION(LOWER($1) IN LOWER(e.uid)) > 0)`;
+    const q = await this.pool.query(`
+      SELECT 
+        e.uid, e.ticker, e.exchange, e.name, e.sector, e.last_researched_at, e.created_at, e.updated_at,
+        COUNT(d.id)::int AS report_count,
+        COUNT(CASE WHEN d.status = 'complete' THEN 1 END)::int AS completed_count,
+        MAX(d.created_at) AS latest_report_at,
+        (
+          SELECT jsonb_build_object(
+            'id', d2.id,
+            'sequence', d2.sequence,
+            'status', d2.status,
+            'bias', d2.result->'thesis'->>'bias',
+            'conviction', (d2.result->'thesis'->>'conviction')::numeric,
+            'trajectory', d2.result->'trend'->>'trajectory',
+            'summary', COALESCE(d2.result->>'delta_summary', d2.result->'thesis'->>'summary'),
+            'signalsCount', (d2.result->'counts'->>'total')::int,
+            'currentPrice', (d2.result->'market_data'->>'currentPrice')::numeric,
+            'sevenDayChangePercent', (d2.result->'market_data'->>'sevenDayChangePercent')::numeric,
+            'createdAt', d2.created_at
+          )
+          FROM company_signal_dossiers d2
+          WHERE d2.company_uid = e.uid AND d2.status = 'complete'
+          ORDER BY d2.sequence DESC, d2.created_at DESC
+          LIMIT 1
+        ) AS latest_report
+      FROM company_signal_entities e
+      LEFT JOIN company_signal_dossiers d ON e.uid = d.company_uid
+      WHERE ${where}
+      GROUP BY e.uid, e.ticker, e.exchange, e.name, e.sector, e.last_researched_at, e.created_at, e.updated_at
+      ORDER BY COALESCE(e.last_researched_at, e.created_at) DESC
+      LIMIT $2 OFFSET $3
+    `, [query.trim(), limit, offset]);
+
+    return q.rows;
+  }
+
+  async getCompanyWithReports(companyUid) {
+    const uid = companyUid.trim().toUpperCase();
+    const entityRes = await this.pool.query(`
+      SELECT * FROM company_signal_entities WHERE uid = $1
+    `, [uid]);
+    if (!entityRes.rows.length) return null;
+
+    const reportsRes = await this.pool.query(`
+      SELECT d.id, d.company_uid, d.version, d.sequence, d.previous_dossier_id, d.status, d.seed, d.result, d.error, d.created_at, d.updated_at
+      FROM company_signal_dossiers d
+      WHERE d.company_uid = $1
+      ORDER BY d.sequence DESC, d.created_at DESC
+    `, [uid]);
+
+    return {
+      entity: entityRes.rows[0],
+      reports: reportsRes.rows,
+    };
+  }
+
   async event(id, data, token) {
     await this.write('company_signal_events', id, 'data', [data], token);
   }

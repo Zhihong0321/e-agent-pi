@@ -201,6 +201,15 @@ export async function signalResearchAction({ action, seed, id, company_uid, forc
     return repository.listCatalysts(company_uid, { limit: 50 });
   }
 
+  if (action === 'companies') {
+    return repository.listCompanies({ query, limit, offset });
+  }
+
+  if (action === 'company_reports') {
+    if (!company_uid) throw new Error('company_uid required');
+    return repository.getCompanyWithReports(company_uid);
+  }
+
   if (action === 'list') {
     return repository.list({ query, status, limit, offset });
   }
@@ -226,6 +235,12 @@ export async function signalResearchAction({ action, seed, id, company_uid, forc
 }
 
 export async function handleCompanySignalResearch(req, res, url, { authorized, readBody, repository = store }) {
+  if (url.pathname === '/reports/signal' || url.pathname === '/reports/signal/') {
+    res.writeHead(302, { Location: '/signals' });
+    res.end();
+    return true;
+  }
+
   if (url.pathname.startsWith('/reports/signal/')) {
     const id = url.pathname.slice('/reports/signal/'.length);
     if (!/^[0-9a-f-]{36}$/i.test(id)) {
@@ -253,8 +268,10 @@ export async function handleCompanySignalResearch(req, res, url, { authorized, r
   const statusRoute = url.pathname === '/api/company-signal-research/status';
   const historyMatch = url.pathname.match(/^\/api\/company-signal-research\/history\/([^/]+)$/);
   const catalystsMatch = url.pathname.match(/^\/api\/company-signal-research\/catalysts\/([^/]+)$/);
+  const companiesRoute = url.pathname === '/api/company-signal-research/companies';
+  const companyReportsMatch = url.pathname.match(/^\/api\/company-signal-research\/companies\/([^/]+)$/);
 
-  if (!internal && !statusRoute && !historyMatch && !catalystsMatch && url.pathname !== prefix && !url.pathname.startsWith(`${prefix}/`)) {
+  if (!internal && !statusRoute && !historyMatch && !catalystsMatch && !companiesRoute && !companyReportsMatch && url.pathname !== prefix && !url.pathname.startsWith(`${prefix}/`)) {
     return false;
   }
 
@@ -290,6 +307,28 @@ export async function handleCompanySignalResearch(req, res, url, { authorized, r
     if (req.method !== 'GET') { json(405, { error: 'GET required' }); return true; }
     try {
       json(200, await repository.listCatalysts(decodeURIComponent(catalystsMatch[1]), { limit: 50 }));
+    } catch (e) { json(400, { error: e.message }); }
+    return true;
+  }
+
+  if (companiesRoute) {
+    if (req.method !== 'GET') { json(405, { error: 'GET required' }); return true; }
+    try {
+      json(200, await repository.listCompanies({
+        query: url.searchParams.get('q') || '',
+        limit: Number(url.searchParams.get('limit') || 50),
+        offset: Number(url.searchParams.get('offset') || 0),
+      }));
+    } catch (e) { json(400, { error: e.message }); }
+    return true;
+  }
+
+  if (companyReportsMatch) {
+    if (req.method !== 'GET') { json(405, { error: 'GET required' }); return true; }
+    try {
+      const data = await repository.getCompanyWithReports(decodeURIComponent(companyReportsMatch[1]));
+      if (!data) { json(404, { error: 'Company not found' }); return true; }
+      json(200, data);
     } catch (e) { json(400, { error: e.message }); }
     return true;
   }

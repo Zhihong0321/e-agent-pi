@@ -181,6 +181,32 @@ test('company-signal-research HTTP API and MCP server work end-to-end', async ()
     });
     const historyData = JSON.parse(historyResult.content[0].text);
     assert.deepEqual(historyData, []);
+
+    // Test GET /api/company-signal-research/companies
+    const companiesRes = await fetch(`${base}/api/company-signal-research/companies`, {
+      headers: { Authorization: 'Bearer owner-test' },
+    });
+    assert.equal(companiesRes.status, 200);
+    const companiesData = await companiesRes.json();
+    assert.ok(Array.isArray(companiesData));
+    assert.equal(companiesData.length, 1);
+    assert.equal(companiesData[0].uid, 'TSLA.NASDAQ');
+    assert.equal(companiesData[0].report_count, 1);
+
+    // Test GET /api/company-signal-research/companies/TSLA.NASDAQ
+    const companyDetailRes = await fetch(`${base}/api/company-signal-research/companies/TSLA.NASDAQ`, {
+      headers: { Authorization: 'Bearer owner-test' },
+    });
+    assert.equal(companyDetailRes.status, 200);
+    const companyDetailData = await companyDetailRes.json();
+    assert.equal(companyDetailData.entity.uid, 'TSLA.NASDAQ');
+    assert.equal(companyDetailData.reports.length, 1);
+    assert.equal(companyDetailData.reports[0].id, parsed.id);
+
+    // Test GET /reports/signal redirects to /signals
+    const redirectRes = await fetch(`${base}/reports/signal`, { redirect: 'manual' });
+    assert.equal(redirectRes.status, 302);
+    assert.equal(redirectRes.headers.get('location'), '/signals');
   } finally {
     process.env.TAVILY_API_KEY = oldKey;
     await client.close().catch(() => {});
