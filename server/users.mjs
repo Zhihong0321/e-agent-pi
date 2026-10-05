@@ -278,17 +278,17 @@ export async function listPeople(tenantId) {
     SELECT ${personSelect}
       FROM di.company_member m
       LEFT JOIN users u ON u.id=m.user_id
-     WHERE m.tenant_id=$1 AND m.deleted_at IS NULL
+     WHERE m.tenant_id=$1::uuid AND m.deleted_at IS NULL
     UNION ALL
     SELECT NULL::uuid AS member_id, u.id AS user_id, u.display_name AS name, u.position, u.department,
            u.email, u.phone, u.location, u.notes, NULL::timestamptz AS member_created_at,
            NULL::timestamptz AS member_updated_at, u.username, u.display_name, u.role, u.tier,
            u.active AS login_active, u.created_at AS user_created_at, u.updated_at AS user_updated_at
       FROM users u
-     WHERE u.company_tenant_id=$1
+     WHERE u.company_tenant_id=$1::text
        AND NOT EXISTS (
          SELECT 1 FROM di.company_member m
-          WHERE m.user_id=u.id AND m.tenant_id=$1 AND m.deleted_at IS NULL
+          WHERE m.user_id=u.id AND m.tenant_id=$1::uuid AND m.deleted_at IS NULL
        )
      ORDER BY department NULLS LAST, name`, [tenantId]));
   return { people: result.rows.map(publicPerson), has_more: false };
@@ -299,13 +299,13 @@ export async function backfillPeopleLinks(tenantId) {
   const result = await withTenantPool(tenantId, (tx) => tx.query(`WITH candidates AS (
     SELECT m.id AS member_id, min(u.id) AS user_id
       FROM di.company_member m JOIN users u ON lower(u.email)=lower(m.email)
-     WHERE m.tenant_id=$1 AND m.deleted_at IS NULL AND m.user_id IS NULL AND m.email IS NOT NULL
-       AND u.company_tenant_id=$1
+     WHERE m.tenant_id=$1::uuid AND m.deleted_at IS NULL AND m.user_id IS NULL AND m.email IS NOT NULL
+       AND u.company_tenant_id=$1::text
      GROUP BY m.id HAVING count(u.id)=1
   ) UPDATE di.company_member m SET user_id=c.user_id
       FROM candidates c
      WHERE m.id=c.member_id AND NOT EXISTS (
-       SELECT 1 FROM di.company_member other WHERE other.tenant_id=$1 AND other.user_id=c.user_id
+       SELECT 1 FROM di.company_member other WHERE other.tenant_id=$1::uuid AND other.user_id=c.user_id
          AND other.deleted_at IS NULL AND other.id<>m.id
      )`, [tenantId]));
   return { linked: result.rowCount || 0 };
