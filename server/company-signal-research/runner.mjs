@@ -10,9 +10,9 @@ const piRequire = createRequire(path.join(PI_PACKAGE_DIR, 'package.json'));
 const { Type } = await import(pathToFileURL(piRequire.resolve('typebox')).href);
 
 const signalSubmissionSchema = Type.Object({
-  signals: Type.Array(Type.Object({
-    category: Type.Union(['earnings', 'contracts_deals', 'regulatory_legal', 'management_insider', 'product_tech', 'macro_industry'].map(v => Type.Literal(v))),
-    impact: Type.Union(['bullish', 'bearish', 'neutral', 'high_volatility'].map(v => Type.Literal(v))),
+  signals: Type.Optional(Type.Array(Type.Object({
+    category: Type.Optional(Type.Union(['earnings', 'contracts_deals', 'regulatory_legal', 'management_insider', 'product_tech', 'macro_industry'].map(v => Type.Literal(v)))),
+    impact: Type.Optional(Type.Union(['bullish', 'bearish', 'neutral', 'high_volatility'].map(v => Type.Literal(v)))),
     timeframe: Type.Optional(Type.Union(['immediate', 'short_term', 'long_term'].map(v => Type.Literal(v)))),
     headline: Type.String({ minLength: 5, maxLength: 250 }),
     summary: Type.String({ minLength: 10, maxLength: 600 }),
@@ -20,17 +20,17 @@ const signalSubmissionSchema = Type.Object({
     evidence_id: Type.String(),
     quote: Type.String({ minLength: 8, maxLength: 300 }),
     price_move_percent: Type.Optional(Type.Number()),
+  }))),
+  thesis: Type.Optional(Type.Object({
+    bias: Type.Optional(Type.Union(['bullish', 'bearish', 'neutral', 'high_volatility'].map(v => Type.Literal(v)))),
+    conviction: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
+    primary_catalysts: Type.Optional(Type.Array(Type.String())),
+    key_risks: Type.Optional(Type.Array(Type.String())),
+    summary: Type.Optional(Type.String({ minLength: 5, maxLength: 1000 })),
   })),
-  thesis: Type.Object({
-    bias: Type.Union(['bullish', 'bearish', 'neutral', 'high_volatility'].map(v => Type.Literal(v))),
-    conviction: Type.Number({ minimum: 0, maximum: 1 }),
-    primary_catalysts: Type.Array(Type.String()),
-    key_risks: Type.Array(Type.String()),
-    summary: Type.String({ minLength: 10, maxLength: 1000 }),
-  }),
   trend_observation: Type.Optional(Type.Object({
-    trajectory: Type.Union(['accelerating', 'stable', 'deteriorating', 'inflection_point', 'first_report'].map(v => Type.Literal(v))),
-    synthesis: Type.String({ minLength: 10, maxLength: 1000 }),
+    trajectory: Type.Optional(Type.Union(['accelerating', 'stable', 'deteriorating', 'inflection_point', 'first_report'].map(v => Type.Literal(v)))),
+    synthesis: Type.Optional(Type.String({ minLength: 5, maxLength: 1000 })),
     materialized_catalysts: Type.Optional(Type.Array(Type.String())),
     unresolved_risks: Type.Optional(Type.Array(Type.String())),
   })),
@@ -93,7 +93,7 @@ export class PiSignalResearchRunner {
     await Promise.allSettled([...this.sessions].map(s => s.abort()));
   }
 
-  async run({ lane, seed, previousReports = [], evidence = [], tools }) {
+  async run({ lane, seed, profile = {}, previousReports = [], evidence = [], tools }) {
     const started = Date.now();
     const transcript = [];
     let accepted = null, salvaged = null, submissions = 0, turns = 0, tokens = 0, searches = 0, fetches = 0, stopReason = null;
@@ -210,6 +210,7 @@ export class PiSignalResearchRunner {
             metadata: { lane },
           });
           transcript.push({ type: 'assistant', message: event.message });
+          if (event.message.stopReason === 'error') stop(event.message.errorMessage || 'Model provider failed');
           if (tokens >= this.tokenBudget && !accepted) stop('token_budget_exhausted');
         }
       });

@@ -51,15 +51,21 @@ export const SignalItem = z.object({
 export const SignalSubmissions = z.object({
   signals: z.array(SignalItem).default([]),
   thesis: z.object({
-    bias: SignalImpact,
-    conviction: z.number().min(0).max(1), // 0 to 1
+    bias: SignalImpact.default('neutral'),
+    conviction: z.number().min(0).max(1).default(0.5),
     primary_catalysts: z.array(z.string()).default([]),
     key_risks: z.array(z.string()).default([]),
-    summary: z.string().min(10).max(1000),
+    summary: z.string().default('Signal evaluation completed.'),
+  }).default({
+    bias: 'neutral',
+    conviction: 0.5,
+    primary_catalysts: [],
+    key_risks: [],
+    summary: 'Signal evaluation completed.',
   }),
   trend_observation: z.object({
-    trajectory: z.enum(['accelerating', 'stable', 'deteriorating', 'inflection_point', 'first_report']),
-    synthesis: z.string().min(10).max(1000),
+    trajectory: z.enum(['accelerating', 'stable', 'deteriorating', 'inflection_point', 'first_report']).default('first_report'),
+    synthesis: z.string().default('Trend observation completed.'),
     materialized_catalysts: z.array(z.string()).default([]),
     unresolved_risks: z.array(z.string()).default([]),
   }).optional(),
