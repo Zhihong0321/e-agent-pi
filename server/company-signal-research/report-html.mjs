@@ -1424,6 +1424,24 @@ export function renderSignalReportHtml(d) {
       .one-min-hero { padding: 20px; }
       .detail-section { padding: 20px; }
     }
+
+    .report-brand { display: flex; align-items: center; gap: 9px; margin-bottom: 18px; color: #94a3b8; font-size: 12px; font-weight: 700; letter-spacing: 1px; }
+    .report-brand img { width: 28px; height: 28px; object-fit: contain; }
+    .report-brand-footer { display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 16px; color: #94a3b8; font-size: 11px; }
+    .report-brand-footer img { object-fit: contain; filter: grayscale(1); opacity: .55; }
+    .report-brand-footer .footer-e { width: 20px; height: 20px; }
+    .report-brand-footer .footer-eternalgy { width: 112px; height: auto; filter: grayscale(1) invert(1); mix-blend-mode: screen; }
+
+    @media (max-width: 600px) {
+      .conclusion-label, .conclusion-stance { font-size: 15px; }
+      .hero-stack-pill, .hero-verified-pill, .metric-caption, .metric-sub, .chart-exchange-tag, .change-period, .chart-tab-btn, .q-metric-pill, .q-label, .chart-legend-row, .legend-item.note, .chart-badge-offline, .sources-nav-title, .source-nav-tier, .section-num-tag, .q-num, .live-pill, .timeline-date, .timeline-bias-badge, .conviction-badge, .signals-badge, .signal-pill, .signal-cat, .signal-date, .signal-id-tag, .quote-verified-badge, .quote-ref-id, .tier-badge { font-size: 14px; }
+      .hero-flash-badge, .change-pill, .chart-empty-text, .source-nav-pill, .profile-card-title, .custom-list li, .battleground-chip, .question-item, .seq-tag, .matrix-list li, .signal-quote, .source-link { font-size: 15px; }
+      .hero-subtitle, .chart-symbol-badge, .chart-heading, .questions-title, .seq-tag.active, .timeline-desc, .matrix-col-header, .signal-summary, .driver-item { font-size: 16px; }
+      .hero-ticker-pill, .price-currency, .profile-core-text, .synthesis-lead { font-size: 17px; }
+      .conclusion-text, .quote-symbol, .radar-title { font-size: 18px; }
+      .conclusion-header { flex-wrap: wrap; gap: 10px; }
+      .conclusion-text, .signal-summary, .signal-quote, .profile-core-text { line-height: 1.75; }
+    }
   </style>
 </head>
 <body>
@@ -1433,6 +1451,7 @@ export function renderSignalReportHtml(d) {
          TOP 1-MINUTE HERO SECTION: READ AND GRASP OVERALL REPORT FIRST
          ==================================================================== -->
     <header class="one-min-hero" id="one-min-brief">
+      <div class="report-brand"><img src="/branding/e-logo.png" alt="E" width="28" height="28"> COMPANY SIGNALS</div>
       <div class="hero-top-banner">
         <div class="hero-flash-badge">
           ⚡ 1分钟极速全景速读 · 1-MIN EXECUTIVE BRIEF
@@ -1706,6 +1725,10 @@ export function renderSignalReportHtml(d) {
 
     <footer class="footer-note">
       <p>Company Signal Research AI · 本研报基于网络公开市场披露与权威信源生成，仅供研究参考，不构成直接投资建议。</p>
+      <div class="report-brand-footer" aria-label="E by Eternalgy">
+        <img class="footer-e" src="/branding/e-logo.png" alt="E" width="20" height="20"><span>by</span>
+        <img class="footer-eternalgy" src="/branding/eternalgy-logo.png" alt="Eternalgy — Eternal Energy" width="112" height="15">
+      </div>
     </footer>
 
   </div>

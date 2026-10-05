@@ -827,3 +827,57 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Library uses the shared Research library template; report detail keeps its theme. */
+.sig-library { color: #17291f; }
+.sig-library-table table { min-width: 900px; }
+.sig-library-table td:first-child { min-width: 200px; }
+.sig-library-table tbody tr { cursor: default; }
+.sig-library-company, .sig-library-history {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+.sig-library-company:hover { color: #205e4b; text-decoration: underline; }
+.sig-library-meta, .sig-library-date { color: #84928a; font-size: 11px; }
+.sig-library-meta { overflow-wrap: anywhere; }
+.sig-library-table .res-coverage-meter { min-width: 120px; }
+.sig-library-bias { display: inline-flex; padding: 4px 9px; border-radius: 99px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.sig-library-bias.bullish { color: #2f7a4c; background: #e5f5e7; }
+.sig-library-bias.bearish { color: #a33d3d; background: #fde8e5; }
+.sig-library-bias.neutral { color: #617969; background: #eff4ef; }
+.sig-library-bias.high_volatility { color: #9a6a1b; background: #fbf1de; }
+.sig-library-report-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.sig-library-table .sig-library-state { padding: 48px 26px; text-align: center; color: #84928a; }
+.sig-library-state p { margin-bottom: 14px; }
+.sig-library-table .sig-library-error { color: #a33d3d; }
+.sig-library .sig-detail-view { background: #0b1120; color: #f1f5f9; }
+.sig-library button:focus-visible, .sig-library a:focus-visible { outline: 2px solid #54ae73; outline-offset: 3px; }
+.sig-brand-mark { object-fit: contain; }
+.sig-brand-footer { display: flex; justify-content: center; align-items: center; gap: 8px; padding: 18px 24px; border-top: 1px solid #e1e9e1; color: #8b9690; font-size: 11px; background: #fbfdfb; }
+.sig-brand-footer img { object-fit: contain; filter: grayscale(1); opacity: .5; }
+.sig-footer-e { width: 20px; height: 20px; }
+.sig-footer-eternalgy { width: 112px; height: auto; }
+@media (max-width: 600px) {
+  .sig-library .res-head p { font-size: 14px; line-height: 1.6; }
+  .sig-library .res-btn, .sig-library .res-chips button { font-size: 14px; min-height: 40px; }
+  .sig-library .res-search { height: 44px; }
+  .sig-library .res-search input { font-size: 16px; }
+  .sig-library .res-stats span { font-size: 11px; }
+  .sig-library .res-stats strong { font-size: 21px; }
+  .sig-library-table table { font-size: 14px; }
+  .sig-library-table th { font-size: 11px; }
+  .sig-library .res-company-name { font-size: 15px; }
+  .sig-library-meta, .sig-library-date, .sig-library-bias,
+  .sig-library .res-status-badge, .sig-library .res-coverage-val,
+  .sig-library .res-link-btn { font-size: 13px; }
+  .sig-library .sig-thesis-preview, .sig-library .sig-driver-item,
+  .sig-library .sig-synthesis-box { font-size: 15px; line-height: 1.65; }
+  .sig-library .sig-form-input, .sig-library .sig-form-select { font-size: 16px; }
+  .sig-library .sig-form-group label, .sig-library .sig-modal p,
+  .sig-library .sig-btn-primary, .sig-library .sig-btn-secondary,
+  .sig-library .sig-btn-ghost { font-size: 14px; }
+}

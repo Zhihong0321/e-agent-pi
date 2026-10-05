@@ -158,3 +158,8 @@ body:has(.mobile-stage) { background: #ededee; }
   .mobile-stage.keyboard-open .mobile-prompts { flex: none; width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { .mobile-spinner { animation: none; } }
+/* Keep account access visible outside the workspace menu. */
+.mobile-header .mobile-signin { margin-left: auto; margin-right: 12px; }
+.mobile-signin { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: 0 16px; border: 1px solid #d6e2d8; border-radius: 12px; background: #205e4b; color: #fff; font-size: 14px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.mobile-signin:focus-visible { outline: 2px solid #205e4b; outline-offset: 3px; }
+.mobile-stage .mobile-workspace-links .mobile-signin { color: #fff; font-size: 14px; padding: 0 16px; }

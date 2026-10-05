@@ -152,6 +152,8 @@ export default function Home() {
     setView("chat");
     void send(text);
   };
+  const needsSignIn = !viewerName || /sign[ -]?in|unauthorized|HTTP 401/i.test(error || "");
+  const signInHref = `/demo?returnTo=${encodeURIComponent(window.location.pathname + window.location.search + window.location.hash)}`;
   const greetingName = viewerName ? viewerName.split(" ")[0] : "there";
   const hasConversation = history.length > 0;
   const waiting = busyHere && !history.some(item => item.role === "assistant" && item.streaming && (item.content || item.blocks?.some(block => block.type === "text" && block.text)));
@@ -165,6 +167,7 @@ export default function Home() {
         <div className="mobile-main" inert={menuOpen || sheet ? true : undefined}>
           <header className="mobile-header">
             {hasConversation ? <button className="mobile-icon" type="button" onClick={home} aria-label="Back to home"><IconBack/></button> : <button ref={menuButton} className="mobile-icon" type="button" onClick={() => setMenuOpen(true)} aria-label="Open menu" aria-expanded={menuOpen} aria-controls="mobile-menu"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M4 7h16M4 12h12M4 17h16"/></svg></button>}
+            {needsSignIn && <a className="mobile-signin" href={signInHref}>Sign in</a>}
             {hasConversation ? <button ref={menuButton} className="mobile-icon mobile-more" type="button" onClick={() => setMenuOpen(true)} aria-label="Open menu" aria-expanded={menuOpen} aria-controls="mobile-menu"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg></button> : <button className="mobile-avatar" type="button" onClick={() => setSheet("agent")} aria-label="About your assistant"><img src="/branding/e-logo.png" alt=""/></button>}
           </header>
           {!hasConversation ? <div className="mobile-welcome">
@@ -194,7 +197,7 @@ export default function Home() {
               {tab === "live" && <LiveTab host={host} publishing={publishing} onPublish={() => void publishHost()}/>}
               {tab === "files" && <FilesTab files={files} agentId={selected.id} onOpen={(src, alt) => { setMenuOpen(false); setMedia({ src, alt }); }}/>}
             </div>
-            <nav className="mobile-workspace-links" aria-label="Workspace pages"><a href="/demo">Company workspace</a><a href="/calendar">Calendar</a><a href="/research">Research library</a><a href="/demo?area=signals">Company signals</a></nav>
+            <nav className="mobile-workspace-links" aria-label="Workspace pages">{needsSignIn && <a className="mobile-signin" href={signInHref}>Sign in</a>}<a href="/demo">Company workspace</a><a href="/calendar">Calendar</a><a href="/research">Research library</a><a href="/demo?area=signals">Company signals</a></nav>
           </div>
         </div>}
 

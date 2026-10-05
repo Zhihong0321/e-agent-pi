@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import "./signals.css";
+import "./research.css";
 
 export type TargetCompany = {
   uid: string;
@@ -311,236 +312,88 @@ export function SignalReportsPanel({
     return companies.reduce((acc, c) => acc + (c.report_count || 0), 0);
   }, [companies]);
 
-  const bullishCount = useMemo(() => {
-    return companies.filter((c) => c.latest_report?.bias === "bullish").length;
-  }, [companies]);
+  const latestStatusCount = (status: string) => companies.filter((c) => c.latest_report?.status === status).length;
+  const biasLabels: Record<string, string> = {
+    bullish: "Bullish", bearish: "Bearish", neutral: "Neutral", high_volatility: "High volatility",
+  };
 
   return (
-    <div className="sig-panel">
-      {/* Top Main Header */}
-      <div className="sig-head">
-        <div className="sig-head-title-wrap">
-          <div className="sig-eyebrow">
-            <span>⚡ Institutional Market Intelligence</span>
-            <span>·</span>
-            <span>纵向多周期异动与催化研报</span>
-          </div>
-          <h2>
-            <span>📈 上市企业异动研报中心 (Company Signal Research)</span>
-          </h2>
-          <p>
-            追踪全球公开发行股票（马来西亚 Bursa、美股 NASDAQ/NYSE、港股 HKEX 等）的逐字核验市场异动、业绩催化剂与长期基本面叙事演进。
-          </p>
-        </div>
-        <div className="sig-head-actions">
-          <button
-            type="button"
-            className="sig-btn-primary"
-            onClick={() => setShowNewModal(true)}
-          >
-            <span>+</span>
-            <span>新建标的研报 (New Research)</span>
-          </button>
-          <button
-            type="button"
-            className="sig-btn-secondary"
-            onClick={() => {
-              void loadCompanies();
-              if (selectedCompanyUid) void loadCompanyReports(selectedCompanyUid);
-            }}
-          >
-            <span>🔄 刷新</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Macro Stats Grid */}
-      <div className="sig-stats">
-        <div className="sig-stat-cell">
-          <span className="sig-stat-label">已监控标的数</span>
-          <span className="sig-stat-value">{companies.length}</span>
-          <span className="sig-stat-sub">Targeted Public Companies</span>
-        </div>
-        <div className="sig-stat-cell">
-          <span className="sig-stat-label">累计归档研报</span>
-          <span className="sig-stat-value">{totalReportsCount}</span>
-          <span className="sig-stat-sub">Stacked Multi-Cycle Reports</span>
-        </div>
-        <div className="sig-stat-cell">
-          <span className="sig-stat-label">利多偏向标的</span>
-          <span className="sig-stat-value" style={{ color: "#10b981" }}>{bullishCount}</span>
-          <span className="sig-stat-sub">Bullish Stance Count</span>
-        </div>
-        <div className="sig-stat-cell">
-          <span className="sig-stat-label">最新研报活跃</span>
-          <span className="sig-stat-value" style={{ color: "#38bdf8", fontSize: "14px" }}>
-            {companies[0]?.latest_report_at ? formatDate(companies[0].latest_report_at) : "在线就绪"}
-          </span>
-          <span className="sig-stat-sub">Most Recent Activity</span>
-        </div>
-      </div>
-
-      {/* Conditional View: 1. Targeted Companies List OR 2. Company All Reports */}
-      {!selectedCompanyUid ? (
-        /* ====================================================================
-           VIEW 1: TARGETED COMPANIES LIST
-           ==================================================================== */
+    <div className="res-panel sig-library">
+      <header className="res-head">
         <div>
-          {/* Filters & Search */}
-          <div className="sig-filter-bar">
-            <div className="sig-search-box">
-              <span className="sig-search-icon">🔍</span>
-              <input
-                type="text"
-                className="sig-search-input"
-                placeholder="搜索标的代码、公司名称或行业 (如 5347, TNB, BURSA, NVDA)..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+          <div className="demo-panel-kicker"><img className="sig-brand-mark" src="/branding/e-logo.png" alt="E" width={22} height={22} /> COMPANY INTELLIGENCE</div>
+          <h2>Company signals <span className="demo-badge">{companies.length} companies</span></h2>
+          <p>Evidence-backed market signals, earnings catalysts, and company research across reporting cycles.</p>
+        </div>
+        <div className="res-head-actions">
+          <button type="button" className="res-btn" disabled={loading} onClick={() => {
+            void loadCompanies();
+            if (selectedCompanyUid) void loadCompanyReports(selectedCompanyUid);
+          }}><span aria-hidden="true">↻</span> Refresh</button>
+          <button type="button" className="res-btn primary" onClick={() => setShowNewModal(true)}>
+            <span aria-hidden="true">＋</span> New research
+          </button>
+        </div>
+      </header>
+      <div className="res-stats">
+        <div><span>Total companies</span><strong>{companies.length}</strong></div>
+        <div><span>Total reports</span><strong>{totalReportsCount}</strong></div>
+        <div className="ok"><span>Latest complete</span><strong>{latestStatusCount("complete")}</strong></div>
+        <div className="wait"><span>In progress</span><strong>{latestStatusCount("queued") + latestStatusCount("running")}</strong></div>
+        <div className={latestStatusCount("failed") ? "no" : ""}><span>Latest failed</span><strong>{latestStatusCount("failed")}</strong></div>
+      </div>
+      {!selectedCompanyUid ? (
+        <div>
+          <div className="res-toolbar">
+            <div className="res-chips" role="group" aria-label="Filter company signal bias">
+              {[['all', 'All companies'], ...Object.entries(biasLabels)].map(([id, label]) => (
+                <button type="button" key={id} className={biasFilter === id ? "on" : ""}
+                  aria-pressed={biasFilter === id} onClick={() => setBiasFilter(id)}>{label}</button>
+              ))}
             </div>
-            <div className="sig-bias-tabs">
-              <button
-                type="button"
-                className={`sig-tab-btn ${biasFilter === "all" ? "active" : ""}`}
-                onClick={() => setBiasFilter("all")}
-              >
-                全部标的 ({companies.length})
-              </button>
-              <button
-                type="button"
-                className={`sig-tab-btn ${biasFilter === "bullish" ? "active" : ""}`}
-                onClick={() => setBiasFilter("bullish")}
-              >
-                🟢 看多偏向
-              </button>
-              <button
-                type="button"
-                className={`sig-tab-btn ${biasFilter === "bearish" ? "active" : ""}`}
-                onClick={() => setBiasFilter("bearish")}
-              >
-                🔴 看空逆风
-              </button>
-              <button
-                type="button"
-                className={`sig-tab-btn ${biasFilter === "neutral" ? "active" : ""}`}
-                onClick={() => setBiasFilter("neutral")}
-              >
-                ⚖️ 中性平衡
-              </button>
-              <button
-                type="button"
-                className={`sig-tab-btn ${biasFilter === "high_volatility" ? "active" : ""}`}
-                onClick={() => setBiasFilter("high_volatility")}
-              >
-                ⚡ 拐点高波
-              </button>
+            <div className="res-search">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
+              <input type="search" placeholder="Search company names or tickers…" aria-label="Search companies"
+                value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
             </div>
           </div>
-
-          {loading ? (
-            <div className="sig-loading-state">
-              <span>⏳ 正在加载上市标的研报库...</span>
-            </div>
-          ) : error ? (
-            <div className="sig-empty-state" style={{ color: "#f43f5e" }}>
-              <span>⚠️ {error}</span>
-            </div>
-          ) : filteredCompanies.length === 0 ? (
-            <div className="sig-empty-state">
-              <p>暂无符合筛选条件的标的公司。</p>
-              <button
-                type="button"
-                className="sig-btn-primary"
-                style={{ marginTop: "14px" }}
-                onClick={() => setShowNewModal(true)}
-              >
-                立即新建首个标的研报
-              </button>
-            </div>
-          ) : (
-            <div className="sig-company-list">
-              {filteredCompanies.map((c) => {
-                const latest = c.latest_report;
-                const biasConf = latest?.bias ? BIAS_CONFIG[latest.bias] : null;
-                const trajText = latest?.trajectory ? TRAJECTORY_LABELS[latest.trajectory] : null;
-
-                return (
-                  <div
-                    key={c.uid}
-                    className="sig-company-card"
-                    onClick={() => setSelectedCompanyUid(c.uid)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") setSelectedCompanyUid(c.uid);
-                    }}
-                  >
-                    {/* Left: Ticker, Name, Sector */}
-                    <div className="sig-card-left">
-                      <div className="sig-symbol-row">
-                        <span className="sig-ticker-badge">{c.ticker}</span>
-                        <span className="sig-exchange-tag">{c.exchange}</span>
-                        {c.uid && <span style={{ fontSize: "11px", color: "#64748b" }}>{c.uid}</span>}
-                      </div>
-                      <div className="sig-company-name">{c.name}</div>
-                      <div className="sig-sector-tag">{c.sector || "综合公用与产业"}</div>
-                    </div>
-
-                    {/* Center: Latest Stance, Price, Synthesis */}
-                    <div className="sig-card-center">
-                      <div className="sig-pill-row">
-                        {biasConf ? (
-                          <span className={`sig-bias-pill ${biasConf.className}`}>
-                            <span>{biasConf.icon}</span>
-                            <span>{biasConf.label}</span>
-                            {latest?.conviction != null && (
-                              <span style={{ opacity: 0.85 }}>({Math.round(latest.conviction * 100)}%)</span>
-                            )}
-                          </span>
-                        ) : (
-                          <span className="sig-bias-pill sig-bias-neutral">
-                            <span>⏱️ 研报进行中</span>
-                          </span>
-                        )}
-
-                        {trajText && (
-                          <span className="sig-trajectory-tag">{trajText}</span>
-                        )}
-
-                        {latest?.currentPrice != null && (
-                          <span className={`sig-price-tag ${latest.sevenDayChangePercent != null && latest.sevenDayChangePercent >= 0 ? "sig-price-up" : "sig-price-down"}`}>
-                            {latest.currentPrice.toFixed(2)}
-                            {latest.sevenDayChangePercent != null && (
-                              <span> ({latest.sevenDayChangePercent >= 0 ? "+" : ""}{latest.sevenDayChangePercent.toFixed(2)}%)</span>
-                            )}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="sig-thesis-preview">
-                        {latest?.summary || "已建立监控档案，点击查看历史期次研报详情与完整催化事件。"}
-                      </div>
-                    </div>
-
-                    {/* Right: Stack count & View CTA */}
-                    <div className="sig-card-right">
-                      <div className="sig-reports-badge">
-                        <span>📑 累计 {c.report_count} 份研报</span>
-                        {latest?.sequence && <span>(Seq #{latest.sequence})</span>}
-                      </div>
-                      <div className="sig-updated-time">
-                        最近研报: {formatDate(c.last_researched_at || c.latest_report_at || c.created_at)}
-                      </div>
-                      <div className="sig-view-cta">
-                        <span>查看全部研报与催化追踪</span>
-                        <span>→</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <div className="res-table-wrap sig-library-table">
+            <table>
+              <thead><tr><th>Company</th><th>Status</th><th>Latest bias</th><th>Conviction</th><th>Reports</th><th>Updated</th><th>Report</th></tr></thead>
+              <tbody>
+                {loading ? <tr><td colSpan={7} className="sig-library-state"><span role="status">Loading company signals…</span></td></tr>
+                  : error ? <tr><td colSpan={7} className="sig-library-state sig-library-error"><span role="alert">{error}</span></td></tr>
+                  : filteredCompanies.length === 0 ? <tr><td colSpan={7} className="sig-library-state">
+                    <p>{companies.length ? "No companies match your filters." : "No companies researched yet."}</p>
+                    {companies.length === 0 && <button type="button" className="res-btn primary" onClick={() => setShowNewModal(true)}>New research</button>}
+                  </td></tr>
+                  : filteredCompanies.map((c) => {
+                    const latest = c.latest_report;
+                    const reportStatus = latest?.status;
+                    const conviction = latest?.conviction == null ? null : Math.round(Math.max(0, Math.min(1, latest.conviction)) * 100);
+                    return <tr key={c.uid}>
+                      <td><div className="res-company-info">
+                        <button type="button" className="sig-library-company res-company-name" onClick={() => setSelectedCompanyUid(c.uid)}>{c.name}</button>
+                        <span className="sig-library-meta">{c.ticker} · {c.exchange}{c.sector ? ' · ' + c.sector : ''}</span>
+                      </div></td>
+                      <td><span className={'res-status-badge ' + (reportStatus || '')}>{reportStatus || 'No reports'}</span></td>
+                      <td>{latest?.bias ? <span className={'sig-library-bias ' + latest.bias}>{biasLabels[latest.bias]}</span> : <span className="sig-library-meta">—</span>}</td>
+                      <td>{conviction == null ? <span className="sig-library-meta">—</span> : <div className="res-coverage-meter">
+                        <div className="res-coverage-track" role="meter" aria-label={'Latest conviction for ' + c.name} aria-valuemin={0} aria-valuemax={100} aria-valuenow={conviction}>
+                          <div className="res-coverage-fill" style={{ width: conviction + '%' }} />
+                        </div><span className="res-coverage-val">{conviction}%</span>
+                      </div>}</td>
+                      <td>{c.report_count}</td>
+                      <td className="sig-library-date">{formatDate(c.last_researched_at || c.latest_report_at || c.created_at)}</td>
+                      <td><div className="sig-library-report-actions">
+                        {latest?.status === 'complete' && <a className="res-link-btn public" href={'/reports/signal/' + latest.id} target="_blank" rel="noopener noreferrer">HTML report ↗</a>}
+                        <button type="button" className="sig-library-history res-link-btn" onClick={() => setSelectedCompanyUid(c.uid)}>View history →</button>
+                      </div></td>
+                    </tr>;
+                  })}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : (
         /* ====================================================================
@@ -902,6 +755,11 @@ export function SignalReportsPanel({
           </div>
         </div>
       )}
+      <footer className="sig-brand-footer" aria-label="E by Eternalgy">
+        <img className="sig-footer-e" src="/branding/e-logo.png" alt="E" width={20} height={20} />
+        <span>by</span>
+        <img className="sig-footer-eternalgy" src="/branding/eternalgy-logo.png" alt="Eternalgy — Eternal Energy" width={112} height={15} />
+      </footer>
     </div>
   );
 }
