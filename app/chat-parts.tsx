@@ -365,7 +365,7 @@ export function LiveTab({
           {host?.lastError ??
             (url
               ? "The host publishes the workspace to ee-html after each Website Dev Agent chat."
-              : "Add the HTML host API key on the Settings page. The agent only edits files.")}
+              : "The HTML host is not configured. The agent only edits files.")}
         </p>
         <div className="live-actions">
           <button type="button" disabled={!url} onClick={() => url && window.open(url, "_blank", "noopener,noreferrer")}>

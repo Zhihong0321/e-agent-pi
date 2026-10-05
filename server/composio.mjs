@@ -2,7 +2,7 @@
 // attached to the Composio agent — mirrors server/sales-mcp.mjs's ensureSalesMcp
 // pattern, except the server is remote (http) rather than a spawned child process.
 //
-// The API key lives in Postgres settings (composio_api_key, edited on /settings)
+// The API key lives in Postgres settings (composio_api_key, edited on /admin)
 // and is never written to a repo file or logged. See
 // https://docs.composio.dev/docs/sessions-via-mcp
 import { Composio } from "@composio/core";

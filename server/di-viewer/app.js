@@ -72,7 +72,7 @@ async function api(path, opts = {}, timeoutMs = 45000) {
   }
   let data = null;
   try { data = await resp.json(); } catch { data = { error: `HTTP ${resp.status}` }; }
-  if (resp.status === 401) { window.location.href = '/settings'; }
+  if (resp.status === 401) { window.location.href = '/admin'; }
   if (!resp.ok) throw new Error((data && data.error) || `HTTP ${resp.status}`);
   if (data && data.error && !Array.isArray(data.rows)) throw new Error(data.error);
   return data;

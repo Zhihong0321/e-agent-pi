@@ -33,7 +33,7 @@ export async function handleDiViewer(req, res, url) {
   };
   if (!hasApiAuth(req)) {
     if (!route.startsWith("/api/") && req.method === "GET") {
-      res.writeHead(302, { Location: "/settings", "Cache-Control": "no-store" });
+      res.writeHead(302, { Location: "/admin", "Cache-Control": "no-store" });
       res.end();
     } else json(401, { error: "Unlock Settings, then open Database viewer." });
     return;

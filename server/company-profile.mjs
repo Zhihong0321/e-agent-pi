@@ -13,7 +13,7 @@ export async function handleCompanyProfile(req, res, url, getContext = companyHo
   };
   if (!hasApiAuth(req)) {
     if (req.method === 'GET' && !route.startsWith('/api/')) {
-      res.writeHead(302, { Location:'/settings', 'Cache-Control':'no-store' }); res.end();
+      res.writeHead(302, { Location:'/admin', 'Cache-Control':'no-store' }); res.end();
     } else json(401, { error:'Unlock Settings to edit Company Profile.' });
     return;
   }

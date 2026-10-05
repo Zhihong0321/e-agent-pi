@@ -18,7 +18,6 @@ import {
   IconMic,
   IconPlus,
   IconSend,
-  IconSettings,
   LiveTab,
   MediaLightbox,
   WorkingOverlay,
@@ -149,14 +148,6 @@ export default function WebHome() {
               </svg>
             </span>
             <small>Sign-in</small>
-          </a>
-          <a className="web-rail-btn" href="/settings#logs" title="Chat logs"><span className="web-rail-icon">▤</span><span>Chat logs</span></a>
-          <a className="web-rail-btn" href="/settings#usage" title="Usage Dashboard"><span className="web-rail-icon">▥</span><span>Usage</span></a>
-          <a className="web-rail-btn" href="/settings" aria-label="Open settings" title="Settings">
-            <span className="web-rail-icon">
-              <IconSettings />
-            </span>
-            <small>Settings</small>
           </a>
           <a className="web-rail-btn" href="/mobile" aria-label="Open mobile version" title="Mobile version">
             <span className="web-rail-icon">
@@ -453,7 +444,7 @@ export default function WebHome() {
                 </span>
                 <span>
                   <strong>{model.label}</strong>
-                  <small>{model.available ? model.provider : "No API key · add in Settings"}</small>
+                  <small>{model.available ? model.provider : "No API key"}</small>
                 </span>
                 {selectedModelId === model.id && (
                   <span className="check-dot">
@@ -513,9 +504,6 @@ export default function WebHome() {
             <button className="ghost" type="button" onClick={() => setSheet(null)}>
               Close
             </button>
-            <a className="primary" href="/settings#agents">
-              Manage in Settings
-            </a>
           </div>
         </div>
       )}

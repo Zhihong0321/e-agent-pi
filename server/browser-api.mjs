@@ -57,7 +57,7 @@ async function listAll() {
       signedIn: Boolean(site.lastLoginAt) && !site.lastError,
       lastAuthAt: site.lastLoginAt || null,
       lastError: site.lastError || null,
-      managedAt: "/settings#sites",
+      managedAt: "/admin#sites",
     })),
   };
 }

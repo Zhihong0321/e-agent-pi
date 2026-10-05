@@ -264,7 +264,7 @@ export default function SigninPage() {
           </div>
         </div>
         <nav className="signin-links">
-          <a href="/settings#sites">Sites</a>
+          <a href="/admin#sites">Sites</a>
           <a href="/">Studio</a>
         </nav>
       </header>
@@ -340,7 +340,7 @@ export default function SigninPage() {
                   <span className={row.signedIn ? "signin-badge on" : "signin-badge"}>{row.signedIn ? "in" : "out"}</span>
                 </div>
                 <div className="catalog-actions">
-                  <a className="signin-link-btn" href={row.managedAt || "/settings#sites"}>
+                  <a className="signin-link-btn" href={row.managedAt || "/admin#sites"}>
                     Manage on Sites
                   </a>
                 </div>

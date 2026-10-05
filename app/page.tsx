@@ -14,7 +14,6 @@ import {
   IconLive,
   IconPlus,
   IconSearch,
-  IconSettings,
   LiveTab,
   MediaLightbox,
 } from "./chat-parts";
@@ -195,7 +194,7 @@ export default function Home() {
               {tab === "live" && <LiveTab host={host} publishing={publishing} onPublish={() => void publishHost()}/>}
               {tab === "files" && <FilesTab files={files} agentId={selected.id} onOpen={(src, alt) => { setMenuOpen(false); setMedia({ src, alt }); }}/>}
             </div>
-            <nav className="mobile-workspace-links" aria-label="Workspace pages"><a href="/demo">Company workspace</a><a href="/calendar">Calendar</a><a href="/research">Research library</a><a href="/demo?area=signals">Company signals</a><a href="/settings#logs">Chat logs</a><a href="/settings#usage">Usage</a><a href="/settings"><IconSettings/> Settings</a></nav>
+            <nav className="mobile-workspace-links" aria-label="Workspace pages"><a href="/demo">Company workspace</a><a href="/calendar">Calendar</a><a href="/research">Research library</a><a href="/demo?area=signals">Company signals</a></nav>
           </div>
         </div>}
 
@@ -251,7 +250,7 @@ export default function Home() {
                 </span>
                 <span>
                   <strong>{model.label}</strong>
-                  <small>{model.available ? model.provider : "No API key · add in Settings"}</small>
+                  <small>{model.available ? model.provider : "No API key"}</small>
                 </span>
                 {selectedModelId === model.id && (
                   <span className="check-dot">
@@ -312,9 +311,6 @@ export default function Home() {
               <button className="ghost" type="button" onClick={() => setSheet(null)}>
                 Close
               </button>
-              <a className="primary" href="/settings#agents">
-                Manage in Settings
-              </a>
             </div>
           </div>
         )}

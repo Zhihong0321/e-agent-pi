@@ -1071,7 +1071,7 @@ export default function SettingsPage() {
           <img className="brand-logo" src="/logo-black.png" alt="" width={36} height={36} />
           <div>
             <small>Keys · Models · Agents · Blueprints · Sites · Skills · MCP · Display · Usage</small>
-            <h1>Settings</h1>
+            <h1>Platform settings</h1>
           </div>
         </div>
         <nav className="signin-links">
@@ -1084,7 +1084,7 @@ export default function SettingsPage() {
 
       {!authed ? (
         <section className="settings-card">
-          <p>Enter the access password to manage keys, agents, site logins, skills, and MCP.</p>
+          <p>Platform settings. Enter the access password to manage keys, agents, site logins, skills, and MCP.</p>
           <label>
             Password
             <input

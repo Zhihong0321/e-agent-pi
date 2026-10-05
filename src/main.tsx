@@ -29,15 +29,18 @@ const web = path.startsWith("/web");
 const demo = path === "/demo" || path.startsWith("/demo/");
 const calendar = path === "/calendar" || path.startsWith("/calendar/");
 const mediaKit = path === "/media-kit" || path.startsWith("/media-kit/");
-const settings = !web && !demo && !calendar && !mediaKit && !signals && path.startsWith("/settings");
-const signin = !web && !demo && !calendar && !mediaKit && !settings && !signals && path.startsWith("/signin");
+const admin = path === "/admin" || path.startsWith("/admin/");
+const legacySettings = path === "/settings" || path.startsWith("/settings/");
+const signin = !web && !demo && !calendar && !mediaKit && !admin && !signals && path.startsWith("/signin");
 
 if (path.startsWith("/test-agy")) {
   window.location.replace("/api/test-agy/ui");
+} else if (legacySettings) {
+  window.location.replace(`/admin${path.slice("/settings".length)}${window.location.search}${window.location.hash}`);
 } else if (root && !mobileDevice) {
   window.location.replace(`/demo${window.location.search}${window.location.hash}`);
 } else {
   createRoot(document.getElementById("root")!).render(
-    <StrictMode>{mobile || (root && mobileDevice) ? <MobileHome /> : signals ? <SignalsPage /> : research ? <ResearchPage /> : mediaKit ? <MediaKitPage /> : calendar ? <CalendarPage /> : demo ? <DemoPage /> : web ? <WebHome /> : settings ? <SettingsPage /> : signin ? <SigninPage /> : <DemoPage />}</StrictMode>,
+    <StrictMode>{mobile || (root && mobileDevice) ? <MobileHome /> : signals ? <SignalsPage /> : research ? <ResearchPage /> : mediaKit ? <MediaKitPage /> : calendar ? <CalendarPage /> : demo ? <DemoPage /> : web ? <WebHome /> : admin ? <SettingsPage /> : signin ? <SigninPage /> : <DemoPage />}</StrictMode>,
   );
 }
