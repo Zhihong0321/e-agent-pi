@@ -1,0 +1,160 @@
+/* Mobile chat shell. Scope every override so desktop and shared pages keep their styles. */
+body:has(.mobile-stage) { background: #ededee; }
+.stage.mobile-stage {
+  --ink: #232b2c;
+  --muted: #78838a;
+  --dim: #9ba3aa;
+  --line: #e9edf1;
+  --field: #f4f7fa;
+  --green: #232d2e;
+  --green-dark: #141d1e;
+  --soft: #e9f7f2;
+  --hover: #f7f9fc;
+  padding: 22px;
+  height: var(--mobile-height, 100dvh);
+  min-height: 0;
+  background: #ededee;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.stage.mobile-stage .mobile-phone {
+  height: min(844px, calc(var(--mobile-height, 100dvh) - 44px));
+  width: min(100%, 420px);
+  min-height: 0;
+  border-radius: 30px;
+  background: #fff;
+  box-shadow: 0 5px 25px #28323e04;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.mobile-stage button, .mobile-stage textarea { font: inherit; }
+.mobile-stage button:disabled { cursor: default; opacity: .4; }
+.mobile-stage :is(button, a, textarea, input):focus-visible { outline: 2px solid #9cb4d7; outline-offset: 4px; }
+.mobile-stage .mobile-main {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(ellipse at 65% 46%, #eef0ff99 0%, transparent 58%), radial-gradient(ellipse at 12% 39%, #e1f7fb9e 0%, transparent 60%), linear-gradient(#fff 4%, #f0f8fc 42%, #f6f5ff 70%, #fff 100%);
+}
+.mobile-stage .mobile-header { padding: max(24px, env(safe-area-inset-top)) 22px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; min-height: 70px; }
+.mobile-icon { display: grid; place-items: center; width: 38px; height: 38px; padding: 8px; border-radius: 50%; background: transparent; color: #4d565c; }
+.mobile-icon:hover { background: #eef1f6; }
+.mobile-stage .mobile-avatar { display: grid; place-items: center; width: 33px; height: 33px; background: #eef0f1; border: 2px solid #fff; border-radius: 50%; padding: 5px; box-shadow: 0 0 0 1px #e5e8eb; }
+.mobile-avatar img { width: 100%; height: 100%; object-fit: contain; }
+.mobile-stage .mobile-welcome { display: flex; flex: 1; min-height: 0; flex-direction: column; padding: 0 23px 24px; overflow-y: auto; scrollbar-width: none; }
+.mobile-greeting { text-align: center; padding-top: clamp(35px, 9dvh, 90px); }
+.mobile-stage .mobile-assistant-status { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border-radius: 20px; color: #69ac92; background: #e7f7ef; font-size: 10px; font-weight: 500; }
+.mobile-assistant-status i { display: block; width: 4px; height: 4px; border-radius: 50%; background: #81c6a9; }
+.mobile-stage .mobile-greeting h1 { margin: 15px 0 0; font-size: 27px; line-height: 1.25; letter-spacing: -.7px; font-weight: 500; color: #202a2c; }
+.mobile-greeting > p { margin: 14px auto 0; color: #9aa7af; font-size: 11px; max-width: 210px; line-height: 1.65; }
+.mobile-prompts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 72px; }
+.mobile-stage .mobile-prompts button { padding: 13px 10px; min-height: 70px; text-align: left; border: 1px solid #ffffffba; border-radius: 9px; color: #68757d; background: #ffffff8f; box-shadow: 0 2px 8px #57789203; font-size: 11px; font-weight: 400; line-height: 1.4; }
+.mobile-prompts button:hover { background: #fff; }
+.mobile-error { padding: 12px; color: #9b5058; background: #fff5f5; border-radius: 9px; font-size: 12px; }
+.mobile-stage .mobile-composer { padding: 12px 24px max(22px, env(safe-area-inset-bottom)); background: linear-gradient(transparent, #fff9 70%); flex: none; }
+.mobile-composer-row { display: flex; gap: 9px; align-items: end; padding: 5px 0; }
+.mobile-stage .mobile-attach { display: grid; place-items: center; flex: none; width: 27px; height: 32px; background: none; padding: 6px 2px; color: #a0aab0; }
+.mobile-attach svg { width: 16px; height: 16px; }
+.mobile-stage .mobile-composer textarea { display: block; flex: 1; min-width: 0; width: 100%; min-height: 32px; max-height: 110px; field-sizing: content; resize: none; padding: 5px 0; border: 0; border-radius: 0; background: transparent; color: #4e5a62; font-size: 16px; line-height: 1.4; outline: none; }
+.mobile-composer textarea::placeholder { color: #a3abb0; font-size: 13px; }
+.mobile-stage .mobile-send { display: grid; place-items: center; flex: none; width: 32px; height: 32px; padding: 0; border-radius: 50%; color: #fff; background: #192625; }
+.mobile-send:hover { background: #354947; }
+.mobile-stage .mobile-send:disabled { opacity: .75; }
+.mobile-stop { width: 10px; height: 10px; border-radius: 2px; background: #fff; }
+.mobile-composer-note { text-align: center; color: #bdc2c9; font-size: 9px; margin: 12px 0 0; }
+.mobile-stage .attach-chips { padding: 0 0 8px; }
+.mobile-stage .attach-chip { border: 1px solid #e6eaf2; border-radius: 8px; color: #7a8b99; background: #ffffffa6; font-size: 11px; }
+.mobile-waiting { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px 30px 90px; text-align: center; overflow: auto; }
+.mobile-spinner { display: block; width: 23px; height: 23px; border: 1.5px solid #d7dfe9; border-top-color: #869aab; border-radius: 50%; animation: mobile-spinner-turn 1.1s linear infinite; }
+.mobile-waiting small { color: #9cabb7; font-size: 11px; margin-top: 12px; }
+.mobile-waiting p { margin: 28px 0 0; max-width: 300px; color: #8fa5b7; font-size: 17px; font-weight: 400; line-height: 1.5; overflow-wrap: anywhere; }
+.mobile-stage .chat-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 20px 25px 14px; background: none; scrollbar-width: none; }
+.mobile-stage .day-pill { display: none; }
+.mobile-stage :is(.bubble-user, .bubble-agent) { box-shadow: none; width: fit-content; max-width: 100%; font-size: 13px; padding: 0; border-radius: 0; background: transparent; color: #52616a; margin: 0 0 23px; }
+.mobile-stage .bubble-user { max-width: 86%; margin-left: auto; padding: 9px 12px; border-radius: 7px 7px 2px 7px; background: #273433; color: #fff; }
+.mobile-stage .bubble-agent { margin-right: auto; padding: 8px 0 0; }
+.mobile-stage .bubble-agent.asking { border: 0; background: transparent; }
+.mobile-stage .bubble-user::after, .mobile-stage .bubble-agent::after { display: none; }
+.mobile-stage .chat-copy { font-size: 13px; line-height: 1.7; gap: 9px; }
+.mobile-stage .bubble-user .chat-copy { font-size: 12px; line-height: 1.6; }
+.mobile-stage .chat-copy :is(p, li) { margin-top: 0; }
+.mobile-stage .chat-copy :is(.chat-h1, .chat-h2, .chat-h3, .chat-h4) { font-size: 14px; color: inherit; }
+.mobile-stage .meta-row { margin: 10px 0 0; font-size: 9px; color: #9aa8b4; }
+.mobile-stage .bubble-user .meta-row { display: none; }
+.mobile-stage .task-complete-pill { margin: 15px auto; color: #94aaa3; background: #eff8f4; font-size: 10px; }
+.mobile-stage .turn-stack { background: #ffffff75; border-color: #e8edf6; border-radius: 9px; box-shadow: none; }
+.mobile-stage .chat-pre { color: #637183; background: #ffffffad; border-color: #edf0f5; }
+.mobile-stage .chat-table-wrap { max-width: 100%; }
+.mobile-stage .chat-table { font-size: 11px; }
+.mobile-stage .chat-file-link { color: #77919d; background: #ffffffa8; border-color: #e2ebf1; }
+.mobile-menu-backdrop { position: absolute; inset: 0; z-index: 30; background: #32415835; backdrop-filter: blur(5px); }
+.mobile-menu-dismiss { position: absolute; inset: 0; width: 100%; height: 100%; background: transparent; }
+.mobile-menu { position: relative; display: flex; flex-direction: column; width: min(92%, 370px); height: 100%; padding: max(25px, env(safe-area-inset-top)) 18px max(20px, env(safe-area-inset-bottom)); background: #fdfdff; box-shadow: 10px 0 40px #43526716; overflow: hidden; }
+.mobile-menu > header { display: flex; align-items: center; justify-content: space-between; padding-bottom: 16px; }
+.mobile-menu header small { display: block; font-size: 9px; letter-spacing: 1.4px; color: #a8adb8; }
+.mobile-menu header strong { display: block; margin-top: 5px; color: #4c5864; font-size: 20px; font-weight: 500; }
+.mobile-menu header .mobile-icon { font-size: 26px; }
+.mobile-menu-actions { display: flex; gap: 7px; padding-bottom: 18px; }
+.mobile-stage .mobile-menu-actions button { display: flex; align-items: center; gap: 4px; border: 1px solid #e8ecf3; border-radius: 8px; background: #f8fafc; padding: 8px 12px; color: #8593a2; font-size: 11px; }
+.mobile-menu-actions svg { width: 15px; height: 15px; }
+.mobile-menu-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 0 0 15px; border-bottom: 1px solid #edf0f5; }
+.mobile-stage .mobile-menu-tabs button { display: flex; align-items: center; flex-direction: column; gap: 5px; padding: 9px 3px; border-radius: 9px; background: transparent; color: #9aa5b4; font-size: 10px; }
+.mobile-stage .mobile-menu-tabs button.active { color: #7e91ad; background: #eff4fb; }
+.mobile-menu-tabs svg { width: 19px; height: 19px; }
+.mobile-menu-body { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 0; }
+.mobile-stage .mobile-menu-body :is(.group-label, .agent-note) { color: #a5adba; font-size: 10px; }
+.mobile-stage .mobile-menu-body .avatar { background: #eff3f8; color: #8da0b3; }
+.mobile-stage .mobile-menu-body :is(.session-row, .agent-row) { border-color: #edf0f6; }
+.mobile-stage .mobile-menu-body :is(.chat-filters button, .filter-btn) { background: #f5f7fb; color: #98a3b4; }
+.mobile-stage .mobile-search-toggle { display: flex; align-items: center; gap: 7px; padding: 7px 0 12px; background: transparent; color: #9aa5b4; font-size: 11px; }
+.mobile-search-toggle svg { width: 15px; height: 15px; }
+.mobile-workspace-links { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; border-top: 1px solid #edf0f5; padding-top: 15px; }
+.mobile-workspace-links a { display: flex; gap: 5px; align-items: center; text-decoration: none; color: #97a1b0; font-size: 10px; padding: 5px; }
+.mobile-workspace-links a:hover { color: #7486a0; }
+.mobile-workspace-links svg { width: 14px; height: 14px; }
+.mobile-stage .sheet { border-radius: 24px 24px 0 0; box-shadow: 0 -8px 35px #6070900d; max-height: 85%; overflow-y: auto; }
+.mobile-stage .sheet-title strong { font-weight: 500; color: #657789; }
+.mobile-stage .sheet-title span { color: #a3b0bd; }
+.mobile-stage .model-chip, .mobile-stage .engine-tab { color: #8799b1; background: #f4f7fc; }
+.mobile-stage .engine-tab.on { background: #eaf1f9; box-shadow: none; }
+.mobile-stage .check-dot { background: #b0c4d8; }
+.mobile-stage .model-row .model-mark { color: #97acc2; background: #f1f6fb; }
+.mobile-stage .sheet-backdrop.on { background: #39486145; backdrop-filter: blur(4px); }
+.mobile-stage .sheet-actions .primary { background: #8397b2; }
+.mobile-stage .trust-card { background: #f3f8fa; color: #9daeba; }
+.mobile-stage .trust-card i { background: #b0c9c1; }
+.mobile-stage .sheet-hero strong { font-weight: 500; }
+.mobile-stage .mobile-model-button { display: block; margin: 20px auto 0; padding: 7px 12px; border-radius: 8px; background: #f3f6fb; color: #9aabbd; font-size: 11px; }
+.mobile-stage.keyboard-open .mobile-greeting { padding-top: 15px; }
+.mobile-stage.keyboard-open .mobile-greeting > p { display: none; }
+.mobile-stage.keyboard-open .mobile-prompts { margin-top: 26px; gap: 5px; }
+.mobile-stage.keyboard-open .mobile-prompts button { min-height: 46px; padding: 8px; font-size: 10px; }
+.mobile-stage.keyboard-open .mobile-composer { padding-bottom: 10px; }
+.mobile-stage.keyboard-open .mobile-composer-note { display: none; }
+@keyframes mobile-spinner-turn { to { transform: rotate(360deg); } }
+@media (max-width: 600px) {
+  body:has(.mobile-stage) { background: #fff; }
+  .stage.mobile-stage { padding: 0; }
+  .stage.mobile-stage .mobile-phone { width: 100%; height: var(--mobile-height, 100dvh); min-height: 0; border-radius: 0; box-shadow: none; }
+}
+@media (max-height: 650px) {
+  .mobile-stage .mobile-greeting { padding-top: 20px; }
+  .mobile-stage .mobile-prompts { margin-top: 30px; }
+  .mobile-stage .mobile-header { padding-top: max(12px, env(safe-area-inset-top)); min-height: 55px; }
+}
+@media (max-height: 450px) {
+  .stage.mobile-stage { padding: 0; }
+  .stage.mobile-stage .mobile-phone { width: min(100%, 700px); height: var(--mobile-height); border-radius: 0; }
+  .mobile-stage .mobile-welcome { flex-direction: row; align-items: center; gap: 25px; padding-bottom: 10px; }
+  .mobile-stage .mobile-greeting { flex: 1; padding-top: 0; }
+  .mobile-stage .mobile-greeting h1 { font-size: 21px; }
+  .mobile-stage .mobile-greeting > p { display: none; }
+  .mobile-stage .mobile-prompts { flex: 1; margin-top: 0; }
+  .mobile-stage .mobile-prompts button { min-height: 44px; padding: 7px; font-size: 9px; }
+  .mobile-stage .mobile-composer { padding-bottom: 10px; }
+  .mobile-stage .mobile-composer-note { display: none; }
+  .mobile-stage.keyboard-open .mobile-welcome { flex-direction: column; gap: 10px; }
+  .mobile-stage.keyboard-open .mobile-greeting { flex: none; }
+  .mobile-stage.keyboard-open .mobile-prompts { flex: none; width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) { .mobile-spinner { animation: none; } }

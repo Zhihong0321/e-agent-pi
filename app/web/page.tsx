@@ -158,7 +158,7 @@ export default function WebHome() {
             </span>
             <small>Settings</small>
           </a>
-          <a className="web-rail-btn" href="/" aria-label="Open mobile version" title="Mobile version">
+          <a className="web-rail-btn" href="/mobile" aria-label="Open mobile version" title="Mobile version">
             <span className="web-rail-icon">
               <IconBack />
             </span>

@@ -2289,12 +2289,8 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url || "/", "http://localhost");
   const pathname = url.pathname;
 
-  if ((req.method === "GET" || req.method === "HEAD") && ["/", "/root", "/root/", "/index.html"].includes(pathname)) {
-    res.writeHead(302, { Location: `/demo${url.search}`, "Cache-Control": "no-store" });
-    res.end();
-    return;
-  }
-
+  // Root requests reach the app shell so it can choose the mobile front page
+  // or the desktop /demo front door, including installed/offline app launches.
   if (pathname === "/company-profile" || pathname.startsWith("/company-profile/")) {
     return handleCompanyProfile(req, res, url);
   }
