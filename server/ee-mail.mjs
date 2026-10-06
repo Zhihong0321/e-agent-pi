@@ -11,6 +11,23 @@ const MAX_SUBJECT = 200;
 const MAX_BODY = 120_000;
 const REQUEST_TIMEOUT_MS = 15_000;
 
+/**
+ * What the ee-mail MCP helper needs to call back into this host. Only the agents
+ * that may send email get it; every launcher of that helper (the Pi agent env and
+ * the host-owned MCP adapter) goes through here.
+ * @param {{ id?: string; slug?: string } | string | null | undefined} agent
+ * @param {string | number} [port]
+ */
+export function eeMailEnv(agent, port = process.env.PORT || "8080") {
+  const agentId = typeof agent === "string" ? agent : agent?.id || agent?.slug || "";
+  if (!EE_MAIL_AGENT_IDS.includes(agentId)) return {};
+  return {
+    EE_MAIL_AGENT: agentId,
+    EE_MAIL_URL: `http://127.0.0.1:${port}`,
+    EE_MAIL_TOKEN: EE_MAIL_DISPATCH_TOKEN,
+  };
+}
+
 export function eeMailBaseUrl() {
   return secret("ee_mail_base_url") || process.env.EE_MAIL_BASE_URL || EE_MAIL_DEFAULT_BASE_URL;
 }

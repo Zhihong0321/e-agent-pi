@@ -2250,6 +2250,7 @@ async function bootServices() {
             ...server,
             revision: String(server.updatedAt || server.updated_at || '1'),
             scope: `catalog:${agent.id}`,
+            agentId: agent.id,
             timeoutMs: Number(server.config?.timeoutMs) || 60_000,
           };
           const owner = await connectBinding(binding);

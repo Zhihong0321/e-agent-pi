@@ -2,9 +2,11 @@
 // server exercises connection ownership, tool enumeration, isError preservation,
 // timeouts, schema freezing and credential isolation.
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { connectBinding, callExternal, connectionStatus, closeAllConnections } from './mcp-adapter.mjs';
+import { EE_MAIL_DISPATCH_TOKEN } from '../ee-mail.mjs';
 
 const TEST_SERVER = fileURLToPath(new URL('./test-mcp-server.mjs', import.meta.url));
 
@@ -89,4 +91,43 @@ test('external MCP: credential isolation — the worker never sees binding env',
   const call = await callExternal(binding(), 'echo', { message: 'x' });
   assert.ok(!JSON.stringify(call).includes('credential-value'), 'secrets never appear in results');
   await closeAllConnections();
+});
+
+test('external MCP: ee-mail helper gets its host callback credentials from the adapter', { concurrency: false }, async () => {
+  // The host spawns the ee-mail helper itself, so the adapter (not the Pi process
+  // env) must hand it the agent, URL and per-boot bearer. Without them every send
+  // fails with "EE_MAIL_TOKEN is missing".
+  let seen;
+  const host = http.createServer(async (req, res) => {
+    let raw = '';
+    for await (const chunk of req) raw += chunk;
+    seen = { auth: req.headers.authorization, body: JSON.parse(raw || '{}') };
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ ok: true, result: { sent: true } }));
+  });
+  await new Promise((resolve) => host.listen(0, '127.0.0.1', resolve));
+  const previousPort = process.env.PORT;
+  process.env.PORT = String(host.address().port);
+  const mail = {
+    slug: 'ee-mail',
+    revision: 'rev-1',
+    command: process.execPath,
+    args: [fileURLToPath(new URL('../ee-mail-mcp-server.mjs', import.meta.url))],
+    env: {},
+    scope: 'catalog:orchestrator',
+    agentId: 'orchestrator',
+    timeoutMs: 10_000,
+  };
+  try {
+    await connectBinding(mail);
+    // At call time the registry swaps the scope for company/user; the agent must survive that.
+    const result = await callExternal({ ...mail, scope: 'company:1:user:2' }, 'send_email', { to: 'a@example.com', subject: 'Hi', text: 'Hi' });
+    assert.equal(result.ok, true, JSON.stringify(result.error));
+    assert.equal(seen.auth, `Bearer ${EE_MAIL_DISPATCH_TOKEN}`);
+    assert.equal(seen.body.agent, 'orchestrator');
+  } finally {
+    await closeAllConnections();
+    host.close();
+    if (previousPort === undefined) delete process.env.PORT; else process.env.PORT = previousPort;
+  }
 });
