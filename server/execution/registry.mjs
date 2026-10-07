@@ -327,7 +327,7 @@ registerOperation({
 
 registerOperation({
   id: 'task_status',
-  description: 'Latest submitted job for this chat, or a specific plan id, with per-task statuses, blockers and structured results.',
+  description: 'Read a delegation plan for this chat, or a specific plan id, with per-task statuses, blockers and structured results. A scheduling task reports schedule creation only, not the scheduled execution status. For scheduled-job status or reports, delegate a read-only lookup to Scheduler AI using submit_plan and relay its schedule_list/schedule_history evidence.',
   effect: 'control',
   timeoutMs: 15_000,
   inputSchema: z.object({ planId: z.string().optional().describe('Plan id; omit for the latest plan on this chat') }),
