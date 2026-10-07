@@ -200,6 +200,7 @@ export function SignalReportsPanel({
   // Load selected company reports
   const loadCompanyReports = async (uid: string) => {
     setLoadingReports(true);
+    setCompanyDetail(null);
     try {
       const res = await fetch(`/api/company-signal-research/companies/${encodeURIComponent(uid)}`, {
         headers: { Accept: "application/json" },
@@ -208,6 +209,7 @@ export function SignalReportsPanel({
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setCompanyDetail(data);
+      setSelectedCompanyUid(data.entity.uid);
     } catch (err) {
       onNotice(err instanceof Error ? err.message : "无法加载标的研报详情");
     } finally {
@@ -293,13 +295,14 @@ export function SignalReportsPanel({
         body: JSON.stringify({ seed }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const queued = await res.json();
       setShowNewModal(false);
       setNewTicker("");
       setNewName("");
       setNewSector("");
       onNotice(`已成功加入标的并排队研报：${seed.name} (${uid})`);
       await loadCompanies();
-      setSelectedCompanyUid(uid);
+      setSelectedCompanyUid(queued.company_uid || uid);
     } catch (err) {
       onNotice(err instanceof Error ? err.message : "添加标的研报失败");
     } finally {
@@ -359,7 +362,7 @@ export function SignalReportsPanel({
           </div>
           <div className="res-table-wrap sig-library-table">
             <table>
-              <thead><tr><th>Company</th><th>Status</th><th>Latest bias</th><th>Conviction</th><th>Reports</th><th>Updated</th><th>Report</th></tr></thead>
+              <thead><tr><th>Company</th><th>Status</th><th>Latest bias</th><th>Conviction</th><th>Reports</th><th>Updated</th><th>Report folder</th></tr></thead>
               <tbody>
                 {loading ? <tr><td colSpan={7} className="sig-library-state"><span role="status">Loading company signals…</span></td></tr>
                   : error ? <tr><td colSpan={7} className="sig-library-state sig-library-error"><span role="alert">{error}</span></td></tr>
@@ -386,8 +389,7 @@ export function SignalReportsPanel({
                       <td>{c.report_count}</td>
                       <td className="sig-library-date">{formatDate(c.last_researched_at || c.latest_report_at || c.created_at)}</td>
                       <td><div className="sig-library-report-actions">
-                        {latest?.status === 'complete' && <a className="res-link-btn public" href={'/reports/signal/' + latest.id} target="_blank" rel="noopener noreferrer">HTML report ↗</a>}
-                        <button type="button" className="sig-library-history res-link-btn" onClick={() => setSelectedCompanyUid(c.uid)}>View history →</button>
+                        <button type="button" className="sig-library-history res-link-btn" onClick={() => setSelectedCompanyUid(c.uid)}>Browse all research →</button>
                       </div></td>
                     </tr>;
                   })}

@@ -1,6 +1,32 @@
 import { randomUUID } from 'node:crypto';
 import { VERSION } from './core.mjs';
 
+// A folder is identified by its listing, never by a submitted company name or UID.
+// Retain legacy entity rows so existing report IDs and links remain valid.
+const FOLDERS = `
+  WITH normalized AS (
+    SELECT *,
+      CASE WHEN UPPER(TRIM(exchange)) IN ('BURSA', 'BURSA MALAYSIA', 'KL', 'KLS', 'MYX')
+        THEN REGEXP_REPLACE(UPPER(TRIM(ticker)), '\\.KL$', '')
+        ELSE UPPER(TRIM(ticker)) END AS folder_ticker,
+      CASE WHEN UPPER(TRIM(exchange)) IN ('BURSA', 'BURSA MALAYSIA', 'KL', 'KLS', 'MYX')
+        THEN 'BURSA' ELSE UPPER(TRIM(exchange)) END AS folder_exchange
+    FROM company_signal_entities
+  ), identified AS (
+    SELECT *, folder_ticker || '.' || folder_exchange AS folder_uid FROM normalized
+  ), folders AS (
+    SELECT DISTINCT ON (folder_uid)
+      folder_uid AS uid, folder_ticker AS ticker, folder_exchange AS exchange,
+      name, sector, metadata,
+      MAX(last_researched_at) OVER (PARTITION BY folder_uid) AS last_researched_at,
+      MIN(created_at) OVER (PARTITION BY folder_uid) AS created_at,
+      MAX(updated_at) OVER (PARTITION BY folder_uid) AS updated_at,
+      ARRAY_AGG(uid) OVER (PARTITION BY folder_uid) AS alias_uids
+    FROM identified
+    ORDER BY folder_uid, updated_at DESC, uid
+  )
+`;
+
 export class SignalResearchStore {
   constructor(pool) {
     this.pool = pool;
@@ -79,9 +105,13 @@ export class SignalResearchStore {
   }
 
   async getOrCreateEntity(seed) {
-    const uid = seed.company_uid.trim().toUpperCase();
-    const ticker = seed.ticker.trim().toUpperCase();
-    const exchange = seed.exchange.trim().toUpperCase();
+    let ticker = seed.ticker.trim().toUpperCase();
+    let exchange = seed.exchange.trim().toUpperCase();
+    if (['BURSA', 'BURSA MALAYSIA', 'KL', 'KLS', 'MYX'].includes(exchange)) {
+      exchange = 'BURSA';
+      ticker = ticker.replace(/\.KL$/, '');
+    }
+    const uid = `${ticker}.${exchange}`;
     const name = seed.name.trim();
     const sector = seed.sector?.trim() || null;
 
@@ -101,35 +131,37 @@ export class SignalResearchStore {
   async enqueue(seed, force = false, options = {}) {
     const entity = await this.getOrCreateEntity(seed);
     const uid = entity.uid;
+    const aliases = await this.companyAliases(uid);
+    seed = { ...seed, company_uid: uid, ticker: entity.ticker, exchange: entity.exchange };
 
     // Check if there is already an active job running for this entity
     const active = await this.pool.query(`
       SELECT id, status, sequence FROM company_signal_dossiers
-      WHERE company_uid = $1 AND status IN ('queued', 'running')
+      WHERE company_uid = ANY($1::text[]) AND status IN ('queued', 'running')
       ORDER BY created_at DESC LIMIT 1
-    `, [uid]);
+    `, [aliases]);
     if (active.rows.length) {
-      return { ...active.rows[0], cached: true };
+      return { ...active.rows[0], company_uid: uid, cached: true };
     }
 
     // Check recent completed report if not forcing fresh run (e.g. 1 hour cache)
     if (!force) {
       const recent = await this.pool.query(`
         SELECT id, status, sequence FROM company_signal_dossiers
-        WHERE company_uid = $1 AND status = 'complete' AND created_at > NOW() - INTERVAL '1 hour'
+        WHERE company_uid = ANY($1::text[]) AND status = 'complete' AND created_at > NOW() - INTERVAL '1 hour'
         ORDER BY created_at DESC LIMIT 1
-      `, [uid]);
+      `, [aliases]);
       if (recent.rows.length) {
-        return { ...recent.rows[0], cached: true };
+        return { ...recent.rows[0], company_uid: uid, cached: true };
       }
     }
 
     // Determine sequence number by finding the latest completed dossier
     const prev = await this.pool.query(`
-      SELECT id, sequence FROM company_signal_dossiers
-      WHERE company_uid = $1 AND status = 'complete'
-      ORDER BY sequence DESC, created_at DESC LIMIT 1
-    `, [uid]);
+      SELECT id, GREATEST(MAX(sequence) OVER (), COUNT(*) OVER ()) AS sequence FROM company_signal_dossiers
+      WHERE company_uid = ANY($1::text[]) AND status = 'complete'
+      ORDER BY created_at DESC, id DESC LIMIT 1
+    `, [aliases]);
 
     const sequence = prev.rows.length ? Number(prev.rows[0].sequence) + 1 : 1;
     const previousDossierId = prev.rows.length ? prev.rows[0].id : null;
@@ -142,7 +174,7 @@ export class SignalResearchStore {
     `, [id, uid, VERSION, sequence, previousDossierId, seed, options]);
 
     await this.event(id, { type: 'queued', status: 'queued', sequence });
-    return { id, status: 'queued', sequence, cached: false };
+    return { id, company_uid: uid, status: 'queued', sequence, cached: false };
   }
 
   async claim() {
@@ -205,13 +237,14 @@ export class SignalResearchStore {
   }
 
   async getHistory(companyUid, limit = 5) {
+    const aliases = await this.companyAliases(companyUid);
     const q = await this.pool.query(`
       SELECT id, sequence, status, result, created_at, updated_at
       FROM company_signal_dossiers
-      WHERE company_uid = $1 AND status = 'complete'
-      ORDER BY sequence DESC, created_at DESC
+      WHERE company_uid = ANY($1::text[]) AND status = 'complete'
+      ORDER BY created_at DESC, id DESC
       LIMIT $2
-    `, [companyUid, limit]);
+    `, [aliases, limit]);
     return q.rows;
   }
 
@@ -247,6 +280,7 @@ export class SignalResearchStore {
   async listCompanies({ query = '', limit = 50, offset = 0 } = {}) {
     const where = `($1 = '' OR POSITION(LOWER($1) IN LOWER(e.name)) > 0 OR POSITION(LOWER($1) IN LOWER(e.ticker)) > 0 OR POSITION(LOWER($1) IN LOWER(e.uid)) > 0)`;
     const q = await this.pool.query(`
+      ${FOLDERS}
       SELECT 
         e.uid, e.ticker, e.exchange, e.name, e.sector, e.last_researched_at, e.created_at, e.updated_at,
         COUNT(d.id)::int AS report_count,
@@ -267,14 +301,14 @@ export class SignalResearchStore {
             'createdAt', d2.created_at
           )
           FROM company_signal_dossiers d2
-          WHERE d2.company_uid = e.uid AND d2.status = 'complete'
-          ORDER BY d2.sequence DESC, d2.created_at DESC
+          WHERE d2.company_uid = ANY(e.alias_uids)
+          ORDER BY d2.created_at DESC, d2.id DESC
           LIMIT 1
         ) AS latest_report
-      FROM company_signal_entities e
-      LEFT JOIN company_signal_dossiers d ON e.uid = d.company_uid
+      FROM folders e
+      LEFT JOIN company_signal_dossiers d ON d.company_uid = ANY(e.alias_uids)
       WHERE ${where}
-      GROUP BY e.uid, e.ticker, e.exchange, e.name, e.sector, e.last_researched_at, e.created_at, e.updated_at
+      GROUP BY e.uid, e.ticker, e.exchange, e.name, e.sector, e.last_researched_at, e.created_at, e.updated_at, e.alias_uids
       ORDER BY COALESCE(e.last_researched_at, e.created_at) DESC
       LIMIT $2 OFFSET $3
     `, [query.trim(), limit, offset]);
@@ -285,21 +319,30 @@ export class SignalResearchStore {
   async getCompanyWithReports(companyUid) {
     const uid = companyUid.trim().toUpperCase();
     const entityRes = await this.pool.query(`
-      SELECT * FROM company_signal_entities WHERE uid = $1
+      ${FOLDERS}
+      SELECT * FROM folders WHERE uid = $1 OR $1 = ANY(alias_uids)
     `, [uid]);
     if (!entityRes.rows.length) return null;
 
     const reportsRes = await this.pool.query(`
       SELECT d.id, d.company_uid, d.version, d.sequence, d.previous_dossier_id, d.status, d.seed, d.result, d.error, d.created_at, d.updated_at
       FROM company_signal_dossiers d
-      WHERE d.company_uid = $1
-      ORDER BY d.sequence DESC, d.created_at DESC
-    `, [uid]);
+      WHERE d.company_uid = ANY($1::text[])
+      ORDER BY d.created_at DESC, d.id DESC
+    `, [entityRes.rows[0].alias_uids]);
 
     return {
       entity: entityRes.rows[0],
       reports: reportsRes.rows,
     };
+  }
+
+  async companyAliases(companyUid) {
+    const q = await this.pool.query(`
+      ${FOLDERS}
+      SELECT alias_uids FROM folders WHERE uid = $1 OR $1 = ANY(alias_uids)
+    `, [companyUid.trim().toUpperCase()]);
+    return q.rows[0]?.alias_uids || [];
   }
 
   async event(id, data, token) {
@@ -405,14 +448,15 @@ export class SignalResearchStore {
   }
 
   async listCatalysts(companyUid, { limit = 50 } = {}) {
+    const aliases = await this.companyAliases(companyUid);
     const q = await this.pool.query(`
       SELECT c.*, d.sequence
       FROM company_signal_catalysts c
       JOIN company_signal_dossiers d ON c.dossier_id = d.id
-      WHERE c.company_uid = $1
+      WHERE c.company_uid = ANY($1::text[])
       ORDER BY c.event_date DESC NULLS LAST, c.created_at DESC
       LIMIT $2
-    `, [companyUid, limit]);
+    `, [aliases, limit]);
     return q.rows;
   }
 }
