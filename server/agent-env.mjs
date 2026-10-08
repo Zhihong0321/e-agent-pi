@@ -24,7 +24,6 @@ import { diAgentEnv } from "../document_inteligence/host.mjs";
 import { eeMailEnv } from "./ee-mail.mjs";
 import { fileSharingEnv } from "./file-sharing.mjs";
 import { researchEnv } from "./company-research/auth.mjs";
-import { signalResearchEnv } from "./company-signal-research/auth.mjs";
 import { adsResearchEnv } from "./ads-research/auth.mjs";
 import { mediaAiEnv } from "./media-ai/auth.mjs";
 
@@ -92,7 +91,6 @@ export function agentEnv(agent, extra = {}, from = process.env) {
   env.CLOUD_PI_BLUEPRINT = BLUEPRINT_CLI;
   env.PI_PACKAGE_DIR = from.PI_PACKAGE_DIR || PI_PACKAGE_DIR;
   Object.assign(env, researchEnv(agent, from));
-  Object.assign(env, signalResearchEnv(agent, from));
   Object.assign(env, adsResearchEnv(agent, from));
   Object.assign(env, mediaAiEnv(agent, from));
 

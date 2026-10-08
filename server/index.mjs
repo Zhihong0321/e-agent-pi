@@ -155,7 +155,6 @@ import { ensureGoogleAdsMcp } from "./google-ads-mcp.mjs";
 import { ensureOmMcp } from "./om-mcp.mjs";
 import { ensureWebSearchMcp } from "./web-search-mcp.mjs";
 import { ensureCompanyResearch, handleCompanyResearch, stopCompanyResearch } from "./company-research/host.mjs";
-import { ensureCompanySignalResearch, handleCompanySignalResearch, stopCompanySignalResearch } from "./company-signal-research/host.mjs";
 import { ensureAdsResearch, handleAdsResearch, stopAdsResearch } from "./ads-research/host.mjs";
 import { ensureMediaAi, handleMediaAi } from "./media-ai/host.mjs";
 import { ensureScheduler } from './scheduler/host.mjs';
@@ -1987,11 +1986,16 @@ async function bootServices() {
     logEvent("error", `company research init failed: ${sanitizeError(error)}`);
   }
 
-  boot.step = "company-signal-research";
+  boot.step = "retire-company-signal-research";
   try {
-    if (dbReady()) await ensureCompanySignalResearch({ log: logEvent });
+    // Company Signal Research now lives in its own project. Drop the catalog rows older
+    // boots seeded; its company_signal_* data tables are deliberately left in place.
+    if (dbReady()) {
+      if (await getAgent("company-signal-research")) await deleteAgent("company-signal-research");
+      if (await getMcpServer("company-signal-research")) await deleteMcpServer("company-signal-research");
+    }
   } catch (error) {
-    logEvent("error", `company signal research init failed: ${sanitizeError(error)}`);
+    logEvent("error", `retire company-signal-research: ${sanitizeError(error)}`);
   }
 
   boot.step = "ads-research";
@@ -2421,7 +2425,6 @@ const server = createServer(async (req, res) => {
       workspaceFor: async (id) => { const agent = await getAgent(id); return agent ? agentWorkspace(agent) : null; },
     })) return;
     if (await handleCompanyResearch(req, res, url, { authorized: (r) => authorized(r) || Boolean(user), readBody })) return;
-    if (await handleCompanySignalResearch(req, res, url, { authorized: (r) => authorized(r) || Boolean(user), readBody })) return;
     if (await handleAdsResearch(req, res, url, { authorized, readBody })) return;
     if (await handleMediaAi(req, res, url, { authorized, user })) return;
     if (handleSchedulerRoutes && await handleSchedulerRoutes(req, res, url, { authorized, user, readBody, json })) return;
@@ -3775,7 +3778,6 @@ async function shutdown() {
   await schedulerWorker?.idle();
   stopSampler();
   await stopCompanyResearch().catch(() => {});
-  await stopCompanySignalResearch().catch(() => {});
   await stopAdsResearch().catch(() => {});
   await closeExecutionMcpConnections().catch(() => {});
   await Promise.allSettled([...piPool.values()].map((slot) => stopSlot(slot)));
