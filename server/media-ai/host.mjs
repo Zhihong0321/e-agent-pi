@@ -226,6 +226,11 @@ async function companyManifestTx(tx, filters = {}) {
   };
 }
 
+function managementAsset(asset) {
+  const url = `/api/media-kit/assets/file/${encodeURIComponent(asset.file.id)}/${encodeURIComponent(asset.file.name)}`;
+  return { ...asset, file: { ...asset.file, url, link: `[${asset.file.name}](${url})` } };
+}
+
 function shareRow(row) {
   return row ? {
     id: String(row.id),
@@ -406,7 +411,7 @@ async function uploadFile(input) {
   finally { await import("node:fs/promises").then(({ unlink }) => unlink(path.join(workspace, relative)).catch(() => {})); }
 }
 
-export async function handleMediaAi(req, res, url, { authorized }) {
+export async function handleMediaAi(req, res, url, { authorized, user = null }) {
   const internal = url.pathname === "/api/internal/media-ai";
   const prefix = "/api/media-kit";
   const sharePrefix = `${prefix}/share/`;
@@ -428,20 +433,27 @@ export async function handleMediaAi(req, res, url, { authorized }) {
     } catch (error) { json(error.statusCode || 400, { error: error instanceof Error ? error.message : String(error) }); }
     return true;
   }
-  if (internal ? !mediaAiAuthorized(req) : !authorized(req)) { json(401, { error: "Unauthorized" }); return true; }
+  const managementAuthorized = authorized(req) || Boolean(user);
+  if (internal ? !mediaAiAuthorized(req) : !managementAuthorized) { json(401, { error: "Unauthorized" }); return true; }
   try {
     if (internal) {
       if (req.method !== "POST") { json(405, { error: "POST required" }); return true; }
       const body = JSON.parse(await readMediaBody(req) || "{}");
-      const result = body.action === "ingest" ? await ingestFile(body) : body.action === "upload" ? await uploadFile(body) : await mediaAction(body);
+      const result = body.action === "ingest" ? await ingestFile(body) : body.action === "upload" ? await uploadFile(body) : await mediaAction({ ...body, actor: user?.id || body.actor });
       json(200, { ok: true, result });
       return true;
     }
-    if (url.pathname === prefix && req.method === "GET") { const requestedVisibility = url.searchParams.get("visibility") || "published"; json(200, await mediaAction({ action: "list", category: url.searchParams.get("category") || undefined, query: url.searchParams.get("q") || undefined, visibility: requestedVisibility === "all" ? undefined : requestedVisibility })); return true; }
-    if (url.pathname === `${prefix}/profile` && req.method === "GET") { json(200, await mediaAction({ action: "profile" })); return true; }
-    if (url.pathname === `${prefix}/manifest` && req.method === "GET") { json(200, await mediaAction({ action: "manifest" })); return true; }
-    if (url.pathname === `${prefix}/shares` && req.method === "GET") { json(200, await mediaAction({ action: "list_shares" })); return true; }
-    if (url.pathname === `${prefix}/shares` && req.method === "POST") { json(201, await mediaAction({ action: "create_share", ...(JSON.parse(await readMediaBody(req) || "{}")) })); return true; }
+    if (url.pathname === prefix && req.method === "GET") { const requestedVisibility = url.searchParams.get("visibility") || "published"; const assets = await mediaAction({ action: "list", actor: user?.id || undefined, category: url.searchParams.get("category") || undefined, query: url.searchParams.get("q") || undefined, visibility: requestedVisibility === "all" ? undefined : requestedVisibility }); json(200, assets.map(managementAsset)); return true; }
+    if (url.pathname === `${prefix}/profile` && req.method === "GET") { json(200, await mediaAction({ action: "profile", actor: user?.id || undefined })); return true; }
+    if (url.pathname === `${prefix}/manifest` && req.method === "GET") { const manifest = await mediaAction({ action: "manifest", actor: user?.id || undefined }); json(200, { ...manifest, assets: manifest.assets.map(managementAsset) }); return true; }
+    if (url.pathname === `${prefix}/shares` && req.method === "GET") { json(200, await mediaAction({ action: "list_shares", actor: user?.id || undefined })); return true; }
+    if (url.pathname === `${prefix}/shares` && req.method === "POST") { json(201, await mediaAction({ action: "create_share", actor: user?.id || undefined, ...(JSON.parse(await readMediaBody(req) || "{}")) })); return true; }
+    const fileMatch = url.pathname.slice(`${prefix}/assets/file/`).match(/^([a-f0-9]{64})\/([^/]+)$/i);
+    if (url.pathname.startsWith(`${prefix}/assets/file/`) && fileMatch && (req.method === "GET" || req.method === "HEAD")) {
+      const served = await streamAssetFile(companyHostContext().tenantId, fileMatch[1], decodeURIComponent(fileMatch[2]), req, res);
+      if (!served) json(404, { error: "Media Kit file not found" });
+      return true;
+    }
     const shareMatch = url.pathname.slice(`${prefix}/shares/`.length).match(/^([0-9a-f-]{36})$/i);
     if (shareMatch && req.method === "POST") { json(200, await mediaAction({ action: "revoke_share", id: shareMatch[1] })); return true; }
     if (url.pathname === `${prefix}/assets` && req.method === "POST") { json(201, await mediaAction({ action: "create", ...(JSON.parse(await readMediaBody(req) || "{}")) })); return true; }

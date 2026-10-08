@@ -258,6 +258,34 @@ expense_batch   (monthly submission)           open -> closed (frozen by trigger
 - Not built: foreign-currency claims (refused with a clear message), mileage rates, per-category
   limits, emailing the report, payment of approved claims.
 
+#### Customizing the Expenses page
+
+An admin can change how the `/demo` Expenses page looks for their company: **Customize page** in
+the panel header. Everything else on this page (what claims are required to carry, categories,
+limits) is policy, above, and is not touched by this.
+
+- **What can change:** the small heading above the month; which summary tiles, table columns,
+  status filters, claim-detail rows and optional filing-form fields show; their names; and the
+  order of tiles, columns, filters and detail rows. Claim, Amount and Status (table) and date,
+  total, merchant, category and the receipt (form) can be renamed but never hidden, because the
+  page needs them. A status name is one setting: renaming "Pending" renames the filter and every
+  badge.
+- **Where it lives:** the default layout is code ([`core/page-layout.mjs`](core/page-layout.mjs)).
+  A company's row in `di.ui_config` ([`sql/009_ui_config.sql`](sql/009_ui_config.sql)) holds only
+  what it changed, so improvements to the default still reach companies that customized something
+  else, and **Restore default** just soft-deletes the row (the old choices stay as history and in
+  `di.audit_log`). Choices equal to the default are not stored: saving them is a restore.
+- **Safety:** admin only, checked on the server; one company never sees another's row (RLS);
+  every save names the revision it started from, so two admins can't silently overwrite each
+  other; a stored layout that no longer fits is partly ignored and flagged ("Needs attention")
+  instead of breaking the page; labels are plain text, 40 characters at most.
+- **The agent does not see or change it.** The layout is not a tool; the Expenses Clerk's tool
+  list is unchanged (a test guards this).
+- **Adding a customizable page:** add it to `PAGES` in `core/page-layout.mjs`, return
+  `loadLayout(...)` from the page's route, draw items by id from the response (see
+  `TILES`/`COLUMNS`/`DETAIL` in `app/demo/expenses.tsx`), and reuse `LayoutEditor`.
+- Tests: `test/page-layout.test.mjs` (rules, two-company isolation, restore, history, stale edits).
+
 ### Procurement
 
 ```

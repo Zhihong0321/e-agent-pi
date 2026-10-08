@@ -232,8 +232,6 @@ export const OM_MCP_SERVER = path.join(ROOT, "server", "om-mcp-server.mjs");
 export const OM_MCP_SLUG = "om-data";
 /** Remote http MCP (Composio-hosted session endpoint), so there is no local *-mcp-server.mjs. */
 export const COMPOSIO_MCP_SLUG = "composio";
-export const ORCHESTRATOR_MCP_SERVER = path.join(ROOT, "server", "orchestrator-mcp-server.mjs");
-export const ORCHESTRATOR_MCP_SLUG = "orchestrator-dispatch";
 export const MEDIA_AI_MCP_SERVER = path.join(ROOT, "server", "media-ai", "mcp-server.mjs");
 export const MEDIA_AI_MCP_SLUG = "media-ai";
 export const WHATSAPP_MCP_SLUG = "whatsapp";

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { LayoutEditor, type BlockName, type Layout } from "./expenses-layout";
 import "./expenses.css";
 
 type ExUser = { id: string; username: string; display_name?: string; role: string };
@@ -17,6 +18,7 @@ type Panel = {
   submissions: Submission[]; month: string; selected: Submission | null;
   claims: ClaimRow[]; totals: Totals | null; has_more: boolean; scope: string;
   people: { id: string; name: string; department?: string | null }[];
+  layout: Layout;
 };
 type Form = { claimant: string; expense_date: string; merchant: string; category: string; amount: string; tax_amount: string; payment_method: string; description: string; no_receipt: boolean; no_receipt_reason: string };
 
@@ -46,8 +48,42 @@ const readFile = (file: File) => new Promise<{ name: string; mime: string; data:
   reader.readAsDataURL(file);
 });
 
-function Glyph({ name, size = 16 }: { name: "receipt" | "plus" | "upload" | "close" | "lock" | "pdf" | "check"; size?: number }) {
+// What each layout item draws. The server decides which items exist, in what order, under what name;
+// the page only knows how to draw an id. An id it doesn't know (a newer server) is skipped.
+const TILES: Record<string, { tone?: string; value: (totals: Totals, currency: string) => string | number }> = {
+  claims: { value: (t) => t.claims },
+  claimed: { value: (t, c) => fmtMoney(t.claimed, c) },
+  approved: { tone: "ok", value: (t, c) => fmtMoney(t.approved, c) },
+  pending: { tone: "wait", value: (t, c) => fmtMoney(t.pending, c) },
+  rejected: { tone: "no", value: (t, c) => fmtMoney(t.rejected, c) },
+};
+type CellContext = { categoryName: (key: string) => string; statusLabel: (status: ClaimStatus) => string };
+const COLUMNS: Record<string, { right?: boolean; adminOnly?: boolean; cell: (c: ClaimRow, x: CellContext) => ReactNode }> = {
+  claim: { cell: (c) => <><strong>{c.number}</strong><small>{c.receipts} receipt{c.receipts === 1 ? "" : "s"}</small></> },
+  claimant: { adminOnly: true, cell: (c) => c.claimant },
+  date: { cell: (c) => fmtDate(c.expense_date) },
+  merchant: { cell: (c) => c.merchant },
+  category: { cell: (c, x) => x.categoryName(c.category) },
+  amount: { right: true, cell: (c) => fmtMoney(c.amount, c.currency) },
+  status: { cell: (c, x) => <span className={`ex-status ${c.status}`}>{x.statusLabel(c.status)}</span> },
+};
+/** A drawer row's value, or null when this claim has nothing to show for it. */
+const DETAIL: Record<string, (d: ClaimDetail, categories: Category[]) => ReactNode> = {
+  claimant: (d) => d.claimant.name,
+  date: (d) => fmtDate(d.expense_date),
+  category: (d, categories) => categories.find((k) => k.key === d.category)?.label ?? d.category,
+  tax: (d) => (d.tax_amount != null ? fmtMoney(d.tax_amount, d.currency) : null),
+  paid_by: (d) => (d.payment_method ? d.payment_method.replace(/_/g, " ") : null),
+  description: (d) => d.description || null,
+  submission: (d) => d.submission?.label ?? null,
+  reviewed_by: (d) => d.reviewed_by || null,
+  review_note: (d) => d.review_note || null,
+  no_receipt: (d) => d.no_receipt_reason || null,
+};
+
+function Glyph({ name, size = 16 }: { name: "receipt" | "plus" | "upload" | "close" | "lock" | "pdf" | "check" | "sliders"; size?: number }) {
   const paths = {
+    sliders: <><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></>,
     receipt: <><path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2V3Z"/><path d="M8.5 8h7M8.5 12h7M8.5 16h4"/></>,
     plus: <path d="M12 4v16M4 12h16"/>,
     upload: <><path d="M12 16V3m0 0L7 8m5-5 5 5"/><path d="M4 16v4h16v-4"/></>,
@@ -78,6 +114,8 @@ export function ExpensesPanel({ user, onNotice }: { user: ExUser; onNotice: (mes
   const [rejecting, setRejecting] = useState(false);
   const [note, setNote] = useState("");
   const [cutoff, setCutoff] = useState("");
+  const [customizing, setCustomizing] = useState(false);
+  const [editorKey, setEditorKey] = useState(0);
   const picker = useRef<HTMLInputElement>(null);
 
   const load = async (target = month) => {
@@ -108,8 +146,11 @@ export function ExpensesPanel({ user, onNotice }: { user: ExUser; onNotice: (mes
     catch (err) { onNotice(err instanceof Error ? err.message : "Could not open the claim"); }
   };
 
-  const rows = useMemo(() => (data?.claims ?? []).filter((c) => (filter === "all" ? c.status !== "withdrawn" : c.status === filter)
-    && `${c.number} ${c.claimant} ${c.merchant} ${c.category}`.toLowerCase().includes(search.toLowerCase())), [data, filter, search]);
+  // A status filter whose chip the company has hidden counts as "All" instead of leaving an unlabelled filter on.
+  const chipIds = useMemo(() => (data?.layout?.blocks.chips.items ?? []).filter((i) => i.visible).map((i) => i.id), [data]);
+  const activeFilter = chipIds.includes(filter) ? filter : "all";
+  const rows = useMemo(() => (data?.claims ?? []).filter((c) => (activeFilter === "all" ? c.status !== "withdrawn" : c.status === activeFilter)
+    && `${c.number} ${c.claimant} ${c.merchant} ${c.category}`.toLowerCase().includes(search.toLowerCase())), [data, activeFilter, search]);
   const claimants = useMemo(() => [...new Set((data?.claims ?? []).map((c) => c.claimant))].sort(), [data]);
   const selected = data?.selected ?? null;
   const open_ = selected?.status === "open";
@@ -170,17 +211,48 @@ export function ExpensesPanel({ user, onNotice }: { user: ExUser; onNotice: (mes
   if (loading && !data) return <section className="ex-panel"><p className="ex-empty" role="status">Loading expense claims…</p></section>;
   if (error && !data) return <section className="ex-panel"><p className="ex-empty" role="alert">{error}</p><button className="ex-btn" onClick={() => void load("")}>Try again</button></section>;
   if (!data) return null;
+  if (!data.layout) return <section className="ex-panel"><p className="ex-empty" role="alert">The server is being updated. Reload this page in a moment.</p></section>;
+
+  const layout = data.layout;
+  const shown = (block: BlockName) => layout.blocks[block].items.filter((i) => i.visible);
+  const statusLabel = (status: ClaimStatus) => layout.blocks.chips.items.find((i) => i.id === status)?.label ?? STATUS_LABEL[status];
+  const categoryName = (key: string) => data.categories.find((k) => k.key === key)?.label.replace(/ \(.*\)$/, "") ?? key;
+  const form_ = new Map(layout.blocks.form.items.map((i) => [i.id, i]));
+  const field = (id: string, fallback: string) => (form_.get(id)?.label ?? fallback).replace("{currency}", currency);
+  const fieldShown = (id: string) => form_.get(id)?.visible ?? true;
+  // Page layout (admin only; the server checks too). Both return a message to show in the editor, or null when done.
+  const changeLayout = async (body: Record<string, unknown>, done: (result: { layout: Layout; restored?: boolean }) => string): Promise<string | null> => {
+    setBusy(true);
+    try {
+      const { result } = await api<{ result: { layout: Layout; restored?: boolean } }>("/api/demo/expenses", body);
+      setData((old) => (old ? { ...old, layout: result.layout } : old));
+      setCustomizing(false);
+      onNotice(done(result));
+      return null;
+    } catch (err) { return err instanceof Error ? err.message : "That did not work"; }
+    finally { setBusy(false); }
+  };
+  const saveLayout = (config: Record<string, unknown>) =>
+    changeLayout({ action: "layout_save", config, expected_rev: layout.rev }, (r) => (r.restored ? "The page is back on the default layout." : "Page layout saved."));
+  const resetLayout = () => changeLayout({ action: "layout_reset" }, () => "Default layout restored.");
+  const reloadLayout = async () => { await load(); setEditorKey((k) => k + 1); };
+  const tiles = shown("tiles").filter((i) => TILES[i.id]);
+  const columns = shown("columns").filter((i) => COLUMNS[i.id] && (isAdmin || !COLUMNS[i.id].adminOnly));
 
   return <section className="ex-panel" aria-label="Expense claims">
     <header className="ex-head">
       <div>
-        <div className="demo-panel-kicker"><Glyph name="receipt"/> EXPENSE CLAIMS</div>
+        <div className="demo-panel-kicker"><Glyph name="receipt"/> {layout.kicker.value}</div>
         <h2>{selected?.label ?? data.current_submission.label}{selected && <span className={`ex-state ${selected.status}`}>{selected.status === "closed" ? <><Glyph name="lock" size={11}/> Closed</> : "Open"}</span>}</h2>
         <p>{selected ? `Claims filed ${fmtDate(selected.period_start)} to ${fmtDate(selected.cutoff_date)}. ` : "No claims filed for this month yet. "}
           {selected?.status === "open" && selected.days_left != null ? <strong>{selected.days_left < 0 ? "Cut-off passed" : selected.days_left === 0 ? "Cut-off is today" : `${selected.days_left} day${selected.days_left === 1 ? "" : "s"} to cut-off`}</strong> : null}
           {!isAdmin && <span> · showing your claims only</span>}</p>
       </div>
       <div className="ex-actions">
+        {isAdmin && !layout.unavailable && <>
+          {(layout.customized || layout.override_invalid) && <span className={`ex-pill${layout.override_invalid ? " warn" : ""}`}>{layout.override_invalid ? "Needs attention" : "Customized"}</span>}
+          <button className="ex-btn" onClick={() => setCustomizing(true)}><Glyph name="sliders" size={15}/> Customize page</button>
+        </>}
         <select aria-label="Monthly submission" value={month} onChange={(event) => { setMonth(event.target.value); setDetail(null); void load(event.target.value); }}>
           {!data.submissions.some((s) => s.period_key === data.current_submission.period_key) && <option value={data.current_submission.period_key}>{data.current_submission.label} (none yet)</option>}
           {data.submissions.map((s) => <option key={s.id} value={s.period_key}>{s.label}{s.status === "closed" ? " · closed" : ""}</option>)}
@@ -189,17 +261,13 @@ export function ExpensesPanel({ user, onNotice }: { user: ExUser; onNotice: (mes
       </div>
     </header>
 
-    {totals && <div className="ex-stats">
-      <div><span>Claims</span><strong>{totals.claims}</strong></div>
-      <div><span>Claimed</span><strong>{fmtMoney(totals.claimed, currency)}</strong></div>
-      <div className="ok"><span>Approved</span><strong>{fmtMoney(totals.approved, currency)}</strong></div>
-      <div className="wait"><span>Pending</span><strong>{fmtMoney(totals.pending, currency)}</strong></div>
-      <div className="no"><span>Rejected</span><strong>{fmtMoney(totals.rejected, currency)}</strong></div>
+    {totals && tiles.length > 0 && <div className="ex-stats" style={{ "--ex-tiles": tiles.length } as CSSProperties}>
+      {tiles.map((i) => <div key={i.id} className={TILES[i.id].tone}><span>{i.label}</span><strong>{TILES[i.id].value(totals, currency)}</strong></div>)}
     </div>}
 
     <div className="ex-toolbar">
       <div className="ex-chips" role="group" aria-label="Filter by status">
-        {(["all", "submitted", "approved", "rejected"] as const).map((s) => <button key={s} className={filter === s ? "on" : ""} onClick={() => setFilter(s)}>{s === "all" ? "All" : STATUS_LABEL[s]}</button>)}
+        {shown("chips").filter((i) => i.id === "all" || i.id in STATUS_LABEL).map((i) => <button key={i.id} className={activeFilter === i.id ? "on" : ""} onClick={() => setFilter(i.id as "all" | ClaimStatus)}>{i.label}</button>)}
       </div>
       <input aria-label="Search claims" placeholder="Search claim, person or merchant…" value={search} onChange={(event) => setSearch(event.target.value)}/>
       {selected && <div className="ex-report">
@@ -214,12 +282,9 @@ export function ExpensesPanel({ user, onNotice }: { user: ExUser; onNotice: (mes
           <p>{(data.claims.length === 0) ? "No claims here yet." : "No claims match this filter."}</p>
           <div><button className="ex-btn" onClick={() => setModal(true)}><Glyph name="plus" size={15}/> File a claim</button>{isAdmin && data.claims.length === 0 && <button className="ex-btn" disabled={busy} onClick={() => void act({ action: "seed" }, (r) => r.already_loaded ? `Demo claims are already loaded (${r.already_loaded}).` : `Loaded ${r.seeded} demo claims.`)}>Load demo claims</button>}</div>
         </div> : <table>
-          <thead><tr><th>Claim</th>{isAdmin && <th>Claimant</th>}<th>Date</th><th>Merchant</th><th>Category</th><th className="r">Amount</th><th>Status</th></tr></thead>
+          <thead><tr>{columns.map((i) => <th key={i.id} className={COLUMNS[i.id].right ? "r" : undefined}>{i.label}</th>)}</tr></thead>
           <tbody>{rows.map((c) => <tr key={c.id} className={detail?.id === c.id ? "selected" : ""} onClick={() => void open(c)}>
-            <td><strong>{c.number}</strong><small>{c.receipts} receipt{c.receipts === 1 ? "" : "s"}</small></td>
-            {isAdmin && <td>{c.claimant}</td>}
-            <td>{fmtDate(c.expense_date)}</td><td>{c.merchant}</td><td>{data.categories.find((k) => k.key === c.category)?.label.replace(/ \(.*\)$/, "") ?? c.category}</td>
-            <td className="r">{fmtMoney(c.amount, c.currency)}</td><td><span className={`ex-status ${c.status}`}>{STATUS_LABEL[c.status]}</span></td></tr>)}</tbody>
+            {columns.map((i) => <td key={i.id} className={COLUMNS[i.id].right ? "r" : undefined}>{COLUMNS[i.id].cell(c, { categoryName, statusLabel })}</td>)}</tr>)}</tbody>
         </table>}
         {data.has_more && <p className="ex-more">Showing the first 50 claims.</p>}
       </div>
@@ -227,18 +292,12 @@ export function ExpensesPanel({ user, onNotice }: { user: ExUser; onNotice: (mes
       {detail && <aside className="ex-detail" aria-label={`Claim ${detail.number}`}>
         <div className="ex-detail-head"><span>{detail.number}</span><button aria-label="Close claim" onClick={() => setDetail(null)}><Glyph name="close" size={14}/></button></div>
         <h3>{detail.merchant}</h3>
-        <p className="ex-amount">{fmtMoney(detail.amount, detail.currency)} <span className={`ex-status ${detail.status}`}>{STATUS_LABEL[detail.status]}</span></p>
+        <p className="ex-amount">{fmtMoney(detail.amount, detail.currency)} <span className={`ex-status ${detail.status}`}>{statusLabel(detail.status)}</span></p>
         <dl>
-          <dt>Claimant</dt><dd>{detail.claimant.name}</dd>
-          <dt>Receipt date</dt><dd>{fmtDate(detail.expense_date)}</dd>
-          <dt>Category</dt><dd>{data.categories.find((k) => k.key === detail.category)?.label ?? detail.category}</dd>
-          {detail.tax_amount != null && <><dt>Tax</dt><dd>{fmtMoney(detail.tax_amount, detail.currency)}</dd></>}
-          {detail.payment_method && <><dt>Paid by</dt><dd>{detail.payment_method.replace(/_/g, " ")}</dd></>}
-          {detail.description && <><dt>For</dt><dd>{detail.description}</dd></>}
-          {detail.submission && <><dt>Submission</dt><dd>{detail.submission.label}</dd></>}
-          {detail.reviewed_by && <><dt>Reviewed by</dt><dd>{detail.reviewed_by}</dd></>}
-          {detail.review_note && <><dt>Reviewer note</dt><dd>{detail.review_note}</dd></>}
-          {detail.no_receipt_reason && <><dt>No receipt</dt><dd>{detail.no_receipt_reason}</dd></>}
+          {shown("detail").map((i) => {
+            const value = DETAIL[i.id]?.(detail, data.categories);
+            return value == null ? null : <Fragment key={i.id}><dt>{i.label}</dt><dd>{value}</dd></Fragment>;
+          })}
         </dl>
         {detail.receipts.length > 0 && <div className="ex-receipts">{detail.receipts.map((r) => r.mime.startsWith("image/")
           ? <a key={r.id} href={`/api/demo/expenses/receipt?id=${r.id}`} target="_blank" rel="noopener noreferrer"><img src={`/api/demo/expenses/receipt?id=${r.id}`} alt={r.name}/><small>{r.name}</small></a>
@@ -263,29 +322,32 @@ export function ExpensesPanel({ user, onNotice }: { user: ExUser; onNotice: (mes
       {data.claims.length > 0 && <button className="ex-link" disabled={busy} onClick={() => void act({ action: "seed" }, (r) => r.already_loaded ? `Demo claims are already loaded (${r.already_loaded}).` : `Loaded ${r.seeded} demo claims.`)}>Load demo claims</button>}
     </footer>}
 
+    {customizing && <LayoutEditor key={`${editorKey}-${layout.rev}`} layout={layout} busy={busy} onSave={saveLayout} onReset={resetLayout} onReload={reloadLayout} onClose={() => setCustomizing(false)}/>}
+
     {modal && <div className="demo-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setModal(false); }}>
       <div className="demo-modal ex-modal" role="dialog" aria-modal="true" aria-label="File an expense claim">
         <div className="demo-modal-head"><span className="demo-modal-icon"><Glyph name="receipt" size={22}/></span><button onClick={() => setModal(false)} aria-label="Close"><Glyph name="close" size={16}/></button></div>
         <h2>File an expense claim</h2>
         <p>One receipt per claim. It joins the {data.current_submission.label} (cut-off {fmtDate(data.current_submission.cutoff_date)}), or the next one if that is already closed.</p>
         <form onSubmit={(event) => void submitClaim(event)}>
-          {isAdmin && <label>Claimant<select value={form.claimant} onChange={(event) => setForm({ ...form, claimant: event.target.value })}><option value="">Myself ({data.me.name})</option>{data.people.map((p) => <option key={p.id} value={p.id}>{p.name}{p.department ? ` · ${p.department}` : ""}</option>)}</select></label>}
+          {isAdmin && <label>{field("claimant", "Claimant")}<select value={form.claimant} onChange={(event) => setForm({ ...form, claimant: event.target.value })}><option value="">Myself ({data.me.name})</option>{data.people.map((p) => <option key={p.id} value={p.id}>{p.name}{p.department ? ` · ${p.department}` : ""}</option>)}</select></label>}
           <div className="demo-form-row">
-            <label>Date on receipt<input required type="date" max={data.today} value={form.expense_date} onChange={(event) => setForm({ ...form, expense_date: event.target.value })}/></label>
-            <label>Total ({currency})<input required type="number" min="0.01" step="0.01" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} placeholder="0.00"/></label>
+            <label>{field("date", "Date on receipt")}<input required type="date" max={data.today} value={form.expense_date} onChange={(event) => setForm({ ...form, expense_date: event.target.value })}/></label>
+            <label>{field("amount", "Total ({currency})")}<input required type="number" min="0.01" step="0.01" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} placeholder="0.00"/></label>
           </div>
-          <label>Merchant<input required maxLength={120} value={form.merchant} onChange={(event) => setForm({ ...form, merchant: event.target.value })} placeholder="e.g. Grab, Petronas"/></label>
-          <div className="demo-form-row">
-            <label>Category<select value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}>{data.categories.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}</select></label>
-            <label>Paid by<select value={form.payment_method} onChange={(event) => setForm({ ...form, payment_method: event.target.value })}>{data.payment_methods.map((p) => <option key={p} value={p}>{p.replace(/_/g, " ")}</option>)}</select></label>
+          <label>{field("merchant", "Merchant")}<input required maxLength={120} value={form.merchant} onChange={(event) => setForm({ ...form, merchant: event.target.value })} placeholder="e.g. Grab, Petronas"/></label>
+          {/* A pair with one field hidden gives the other the full width. */}
+          <div className={`demo-form-row${fieldShown("payment_method") ? "" : " single"}`}>
+            <label>{field("category", "Category")}<select value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}>{data.categories.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}</select></label>
+            {fieldShown("payment_method") && <label>{field("payment_method", "Paid by")}<select value={form.payment_method} onChange={(event) => setForm({ ...form, payment_method: event.target.value })}>{data.payment_methods.map((p) => <option key={p} value={p}>{p.replace(/_/g, " ")}</option>)}</select></label>}
           </div>
-          <div className="demo-form-row">
-            <label>Tax shown (optional)<input type="number" min="0" step="0.01" value={form.tax_amount} onChange={(event) => setForm({ ...form, tax_amount: event.target.value })} placeholder="0.00"/></label>
-            <label>What was it for?<input maxLength={500} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="e.g. client lunch"/></label>
-          </div>
+          {(fieldShown("tax_amount") || fieldShown("description")) && <div className={`demo-form-row${fieldShown("tax_amount") && fieldShown("description") ? "" : " single"}`}>
+            {fieldShown("tax_amount") && <label>{field("tax_amount", "Tax shown (optional)")}<input type="number" min="0" step="0.01" value={form.tax_amount} onChange={(event) => setForm({ ...form, tax_amount: event.target.value })} placeholder="0.00"/></label>}
+            {fieldShown("description") && <label>{field("description", "What was it for?")}<input maxLength={500} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="e.g. client lunch"/></label>}
+          </div>}
           <div className="ex-drop">
             <input ref={picker} type="file" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" multiple hidden onChange={(event) => addFiles(event.target.files)}/>
-            <button type="button" className="ex-btn" onClick={() => picker.current?.click()}><Glyph name="upload" size={15}/> Add receipt (photo, screenshot or PDF)</button>
+            <button type="button" className="ex-btn" onClick={() => picker.current?.click()}><Glyph name="upload" size={15}/> {field("receipts", "Add receipt (photo, screenshot or PDF)")}</button>
             {files.map((f, i) => <span key={`${f.name}-${i}`} className="ex-file-chip">{f.name}<button type="button" aria-label={`Remove ${f.name}`} onClick={() => setFiles((old) => old.filter((_, j) => j !== i))}><Glyph name="close" size={11}/></button></span>)}
             {files.length === 0 && <label className="ex-check"><input type="checkbox" checked={form.no_receipt} onChange={(event) => setForm({ ...form, no_receipt: event.target.checked })}/> I have no receipt</label>}
             {files.length === 0 && form.no_receipt && <input required maxLength={300} aria-label="Why there is no receipt" placeholder="Why is there no receipt?" value={form.no_receipt_reason} onChange={(event) => setForm({ ...form, no_receipt_reason: event.target.value })}/>}

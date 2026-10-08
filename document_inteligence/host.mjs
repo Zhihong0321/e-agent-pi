@@ -162,7 +162,10 @@ async function renderPdf(html, absPath) {
 }
 
 /**
- * Handles POST /api/internal/di. Returns { status, body }.
+ * DEPRECATED compatibility path: POST /api/internal/di was the stdio MCP
+ * proxy's endpoint. DI tools are native execution operations now; this handler
+ * remains only for the legacy expense-delegation integration test and old
+ * sessions. Do not attach the proxy to new agents.
  * @param {import("node:http").IncomingMessage} req
  * @param {any} body
  * @param {{ workspace: (agent: {id: string, slug: string}) => string }} deps
@@ -228,7 +231,13 @@ export function diRunDeps({ workspace, who } = {}) {
     db: state.db, tenantId: () => state.tenantId, actor: who?.username || "system", asRole: state.asRole,
     workspace: (id) => workspace({ id, slug: id }), renderPdf,
     publicUrl: publicBaseUrl(), filesRoot: path.join(DATA_DIR, "files"), who,
+    resolveIdentity, sop: SOP_STORE,
   };
+}
+
+/** runTool dependencies for the execution dispatcher (who resolved by the host per call). */
+export function diDispatchDeps({ workspace, user }) {
+  return diRunDeps({ workspace, who: user });
 }
 
 // ---------------------------------------------------------------- public forms
@@ -400,17 +409,9 @@ export async function ensureDocumentIntelligence({ pool, catalog, logEvent = () 
       userFacing: Boolean(card.userFacing),
     });
   }
-  const payload = {
-    name: "Document Intelligence",
-    slug: DI_MCP_SLUG,
-    command: process.execPath,
-    args: [DI_MCP_SERVER],
-    description: "CRM, catalogue, quotations, invoices, payments, templates, company settings and the read-only calendar feed in Postgres (schema di). Each DI agent sees only its own tools.",
-  };
-  const existing = await catalog.getMcpServer(DI_MCP_SLUG);
-  if (existing) await catalog.updateMcpServer(existing.id, payload);
-  else await catalog.createMcpServer(payload);
-  for (const id of DI_AGENT_IDS) await catalog.attachAgentResources(id, { skills: [], mcp: [DI_MCP_SLUG] });
+  // The stdio forwarding MCP proxy is retired: DI tools are registered as
+  // native execution operations (server/execution/registry.mjs) and reach the
+  // same runTool handlers through the host dispatcher. Nothing to attach.
   return { applied, tenantId: state.tenantId, roleSeparation: state.asRole };
 }
 

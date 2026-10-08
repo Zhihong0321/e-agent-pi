@@ -9,7 +9,9 @@ import { runTool, describeError } from "../document_inteligence/core/actions.mjs
 import { withContext } from "../document_inteligence/core/db.mjs";
 import { getReceiptFile } from "../document_inteligence/core/expenses.mjs";
 import { seedDemoClaims } from "../document_inteligence/core/expense-demo.mjs";
+import { loadLayout, resetLayout, resolveLayout, saveLayout } from "../document_inteligence/core/page-layout.mjs";
 import { companyHostContext, diRunDeps } from "../document_inteligence/host.mjs";
+import { logEvent } from "./debug.mjs";
 import { DATA_DIR } from "./paths.mjs";
 import { readSharedFile, sharedFileLocation } from "./shared-files.mjs";
 
@@ -22,10 +24,25 @@ const safeName = (name) => path.basename(String(name || "receipt")).replace(/[^A
 const toolCall = (opts, who) => (tool, args = {}) =>
   runTool(diRunDeps({ workspace: opts.workspace, who }), { agent: AGENT, tool, args });
 
+const LAYOUT_PAGE = "expenses";
+
+/** Runs `fn` in a transaction scoped to the company, as `who`. The page layout is page chrome, not an agent tool. */
+const inCompany = (who, fn) => {
+  const ctx = companyHostContext();
+  return withContext(ctx.db, { ...ctx, actor: who.username, agent: AGENT }, fn);
+};
+
+/** How this company has chosen to show the page. If it can't be read, the page still draws, on the default. */
+const layoutFor = (who) =>
+  inCompany(who, (tx) => loadLayout(tx, LAYOUT_PAGE)).catch((error) => {
+    logEvent("warn", `expenses page layout unavailable, using the default: ${describeError(error)}`);
+    return { ...resolveLayout(LAYOUT_PAGE, {}), rev: 0, customized: false, override_invalid: false, unavailable: true };
+  });
+
 /** Everything the panel needs for one month, limited to what `who` may see. */
 async function panelState(opts, who, month) {
   const call = toolCall(opts, who);
-  const [settings, subs] = await Promise.all([call("get_expense_settings"), call("list_monthly_submissions", { limit: 12 })]);
+  const [settings, subs, layout] = await Promise.all([call("get_expense_settings"), call("list_monthly_submissions", { limit: 12 }), layoutFor(who)]);
   const open = [...subs.submissions].reverse().find((s) => s.status === "open");
   const key = month && MONTH.test(month) ? month : open?.period_key ?? subs.submissions[0]?.period_key ?? settings.current_submission.period_key;
   const selected = subs.submissions.find((s) => s.period_key === key) ?? null;
@@ -36,6 +53,7 @@ async function panelState(opts, who, month) {
     today: settings.today, current_submission: settings.current_submission, submissions: subs.submissions,
     month: key, selected, claims: claims.claims, totals: claims.totals, has_more: claims.has_more, scope: subs.scope,
     people: people.map((p) => ({ id: p.id, name: p.name, department: p.department })),
+    layout,
   };
 }
 
@@ -84,6 +102,10 @@ async function act(opts, who, body) {
       return call("close_monthly_submission", { month: String(body.month || ""), carry_forward_pending: Boolean(body.carry_forward_pending) });
     case "settings":
       return call("set_expense_settings", { cutoff_day: Number(body.cutoff_day) });
+    case "layout_save":
+      return inCompany(who, (tx) => saveLayout(tx, LAYOUT_PAGE, body.config, { who, expected_rev: body.expected_rev }));
+    case "layout_reset":
+      return inCompany(who, (tx) => resetLayout(tx, LAYOUT_PAGE, { who }));
     case "seed":
       return seedDemoClaims(diRunDeps({ workspace: opts.workspace, who }), who);
     default:

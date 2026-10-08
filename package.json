@@ -14,7 +14,8 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern legacy_archive",
     "pi": "pi",
     "pi:version": "pi --version",
-    "test": "npm run build",
+    "test": "npm run test:execution",
+    "test:execution": "node --experimental-test-module-mocks --test --test-concurrency=1 server/execution/people-service.test.mjs && node --experimental-test-module-mocks --test --test-concurrency=1 server/execution/dispatch.test.mjs && node --experimental-test-module-mocks --test --test-concurrency=1 server/execution/runner.test.mjs && node --test --test-concurrency=1 server/execution/mcp-adapter.test.mjs",
     "test:company-research": "node --test server/company-research/*.test.mjs",
     "test:ads-research": "node --test server/ads-research/*.test.mjs",
     "test:scheduler": "node --experimental-test-module-mocks --test server/scheduler/*.test.mjs"
@@ -23,6 +24,7 @@
     "@composio/core": "^0.18.1",
     "@earendil-works/pi-coding-agent": "latest",
     "@modelcontextprotocol/sdk": "^1.30.0",
+    "cron-parser": "5.10.1",
     "libphonenumber-js": "1.13.14",
     "mammoth": "^1.13.0",
     "pg": "^8.23.0",
@@ -32,8 +34,7 @@
     "react-dom": "19.2.6",
     "read-excel-file": "^9.3.10",
     "tldts": "7.4.16",
-    "zod": "^4.4.3",
-    "cron-parser": "5.10.1"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",

@@ -50,6 +50,16 @@
     "vision": false
   },
   {
+    "id": "space-bunny-free",
+    "label": "Space Bunny Free (OpenCode GO)",
+    "shortLabel": "Space Bunny",
+    "provider": "opencode-go",
+    "model": "space-bunny-free",
+    "vaultCredential": "OPENCODE_GO_TOKEN_PLAN",
+    "envPrefix": "OPENCODE_GO",
+    "vision": true
+  },
+  {
     "id": "glm-5.3-flash",
     "label": "GLM 5.3 Flash (OpenCode GO)",
     "shortLabel": "GLM5.3F",

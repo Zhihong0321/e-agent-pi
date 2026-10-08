@@ -1,7 +1,7 @@
 import { DiError } from "./common.mjs";
 
 export const CALENDAR_SCHEMA_VERSION = "1.1";
-export const CALENDAR_SOURCES = ["sales", "procurement", "payments", "forms"];
+export const CALENDAR_SOURCES = ["sales", "procurement", "payments", "forms", "schedules"];
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_RANGE_DAYS = 370;
 
@@ -68,7 +68,7 @@ function demoRecord(row) {
   return row.demo === true || row.custom?.demo === true || row.custom?.demo === "true" || /^DEMO\b/i.test(row.note || row.notes || "");
 }
 
-export function normalizeCalendarSources({ documents = [], payments = [], forms = [], supplierDocuments = [], purchaseOrders = [], customFieldDefs = [], sources = CALENDAR_SOURCES, include_demo = false, range, timezone }) {
+export function normalizeCalendarSources({ documents = [], payments = [], forms = [], supplierDocuments = [], purchaseOrders = [], schedules = [], customFieldDefs = [], sources = CALENDAR_SOURCES, include_demo = false, range, timezone }) {
   const options = validateCalendarOptions({ sources, include_demo });
   const visible = (rows, source) => options.sources.includes(source) ? rows.filter((row) => include_demo || !demoRecord(row)) : [];
   const events = [];
@@ -127,6 +127,32 @@ export function normalizeCalendarSources({ documents = [], payments = [], forms 
       detail: { number: row.number, supplier: row.supplier_name, total: Number(row.total || 0) },
     }));
   }
+  for (const row of visible(schedules, "schedules")) {
+    const rawDate = row.timing_rule?.date || (row.start_time ? asDate(row.start_time) : null) || (row.next_due_at ? asDate(row.next_due_at) : null);
+    const date = asDate(rawDate);
+    if (date) {
+      events.push(event({
+        id: `schedule:${row.id}`,
+        kind: "reminder",
+        title: row.title,
+        date,
+        displayDate: date < range.from ? range.from : (date > range.to ? range.to : date),
+        range,
+        timezone: row.timezone || timezone,
+        status: row.status,
+        severity: "info",
+        source: { table: "schedules", recordId: row.id, field: "timing_rule" },
+        detail: {
+          scheduleId: row.id,
+          title: row.title,
+          note: row.note,
+          preset: row.preset || "note",
+          visibility: row.visibility,
+          label: row.preset === "note" ? "Scheduled note" : (row.preset === "email_reminder" ? "Email reminder" : "AI job"),
+        },
+      }));
+    }
+  }
   const seen = new Set();
   return events.filter((item) => item && !seen.has(item.id) && seen.add(item.id)).sort((a, b) => a.start.localeCompare(b.start) || a.title.localeCompare(b.title));
 }
@@ -134,8 +160,14 @@ export function normalizeCalendarSources({ documents = [], payments = [], forms 
 export async function readCalendar(tx, args = {}) {
   const range = validateCalendarRange(args);
   const options = validateCalendarOptions(args);
-  const scan = (source, sql, values = []) => options.sources.includes(source) ? tx.query(sql, values) : Promise.resolve({ rows: [] });
-  const [documents, payments, forms, defs, profile, supplierDocuments, purchaseOrders] = await Promise.all([
+  const scan = (source, sql, values = []) => {
+    if (!options.sources.includes(source)) return Promise.resolve({ rows: [] });
+    return tx.query(sql, values).catch((err) => {
+      if (err.code === "42P01") return { rows: [] };
+      throw err;
+    });
+  };
+  const [documents, payments, forms, defs, profile, supplierDocuments, purchaseOrders, schedules] = await Promise.all([
     scan("sales", `SELECT d.id,d.doc_type,d.number,d.status,d.valid_until,d.due_date,d.total,d.amount_paid,d.custom,d.notes,c.name AS customer_name,(c.custom->>'demo' = 'true') AS demo FROM di.document d LEFT JOIN di.customer c ON c.id=d.customer_id WHERE d.deleted_at IS NULL AND ((d.valid_until BETWEEN $1::date AND $2::date) OR (d.due_date BETWEEN $1::date AND $2::date) OR (d.valid_until < $1::date AND d.doc_type='quotation' AND d.status='issued') OR (d.due_date < $1::date AND d.doc_type='invoice' AND d.status IN ('issued','partially_paid')) OR d.custom <> '{}'::jsonb)`, [range.from, range.to]),
     scan("payments", `SELECT p.id,p.number,p.received_on,p.amount,p.method,p.custom FROM di.payment p WHERE p.deleted_at IS NULL AND p.status='recorded' AND (p.received_on BETWEEN $1::date AND $2::date OR p.custom <> '{}'::jsonb)`, [range.from, range.to]),
     scan("forms", `SELECT fv.id,f.title,fv.settings,(fv.settings->>'demo' = 'true') AS demo FROM di.form_version fv JOIN di.form f ON f.id=fv.form_id WHERE fv.status='published' AND fv.deleted_at IS NULL`, []),
@@ -143,9 +175,10 @@ export async function readCalendar(tx, args = {}) {
     tx.query(`SELECT timezone FROM di.company_profile WHERE tenant_id=di.current_tenant()`, []),
     scan("procurement", `SELECT d.id,d.doc_type,d.number,d.status,d.valid_until,d.due_date,d.total,d.note,d.custom,s.name AS supplier_name,(s.custom->>'demo' = 'true') AS demo FROM di.supplier_document d JOIN di.supplier s ON s.id=d.supplier_id WHERE d.deleted_at IS NULL AND s.deleted_at IS NULL AND ((d.doc_type='quotation' AND d.status IN ('received','accepted') AND d.valid_until <= $1::date) OR (d.doc_type='invoice' AND d.status IN ('unpaid','disputed') AND d.due_date <= $1::date))`, [range.to]),
     scan("procurement", `SELECT p.id,p.number,p.status,p.expected_date,p.total,p.notes,p.custom,s.name AS supplier_name,(s.custom->>'demo' = 'true') AS demo FROM di.purchase_order p JOIN di.supplier s ON s.id=p.supplier_id WHERE p.deleted_at IS NULL AND s.deleted_at IS NULL AND p.status IN ('issued','partially_received') AND p.expected_date <= $1::date`, [range.to]),
+    scan("schedules", `SELECT id, company_id, owner_user_id, title, note, preset, visibility, timezone, timing_rule, start_time, end_time, next_due_at, status, revision FROM schedules WHERE deleted_at IS NULL AND status != 'cancelled' AND (company_id = di.current_tenant()::text OR company_id IS NULL) AND ((timing_rule->>'date' BETWEEN $1 AND $2) OR (start_time BETWEEN $1::date AND ($2::date + interval '1 day')) OR (next_due_at BETWEEN $1::date AND ($2::date + interval '1 day')))`, [range.from, range.to]),
   ]);
   const timezone = args.timezone || profile.rows[0]?.timezone || range.timezone;
   validateCalendarRange({ ...range, timezone });
   const formRows = forms.rows.map((row) => ({ id: row.id, title: row.title, closes_at: row.settings?.closes_at, demo: row.demo }));
-  return { schemaVersion: CALENDAR_SCHEMA_VERSION, range: { ...range, timezone }, timezone, ...options, refreshedAt: new Date().toISOString(), events: normalizeCalendarSources({ documents: documents.rows, payments: payments.rows, forms: formRows, supplierDocuments: supplierDocuments.rows, purchaseOrders: purchaseOrders.rows, customFieldDefs: defs.rows, ...options, range, timezone }), warnings: [] };
+  return { schemaVersion: CALENDAR_SCHEMA_VERSION, range: { ...range, timezone }, timezone, ...options, refreshedAt: new Date().toISOString(), events: normalizeCalendarSources({ documents: documents.rows, payments: payments.rows, forms: formRows, supplierDocuments: supplierDocuments.rows, purchaseOrders: purchaseOrders.rows, schedules: schedules.rows, customFieldDefs: defs.rows, ...options, range, timezone }), warnings: [] };
 }

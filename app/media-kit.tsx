@@ -137,7 +137,7 @@ async function onLoginWithPassword(password: string) {
   if (!response.ok) throw new Error(body.error || "Unlock failed");
 }
 
-function MediaKitView({ readOnly, token }: { readOnly: boolean; token?: string }) {
+export function MediaKitView({ readOnly = false, token, embedded = false }: { readOnly?: boolean; token?: string; embedded?: boolean }) {
   const [company, setCompany] = useState<Company>({});
   const [assets, setAssets] = useState<Asset[]>([]);
   const [shares, setShares] = useState<Share[]>([]);
@@ -205,8 +205,8 @@ function MediaKitView({ readOnly, token }: { readOnly: boolean; token?: string }
   const logout = async () => { await fetch("/api/auth/logout", { method: "POST", credentials: "include" }); window.location.reload(); };
 
   return (
-    <main className="mk-shell">
-      <header className="mk-topbar"><a className="mk-brand" href="/"><span className="mk-brand-mark">MK</span><span><strong>Media Kit</strong><small>COMPANY STORY, READY TO SHARE</small></span></a><div className="mk-top-actions"><a href="/">Studio</a>{!readOnly ? <button type="button" onClick={() => void logout()}>Lock</button> : <span className="mk-share-pill">Read-only share</span>}</div></header>
+    <main className={["mk-shell", embedded ? "mk-embedded" : ""].filter(Boolean).join(" ")}>
+      {!embedded && <header className="mk-topbar"><a className="mk-brand" href="/"><span className="mk-brand-mark">MK</span><span><strong>Media Kit</strong><small>COMPANY STORY, READY TO SHARE</small></span></a><div className="mk-top-actions"><a href="/">Studio</a>{!readOnly ? <button type="button" onClick={() => void logout()}>Lock</button> : <span className="mk-share-pill">Read-only share</span>}</div></header>}
       <div className="mk-content">
         <section className="mk-hero">
           <div className="mk-hero-copy"><p className="mk-eyebrow">{readOnly ? "PARTNER MEDIA KIT" : "MEDIA AI · COMPANY LIBRARY"}</p><h1>{company.name || "Your company"}<br /><em>in the right frame.</em></h1><p className="mk-hero-text">{readOnly ? "A focused collection of approved brand assets, company news and proof points for the next collaboration." : "One organized home for the assets advertisers, event partners and social teams ask for most."}</p><div className="mk-hero-actions">{!readOnly ? <><button className="mk-primary" type="button" onClick={() => setShowUpload(true)}>＋ Add media</button><button className="mk-secondary" type="button" onClick={() => void createShare()} disabled={busy}>Create share link</button></> : <span className="mk-approved"><i /> Approved assets only</span>}</div></div><div className="mk-hero-card">{company.logo_url ? <img src={company.logo_url} alt={`${company.name || "Company"} logo`} /> : <div className="mk-logo-placeholder">{(company.name || "MK").slice(0, 2).toUpperCase()}</div>}<span>Brand library</span><strong>{assets.length} curated asset{assets.length === 1 ? "" : "s"}</strong><small>{readOnly ? "Shared with you" : "Owned by your company"}</small></div>
@@ -228,7 +228,16 @@ export default function MediaKitPage() {
   const shareMatch = window.location.pathname.match(/^\/media-kit\/share\/([^/]+)$/);
   const readOnly = Boolean(shareMatch);
   const [auth, setAuth] = useState<boolean | null>(readOnly ? true : null);
-  const check = useCallback(async () => { if (readOnly) return; const response = await fetch("/api/auth/me", { credentials: "include" }); const data = (await response.json().catch(() => ({}))) as { ok?: boolean }; setAuth(Boolean(response.ok && data.ok)); }, [readOnly]);
+  const check = useCallback(async () => {
+    if (readOnly) return;
+    const [settingsResponse, demoResponse] = await Promise.all([
+      fetch("/api/auth/me", { credentials: "include" }),
+      fetch("/api/demo/me", { credentials: "include" }),
+    ]);
+    const settingsData = (await settingsResponse.json().catch(() => ({}))) as { ok?: boolean };
+    const demoData = (await demoResponse.json().catch(() => ({}))) as { user?: unknown };
+    setAuth(Boolean((settingsResponse.ok && settingsData.ok) || (demoResponse.ok && demoData.user)));
+  }, [readOnly]);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- check synchronizes the route with the existing auth cookie.
   useEffect(() => { void check(); }, [check]);
   if (auth === null) return <main className="mk-auth-shell"><p className="mk-loading">Checking access…</p></main>;

@@ -104,7 +104,7 @@ export function useStudio({ userId }: { userId?: string } = {}) {
   const liveUrl = agentLiveUrl(selected, host);
 
   useEffect(() => {
-    if (prefersStandalone()) setInstalled(true);
+    if (prefersStandalone()) queueMicrotask(() => setInstalled(true));
     const onBeforeInstall = (event: Event) => {
       event.preventDefault();
       setInstallPrompt(event as BeforeInstallPromptEvent);

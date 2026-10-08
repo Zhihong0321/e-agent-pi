@@ -130,9 +130,9 @@ test('delegated expense tools inherit the authenticated owner and refuse imperso
     const dispatch = async parent => {
       activeParent = parent.id;
       const plan = await jobs.createPlan({ tasks: [{ agent: 'di-expenses', prompt: 'Call get_expense_settings and list_claims' }] });
-      const result = await jobs.handleOrchestratorAction({ action: 'dispatch_task', taskId: plan.tasks[0].id });
+      const result = await jobs.dispatchTask({ taskId: plan.tasks[0].id });
       assert.equal(result.ok, true, result.error);
-      assert.equal(JSON.parse(result.result).status, 'done');
+      assert.equal(result.status, 'done');
       return observations.at(-1);
     };
     await t.test('signed-in admin dispatches both tools as admin', async () => {
@@ -164,9 +164,7 @@ test('delegated expense tools inherit the authenticated owner and refuse imperso
       const bobPlan = await jobs.createPlan({ tasks: [{ agent: 'di-expenses', prompt: 'Bob task' }] });
       activeParent = parents.alice.id;
       await assert.rejects(jobs.createPlan({ parentSessionId: parents.bob.id, tasks: [{ agent: 'di-expenses', prompt: 'Impersonate Bob' }] }), /another parent/);
-      const denied = await jobs.handleOrchestratorAction({ action: 'dispatch_task', taskId: bobPlan.tasks[0].id });
-      assert.equal(denied.ok, false);
-      assert.match(denied.error, /another parent/);
+      await assert.rejects(jobs.dispatchTask({ taskId: bobPlan.tasks[0].id }), /another parent/);
       assert.equal((await jobs.taskStatus({ planId: bobPlan.id })).tasks[0].status, 'pending');
     });
     const child = await db.createSession({ agentId: 'di-expenses', parentSessionId: parents.alice.id });

@@ -189,5 +189,38 @@ test("submitted jobs execute and completed-job cleanup is selective and atomic",
       await jobs.runJobTick();
       assert.equal((await pool.query("SELECT COUNT(*)::int n FROM messages WHERE session_id='parent'")).rows[0].n, beforeReports + 1);
     });
-  } finally { mock.restoreAll(); await db.close(); }
+    await t.test("shutdown drains accepted work, persists it and leaves successors queued", async () => {
+      let started, finish;
+      const startedTurn = new Promise(resolve => { started = resolve; });
+      const finishTurn = new Promise(resolve => { finish = resolve; });
+      reply = async ({ agentId }) => {
+        if (agentId === "worker") { started(); await finishTurn; }
+        return { status: "done", summary: "Saved receipt exactly once", claims: ["EXP-0001"] };
+      };
+      const plan = await jobs.submitPlan({ tasks: [
+        { id: "file", agent: "worker", prompt: "File receipt" },
+        { id: "review", agent: "worker2", prompt: "Review saved claim", dependsOn: ["file"] },
+      ] });
+      await jobs.runJobTick();
+      await startedTurn;
+      const before = calls.length;
+      const timedOut = await jobs.stopJobRunner({ timeoutMs: 30 });
+      assert.equal(timedOut.drained, false);
+      assert.equal(timedOut.activeJobs, 1);
+      const drain = jobs.stopJobRunner({ timeoutMs: 1000 });
+      await jobs.runJobTick();
+      assert.equal(calls.length, before, "shutdown must not claim more work");
+      finish();
+      assert.equal((await drain).drained, true);
+      const state = await jobs.taskStatus({ planId: plan.id });
+      assert.equal(state.tasks[0].status, "done");
+      assert.deepEqual(state.tasks[0].resultData.claims, ["EXP-0001"]);
+      assert.equal(state.tasks[1].status, "pending");
+      await jobs.startJobRunner();
+      await settle();
+      assert.equal((await jobs.taskStatus({ planId: plan.id })).status, "done");
+      assert.equal(calls.length, before + 1, "replacement runs the successor without repeating the write");
+      assert.equal((await jobs.stopJobRunner()).drained, true);
+    });
+  } finally { await jobs.stopJobRunner({ timeoutMs: 0 }); mock.restoreAll(); await db.close(); }
 });

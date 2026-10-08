@@ -8,7 +8,8 @@
 .ex-actions{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;justify-content:flex-end}
 .ex-actions select,.ex-toolbar select,.ex-foot select{border:1px solid #e1e9e1;border-radius:8px;background:#fff;color:#4c6556;padding:0 10px;height:38px;font-size:12px}
 .ex-actions .demo-primary.ex-file{margin:0;width:auto;height:38px;padding:0 15px;font-size:12px}
-.ex-stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1px;background:var(--line);border-bottom:1px solid var(--line)}
+.ex-head .demo-panel-kicker{text-transform:uppercase}
+.ex-stats{display:grid;grid-template-columns:repeat(var(--ex-tiles,5),minmax(0,1fr));gap:1px;background:var(--line);border-bottom:1px solid var(--line)}
 .ex-stats>div{background:#fbfdfb;padding:14px 22px}
 .ex-stats span{display:block;color:#8b9a8f;font-size:9px;font-weight:800;letter-spacing:.8px;text-transform:uppercase}
 .ex-stats strong{display:block;margin-top:5px;font-size:17px;letter-spacing:-.4px;font-variant-numeric:tabular-nums}
@@ -59,6 +60,7 @@
 .ex-foot label{display:flex;align-items:center;gap:8px;font-weight:700}
 .ex-grow{flex:1}
 .ex-modal{width:min(100%,540px)}
+.ex-modal .demo-form-row.single{grid-template-columns:1fr}
 .ex-drop{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .ex-drop>input:not([hidden]){flex-basis:100%;border:1px solid #e1e9e1;border-radius:8px;height:40px;padding:0 12px}
 .ex-file-chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #d6e2d8;background:#f3f9f4;border-radius:99px;padding:5px 6px 5px 11px;font-size:11px;color:#286148}
@@ -67,3 +69,33 @@
 .ex-error{border:1px solid #efcfcf;background:#fff5f4;color:#9c3333;border-radius:9px;padding:10px 12px;font-size:12px;line-height:1.5;display:grid;gap:9px}
 .ex-error.warn{border-color:#ecd9ad;background:#fdf7e6;color:#8a6a1b}
 @media(max-width:900px){.ex-body:has(.ex-detail){grid-template-columns:1fr}.ex-detail{border-left:0;border-top:1px solid var(--line)}.ex-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.ex-head{display:block;padding:18px}.ex-actions{justify-content:flex-start;margin-top:14px}.ex-toolbar{padding:12px 18px}.ex-report{margin-left:0}}
+
+/* Customize this page (admin editor) */
+.ex-pill{display:inline-flex;align-items:center;border-radius:99px;padding:5px 10px;font-size:10px;font-weight:800;letter-spacing:.3px;background:#eaf3ec;color:#2f7a4c}
+.ex-pill.warn{background:#fdf1d8;color:#8a6a1b}
+.ex-custom{width:min(100%,640px);padding:0;display:flex;flex-direction:column;overflow:hidden}
+.ex-custom-head{display:flex;justify-content:space-between;gap:14px;padding:24px 27px 14px}
+.ex-custom-head h2{font-size:22px;letter-spacing:-.8px}
+.ex-custom-head p{color:#839187;font-size:12px;line-height:1.5;margin:6px 0 0}
+.ex-custom-head>button{align-self:flex-start;border:0;background:#f5f8f5;color:#7b8c80;border-radius:7px;width:28px;height:28px;font-size:18px;line-height:1;cursor:pointer}
+.ex-custom-body{overflow:auto;padding:4px 27px 14px;display:grid;gap:20px;border-top:1px solid var(--line)}
+.ex-custom-body>.ex-error{margin-top:12px}
+.ex-custom-sec{padding-top:14px}
+.ex-custom-sec h3{font-size:12px;margin:0 0 3px;color:#2c4636}
+.ex-custom-sec>p{color:#839187;font-size:11px;line-height:1.5;margin:0 0 8px}
+.ex-custom-row{display:grid;grid-template-columns:22px minmax(0,1fr) auto;align-items:center;gap:10px;padding:6px 0;border-top:1px solid #eff3ef}
+.ex-custom-row.off input[type=text]{opacity:.5}
+.ex-custom .ex-custom-row input[type=checkbox]{width:16px;height:16px;padding:0;margin:0 3px}
+.ex-custom .ex-custom-row input[type=text],.ex-custom-sec>input[type=text]{height:34px;padding:0 10px}
+.ex-custom-move{display:flex;gap:4px;min-width:60px}
+.ex-custom-move button{width:28px;height:28px;border:1px solid #e1e9e1;background:#fff;border-radius:7px;color:#587360;font-size:14px;line-height:1;cursor:pointer}
+.ex-custom-move button:disabled{opacity:.35;cursor:default}
+.ex-custom>.ex-error{margin:0 27px 12px}
+.ex-custom-foot{display:flex;align-items:center;gap:10px;padding:14px 27px;border-top:1px solid var(--line);background:#fbfdfb}
+.ex-custom-foot .ex-save{margin:0;width:auto;height:38px;padding:0 22px;font-size:12px}
+@media(max-width:530px){.ex-custom-head,.ex-custom-foot{padding-left:16px;padding-right:16px}.ex-custom-body{padding-left:16px;padding-right:16px}.ex-custom>.ex-error{margin-left:16px;margin-right:16px}}
+/* .di-demo button outranks .ex-btn for real buttons, so the editor sets its own type */
+.ex-actions .ex-btn,.ex-custom-foot .ex-btn,.ex-custom .ex-error .ex-btn{font-size:12px;font-weight:700}
+.ex-custom-foot .ex-link{font-size:11px;font-weight:700}
+.ex-actions .ex-pill{align-self:flex-start;margin-top:7px}
+.ex-custom .ex-custom-row input[type=checkbox]{accent-color:#205e4b}

@@ -5,7 +5,7 @@ import { agentEnv } from "./agent-env.mjs";
 import { contextPackSlug, mergeTurns, needsAutoContinue, turnMetrics } from "./context-pack.mjs";
 import { agentWorkspace, WORKSPACE, WORKSPACES_DIR } from "./paths.mjs";
 
-test("agentEnv grants orchestrator dispatch and email proxy access, never provider secrets", () => {
+test("agentEnv grants email compatibility access but no retired orchestrator proxy, never provider secrets", () => {
   const from = {
     PATH: "/usr/bin",
     HOME: "/root",
@@ -20,8 +20,8 @@ test("agentEnv grants orchestrator dispatch and email proxy access, never provid
   assert.equal(orch.DATABASE_URL, undefined);
   assert.equal(orch.SALES_PG_PROXY_TOKEN, undefined);
   assert.equal(orch.GOOGLE_ADS_REFRESH_TOKEN, undefined);
-  assert.equal(orch.ORCHESTRATOR_DISPATCH_URL, "http://127.0.0.1:8080");
-  assert.ok(orch.ORCHESTRATOR_DISPATCH_TOKEN);
+  assert.equal(orch.ORCHESTRATOR_DISPATCH_URL, undefined);
+  assert.equal(orch.ORCHESTRATOR_DISPATCH_TOKEN, undefined);
   assert.equal(orch.EE_MAIL_API_KEY, undefined);
   assert.equal(orch.EE_MAIL_AGENT, "orchestrator");
   assert.equal(orch.EE_MAIL_URL, "http://127.0.0.1:8080");

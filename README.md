@@ -1,158 +1,198 @@
-# Website Studio (Pi agent)
+# e (by eternalgy)
 
-Cloud app for Railway. Users chat with named **Agents**. Each agent is a Role (prompt) plus the Skills and MCP servers attached to it. Pi **Website Dev Agent** edits a volume workspace (static HTML/CSS/JS). The **host** zips that workspace and publishes it to [ee-html](https://ee-html.up.railway.app/) (`/app/<slug>/`). The agent must not git-commit or call the host API.
+**e is the name of this AI Agent System.**
 
-## Status snapshot
+e brings named AI agents, business records, research, files, and automation into one application. Users work through chat and dedicated business screens; the host manages capabilities, authentication, persistent data, execution, and integrations.
 
-**Recorded:** 2 September 2026, 18:22 (UTC+8) / 10:22 UTC  
-**Source:** `GET https://e-agent.up.railway.app/api/health`
+The project began as Website Studio and has grown into a broader agent system. Website development and publishing remain capabilities within e.
 
-| Check | State |
-|------|--------|
-| Boot | `ready`, `ok: true` |
-| Node | v22.23.2, listen `0.0.0.0:8080` |
-| Postgres | connected (`DATABASE_URL`) |
-| Volume | `/storage` (`RAILWAY_VOLUME_MOUNT_PATH` set) |
-| Workspace files | 1 |
-| Cavoti key (Postgres) | set |
-| Kimi key (Postgres) | set |
-| Models configured | 2 (`gpt-5.6-luna`, `kimi-k3`) |
-| Active model | `kimi-k3` |
-| GitHub token / repo | not set — workspace git disconnected |
-| Railway service | `E Agent (PI)` / production |
-| Replica | one (volume requires a single replica) |
+## Current repository status
 
-Re-check live state yourself; do not ask the user to paste logs:
+**Updated: 5 October 2026 (Asia/Kuala_Lumpur).** This overview describes the current local working tree on `main`, including uncommitted changes. It is not a live production-health snapshot.
 
-- Studio: https://e-agent.up.railway.app/
-- Settings: https://e-agent.up.railway.app/settings
-- Health: https://e-agent.up.railway.app/api/health
-- Debug: https://e-agent.up.railway.app/api/debug
-- Railway hostname: `blissful-warmth-production-57c5.up.railway.app`
+| Area | Current state |
+| --- | --- |
+| Identity | Official name: **e (by eternalgy)**. Some package, UI, PWA, and internal identifiers still use Website Studio, UIv2, or e-agent. |
+| Stack | React 19 / TypeScript frontend built with Vite 8; Node.js HTTP backend; PostgreSQL persistence. |
+| Main experience | `/` redirects to `/demo`, with separate research, calendar, Media Kit, web, sign-in, and settings screens. |
+| Agent platform | Named profiles, assigned skills and MCP servers, per-agent workspaces and context packs, model selection, streaming chats, and a managed Pi process pool. |
+| Business features | Document intelligence, records, forms, expenses, procurement, company setup, people/accounts, and supporting integrations. |
+| Execution migration | A shared runner, native host tools, durable operation records, and host-owned external MCP connections exist for migrated Pi flows. Release verification remains incomplete. |
+| Release readiness | The execution evidence records a candidate that is **not deployed**, with Gate A blocked by lint and outstanding integration/release checks. This refers to that candidate, not every existing production feature. |
 
-Settings password is stored in Postgres (seeded `eternalgy2026`). API keys and GitHub credentials are **not** Railway variables — they are edited on `/settings` and saved in the `settings` table.
+See [execution release evidence](docs/execution-release-evidence.md) for recorded results and remaining gates. Historical documents can describe earlier implementations; use current source and Graft spans to resolve differences.
 
-## Git
+## Capabilities
 
-- App repo: https://github.com/Zhihong0321/e-agent-pi
-- Deploy branch: **`railway`** (not `main`)
-- Local path: `E:\000\UIv2`
+| Capability | Scope |
+| --- | --- |
+| Chat and orchestration | Chat with a selected agent; submit durable jobs with specialist tasks, dependencies, recorded outcomes, and shared artifacts. |
+| Document intelligence | Customer/contact records, products, packages, quotations, invoices, credit notes, payments, templates, and PDFs. |
+| Forms and intake | Design and publish forms, review submissions, connect intake to records, and export results. |
+| Expenses and procurement | Receipt-based claims, monthly submissions and approval workflows; suppliers, purchase orders, receiving, and invoice checks. |
+| Company deep research | Establish company identity, collect evidence, validate findings, and produce dossiers and reports with citations. Search integrations support Brave, Exa, and Tavily. |
+| Advertising research | Research jobs with reports, screenshots, and structured artifacts. |
+| Media Kit | Company assets, file uploads, manifests, and share-link creation/revocation. |
+| Website and repository work | Dedicated editing workspaces, host-managed website publishing, and configured repository workflows. |
+| Business integrations | Sales/stock, package data, NEWPAGES merchant automation, Google Ads, electricity/solar tools, email, Composio, and a Go WhatsApp sidecar. |
 
-## Railway setup
+Availability depends on the agent, attached capabilities, credentials, signed-in identity, company setup, and external-service readiness. A catalog entry alone does not establish that an integration is operational.
 
-1. Service from GitHub `Zhihong0321/e-agent-pi`, branch `railway`
-2. PostgreSQL plugin → `DATABASE_URL`
-3. Volume mounted at **`/storage`** (one replica)
-4. Dockerfile start: `node server/index.mjs`
-5. Process listens first, then boots Postgres / volume / git
+## Architecture
 
-Volume layout is listed under **Agents = Role + Skills + MCP**.
+An agent is a **named role + assigned skills + assigned tools**, with its own workspace and runtime context. Installing a capability in the library and granting it to an agent are separate operations. Bootstrap rules can grant defaults, such as Scrapling.
 
-## Product rules
+- **Frontend:** streaming chat, transcripts, business panels, settings, and artifact links.
+- **Host:** authenticates requests, selects trusted user/company context, resolves profiles/models, owns execution, and invokes business handlers.
+- **Pi runtime:** executes turns using materialized roles, context packs, selected skills, and permitted tools. The host manages pooled processes rather than one global process.
+- **Persistence:** PostgreSQL stores settings, catalog attachments, chats, business records, and execution state. Persistent storage holds workspaces, runtime files, browser profiles, and generated artifacts.
+- **Integrations:** browser automation, external APIs, MCP services, and the WhatsApp sidecar extend the configured system.
 
-- Users chat with a chosen **Agent**. An agent is **Role** (prompt) + **Skills** + **MCP** — not a shared bag of tools.
-- Skills and MCP servers are installed once on the host library. Attaching them to an agent is a separate step. Unassigned capabilities are invisible to Pi.
-- Each studio chat belongs to one agent and is its own Pi session. New chat does not reuse another chat's memory.
-- After file edits, the **host** zips the workspace and publishes to ee-html; the agent must not git-commit, deploy, or call the host API.
-- **Proposal Agent** is the exception: it edits a separate clone of `Zhihong0321/ee-proposal`. The host commits and pushes; Railway deploys the live proposal. The agent still must not run git itself.
-- **Package Updater** maintains `package` / `package_item` / `product` in `prod_main` through the Postgres proxy. It does not publish a site.
-- Live site (Website Dev Agent): `https://ee-html.up.railway.app/app/<slug>/` (default slug `e-agent-site`)
-- Live site (Proposal Agent): `https://ee-proposal-production.up.railway.app/shell.html#proposal`
+Context packs under `agent/context/<slug>/` supply host, project, code-map, playbook, and state information. Runtime journals support continuity, and child-process environment filtering limits which host variables reach agents.
 
-## Agents = Role + Skills + MCP
+### Execution migration
 
-Pi auto-discovers skills from `~/.pi/agent/skills`, `.pi/skills`, and `.agents/skills`. If the host dumped every installed skill there, every agent would see every skill. This app does not do that.
+For migrated Pi runs, `server/execution/` provides the shared runner and canonical operation dispatcher. Workers use native host tools through a run-bound bridge. The host checks permissions/inputs, records calls and effects, and persists execution events and outcomes. Completion uses explicit `finish_run` rather than final-answer prose.
 
-| Layer | What it is | Where it lives |
-|------|-------------|----------------|
-| **Library** | Installed skills and MCP server definitions. Shared catalog, not granted to anyone by default. | Volume `/storage/library/skills/<slug>/` + Postgres `skills`, `mcp_servers` |
-| **Agent** | Named profile: role prompt, assigned skill IDs, assigned MCP IDs | Postgres `agents`, `agent_skills`, `agent_mcp` |
-| **Chat** | One conversation with one agent | Postgres `sessions.agent_id` + a Pi session file |
+The candidate includes stable chat submission keys, call replay/conflict handling, attempt ownership, cancellation, deadlines, and dependency execution. Its host adapter owns external MCP connections. Document-intelligence operations reach existing business handlers through the native registry; the older same-host forwarding proxy is retired for those flows.
 
-### How Pi is launched per agent
+**AGY remains a compatibility path outside the migrated execution contract.** Real PostgreSQL concurrency, actual worker/model execution, HTTP MCP, release-image behavior, and browser recovery still require the checks in the release evidence. A frontend build and deterministic tests do not establish production readiness.
 
-The host keeps **one** Pi RPC process (Railway is a single replica). Switching agents restarts Pi with that agent's bundle:
+The [execution architecture](docs/agent-execution-architecture.md) describes the target contract; its full acceptance list is not a list of completed features.
 
-- `--append-system-prompt` → materialized `/storage/runtime/<agent-id>/ROLE.md`
-- `--no-skills` plus `--skill <library path>` for **only** the skills attached to that agent
-- `--no-extensions`; if the agent has MCP, also `--extension npm:pi-mcp-adapter` and a runtime `mcp.json` that lists **only** that agent's servers
-- If `spawn-subagents` is attached, also `--extension agent/extensions/subagents.ts` (in-process `spawn_subagent` tool). Children share the workspace, cannot nest, and cap at three running
-- `PI_CODING_AGENT_DIR=/storage/runtime/<agent-id>` so Pi does not read the shared `/storage/pi` skill/MCP dirs
+### Files and publishing
 
-Install **does not** attach. A skill written to the library stays unused until it is attached to an agent.
+Agents create files; the host publishes them and returns references for chat to display. Shared files use persistent company-scoped storage and `/files/<file-id>/<filename>` links. Workspaces are working directories, not permanent download addresses.
 
-### Who can install
+Website publishing packages the workspace for the configured HTML host. Proposal publishing uses its configured repository workflow. Credentials and publication operations belong to the host. See [shared-file rules](document_inteligence/about-file-system.md).
 
-1. **Settings page** (password): `/settings#skills`, `/settings#mcp`, then `/settings#agents` to attach.
-2. **Settings Agent** (chat): has `manage-host-settings`. It runs `node $CLOUD_PI_CATALOG` on the host — install skills/MCP **and** attach them to a chosen agent. Website Dev Agent does not get this skill.
+## Application routes
 
-After attach, the next chat with that agent restarts Pi with the new bundle.
+| Route | Purpose |
+| --- | --- |
+| `/`, `/demo` | Main application; root redirects to `/demo`. |
+| `/web` | Web workspace interface. |
+| `/research` | Research interface. |
+| `/calendar` | Calendar interface. |
+| `/media-kit` | Media assets and sharing. |
+| `/signin` | User sign-in. |
+| `/settings` | Administrative configuration: models/keys, agents, skills, MCP, and jobs. |
+| `/api/health` | Host health and boot diagnostics. |
+| `/api/debug` | Debug diagnostics, subject to host access checks. |
+| `/test-agy` | Redirects to the backend AGY test interface. |
 
-Website Dev Agent is seeded with **Scrapling** (skill + MCP) for live page fetches and **spawn-subagents**. **Impeccable** is installed into the library on boot but **not** auto-attached; attach it via Settings Agent for a from-scratch redesign. **Proposal Agent** is seeded with `update-proposal` + spawn-subagents. It clones [Zhihong0321/ee-proposal](https://github.com/Zhihong0321/ee-proposal) into `/storage/workspaces/proposal`, edits from text/image/PDF, and the host git-pushes so Railway deploys https://ee-proposal-production.up.railway.app/shell.html#proposal. **Scrapling is default on every agent**, including Settings Agent. Boot always reloads Website Dev Agent's role from `agent/ROLE.md` so the git/GitHub ban and ee-html rules actually apply (Postgres used to keep the first seed forever).
+## Local development
 
-On boot the host runs `npx impeccable install --providers=pi --scope=project` in a staging directory and copies `.pi/skills/impeccable` into `/storage/library/skills/impeccable`. It does **not** attach it to Website Dev Agent and does **not** install into the GitHub workspace.
+Use **Node.js >= 22.22.3**, npm, and PostgreSQL for persistent functionality. The Docker image supplies additional integration dependencies: Python/Scrapling, browser tooling, Poppler, AGY, and the compiled Go WhatsApp sidecar. A Node-only local installation does not supply all of these.
 
-`/impeccable init` writes `PRODUCT.md` (and later `DESIGN.md`) in the workspace; those files *are* site artifacts and should sync. Refresh the pack with Settings Agent: `node $CLOUD_PI_CATALOG skills install-impeccable --force`.
+Install dependencies:
 
-On boot the host also downloads the official Scrapling Agent Skill zip into `/storage/library/skills/scrapling-official`, registers the `scrapling` MCP server (`/opt/scrapling/bin/scrapling mcp`), and attaches both to **every** agent. New agents get the same grant. The Docker image installs Python, `scrapling[all]`, and Chromium. Refresh with `node $CLOUD_PI_CATALOG skills install-scrapling --force`.
+```powershell
+npm ci
+```
 
-### Settings vs studio
+Set variables and start the backend in PowerShell:
 
-- Studio lists agents and chats with the selected one. **Settings Agent** can install and attach from chat.
-- `/settings` (password) is the same catalog in a form UI (keys stay here).
+```powershell
+$env:DATABASE_URL = "postgresql://user:password@localhost:5432/e"
+$env:DATA_DIR = Join-Path $PWD "agent-storage"
+$env:PORT = "47831"
+npm run dev
+```
 
-## Volume layout
+In a second terminal:
+
+```powershell
+npm run dev:ui
+```
+
+Open `http://127.0.0.1:47821`. Vite proxies `/api`, `/files`, `/reports`, `/db-viewer`, and `/company-profile` to the backend on `47831`.
+
+To serve the production frontend locally, run `npm run build`, then `npm start` with host variables set. The backend serves `dist/`; deployment uses port `8080`.
+
+### Configuration and storage
+
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL connection. |
+| `PORT` | HTTP port; use `47831` with the current Vite development proxy. |
+| `RAILWAY_VOLUME_MOUNT_PATH` | Preferred persistent data root when set. |
+| `DATA_DIR` | Data-root override if the Railway variable is absent; default `/storage`. |
+
+Provider keys and much runtime configuration are managed through `/settings` and stored in PostgreSQL. Integrations support selected environment fallbacks. [`.env.example`](.env.example) documents base variables; the commands above set them explicitly.
+
+With a Railway volume mounted at `/storage`:
 
 | Path | Purpose |
-|------|---------|
-| `/storage/workspace` | Pi cwd for Website Dev Agent (site files) |
-| `/storage/workspaces/<slug>` | Pi cwd for every other agent (unknown slugs included; ops → `settings`) |
-| `/storage/workspaces/proposal` | Pi cwd for Proposal Agent (`ee-proposal` clone) |
-| `/storage/storage` | Pi session dir |
-| `/storage/pi` | Shared Pi models.json |
-| `/storage/library/skills` | Host skill library (install target) |
-| `/storage/browser/profiles` | Persistent Chromium profiles (site logins) |
-| `/storage/runtime/<agent-id>` | Per-agent Pi dir (role, mcp.json, settings) |
+| --- | --- |
+| `/storage/workspace` | Website agent workspace. |
+| `/storage/workspaces/<slug>` | Other agent workspaces; ops maps to `settings`. |
+| `/storage/storage` | Pi session storage. |
+| `/storage/pi` | Shared Pi model configuration. |
+| `/storage/library/skills` | Host skill library. |
+| `/storage/runtime/<agent-id>` | Materialized agent runtime configuration. |
+| `/storage/browser/profiles` | Persistent browser sessions. |
+| `/storage/files/<company-id>/<file-id>/` | Published shared files. |
 
-## Code map
+## Build and verification
 
-| Path | Purpose |
-|------|---------|
-| `app/page.tsx` | Studio UI (pick an agent, chat) |
-| `app/settings.tsx` | Password-gated keys, agents, skills, MCP |
-| `src/main.tsx` | `/settings` vs studio |
-| `agent/AGENT_BLUEPRINT.md` | SOP for adding an agent: charter, workspace, capabilities, context pack, acceptance test |
-| `agent/context/<slug>/` | Per-agent context packs; wired by `server/context-pack.mjs` into Pi ROLE.md and AGY AGENTS.md |
-| `server/context-pack.mjs` | Load pack, vision line, auto-continue, recovery snapshot, STATE.md journal |
-| `server/agent-env.mjs` | Allowlisted env for agent child processes |
-| `agent/ROLE.md` | Seed prompt for Website Dev Agent |
-| `agent/roles/proposal.md` | Seed prompt for Proposal Agent |
-| `agent/roles/package.md` | Seed prompt for Package Updater (prod_main catalog) |
-| `agent/roles/settings.md` | Seed prompt for Settings Agent |
-| `agent/skills/` | Bundled skills copied into the host library on boot |
-| `server/catalog-cli.mjs` | Chat-side catalog CLI (`CLOUD_PI_CATALOG`) |
-| `server/package-sheet.mjs` | Package Price Center Google Sheet CSV pull + parse |
-| `server/package-sheet-cli.mjs` | Package Updater CLI (`CLOUD_PI_PACKAGE_SHEET`) |
-| `agent/model-catalog.json` | Luna + Kimi + GLM 5.3 + OpenCode GO (GLM 5.3 Flash, Qwen 3.8 Flash, DeepSeek V4 Flash Vision) + YerPlan (GLM 5.3 Flash, Kimi K3, Qwen 3.8 Max) + Hive AI (GLM 5.3 Flash) catalog |
-| `server/catalog.mjs` | `agents`, `skills`, `mcp_servers`, attachments |
-| `server/impeccable.mjs` | Official Impeccable Pi skill → library + Website Dev Agent |
-| `server/scrapling.mjs` | Official Scrapling skill zip + MCP → library + every agent |
-| `server/sites.mjs` | Per-site username/password + persistent headless login |
-| `server/newpages.mjs` | NEWPAGES merchant news CRUD (first site automation) |
-| `server/runtime.mjs` | Per-agent Pi dir + `--no-skills --skill` args + optional subagent extension |
-| `agent/extensions/subagents.ts` | In-process `spawn_subagent` for Cloud Pi (not a third-party npm package) |
-| `agent/skills/spawn-subagents/` | Skill that teaches when to delegate; attaching it also loads the extension |
-| `server/db.mjs` | `settings`, `sessions`, `messages`, `git_syncs`, `debug_events` |
-| `server/index.mjs` | HTTP: `dist/` + `/api/*` (agents, skills, MCP, chat, git, health) |
-| `server/pi-stream.mjs` | Pi RPC events → live chat transcript |
-| `server/secrets.mjs` | Keys from Postgres |
-| `server/auth.mjs` | Settings session cookie |
-| `server/ee-html.mjs` | Zip workspace and POST to the HTML host engine |
-| `server/github.mjs` | Optional GitHub clone (not used for publishing) |
-| `server/models.mjs` | Model availability from DB keys |
+```powershell
+npm run build
+npm test
+npm run test:company-research
+npm run test:ads-research
+npm run lint
+git diff --check
+```
 
-## Open
+`npm test` runs the execution suite, not every repository test. It runs isolated Node processes and supplies `--experimental-test-module-mocks` where needed. Additional domain/integration tests live alongside their modules.
 
-1. Add the HTML host API key on `/settings` (or Railway `EE_HTML_API_KEY`). Saving keys or clicking **Publish workspace now** posts the zip to ee-html; Website Dev Agent chats do the same.
-2. Push/deploy **`railway`**, not `main`.
-3. Railway CLI on the Windows machine was blocked by Defender; debug via `/api/health` and `/api/debug`.
+The [release evidence](docs/execution-release-evidence.md) records a passing production build, 21 execution tests, and 29 runtime/context/browser tests. It also records a repository-wide lint failure and outstanding release checks. These are results recorded in that document, not tests rerun for this README update.
+
+## Deployment
+
+The checked-in target is Railway using `Dockerfile` and `railway.toml`. The image builds the frontend and WhatsApp sidecar, installs integration dependencies, and starts `node server/index.mjs`. Railway checks `/api/health` and allows a 330-second drain period.
+
+Provision PostgreSQL and persistent storage. The existing volume-based deployment uses a single replica. Credentials, company configuration, and integration setup must be completed for the relevant agents.
+
+This README does not certify the active deployment, its revision, models, credentials, or deployment branch. Check the actual deployment and release gates when preparing a release.
+
+## Repository guide
+
+| Path | Responsibility |
+| --- | --- |
+| `src/main.tsx` | Frontend routing and boot. |
+| `app/` | Chat, settings, business screens, research, calendar, and Media Kit. |
+| `server/index.mjs` | HTTP entry, boot, route integration, and process lifecycle. |
+| `server/execution/` | Runner, contracts, registry, dispatch, durable store, Pi adapter, and host MCP adapter. |
+| `server/orchestrator.mjs` | Durable plans, specialist tasks, and orchestration integration. |
+| `server/catalog.mjs`, `server/runtime.mjs` | Capability catalog and runtime materialization. |
+| `server/context-pack.mjs`, `server/agent-env.mjs` | Context construction and environment filtering. |
+| `server/company-research/`, `server/ads-research/` | Research pipelines, persistence, and reports. |
+| `server/media-ai/` | Media assets and sharing backend. |
+| `document_inteligence/` | Business handlers, migrations, rendering, and domain tests. Links retain the existing directory spelling. |
+| `agent/roles/`, `agent/skills/`, `agent/context/` | Roles, bundled skills, and context packs. |
+| `agent/extensions/host-tools.ts` | Native host-tool bridge for migrated workers. |
+| `sidecar/` | Go WhatsApp service. |
+| `docs/` | Architecture, research, jobs, and release evidence. |
+| `graft/` | Repository graph with exact source spans. |
+
+Further reading: [agent blueprint](agent/AGENT_BLUEPRINT.md), [document intelligence](document_inteligence/README.md), [company research](docs/company-deep-research.md), [research pipeline review](docs/company-research-pipeline-review.md), and [orchestrator jobs](docs/orchestrator-jobs.md). Domain documents may retain earlier transport descriptions; the execution migration notes above describe the current boundary.
+
+## Working in this repository
+
+Follow [`AGENTS.md`](AGENTS.md): **commit only on `main`; never create or switch branches; preserve unrelated user changes.** If the current branch is not `main`, stop and report the mismatch before committing.
+
+Consult Graft before searching or opening source:
+
+```text
+graft map
+graft ask "your question or literal identifier" --source
+graft skeleton server/execution/runner.mjs
+graft callers dispatchTool
+graft grep "literal identifier"
+```
+
+Use returned `covers:` spans to inspect precise ranges. Ranked `ask` results are not exhaustive; use `graft grep` for every occurrence. Run `graft build` after substantial code changes.
+
+This rewrite used Graft's map, runtime/catalog/persistence concepts, and source spans, including `server/execution/dispatch.mjs:69–183`, `document_inteligence/host.mjs:385–416`, and `server/media-ai/host.mjs:414–473`, then checked current routing, configuration, and release documentation. The working tree is authoritative when a graph summary is stale.
