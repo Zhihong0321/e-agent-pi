@@ -61,9 +61,8 @@ SOPs, `/demo` UI. This plan comes before full multi-tenancy, and multi-tenancy b
 
 ## 3. Why
 
-- **No more forks.** The 2026-10-07 fork (`e-agent-signals`, `ENABLED_AGENTS` env switch) exists
-  only because the roster is code and env, not company data. With three levels, a new company is
-  one tenant row plus choices, not a repository.
+- **No per-company copies.** A company's roster is company data, not code or env. With three
+  levels, a new company is one tenant row plus choices, not a repository.
 - **One update for everyone.** The platform improves an agent or its default SOP once, and every
   company gets it. Companies that customized their SOP keep their text and are told a new
   default exists.
