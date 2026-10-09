@@ -60,3 +60,25 @@ Nothing here counts as done until it passes on the deployed build.
 checkout of `HEAD` too and is not caused by this work.
 New in this pass: `companies.test.mjs` (4), `tenant-handlers.test.mjs` (5),
 `sops-migration.test.mjs` (3), plus the screens-versus-route-table test in `tenancy.test.mjs`.
+
+## Prod result: build `fe86945`, 2026-10-09 (13:00-13:15 UTC)
+
+Run against https://e-agent.up.railway.app with the fixture logins (evidence in
+`tests/multitenant/evidence/run10-surface.jsonl`, `run11-http.jsonl`, `run12-*.jsonl`; not committed).
+Judged on status codes, database records and run records, never on answer text.
+
+| Phase | Result |
+|---|---|
+| Boot | `ready:true`, no errors, no company without a Superadmin in the log. `agent_sops` migration ran on the Railway database. Pre-existing and unrelated: `server/web-sources-mcp-server.mjs` is missing from the image (web-sources MCP unavailable). |
+| `surface` (T9, T10, T11, T15) | **44 of 44 pass**: anonymous callers refused on every listed route (B3 closed on prod); company users refused on operator routes; `X-Tenant-Id` from a user changes nothing; platform agents hidden, not assignable, not browsable; a refused chat leaves no session (9 -> 9). |
+| `http` (T1-T4, T6 regression) | **47 pass, 0 fail**. |
+| `llm` (T5.1, T5.2) | pass: parallel chats get their own run row and marker in their own company. |
+| `llm2` (T5.3, T5.4, T5.10) | pass: unassigned agent absent from the roster, nothing delegated or written, other company gets 404 on run status. |
+| `llm3` (T5.5) fixed sessions | the harness case fails only because both fixed sessions already held the same request, so the agent declined to file a duplicate. Not a regression. |
+| T5.5 on fresh chats (`fresh-expense.mjs`, `fresh-expense-b.mjs`) | **pass**: EXP-2026-0017 landed in company A for mt-a-user1; EXP-2026-0002 landed in company B for mt-b-user1; no cross-company row. The B specialist cited "MT1009 Beta Sdn Bhd" policy (its own company), not the host company. |
+| F1 (host profile in tenant context) | No host-company name in any reply from a fresh chat since the deploy. The two replies that contain "Apex Solar" are the stored plan from the earlier run replayed inside the old fixed sessions. |
+| Wrong-company runs | `execution_runs.company_id <> users.company_tenant_id` since deploy: 0. |
+
+Still not run on prod: T12 (workspace folders), T13 (SOP edit by a company), T14 (operator creates a
+company; needs the operator credential), T16 (form link), T5.6-T5.8 (schedules), T8, T2.8, T7.
+Decisions A3, A6, A8, A13 are still open.
