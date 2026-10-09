@@ -277,4 +277,34 @@
   .demo-suggestions button { font-size: 9px; padding: 7px 8px; }
   .demo-profile-grid { grid-template-columns: 1fr; }
 }
+/* Compact rail: narrow, icon tiles two per row (labels live in the tooltip), live clock. */
+.demo-rail-clock { display: block; margin: -6px 0 10px; padding: 0 4px; color: #827d8e; font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; min-height: 14px; }
+@media (min-width: 821px) {
+  .demo-rail { width: 152px; padding: 16px 10px 10px; }
+  .demo-brand { padding: 0 4px 12px; gap: 8px; }
+  .demo-brand-mark { width: 28px; height: 28px; }
+  .demo-brand strong { font-size: 20px; }
+  .demo-brand small { font-size: 9px; margin-top: 2px; }
+  .demo-rail-clock { margin-top: -2px; }
+  .demo-sidebar-search { padding: 7px 9px; margin: 0 0 12px; gap: 6px; border-radius: 9px; }
+  .demo-sidebar-search input { font-size: 11px; }
+  .demo-rail nav { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .demo-rail nav button { min-height: 36px; padding: 0; justify-content: center; border-radius: 9px; }
+  .demo-rail nav button span { display: none; }
+  .demo-rail nav button svg { width: 18px; height: 18px; }
+  .demo-rail-label { padding: 0 4px; margin-bottom: 6px; }
+  .demo-insights-label, .demo-recent-chats { margin-top: 12px; }
+  .demo-recent-chats { padding-bottom: 10px; }
+  .demo-recent-chats button { padding: 6px 6px; font-size: 11px; }
+  .demo-recent-chats p { padding: 4px 6px; font-size: 10px; }
+  .demo-rail-bottom { padding: 8px 6px; gap: 6px; }
+  .demo-profile-avatar { width: 26px; height: 26px; font-size: 11px; }
+  .demo-rail-bottom small { display: none; }
+}
+/* Compact chat input: shorter box, tighter toolbar. */
+.demo-composer, .demo-home .demo-composer { padding: 10px 14px; border-radius: 14px; }
+.demo-composer textarea, .demo-home .demo-composer textarea { min-height: 44px; padding: 1px 0; }
+.demo-composer-toolbar { margin-top: 6px; }
+.demo-composer-note { margin-top: 6px; }
+.demo-home .demo-composer-wrap::before { inset: -12px; }
 @media (prefers-reduced-motion: reduce) { .di-demo button { transition: none; } .demo-card-head.is-working .demo-agent-identity { animation: none; } }

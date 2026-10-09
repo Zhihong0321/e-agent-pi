@@ -14,18 +14,18 @@ import "./theme.css";
 type Area = "home" | "onboarding" | "people" | "calendar" | "schedules" | "expenses" | "procurement" | "research" | "logs" | "usage" | "activity";
 const navigation: { area: Area; label: string; icon: string }[] = [
   { area: "home", label: "Home", icon: "home" },
-  { area: "onboarding", label: "Company profile", icon: "chat" },
+  { area: "onboarding", label: "Company profile", icon: "building" },
   { area: "people", label: "Company people", icon: "users" },
   { area: "calendar", label: "Company calendar", icon: "calendar" },
   { area: 'schedules', label: 'Schedules', icon: 'clock' },
-  { area: "expenses", label: "Expenses", icon: "file" },
-  { area: "procurement", label: "Procurement", icon: "database" },
-  { area: "research", label: "Research library", icon: "file" },
+  { area: "expenses", label: "Expenses", icon: "receipt" },
+  { area: "procurement", label: "Procurement", icon: "cart" },
+  { area: "research", label: "Research library", icon: "book" },
 ];
 const insights: { area: Area; label: string; icon: string }[] = [
-  { area: "logs", label: "Chat history", icon: "clock" },
+  { area: "logs", label: "Chat history", icon: "chat" },
   { area: "usage", label: "Usage", icon: "grid" },
-  { area: "activity", label: "Activity", icon: "database" },
+  { area: "activity", label: "Activity", icon: "pulse" },
 ];
 // A section shows only when its agent is assigned to this account (/api/agents lists only assigned agents).
 const areaAgent: Partial<Record<Area, string>> = {
@@ -68,6 +68,23 @@ const profileSections: { title: string; description: string; fields: { key: keyo
 const profileLabels = profileSections.flatMap((section) => section.fields);
 const guidedKeys: (keyof Profile)[] = ["name", "businessType", "businessActivity", "email", "billingAddress", "taxStatus"];
 
+const clockFormat = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kuala_Lumpur", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
+function formatClock(date: Date) {
+  const part = Object.fromEntries(clockFormat.formatToParts(date).map(item => [item.type, item.value]));
+  return `${part.day} ${part.month} ${part.year} | ${part.hour}:${part.minute}${String(part.dayPeriod).toLowerCase()}`;
+}
+// Starts empty and fills after mount so the server render and first client render match.
+function RailClock() {
+  const [now, setNow] = useState("");
+  useEffect(() => {
+    const tick = () => setNow(formatClock(new Date()));
+    tick();
+    const timer = window.setInterval(tick, 15000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return <time className="demo-rail-clock" suppressHydrationWarning>{now}</time>;
+}
+
 function Icon({ name, size = 18 }: { name: string; size?: number }) {
   const paths: Record<string, React.ReactNode> = {
     home: <><path d="m3 10 9-7 9 7v10H3V10Z"/><path d="M9 20v-7h6v7"/></>,
@@ -90,6 +107,11 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
     calendar: <><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></>,
     download: <><path d="M12 3v13m0 0-5-5m5 5 5-5M4 18v3h16v-3"/></>,
     trend: <><path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/></>,
+    building: <><path d="M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16M16 10h2a2 2 0 0 1 2 2v9M2 21h20"/><path d="M8 7h4M8 11h4M8 15h4"/></>,
+    receipt: <><path d="M5 2h14v20l-3-2-2 2-2-2-2 2-2-2-3 2V2Z"/><path d="M9 7h6M9 11h6M9 15h3"/></>,
+    cart: <><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h3l2.6 12.2a1 1 0 0 0 1 .8h9.4a1 1 0 0 0 1-.8L21 8H6"/></>,
+    book: <><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5v-17Z"/><path d="M4 21.5A2.5 2.5 0 0 0 6.5 24H20v-5"/><path d="M9 7h7"/></>,
+    pulse: <path d="M3 12h4l3-8 4 16 3-8h4"/>,
   };
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
@@ -498,19 +520,20 @@ function DemoWorkspace({ user, initialArea = "home", onLogout }: { user: DemoUse
     try { await onLogout(); }
     catch (error) { setNotice(error instanceof Error ? error.message : "Could not sign out"); setLoggingOut(false); }
   };
-  const navButton = ({ area: target, label, icon }: { area: Area; label: string; icon: string }) => <button key={target} className={area === target ? "active" : ""} aria-current={area === target ? "page" : undefined} onClick={() => setArea(target)}><Icon name={icon}/><span>{label}</span></button>;
+  const navButton = ({ area: target, label, icon }: { area: Area; label: string; icon: string }) => <button key={target} className={area === target ? "active" : ""} aria-current={area === target ? "page" : undefined} aria-label={label} title={label} onClick={() => setArea(target)}><Icon name={icon}/><span>{label}</span></button>;
 
   return <div className={`di-demo${area === "home" ? " demo-home" : ""}`}>
     <aside className="demo-rail">
       <a className="demo-brand" href="/demo" aria-label="e by Eternalgy"><span className="demo-brand-mark"><img src="/branding/e-logo.png" alt=""/></span><span><strong>e</strong><small>by Eternalgy</small></span></a>
+      <RailClock/>
       <label className="demo-sidebar-search"><Icon name="search" size={15}/><input aria-label="Search chats" value={chatSearch} onChange={event => setChatSearch(event.target.value)} placeholder="Search chats"/></label>
       <div className="demo-navigation">
-        <nav aria-label="Workspace sections">{navigation.filter(item => areaOffered(item.area, studio.agents)).map(navButton)}{hasAgent(studio.agents, "media-ai") && <button onClick={() => window.location.assign("/media-kit")}><Icon name="spark"/><span>Media Kit</span></button>}</nav>
+        <nav aria-label="Workspace sections">{navigation.filter(item => areaOffered(item.area, studio.agents)).map(navButton)}{hasAgent(studio.agents, "media-ai") && <button aria-label="Media Kit" title="Media Kit" onClick={() => window.location.assign("/media-kit")}><Icon name="spark"/><span>Media Kit</span></button>}</nav>
         <div className="demo-rail-label demo-insights-label">INSIGHTS</div>
         <nav className="demo-insights-nav" aria-label="Workspace insights">{insights.map(navButton)}</nav>
       </div>
       <div className="demo-recent-chats"><div className="demo-rail-label">RECENT CHATS</div>{recentChats.map(session => <button key={session.id} className={studio.sessionId === session.id ? "active" : ""} disabled={studio.loading} onClick={() => { setArea("home"); studio.openSession(session.id); }}>{session.title || "Chat session"}</button>)}{!recentChats.length && <p>{chatSearch ? "No matching chats" : "Your conversations will appear here."}</p>}</div>
-      <div className="demo-rail-bottom"><span className="demo-profile-avatar">{displayName.slice(0, 1).toUpperCase()}</span><div><strong>{displayName}</strong><small>{user.role} · Your workspace</small></div><button aria-label="Sign out" title="Sign out" disabled={loggingOut} onClick={() => void logout()}><Icon name="logout" size={15}/></button></div>
+      <div className="demo-rail-bottom"><span className="demo-profile-avatar">{displayName.slice(0, 1).toUpperCase()}</span><div title={`${displayName} · ${user.role}`}><strong>{displayName}</strong><small>{user.role} · Your workspace</small></div><button aria-label="Sign out" title="Sign out" disabled={loggingOut} onClick={() => void logout()}><Icon name="logout" size={15}/></button></div>
     </aside>
 
     <main className="demo-main">
