@@ -159,8 +159,8 @@ import { ensureSalesMcp } from "./sales-mcp.mjs";
 import { ensureGoogleAdsMcp } from "./google-ads-mcp.mjs";
 import { ensureOmMcp } from "./om-mcp.mjs";
 import { ensureWebSearchMcp } from "./web-search-mcp.mjs";
-import { ensureCompanyResearch, handleCompanyResearch, stopCompanyResearch } from "./company-research/host.mjs";
-import { ensureAdsResearch, handleAdsResearch, stopAdsResearch } from "./ads-research/host.mjs";
+import { ensureCompanyResearch, handleCompanyResearch, stopCompanyResearch, assignLegacyDossiers } from "./company-research/host.mjs";
+import { ensureAdsResearch, handleAdsResearch, stopAdsResearch, assignLegacyAdsJobs } from "./ads-research/host.mjs";
 import { ensureMediaAi, handleMediaAi } from "./media-ai/host.mjs";
 import { ensureScheduler } from './scheduler/host.mjs';
 import { handleSchedulerRoutes } from './scheduler/routes.mjs';
@@ -2117,6 +2117,10 @@ async function bootServices() {
   try {
     if (dbReady()) {
       const di = await ensureDocumentIntelligence({ pool: getPool(), catalog: catalogApi, logEvent });
+      const legacy = await assignLegacyDossiers(di.tenantId).catch(() => 0);
+      if (legacy) logEvent("info", `company research: ${legacy} earlier dossiers assigned to the operator company`);
+      const legacyAds = await assignLegacyAdsJobs(di.tenantId).catch(() => 0);
+      if (legacyAds) logEvent("info", `ads research: ${legacyAds} earlier jobs assigned to the operator company`);
       logEvent(
         "info",
         `document-intelligence ready (migrations: ${di.applied.join(", ") || "none"}; role separation: ${di.roleSeparation})`,
@@ -2460,8 +2464,8 @@ const server = createServer(async (req, res) => {
       companyId: (request, who, named) => named || tenantForRequest(request, who),
       workspaceFor: async (id, tenantId) => { const agent = await getAgent(id); return agent ? agentWorkspace(agent, tenantId || undefined) : null; },
     })) return;
-    if (await handleCompanyResearch(req, res, url, { authorized: (r) => authorized(r) || Boolean(user), readBody })) return;
-    if (await handleAdsResearch(req, res, url, { authorized, readBody })) return;
+    if (await handleCompanyResearch(req, res, url, { authorized, readBody, user })) return;
+    if (await handleAdsResearch(req, res, url, { authorized, readBody, user })) return;
     if (await handleMediaAi(req, res, url, { authorized, user })) return;
     if (handleSchedulerRoutes && await handleSchedulerRoutes(req, res, url, { authorized, user, readBody, json })) return;
     // Worker bridge for the execution system: attempt-scoped bearer token, one endpoint.

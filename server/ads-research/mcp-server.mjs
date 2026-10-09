@@ -5,11 +5,12 @@ import { z } from "zod";
 async function callHost(body) {
   const base = process.env.ADS_RESEARCH_URL;
   const token = process.env.ADS_RESEARCH_TOKEN;
-  if (!base || !token) throw new Error("Ads research host credentials were not injected");
+  const tenant = process.env.ADS_RESEARCH_TENANT;
+  if (!base || !token || !tenant) throw new Error("Ads research host credentials were not injected");
   const response = await fetch(`${base}/api/internal/ads-research`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, tenant }),
     signal: AbortSignal.timeout(30_000),
   });
   const out = await response.json();

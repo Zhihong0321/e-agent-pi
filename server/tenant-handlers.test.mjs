@@ -118,9 +118,9 @@ test('platform agents are never granted to a company login, whatever the table s
       return { rows: (grants.get(params[0]) || []).includes(params[1]) ? [{}] : [] };
     },
   };
-  assert.deepEqual(await assignedAgentIds('u1', pool), ['orchestrator', 'di-documents']);
+  assert.deepEqual(await assignedAgentIds('u1', pool), ['orchestrator', 'di-documents', 'ads-research'], 'research is a company feature');
   assert.equal(await userAssignedAgent('u1', 'di-documents', pool), true);
   assert.equal(await userAssignedAgent('u1', 'website', pool), false);
-  assert.equal(await userAssignedAgent('u1', 'ads-research', pool), false);
+  assert.equal(await userAssignedAgent('u1', 'ads-research', pool), true);
   assert.equal(await userAssignedAgent('u2', 'orchestrator', pool), false);
 });

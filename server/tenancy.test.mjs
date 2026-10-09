@@ -12,7 +12,7 @@ const B = '9baf99c3-0085-4532-b023-b2a5bbb47329';
 
 test('a route nobody listed is operator-only', () => {
   for (const route of ['/api/metrics', '/api/debug', '/api/git', '/api/host', '/api/skills',
-    '/api/mcp', '/api/blueprints', '/api/models/test', '/api/host', '/api/something-new', '/api/agents/orchestrator', '/api/ads-research/jobs']) {
+    '/api/mcp', '/api/blueprints', '/api/models/test', '/api/host', '/api/something-new', '/api/agents/orchestrator']) {
     assert.equal(routeAccess(route, 'GET'), 'operator', route);
   }
   assert.equal(routeAccess('/api/model', 'POST'), 'operator');
@@ -22,7 +22,7 @@ test('a route nobody listed is operator-only', () => {
 test('user routes are the ones company users need', () => {
   for (const [route, method] of [['/api/chat', 'POST'], ['/api/messages', 'GET'], ['/api/sessions', 'GET'], ['/api/sessions/abc', 'PATCH'],
     ['/api/agents', 'GET'], ['/api/models', 'GET'], ['/api/demo/state', 'GET'], ['/api/schedules', 'GET'], ['/api/media-kit', 'GET'],
-    ['/api/execution/runs', 'GET'], ['/api/company-research/dossiers', 'GET'], ['/api/files', 'GET'], ['/api/files/raw', 'GET']]) {
+    ['/api/execution/runs', 'GET'], ['/api/company-research/dossiers', 'GET'], ['/api/files', 'GET'], ['/api/files/raw', 'GET'], ['/api/ads-research/jobs', 'POST']]) {
     assert.equal(routeAccess(route, method), 'user', `${method} ${route}`);
   }
 });

@@ -2,9 +2,10 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { DATA_DIR, ROOT, agentWorkspace } from "../paths.mjs";
+import { DATA_DIR, ROOT } from "../paths.mjs";
 import { getAgent, getMcpServer, createMcpServer, updateMcpServer, seedSystemAgent, updateAgent } from "../catalog.mjs";
-import { ADS_RESEARCH_AGENT_ID, adsResearchAuthorized } from "./auth.mjs";
+import { ADS_RESEARCH_AGENT_ID, adsResearchTenantFrom } from "./auth.mjs";
+import { tenantForRequest } from "../tenancy.mjs";
 import { AdsResearchStore } from "./store.mjs";
 import { resolveModelCredentials } from "../models.mjs";
 
@@ -44,7 +45,7 @@ function cleanText(value, name) {
   return text;
 }
 
-export function normalizeAdsInput({ country, keyword, language = "en" }) {
+export function normalizeAdsInput({ country, keyword, language = "en" }, companyId = "") {
   const rawCountry = cleanText(country, "country");
   const key = rawCountry.toLowerCase();
   const known = COUNTRY_CODES[key];
@@ -55,7 +56,7 @@ export function normalizeAdsInput({ country, keyword, language = "en" }) {
   const lang = String(language || "en").toLowerCase();
   if (!/^(en|zh)$/.test(lang)) throw new Error("language must be en or zh");
   const slug = `${label}-${term}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) || "ads-research";
-  const hash = createHash("sha256").update(`${region}\n${term.toLowerCase()}\n${lang}`).digest("hex").slice(0, 12);
+  const hash = createHash("sha256").update(`${region}\n${term.toLowerCase()}\n${lang}\n${companyId}`).digest("hex").slice(0, 12);
   return { country: label, region, keyword: term, language: lang, topic: `ads-${slug}-${hash}` };
 }
 
@@ -205,17 +206,24 @@ export async function ensureAdsResearch({ log = () => {} } = {}) {
   return { portableRoot: PORTABLE_ROOT, ready: true };
 }
 
+/** One-time migration: jobs made before they had a company belong to the operator's company. */
+export async function assignLegacyAdsJobs(companyId) {
+  return store && companyId ? store.assignLegacy(companyId) : 0;
+}
+
 export async function stopAdsResearch() {
   stopped = true;
   clearInterval(ensureAdsResearch.timer);
   if (activeChild && !activeChild.killed) activeChild.kill("SIGTERM");
 }
 
-export async function adsResearchAction({ action, id, country, keyword, language = "en", format = "json" }, repository = store) {
+export async function adsResearchAction({ action, id, country, keyword, language = "en", format = "json", companyId }, repository = store) {
   if (!repository) throw new Error("Ads research is not initialized");
-  if (action === "start") return repository.enqueue(normalizeAdsInput({ country, keyword, language }));
+  if (!companyId) throw new Error("Company tenant is required");
+  // The output folder name includes the company, so two companies researching the same keyword never share files.
+  if (action === "start") return repository.enqueue({ ...normalizeAdsInput({ country, keyword, language }, companyId), companyId });
   if (!/^[0-9a-f-]{36}$/i.test(String(id))) throw new Error("Valid research id required");
-  const row = await repository.get(id);
+  const row = await repository.get(id, companyId);
   if (!row) throw new Error("Ads research job not found");
   if (action === "get") return { ...row, report_url: row.status === "complete" ? reportUrl(id) : null };
   if (action === "artifact") {
@@ -227,13 +235,17 @@ export async function adsResearchAction({ action, id, country, keyword, language
   throw new Error("Unknown ads research action");
 }
 
-export async function handleAdsResearch(req, res, url, { authorized, readBody, repository = store }) {
+export async function handleAdsResearch(req, res, url, { authorized, readBody, user = null, repository = store }) {
   const reportPrefix = "/reports/ads-research/";
+  // A company user works on their own company; the operator on the company it names; the research
+  // helper on the company its token was issued for.
+  const callerCompany = () => ((user || authorized(req)) ? tenantForRequest(req, user) : null);
   if (url.pathname.startsWith(reportPrefix)) {
-    if (!authorized(req)) { res.writeHead(401, { "Content-Type": "text/plain; charset=utf-8" }); res.end("Unauthorized"); return true; }
+    const reportCompany = callerCompany();
+    if (!reportCompany) { res.writeHead(401, { "Content-Type": "text/plain; charset=utf-8" }); res.end("Unauthorized"); return true; }
     const match = url.pathname.slice(reportPrefix.length).match(/^([0-9a-f-]{36})\/(report\.html|shots\/([A-Za-z0-9._-]+))$/i);
     if (!match || req.method !== "GET") { res.writeHead(match ? 405 : 404, { Allow: "GET" }); res.end(match ? "GET required" : "Report not found"); return true; }
-    const row = await repository?.get(match[1]);
+    const row = await repository?.get(match[1], reportCompany);
     if (!row || row.status !== "complete") { res.writeHead(404); res.end("Report not found"); return true; }
     const file = path.join(topicOut(row), match[2]);
     const root = topicOut(row);
@@ -249,15 +261,18 @@ export async function handleAdsResearch(req, res, url, { authorized, readBody, r
   const prefix = "/api/ads-research/jobs";
   if (!internal && !url.pathname.startsWith(prefix)) return false;
   const json = (code, body) => { res.writeHead(code, { "Content-Type": "application/json", "Cache-Control": "private, no-store" }); res.end(JSON.stringify(body)); };
-  if (!(internal ? adsResearchAuthorized(req) : authorized(req))) { json(401, { error: "Unauthorized" }); return true; }
+  if (internal && req.method !== "POST") { json(405, { error: "POST required" }); return true; }
+  const internalBody = internal ? JSON.parse(await readBody(req) || "{}") : null;
+  const companyId = internal ? adsResearchTenantFrom(req, internalBody?.tenant) : callerCompany();
+  if (!companyId) { json(401, { error: "Unauthorized" }); return true; }
   if (!repository) { json(503, { error: "Ads research is not initialized" }); return true; }
   try {
-    if (internal) { if (req.method !== "POST") { json(405, { error: "POST required" }); return true; } json(200, { ok: true, result: await adsResearchAction(JSON.parse(await readBody(req) || "{}"), repository) }); return true; }
-    if (req.method === "POST" && url.pathname === prefix) { json(202, await adsResearchAction({ action: "start", ...(JSON.parse(await readBody(req) || "{}")) }, repository)); return true; }
+    if (internal) { const input = { ...internalBody }; delete input.tenant; json(200, { ok: true, result: await adsResearchAction({ ...input, companyId }, repository) }); return true; }
+    if (req.method === "POST" && url.pathname === prefix) { json(202, await adsResearchAction({ ...(JSON.parse(await readBody(req) || "{}")), action: "start", companyId }, repository)); return true; }
     const match = url.pathname.slice(prefix.length).match(/^\/([0-9a-f-]{36})(?:\/artifact)?$/i);
     if (!match || req.method !== "GET") { json(404, { error: "Unknown ads research route" }); return true; }
-    if (url.pathname.endsWith("/artifact")) { const out = await adsResearchAction({ action: "artifact", id: match[1], format: url.searchParams.get("format") || "json" }, repository); res.writeHead(200, { "Content-Type": out.format === "md" ? "text/markdown; charset=utf-8" : "application/json", "Cache-Control": "private, no-store" }); res.end(out.content); return true; }
-    json(200, await adsResearchAction({ action: "get", id: match[1] }, repository));
+    if (url.pathname.endsWith("/artifact")) { const out = await adsResearchAction({ companyId, action: "artifact", id: match[1], format: url.searchParams.get("format") || "json" }, repository); res.writeHead(200, { "Content-Type": out.format === "md" ? "text/markdown; charset=utf-8" : "application/json", "Cache-Control": "private, no-store" }); res.end(out.content); return true; }
+    json(200, await adsResearchAction({ companyId, action: "get", id: match[1] }, repository));
   } catch (error) { json(400, { error: error.message }); }
   return true;
 }

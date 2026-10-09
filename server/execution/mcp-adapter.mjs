@@ -38,13 +38,13 @@ async function resolveBindingEnv(binding) {
   }
   if (binding.slug === 'ads-research') {
     const { adsResearchEnv } = await import('../ads-research/auth.mjs');
-    Object.assign(env, adsResearchEnv('ads-research'));
+    Object.assign(env, adsResearchEnv('ads-research', process.env, binding.companyId));
   } else if (binding.slug === 'media-ai') {
     const { mediaAiEnv } = await import('../media-ai/auth.mjs');
     Object.assign(env, mediaAiEnv('media-ai', process.env, binding.companyId));
   } else if (binding.slug === 'company-research') {
     const { researchEnv } = await import('../company-research/auth.mjs');
-    Object.assign(env, researchEnv('company-deep-research'));
+    Object.assign(env, researchEnv('company-deep-research', process.env, binding.companyId));
   } else if (binding.slug === 'ee-mail') {
     // The helper calls back into this host with a per-boot bearer; without it every send fails.
     const { eeMailEnv } = await import('../ee-mail.mjs');

@@ -106,7 +106,7 @@ Done in code, each at its layer:
 |---|---|
 | L1 kernel | `server/tenancy.mjs`: `tenantOf`, `tenantFromRun`, `tenantForRequest`, `tenantOfSession`, `tenantOfOwner`. `companyHostContext()` and `state.tenantId` are gone; the bootstrap tenant is `operatorTenantId()`, readable only through the kernel and `host.mjs`. |
 | L0 access | `server/route-access.mjs`: every `/api/` route is public, user or operator, and an unlisted route is operator. This replaces the deny-list `wantsAuth`, which left every GET not named in it open (`/api/sessions`, `/api/messages`, `/api/files`, `/api/debug`, `/api/metrics`, `POST /api/model`). |
-| L0 agents | `isPlatformAgent()` splits platform agents from company agents. `server/agent-access.mjs`: a company user can use only an assigned company agent, so platform agents cannot be assigned or used by company logins, whatever `user_agents` says. |
+| L0 agents | `isPlatformAgent()` marks only agents that work on the operator's own repos and infrastructure (website dev, proposal, newpages, ...). A feature that handles company data is never platform: it is a company agent whose records carry the company. `server/agent-access.mjs`: a company user can use only an assigned company agent, so platform agents cannot be assigned or used by company logins, whatever `user_agents` says. |
 | L2 workspace | `agentWorkspace(agent, tenantId)`: company agents get `workspaces/tenants/<tenantId>/<slug>` and throw without a tenant. The runner picks it from the run's company. |
 | L2 SOP | `agent_sops` has `company_id` (NULL = platform default). Reads fall back to the default; writes from a company, including the Forward Deploy Engineer, only touch that company's row. |
 | L2 prompt | `companyOnboardingStatus(tenantId)` requires a tenant. `get_company_setup`, the roster, the chat prompt and the dispatch gate all pass the run's company. The runtime `STATE.md` journal (what the last chat did) is platform-agents only. |
@@ -117,7 +117,7 @@ Done in code, each at its layer:
 | L4 | `server/tenancy.test.mjs` (route table, workspace isolation, static guard against ambient tenant). Existing suites updated; full local run: 476 pass, 1 fail (`prompt size caps`, `di-documents.md` is 4293 chars against a 4000 cap, unrelated and already failing). |
 
 Open items:
-1. **Ads Research, Company Research, ee-mail** have no company on their records, so they are classed as platform agents and unavailable to company logins until their tables carry a tenant.
+1. **Research data** (Company Research, Ads Research) now carries `company_id` and every read filters by it; they are company features. (An earlier version of this note wrongly made them platform-only, which left their routes open to every company.)
 2. **Legacy pooled Pi chat** (`chat()`/`startPiSlot`, used only for the AGY engine) cannot serve company agents: it fails closed. Prewarm skips company agents.
 3. **Row-level security** covers `di.*` only. `sessions`, `execution_runs`, `orchestrator_*`, schedules and `agent_sops` are tenant-keyed in code, not by the database.
 4. **Old data**: existing files under `workspaces/<slug>` and public form links from before this change are not migrated (alpha data only).

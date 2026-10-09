@@ -88,8 +88,6 @@ const PLATFORM_AGENT_SLUGS = new Set([
   "website", "settings", "ops", "proposal", "newpages", "newpages-site-manager", "package", "package-updater",
   "afa-rate", "sales", "google-ads", "tnb", "solar-roi", "om", "app-helper", "open-design-helper",
   "whatsapp-assistant", "composio",
-  // Their job records carry no company yet, so they stay with the platform until they do.
-  "ads-research", "company-deep-research", "company-research",
 ]);
 
 /** True for an agent whose workspace is the platform's; every other agent works inside one company. */

@@ -1,12 +1,19 @@
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 export const RESEARCH_AGENT_ID = 'company-deep-research';
 export const RESEARCH_TOKEN = randomBytes(32).toString('hex');
-export function researchAuthorized(req) {
+// One token per company: the MCP helper started for a run carries its company's token, so the
+// host knows which company a call is for without trusting the helper's claim.
+const tokenForTenant = (tenantId) => createHmac('sha256', RESEARCH_TOKEN).update(String(tenantId)).digest('hex');
+/** The company a bearer token was issued for, or null when the claim and token do not match. */
+export function researchTenantFrom(req, claimedTenant) {
+  const tenant = typeof claimedTenant === 'string' ? claimedTenant.trim() : '';
+  if (!tenant) return null;
   const got = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-  const a = Buffer.from(got), b = Buffer.from(RESEARCH_TOKEN);
-  return a.length === b.length && timingSafeEqual(a, b);
+  const a = Buffer.from(got), b = Buffer.from(tokenForTenant(tenant));
+  return a.length === b.length && timingSafeEqual(a, b) ? tenant : null;
 }
-export function researchEnv(agent, from = process.env) {
+export function researchEnv(agent, from = process.env, tenantId = '') {
   const id = typeof agent === 'string' ? agent : agent?.id || agent?.slug;
-  return id === RESEARCH_AGENT_ID ? { CLOUD_PI_RESEARCH_URL: `http://127.0.0.1:${from.PORT || process.env.PORT || '8080'}`, CLOUD_PI_RESEARCH_TOKEN: RESEARCH_TOKEN } : {};
+  if (id !== RESEARCH_AGENT_ID || !tenantId) return {};
+  return { CLOUD_PI_RESEARCH_URL: `http://127.0.0.1:${from.PORT || process.env.PORT || '8080'}`, CLOUD_PI_RESEARCH_TENANT: tenantId, CLOUD_PI_RESEARCH_TOKEN: tokenForTenant(tenantId) };
 }

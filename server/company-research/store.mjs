@@ -1,5 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { VERSION } from './core.mjs';
+// Every dossier belongs to one company. Every method a company can reach takes that company and
+// filters by it; a missing company is an error, never "all companies".
+const needCompany = (companyId) => {
+  if (typeof companyId !== 'string' || !companyId.trim()) throw new Error('Company tenant is required');
+  return companyId.trim();
+};
 export class ResearchStore {
   constructor(pool) { this.pool = pool; }
   async migrate() {
@@ -20,6 +26,8 @@ export class ResearchStore {
         html text NOT NULL, name text NOT NULL, published_at timestamptz NOT NULL DEFAULT now());
       ALTER TABLE company_research_dossiers ADD COLUMN IF NOT EXISTS options jsonb NOT NULL DEFAULT '{}';
       ALTER TABLE company_research_dossiers ADD COLUMN IF NOT EXISTS lease_token uuid;
+      ALTER TABLE company_research_dossiers ADD COLUMN IF NOT EXISTS company_id text;
+      CREATE INDEX IF NOT EXISTS company_research_company ON company_research_dossiers(company_id, created_at);
       CREATE TABLE IF NOT EXISTS company_research_newpages (id text PRIMARY KEY, name_norm text NOT NULL, data jsonb NOT NULL);`);
     try {
       await this.pool.query('CREATE EXTENSION IF NOT EXISTS pg_trgm');
@@ -27,13 +35,14 @@ export class ResearchStore {
       this.trigrams = true;
     } catch { this.trigrams = false; }
   }
-  async enqueue(seed, force = false, options = {}) {
+  async enqueue(seed, force = false, options = {}, companyId) {
+    needCompany(companyId);
     if (!force) {
-      const old = await this.pool.query(`SELECT id,status FROM company_research_dossiers WHERE version=$1 AND seed=$2::jsonb AND options=$3::jsonb AND ((status IN ('queued','running')) OR (status='complete' AND created_at > now()-interval '30 days') OR (status='partial' AND created_at > now()-interval '1 day')) ORDER BY created_at DESC LIMIT 1`, [VERSION, JSON.stringify(seed), JSON.stringify(options)]);
+      const old = await this.pool.query(`SELECT id,status FROM company_research_dossiers WHERE company_id=$4 AND version=$1 AND seed=$2::jsonb AND options=$3::jsonb AND ((status IN ('queued','running')) OR (status='complete' AND created_at > now()-interval '30 days') OR (status='partial' AND created_at > now()-interval '1 day')) ORDER BY created_at DESC LIMIT 1`, [VERSION, JSON.stringify(seed), JSON.stringify(options), companyId]);
       if (old.rows.length) return { ...old.rows[0], cached: true };
     }
     const id = randomUUID();
-    await this.pool.query('INSERT INTO company_research_dossiers(id,place_id,version,seed,options) VALUES($1,$2,$3,$4,$5)', [id, seed.place_id || null, VERSION, seed, options]);
+    await this.pool.query('INSERT INTO company_research_dossiers(id,place_id,version,seed,options,company_id) VALUES($1,$2,$3,$4,$5,$6)', [id, seed.place_id || null, VERSION, seed, options, companyId]);
     await this.event(id, { type: 'queued', status: 'queued' }); return { id, status: 'queued', cached: false };
   }
   async claim() {
@@ -48,17 +57,18 @@ export class ResearchStore {
     SELECT * FROM claimed`, [randomUUID()]);
     return q.rows[0];
   }
-  async get(id) {
-    const q = await this.pool.query('SELECT id,status,result,error,created_at,updated_at FROM company_research_dossiers WHERE id=$1', [id]);
+  async get(id, companyId) {
+    const q = await this.pool.query('SELECT id,status,result,error,created_at,updated_at FROM company_research_dossiers WHERE id=$1 AND company_id=$2', [id, needCompany(companyId)]);
     return q.rows[0] || null;
   }
-  async list({ query = '', status = 'finished', limit = 20, offset = 0 } = {}) {
+  async list({ query = '', status = 'finished', limit = 20, offset = 0, companyId } = {}) {
+    needCompany(companyId);
     if (!['all', 'finished', 'active', 'complete', 'partial', 'failed', 'needs_review'].includes(status)) throw new Error('Invalid research status filter');
     if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0 || offset > 100000 || typeof query !== 'string' || query.length > 200) throw new Error('Invalid research pagination or query');
-    const where = `($1='' OR position(lower($1) in lower(d.seed->>'name'))>0) AND ($2='all' OR ($2='finished' AND d.status NOT IN ('queued','running')) OR ($2='active' AND d.status IN ('queued','running')) OR d.status=$2)`;
+    const where = `d.company_id=$3 AND ($1='' OR position(lower($1) in lower(d.seed->>'name'))>0) AND ($2='all' OR ($2='finished' AND d.status NOT IN ('queued','running')) OR ($2='active' AND d.status IN ('queued','running')) OR d.status=$2)`;
     const [count, rows] = await Promise.all([
-      this.pool.query(`SELECT count(*)::int AS total FROM company_research_dossiers d WHERE ${where}`, [query.trim(), status]),
-      this.pool.query(`SELECT d.id,d.seed->>'name' AS name,d.seed->>'website' AS website,d.status,d.created_at AS "createdAt",d.updated_at AS "updatedAt",d.result IS NOT NULL AS "hasReport",d.result->'meta'->'durationMs' AS "durationMs",d.result->'scores'->'coverage' AS coverage,d.result->'meta'->>'version' AS version,p.token AS "publicationToken" FROM company_research_dossiers d LEFT JOIN company_research_publications p ON p.dossier_id=d.id WHERE ${where} ORDER BY d.created_at DESC,d.id DESC LIMIT $3 OFFSET $4`, [query.trim(), status, limit, offset]),
+      this.pool.query(`SELECT count(*)::int AS total FROM company_research_dossiers d WHERE ${where}`, [query.trim(), status, companyId]),
+      this.pool.query(`SELECT d.id,d.seed->>'name' AS name,d.seed->>'website' AS website,d.status,d.created_at AS "createdAt",d.updated_at AS "updatedAt",d.result IS NOT NULL AS "hasReport",d.result->'meta'->'durationMs' AS "durationMs",d.result->'scores'->'coverage' AS coverage,d.result->'meta'->>'version' AS version,p.token AS "publicationToken" FROM company_research_dossiers d LEFT JOIN company_research_publications p ON p.dossier_id=d.id WHERE ${where} ORDER BY d.created_at DESC,d.id DESC LIMIT $4 OFFSET $5`, [query.trim(), status, companyId, limit, offset]),
     ]);
     return { items: rows.rows, total: Number(count.rows[0].total), limit, offset };
   }
@@ -71,15 +81,18 @@ export class ResearchStore {
     const q = await this.pool.query("UPDATE company_research_dossiers SET lease_until=now()-interval '1 second' WHERE id=$1 AND status='running' AND lease_token=$2 RETURNING id", [id, token]);
     return q.rows.length > 0;
   }
-  async publish(id, html, name) {
-    return (await this.pool.query(`INSERT INTO company_research_publications(token,dossier_id,html,name) VALUES($1,$2,$3,$4)
+  async publish(id, html, name, companyId) {
+    const row = (await this.pool.query(`INSERT INTO company_research_publications(token,dossier_id,html,name)
+      SELECT $1,d.id,$3,$4 FROM company_research_dossiers d WHERE d.id=$2 AND d.company_id=$5
       ON CONFLICT(dossier_id) DO UPDATE SET html=excluded.html,name=excluded.name,published_at=now()
-      RETURNING token,published_at`, [randomUUID(), id, html, name])).rows[0];
+      RETURNING token,published_at`, [randomUUID(), id, html, name, needCompany(companyId)])).rows[0];
+    if (!row) throw new Error('Dossier not found');
+    return row;
   }
   async publication(token) { return (await this.pool.query('SELECT html,name,published_at FROM company_research_publications WHERE token=$1', [token])).rows[0] || null; }
-  async unpublish(id) { await this.pool.query('DELETE FROM company_research_publications WHERE dossier_id=$1', [id]); }
+  async unpublish(id, companyId) { await this.pool.query('DELETE FROM company_research_publications p USING company_research_dossiers d WHERE p.dossier_id=d.id AND d.id=$1 AND d.company_id=$2', [id, needCompany(companyId)]); }
   async event(id, data, token) { await this.write('company_research_events', id, 'data', [data], token); }
-  async events(id, after = 0) { return (await this.pool.query('SELECT seq,data FROM company_research_events WHERE dossier_id=$1 AND seq>$2 ORDER BY seq LIMIT 100', [id, after])).rows; }
+  async events(id, after = 0, companyId) { return (await this.pool.query('SELECT e.seq,e.data FROM company_research_events e JOIN company_research_dossiers d ON d.id=e.dossier_id WHERE e.dossier_id=$1 AND e.seq>$2 AND d.company_id=$3 ORDER BY e.seq LIMIT 100', [id, after, needCompany(companyId)])).rows; }
   async write(table, id, columns, values, token) {
     const tokenIndex = values.length + 2;
     const q = await this.pool.query(`WITH owned AS (SELECT id FROM company_research_dossiers WHERE id=$1 AND ($${tokenIndex}::uuid IS NULL OR (status='running' AND lease_token=$${tokenIndex} AND lease_until>now())) FOR UPDATE)
@@ -103,8 +116,8 @@ export class ResearchStore {
     await this.event(id, { type: 'finished', status: 'failed', error });
     return true;
   }
-  async replayInput(id) {
-    const q = await this.pool.query('SELECT replay_input,status FROM company_research_dossiers WHERE id=$1', [id]);
+  async replayInput(id, companyId) {
+    const q = await this.pool.query('SELECT replay_input,status FROM company_research_dossiers WHERE id=$1 AND company_id=$2', [id, needCompany(companyId)]);
     if (!q.rows[0]?.replay_input) throw new Error('Dossier has no completed replay input');
     const evidence = (await this.pool.query('SELECT data FROM company_research_evidence WHERE dossier_id=$1 ORDER BY id', [id])).rows.map(r => r.data);
     const runs = (await this.pool.query('SELECT data FROM company_research_runs WHERE dossier_id=$1 ORDER BY lane', [id])).rows.map(r => r.data);

@@ -24,6 +24,7 @@ const USER_PREFIX = [
   "/api/schedules",
   "/api/media-kit",
   "/api/company-research",
+  "/api/ads-research",
 ];
 const USER_EXACT = new Set(["/api/chat", "/api/messages", "/api/execution/runs"]);
 const USER_GET_EXACT = new Set(["/api/agents", "/api/models", "/api/files", "/api/files/raw"]);

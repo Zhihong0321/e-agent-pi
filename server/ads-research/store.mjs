@@ -2,6 +2,13 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
+// Every job belongs to one company. A job is found, listed or reused only by that company; a missing
+// company is an error, never "all companies".
+const needCompany = (companyId) => {
+  if (typeof companyId !== "string" || !companyId.trim()) throw new Error("Company tenant is required");
+  return companyId.trim();
+};
+
 export class AdsResearchStore {
   constructor(root) {
     this.root = root;
@@ -32,8 +39,9 @@ export class AdsResearchStore {
 
   async enqueue(input) {
     await this.load();
+    needCompany(input.companyId);
     const existing = [...this.jobs.values()].find((row) =>
-      row.country === input.country && row.keyword === input.keyword && row.language === input.language &&
+      row.companyId === input.companyId && row.country === input.country && row.keyword === input.keyword && row.language === input.language &&
       ["queued", "running", "complete"].includes(row.status),
     );
     if (existing) return { ...existing, cached: true };
@@ -51,9 +59,19 @@ export class AdsResearchStore {
     return { ...row, cached: false };
   }
 
-  async get(id) {
+  async get(id, companyId) {
     await this.load();
-    return this.jobs.get(id) || null;
+    const row = this.jobs.get(id);
+    return row && row.companyId === needCompany(companyId) ? row : null;
+  }
+
+  /** One-time migration: jobs made before they had a company belong to the company that made them (the operator's). */
+  async assignLegacy(companyId) {
+    await this.load();
+    let changed = 0;
+    for (const row of this.jobs.values()) if (!row.companyId) { row.companyId = companyId; changed += 1; }
+    if (changed) await this.save();
+    return changed;
   }
 
   async update(id, patch) {

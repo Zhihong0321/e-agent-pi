@@ -14,7 +14,7 @@ symptom. Status: `done-local` (changed and covered by a local test, still needs 
 |---|---|---|---|
 | A1 | L2 company | **Every company has a Superadmin by default.** `server/companies.mjs` `createCompany` makes the company, its default records, the first Superadmin and the company-agent grants in one transaction (rolls back on any failure). Operator routes: `GET/POST /api/platform/companies`. `scripts/create-test-company.mjs` now calls it. Boot logs any company with no active Superadmin. | **done-local** (`server/companies.test.mjs`, PGlite) |
 | A2 | L2 company | **Last-Superadmin guard is per company** in both places it existed (`people-service.mjs`, `users.mjs`). Open question kept: more than one Superadmin per company is allowed, at least one required; there is still no delete-user path to guard. | **done-local** (`companies.test.mjs`) |
-| A3 | L2 data | **Ads Research, Company Research, ee-mail have no company on their records.** Classed as platform agents so company logins cannot use them. Real fix: add a tenant to their job/record tables, then make them company agents again. | open (needs your decision) |
+| A3 | L2 data | **Research data is per company, and research is a company feature.** I had made Company Research and Ads Research "platform-only" while leaving their HTTP routes open to company users, so every company could list every company's dossiers (8 on prod). Fixed at the rule, not the symptom: both features are company features again; every dossier/job carries `company_id`; list, read, replay, publish, unpublish, event stream, artifact and report files all filter by it; the cache is per company; the research helper's token is bound to one company; earlier records are assigned to the operator company at boot. Published `/reports/company/<token>` links stay public by link (that is the share). `ee-mail` has no stored records; its sender is the shared mail service, see A6. | **done-local** (store, host and ads tests; prod case T17 written, not run) |
 | A4 | L2 data | **Row-level security covers `di.*` only.** `sessions`, `execution_runs`, `orchestrator_*`, schedules and `agent_sops` are separated in code, not by the database. `di.company_profile_field_def` has no tenant column and no RLS. | open |
 | A5 | L0 platform | **Operator header is validated.** `X-Tenant-Id` must be an existing company (400 otherwise). Still open: with no header the operator acts on the bootstrap company H, so the platform is not yet a separate identity from H. | partly done-local (gate in `index.mjs`, `companyExists`; no automated test of the gate) |
 | A6 | L0 platform | **Integrations and credentials are global.** WhatsApp, browser sign-ins and profiles, Google Ads, Composio, GitHub, the mail service and web search use one credential set for everyone. Decide per integration: platform-only, or per-company credentials. | open (needs your decision) |
@@ -44,7 +44,7 @@ Last local full run: see "Result" below.
 
 ## C. Order of work
 
-1. Decide A3, A6, A8, A13.
+1. Decide A6, A8, A13.
 2. Commit, deploy; confirm `/api/health` reports the commit.
 3. Run `node tests/multitenant/run.mjs surface` on prod (T9, T10, T11, T15), then the earlier `http`, `llm` phases to confirm no regression.
 4. Add the missing prod cases B5 (public form link), B6, B7.
@@ -81,4 +81,4 @@ Judged on status codes, database records and run records, never on answer text.
 
 Still not run on prod: T12 (workspace folders), T13 (SOP edit by a company), T14 (operator creates a
 company; needs the operator credential), T16 (form link), T5.6-T5.8 (schedules), T8, T2.8, T7.
-Decisions A3, A6, A8, A13 are still open.
+Decisions A6, A8, A13 are still open. (A3 is no longer a decision: research is a company feature with per-company data.)

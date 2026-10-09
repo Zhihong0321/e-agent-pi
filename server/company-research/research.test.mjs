@@ -5,7 +5,7 @@ import { quotePresent, validSsm, phone, ageYears, lockIdentity, fact, validateFi
 import { publicIp, safeUrl, parseScrapling, scraplingHttpGet, ResearchBudget, createEvidenceTools } from './adapters.mjs';
 import { assertResearchTools, PiResearchRunner, RESEARCH_TOOLS, researchModelRuntime, researchContext, evidenceExcerpt } from './runner.mjs';
 import { researchCompany } from './pipeline.mjs';
-import { researchAuthorized, researchEnv, RESEARCH_TOKEN } from './auth.mjs';
+import { researchTenantFrom, researchEnv } from './auth.mjs';
 import { BUNDLED_MODELS } from '../paths.mjs';
 import { robotsAllowed } from './robots.mjs';
 
@@ -135,11 +135,15 @@ test('reconciliation drops tampered stored quotes, renders escaped HTML and keep
   assert.equal(reconcile({ ...input, evidence: evidence.map(x => ({ ...x, text: 'changed content' })) }).identity.ssmNo.value, null);
   const html = renderDossier({ ...d, seed: { name: '<script>bad</script>' } }, 'html'); assert.equal(html.includes('<script>'), false);
 });
-test('research capability is only injected into the research specialist', () => {
-  assert.equal(researchEnv({ id: 'website' }).CLOUD_PI_RESEARCH_TOKEN, undefined);
-  assert.equal(researchEnv({ id: 'company-deep-research' }, { PORT: '9999' }).CLOUD_PI_RESEARCH_TOKEN, RESEARCH_TOKEN);
-  assert.equal(researchAuthorized({ headers: { authorization: `Bearer ${RESEARCH_TOKEN}` } }), true);
-  assert.equal(researchAuthorized({ headers: { authorization: 'Bearer wrong' } }), false);
+test('research capability is only injected into the research specialist, for one company', () => {
+  assert.equal(researchEnv({ id: 'website' }, {}, 'company-a').CLOUD_PI_RESEARCH_TOKEN, undefined);
+  assert.deepEqual(researchEnv({ id: 'company-deep-research' }, { PORT: '9999' }, ''), {}, 'no company, no credentials');
+  const env = researchEnv({ id: 'company-deep-research' }, { PORT: '9999' }, 'company-a');
+  assert.equal(env.CLOUD_PI_RESEARCH_TENANT, 'company-a');
+  const req = { headers: { authorization: `Bearer ${env.CLOUD_PI_RESEARCH_TOKEN}` } };
+  assert.equal(researchTenantFrom(req, 'company-a'), 'company-a');
+  assert.equal(researchTenantFrom(req, 'company-b'), null, 'a helper issued for one company cannot act as another');
+  assert.equal(researchTenantFrom({ headers: { authorization: 'Bearer wrong' } }, 'company-a'), null);
 });
 test('Pi runner repairs a rejected quote in-loop and has exactly the three allowed tools', async () => {
   let disposed = false, attempts = 0;

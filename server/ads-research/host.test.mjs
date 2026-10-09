@@ -29,10 +29,18 @@ test("stores and returns a queued job", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ads-research-"));
   try {
     const store = new AdsResearchStore(root);
-    const row = await adsResearchAction({ action: "start", country: "Singapore", keyword: "solar" }, store);
+    const row = await adsResearchAction({ action: "start", country: "Singapore", keyword: "solar", companyId: "company-a" }, store);
     assert.equal(row.status, "queued");
-    const fetched = await adsResearchAction({ action: "get", id: row.id }, store);
+    const fetched = await adsResearchAction({ action: "get", id: row.id, companyId: "company-a" }, store);
     assert.equal(fetched.id, row.id);
     assert.equal(fetched.report_url, null);
+    // Another company neither sees the job nor reuses it, and gets its own output folder.
+    await assert.rejects(adsResearchAction({ action: "get", id: row.id, companyId: "company-b" }, store), /not found/);
+    await assert.rejects(adsResearchAction({ action: "get", id: row.id }, store), /Company tenant is required/);
+    const theirs = await adsResearchAction({ action: "start", country: "Singapore", keyword: "solar", companyId: "company-b" }, store);
+    assert.notEqual(theirs.id, row.id);
+    assert.equal(theirs.cached, false);
+    assert.notEqual(theirs.topic, row.topic);
+    assert.equal((await adsResearchAction({ action: "start", country: "Singapore", keyword: "solar", companyId: "company-a" }, store)).id, row.id);
   } finally { await rm(root, { recursive: true, force: true }); }
 });

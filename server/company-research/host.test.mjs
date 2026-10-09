@@ -6,7 +6,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { handleCompanyResearch, tavilyKeyFromMcp, savedTavilyKeys } from './host.mjs';
 import { ResearchStore } from './store.mjs';
-import { RESEARCH_TOKEN } from './auth.mjs';
+import { researchEnv } from './auth.mjs';
+import { setOperatorTenant } from '../tenancy.mjs';
 import { reconcile } from './core.mjs';
 import { publicSettings, rememberSecret, secret } from '../secrets.mjs';
 
@@ -30,6 +31,8 @@ test('Tavily settings expose saved-slot flags and never return raw keys', async 
   } finally { await rememberSecret('tavily_api_key_5', old); }
 });
 
+const CO = 'company-a', OTHER = 'company-b';
+setOperatorTenant(CO);
 test('private API, SSE, report publication, replay and chat MCP tools work end to end', async () => {
   const db = new PGlite();
   const repository = new ResearchStore({ query: (sql, params) => params ? db.query(sql, params) : db.exec(sql).then(r => r.at(-1)) });
@@ -51,25 +54,25 @@ test('private API, SSE, report publication, replay and chat MCP tools work end t
     assert.equal(preview.status, 200); assert.match(await preview.text(), /no company has been researched/);
     assert.equal((await fetch(`${base}${route}`, { method: 'POST', body: '{}' })).status, 401);
     assert.equal((await fetch(`${base}/api/internal/company-research`, { method: 'POST', headers: { Authorization: 'Bearer owner-test' }, body: '{}' })).status, 401);
-    transport = new StdioClientTransport({ command: process.execPath, args: ['server/company-research/mcp-server.mjs'], cwd: process.cwd(), env: { PATH: process.env.PATH, CLOUD_PI_RESEARCH_URL: base, CLOUD_PI_RESEARCH_TOKEN: RESEARCH_TOKEN }, stderr: 'pipe' });
+    transport = new StdioClientTransport({ command: process.execPath, args: ['server/company-research/mcp-server.mjs'], cwd: process.cwd(), env: { PATH: process.env.PATH, ...researchEnv('company-deep-research', { PORT: String(server.address().port) }, CO) }, stderr: 'pipe' });
     await client.connect(transport);
     assert.deepEqual((await client.listTools()).tools.map(t => t.name).sort(), ['get_company_dossier', 'publish_company_report', 'replay_company_dossier', 'research_company', 'unpublish_company_report']);
     const started = await client.callTool({ name: 'research_company', arguments: { seed: { name: 'Acme Solar', website: 'https://example.com/' } } });
     const { id } = JSON.parse(started.content[0].text); assert.ok(id);
-    assert.equal((await repository.get(id)).status, 'queued');
+    assert.equal((await repository.get(id, CO)).status, 'queued');
     assert.equal((await client.callTool({ name: 'get_company_dossier', arguments: { id, wait_seconds: 0 } })).isError, undefined);
     await repository.claim();
     const input = { seed: { name: 'Acme Solar' }, identity: { status: 'locked' }, evidence: [], runs: [], startedAt: '2026-10-02T00:00:00Z' };
     const result = reconcile(input, new Date('2026-10-02T00:01:00Z'));
     await repository.finish(id, { ...input, status: 'partial', result });
     const authed = { headers: { Authorization: 'Bearer owner-test' } };
-    const queued = await repository.enqueue({ name: 'Other Company', website: 'https://other.example/' }, {});
+    const queued = await repository.enqueue({ name: 'Other Company', website: 'https://other.example/' }, false, {}, CO);
     const history = await (await fetch(`${base}${route}?q=acme`, authed)).json();
     assert.equal(history.total, 1); assert.equal(history.items[0].name, 'Acme Solar');
     assert.equal(history.items[0].hasReport, true);
     assert.equal('result' in history.items[0], false); assert.equal('seed' in history.items[0], false);
-    assert.equal((await repository.list({ status: 'active' })).items[0].id, queued.id);
-    assert.equal((await repository.list({ status: 'all', limit: 1, offset: 1 })).items.length, 1);
+    assert.equal((await repository.list({ status: 'active', companyId: CO })).items[0].id, queued.id);
+    assert.equal((await repository.list({ status: 'all', limit: 1, offset: 1, companyId: CO })).items.length, 1);
     assert.equal((await fetch(`${base}${route}?status=invalid`, authed)).status, 400);
     assert.equal((await fetch(`${base}${route}?limit=101`, authed)).status, 400);
     const artifact = await fetch(`${base}${route}/${id}/artifact?format=html`, authed);
@@ -84,7 +87,7 @@ test('private API, SSE, report publication, replay and chat MCP tools work end t
     assert.equal(publicReport.status, 200); assert.equal(publicReport.headers.get('x-robots-tag'), 'noindex, nofollow');
     const publicHtml = await publicReport.text();
     assert.match(publicHtml, /Company intelligence report/); assert.match(publicHtml, /href="\/research"/);
-    const publishedHistory = await repository.list({ query: 'acme' });
+    const publishedHistory = await repository.list({ query: 'acme', companyId: CO });
     assert.equal(publication.url, `/reports/company/${publishedHistory.items[0].publicationToken}`);
     assert.equal((await fetch(`${base}${route}/${id}`)).status, 401);
     const republished = await client.callTool({ name: 'publish_company_report', arguments: { id } });
@@ -98,6 +101,22 @@ test('private API, SSE, report publication, replay and chat MCP tools work end t
     const replay = await client.callTool({ name: 'replay_company_dossier', arguments: { id } });
     const data = JSON.parse(replay.content[0].text); assert.equal(data.creditsSpent, 0); assert.deepEqual(data.result.scores, result.scores);
     const malformed = await fetch(`${base}${route}`, { method: 'POST', headers: authed.headers, body: '{broken' }); assert.equal(malformed.status, 400);
+    // Another company sees none of it: not the list, the dossier, its artifact, its events, nor can it publish or replay it.
+    const other = { headers: { Authorization: 'Bearer owner-test', 'X-Tenant-Id': OTHER } };
+    assert.equal((await (await fetch(`${base}${route}?status=all`, other)).json()).total, 0);
+    assert.equal((await fetch(`${base}${route}/${id}`, other)).status, 400);
+    assert.equal((await fetch(`${base}${route}/${id}/artifact?format=html`, other)).status, 400);
+    assert.equal((await fetch(`${base}${route}/${id}/events`, other)).status, 404);
+    assert.equal((await fetch(`${base}${route}/${id}/publish`, { method: 'POST', ...other })).status, 400);
+    assert.equal((await fetch(`${base}${route}/${id}/replay`, { method: 'POST', ...other })).status, 400);
+    assert.equal((await fetch(`${base}${route}/${id}/publish`, { method: 'DELETE', ...other })).status, 400);
+    assert.equal(await repository.get(id, OTHER), null);
+    // The same company name researched by another company is a new dossier, never the first company's cached one.
+    const again = await repository.enqueue({ name: 'Acme Solar', website: 'https://example.com/' }, false, {}, OTHER);
+    assert.notEqual(again.id, id); assert.equal(again.cached, false);
+    // A helper issued for one company cannot act as another.
+    const forged = await fetch(`${base}/api/internal/company-research`, { method: 'POST', headers: { Authorization: `Bearer ${researchEnv('company-deep-research', {}, CO).CLOUD_PI_RESEARCH_TOKEN}` }, body: JSON.stringify({ action: 'get', id, tenant: OTHER }) });
+    assert.equal(forged.status, 401);
   } finally {
     await client.close().catch(() => {}); await transport?.close().catch(() => {});
     await new Promise(resolve => server.close(resolve)); await db.close();

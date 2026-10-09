@@ -90,8 +90,8 @@ export function agentEnv(agent, extra = {}, from = process.env) {
   env.CLOUD_PI_TNB = TNB_CLI;
   env.CLOUD_PI_BLUEPRINT = BLUEPRINT_CLI;
   env.PI_PACKAGE_DIR = from.PI_PACKAGE_DIR || PI_PACKAGE_DIR;
-  Object.assign(env, researchEnv(agent, from));
-  Object.assign(env, adsResearchEnv(agent, from));
+  Object.assign(env, researchEnv(agent, from, extra.TENANT_ID));
+  Object.assign(env, adsResearchEnv(agent, from, extra.TENANT_ID));
   Object.assign(env, mediaAiEnv(agent, from, extra.TENANT_ID));
 
   // Web search runs on the host with the saved Jina tokens. The Web Search MCP

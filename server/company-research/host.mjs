@@ -1,11 +1,12 @@
-import { mkdir, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { getPool, getSetting } from '../db.mjs';
 import { secret, TAVILY_KEY_NAMES, BRAVE_KEY_NAMES, EXA_KEY_NAMES } from '../secrets.mjs';
 import { getAgent, getMcpServer, listMcpServers, createMcpServer, updateMcpServer, seedSystemAgent, updateAgent } from '../catalog.mjs';
-import { BUNDLED_MODELS, ROOT, agentWorkspace } from '../paths.mjs';
+import { BUNDLED_MODELS, ROOT } from '../paths.mjs';
 import { resolveModelCredentials } from '../models.mjs';
-import { RESEARCH_AGENT_ID, researchAuthorized } from './auth.mjs';
+import { RESEARCH_AGENT_ID, researchTenantFrom } from './auth.mjs';
+import { tenantForRequest } from '../tenancy.mjs';
 import { Seed, reconcile, renderDossier } from './core.mjs';
 import { ResearchStore } from './store.mjs';
 import { connectScrapling } from './adapters.mjs';
@@ -105,6 +106,11 @@ async function tick(log) {
     log('warn', `company research job ${job?.id || 'queue'} failed: ${message}`);
   } finally { clearInterval(heartbeat); activeJob = activeRunner = activeHeartbeat = undefined; await scrapling?.close().catch(() => {}); busy = false; }
 }
+/** One-time migration: dossiers made before they had a company belong to the company that made them (the operator's). */
+export async function assignLegacyDossiers(companyId) {
+  if (!store || !companyId) return 0;
+  return (await getPool().query('UPDATE company_research_dossiers SET company_id=$1 WHERE company_id IS NULL', [companyId])).rowCount || 0;
+}
 export async function stopCompanyResearch() {
   stopped = true;
   clearInterval(workerTimer);
@@ -116,23 +122,24 @@ function reportUrl(pathname) {
   const base = process.env.COMPANY_RESEARCH_PUBLIC_URL || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '');
   return base ? new URL(pathname, base).href : pathname;
 }
-export async function researchAction({ action, seed, id, force, pitchSignals = false, modelId, format = 'json' }, repository = store) {
+export async function researchAction({ action, seed, id, force, pitchSignals = false, modelId, format = 'json', companyId }, repository = store) {
   if (!repository) throw new Error('Company research is not initialized');
+  if (action !== 'status' && !companyId) throw new Error('Company tenant is required');
   if (action === 'start') {
     if (!(await resolveTavilyKeys()).length && !savedSearchKeys(BRAVE_KEY_NAMES, 'BRAVE_API_KEY').length && !savedSearchKeys(EXA_KEY_NAMES, 'EXA_API_KEY').length) throw new Error('Add a Brave, Exa or Tavily API key in Settings → Keys');
     if (modelId !== undefined && (typeof modelId !== 'string' || !modelId.trim() || modelId.length > 200)) throw new Error('Valid research model id required');
-    return repository.enqueue(Seed.parse(seed), Boolean(force), { pitchSignals: Boolean(pitchSignals), ...(modelId ? { modelId } : {}) });
+    return repository.enqueue(Seed.parse(seed), Boolean(force), { pitchSignals: Boolean(pitchSignals), ...(modelId ? { modelId } : {}) }, companyId);
   }
   if (action === 'status') return researchConfiguration();
   if (!/^[0-9a-f-]{36}$/i.test(String(id))) throw new Error('Valid dossier id required');
   if (action === 'get') {
-    const row = await repository.get(id); if (!row) throw new Error('Dossier not found');
+    const row = await repository.get(id, companyId); if (!row) throw new Error('Dossier not found');
     return row;
   }
   if (action === 'replay') {
-    const input = await repository.replayInput(id);
+    const input = await repository.replayInput(id, companyId);
     // Replay uses the original time to reproduce ages, recency and scores.
-    const old = await repository.get(id);
+    const old = await repository.get(id, companyId);
     const clock = new Date(new Date(input.startedAt).getTime() + (old.result?.meta?.durationMs || 0));
     const result = reconcile(input, clock);
     result.meta.credits = old.result?.meta?.credits || {};
@@ -141,24 +148,25 @@ export async function researchAction({ action, seed, id, force, pitchSignals = f
   }
   if (action === 'artifact') {
     if (!['json', 'md', 'html'].includes(format)) throw new Error('format must be json, md or html');
-    const row = await repository.get(id); if (!row?.result) throw new Error('Dossier is not ready');
+    const row = await repository.get(id, companyId); if (!row?.result) throw new Error('Dossier is not ready');
     return { format, url: reportUrl(`/api/company-research/dossiers/${id}/artifact?format=${format}`), content: renderDossier(row.result, format) };
   }
   if (action === 'publish') {
-    const row = await repository.get(id);
+    const row = await repository.get(id, companyId);
     if (!row?.result || !['complete', 'partial'].includes(row.status)) throw new Error('Only a completed or partial dossier with a resolved identity can be published');
     if (row.result.identity.match.status !== 'locked') throw new Error('Resolve company identity before publication');
-    const published = await repository.publish(id, renderDossier(row.result, 'html'), row.result.seed.name);
+    const published = await repository.publish(id, renderDossier(row.result, 'html'), row.result.seed.name, companyId);
     await repository.event(id, { type: 'published' });
     return { id, published: true, url: reportUrl(`/reports/company/${published.token}`), publishedAt: published.published_at };
   }
   if (action === 'unpublish') {
-    await repository.unpublish(id);
+    if (!await repository.get(id, companyId)) throw new Error('Dossier not found');
+    await repository.unpublish(id, companyId);
     return { id, published: false };
   }
   throw new Error('Unknown research action');
 }
-export async function handleCompanyResearch(req, res, url, { authorized, readBody, repository = store }) {
+export async function handleCompanyResearch(req, res, url, { authorized, readBody, user = null, repository = store }) {
   if (url.pathname.startsWith('/reports/company/')) {
     const token = url.pathname.slice('/reports/company/'.length);
     let publication;
@@ -178,54 +186,59 @@ export async function handleCompanyResearch(req, res, url, { authorized, readBod
   const configuration = url.pathname === '/api/company-research/status';
   if (!internal && !configuration && url.pathname !== prefix && !url.pathname.startsWith(`${prefix}/`)) return false;
   const json = (code, body) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' }); res.end(JSON.stringify(body)); };
-  if (!(internal ? researchAuthorized(req) : authorized(req))) { json(401, { error: 'Unauthorized' }); return true; }
+  // A company user works on their own company; the operator on the company it names; the research
+  // helper on the company its token was issued for.
+  const internalBody = internal && req.method === 'POST' ? JSON.parse(await readBody(req) || '{}') : null;
+  const companyId = internal ? researchTenantFrom(req, internalBody?.tenant) : (user || authorized(req)) ? tenantForRequest(req, user) : null;
+  if (!companyId) { json(401, { error: 'Unauthorized' }); return true; }
   if (!repository) { json(503, { error: 'Research database is not ready' }); return true; }
   if (configuration) { json(req.method === 'GET' ? 200 : 405, req.method === 'GET' ? researchConfiguration() : { error: 'GET required' }); return true; }
   const action = input => researchAction(input, repository);
   try {
     if (req.method === 'GET' && url.pathname === prefix) {
-      json(200, await repository.list({ query: url.searchParams.get('q') || '', status: url.searchParams.get('status') || 'finished', limit: Number(url.searchParams.get('limit') || 20), offset: Number(url.searchParams.get('offset') || 0) })); return true;
+      json(200, await repository.list({ companyId, query: url.searchParams.get('q') || '', status: url.searchParams.get('status') || 'finished', limit: Number(url.searchParams.get('limit') || 20), offset: Number(url.searchParams.get('offset') || 0) })); return true;
     }
     if (internal) {
       if (req.method !== 'POST') { json(405, { error: 'POST required' }); return true; }
-      const input = JSON.parse(await readBody(req) || '{}');
-      json(200, { ok: true, result: await action(input) }); return true;
+      const input = { ...internalBody };
+      delete input.tenant;
+      json(200, { ok: true, result: await action({ ...input, companyId }) }); return true;
     }
     if (req.method === 'POST' && url.pathname === prefix) {
       const body = JSON.parse(await readBody(req) || '{}');
-      json(202, await action({ action: 'start', seed: body.seed, force: body.options?.force, pitchSignals: body.options?.pitchSignals, modelId: body.options?.modelId })); return true;
+      json(202, await action({ companyId, action: 'start', seed: body.seed, force: body.options?.force, pitchSignals: body.options?.pitchSignals, modelId: body.options?.modelId })); return true;
     }
     const match = url.pathname.slice(prefix.length).match(/^\/([0-9a-f-]{36})(?:\/(artifact|events|replay|publish))?$/i);
     if (!match) { json(404, { error: 'Unknown research route' }); return true; }
     const [, id, sub] = match;
     if (sub === 'events' && req.method === 'GET') {
-      if (!await repository.get(id)) { json(404, { error: 'Dossier not found' }); return true; }
+      if (!await repository.get(id, companyId)) { json(404, { error: 'Dossier not found' }); return true; }
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'private, no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
       let after = Number(req.headers['last-event-id'] || 0), polling = false;
       if (!Number.isSafeInteger(after) || after < 0) after = 0;
       const poll = async () => {
         if (polling || res.destroyed || res.writableEnded) return; polling = true;
         try {
-          const events = await repository.events(id, after);
+          const events = await repository.events(id, after, companyId);
           for (const e of events) { res.write(`id: ${e.seq}\ndata: ${JSON.stringify(e.data)}\n\n`); after = Number(e.seq); }
           if (!events.length) res.write(': keepalive\n\n');
-          const row = await repository.get(id);
+          const row = await repository.get(id, companyId);
           if (!['queued', 'running'].includes(row?.status) && events.length < 100) { clearInterval(timer); res.end(); }
         } catch { clearInterval(timer); res.end(); } finally { polling = false; }
       };
       const timer = setInterval(() => { void poll(); }, 2000);
       res.on('close', () => clearInterval(timer)); await poll(); return true;
     }
-    if (sub === 'replay' && req.method === 'POST') { json(200, await action({ action: 'replay', id })); return true; }
-    if (sub === 'publish' && req.method === 'POST') { json(200, await action({ action: 'publish', id })); return true; }
-    if (sub === 'publish' && req.method === 'DELETE') { json(200, await action({ action: 'unpublish', id })); return true; }
+    if (sub === 'replay' && req.method === 'POST') { json(200, await action({ companyId, action: 'replay', id })); return true; }
+    if (sub === 'publish' && req.method === 'POST') { json(200, await action({ companyId, action: 'publish', id })); return true; }
+    if (sub === 'publish' && req.method === 'DELETE') { json(200, await action({ companyId, action: 'unpublish', id })); return true; }
     if (req.method !== 'GET') { json(405, { error: 'Method not allowed' }); return true; }
     if (sub === 'artifact') {
       const format = url.searchParams.get('format') || 'json';
-      const out = await action({ action: 'artifact', id, format });
+      const out = await action({ companyId, action: 'artifact', id, format });
       res.writeHead(200, { 'Content-Type': { json: 'application/json', md: 'text/markdown; charset=utf-8', html: 'text/html; charset=utf-8' }[format], 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox" }); res.end(out.content); return true;
     }
-    json(200, await action({ action: 'get', id }));
+    json(200, await action({ companyId, action: 'get', id }));
   } catch (error) { json(400, { error: error.message }); }
   return true;
 }

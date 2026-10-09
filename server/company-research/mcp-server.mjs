@@ -4,9 +4,9 @@ import { z } from 'zod';
 import { Seed } from './core.mjs';
 
 async function callHost(body) {
-  const base = process.env.CLOUD_PI_RESEARCH_URL, token = process.env.CLOUD_PI_RESEARCH_TOKEN;
-  if (!base || !token) throw new Error('Company research host credentials were not injected');
-  const response = await fetch(`${base}/api/internal/company-research`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body), signal: AbortSignal.timeout(30000) });
+  const base = process.env.CLOUD_PI_RESEARCH_URL, token = process.env.CLOUD_PI_RESEARCH_TOKEN, tenant = process.env.CLOUD_PI_RESEARCH_TENANT;
+  if (!base || !token || !tenant) throw new Error('Company research host credentials were not injected');
+  const response = await fetch(`${base}/api/internal/company-research`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ ...body, tenant }), signal: AbortSignal.timeout(30000) });
   const out = await response.json();
   if (!response.ok || !out.ok) throw new Error(out.error || `Research host HTTP ${response.status}`);
   return out.result;
