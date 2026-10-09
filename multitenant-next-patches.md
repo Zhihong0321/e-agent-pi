@@ -82,3 +82,16 @@ Judged on status codes, database records and run records, never on answer text.
 Still not run on prod: T12 (workspace folders), T13 (SOP edit by a company), T14 (operator creates a
 company; needs the operator credential), T16 (form link), T5.6-T5.8 (schedules), T8, T2.8, T7.
 Decisions A6, A8, A13 are still open. (A3 is no longer a decision: research is a company feature with per-company data.)
+
+## Prod result: build `85be430` (research data per company), 2026-10-09
+
+| Check | Result |
+|---|---|
+| `surface` (T9, T10, T11, T15, T17) | **50 of 50 pass**, 4 inconclusive (T12, T13, T14, T16, still not run). |
+| T17.0 | All existing dossiers now have a company (the operator company); none are unassigned. |
+| T17.1, T17.2 | Company A and company B each list **0** of the operator company's dossiers and cannot read, fetch the artifact or events of, replay, publish or unpublish one (400/404). |
+| T17.3 | Ads research lookup of an unknown id is refused. |
+| T17.4 (real flow, `research-flow.mjs`) | Company A started a dossier (202). It is stored with company A's id; A lists 1, B lists 0; A reads it (200), B gets 400; B starting the same company name gets its **own** dossier (not A's cached one). Two real research jobs were started on prod and will spend a small amount of search/model credit. |
+
+Not covered by an automated prod check yet: an Ads Research job end to end (needs the Meta/Google
+collectors and a keyword run), and a completed dossier published and opened by token.
