@@ -286,6 +286,8 @@ export function useStudio({ userId }: { userId?: string } = {}) {
       }).catch(() => {});
     }
     if (selectedEngine === "agy") return;
+    // The default model is a platform setting; a company user's choice lives on their session only.
+    if (userId) return;
     void api("/api/model", { method: "POST", body: JSON.stringify({ modelId }) }).catch((err) => {
       setError(err instanceof Error ? err.message : "Model switch failed");
     });

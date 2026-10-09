@@ -50,7 +50,7 @@ export function piWorkerFactory(opts) {
     const mcpServers = (manifest.mcpServers || []).map((server) => ({ ...server }));
     await mkdir(runtimeDir, { recursive: true });
     await materializeAgentRuntime(profile.agentRow || profile, mcpServers, modelsJson, {
-      modelId: opts.modelId, runtimeKey: path.join('execution', attemptId),
+      modelId: opts.modelId, runtimeKey: path.join('execution', attemptId), companyId: opts.ctx?.companyId || null,
     });
     const manifestFile = path.join(runtimeDir, 'execution-manifest.json');
     await writeFile(manifestFile, JSON.stringify(manifest.manifest, null, 1), 'utf8');
@@ -78,7 +78,7 @@ export function piWorkerFactory(opts) {
     });
     args.push('--extension', HOST_TOOLS_EXTENSION);
 
-    const cwd = opts.cwd || opts.workspace || profile.workspace || agentWorkspace(agent);
+    const cwd = opts.cwd || opts.workspace || profile.workspace || agentWorkspace(agent, opts.ctx?.companyId);
     await mkdir(cwd, { recursive: true });
 
     pi = new RpcClient({
@@ -87,6 +87,7 @@ export function piWorkerFactory(opts) {
       provider: active.provider,
       model: active.model,
       env: agentEnv(profile.agentRow || profile, {
+        TENANT_ID: opts.ctx?.companyId || '',
         EXECUTION_WORKER_URL: workerUrl,
         EXECUTION_WORKER_TOKEN: token,
         EXECUTION_MANIFEST_FILE: manifestFile,

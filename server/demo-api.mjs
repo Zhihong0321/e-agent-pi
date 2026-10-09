@@ -1,4 +1,4 @@
-import { companyHostContext } from "../document_inteligence/host.mjs";
+import { tenantContext } from "../document_inteligence/host.mjs";
 import { withContext } from "../document_inteligence/core/db.mjs";
 import { getCompanyProfile, updateCompanyProfile } from "../document_inteligence/core/company.mjs";
 import { listCompanyMembers, saveCompanyMember } from "../document_inteligence/core/members.mjs";
@@ -15,7 +15,7 @@ const profileKeys = new Set([
 /** Runs `fn` as the signed-in user's company. */
 function scope(tenantId, fn) {
   if (!tenantId) throw new Error("Company tenant is required");
-  const ctx = { ...companyHostContext(), tenantId };
+  const ctx = tenantContext(tenantId);
   return withContext(ctx.db, { ...ctx, actor: "owner", agent: "demo-form" }, fn);
 }
 

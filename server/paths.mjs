@@ -1,3 +1,4 @@
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -80,13 +81,39 @@ export function isSettingsAgent(agent) {
 }
 
 /**
- * Pi cwd for an agent. Website Dev Agent owns `/storage/workspace`.
- * Everyone else gets `/storage/workspaces/<slug>` (ops → settings).
- * @param {{ id?: string; slug?: string } | string | null | undefined} agent
+ * Agents that work on the platform operator's own repos and infrastructure. They have one
+ * workspace for the whole platform and are not company-scoped.
  */
-export function agentWorkspace(agent) {
+const PLATFORM_AGENT_SLUGS = new Set([
+  "website", "settings", "ops", "proposal", "newpages", "newpages-site-manager", "package", "package-updater",
+  "afa-rate", "sales", "google-ads", "tnb", "solar-roi", "om", "app-helper", "open-design-helper",
+  "whatsapp-assistant", "composio",
+  // Their job records carry no company yet, so they stay with the platform until they do.
+  "ads-research", "company-deep-research", "company-research",
+]);
+
+/** True for an agent whose workspace is the platform's; every other agent works inside one company. */
+export function isPlatformAgent(agent) {
+  const id = typeof agent === "string" ? agent : agent?.id || "";
+  const slug = typeof agent === "string" ? agent : agent?.slug || "";
+  return PLATFORM_AGENT_SLUGS.has(slug) || PLATFORM_AGENT_SLUGS.has(id);
+}
+
+/**
+ * Pi cwd for an agent. Platform agents keep one workspace (Website Dev Agent owns
+ * `/storage/workspace`, the rest `/storage/workspaces/<slug>`). Every other agent works inside
+ * one company: `/storage/workspaces/tenants/<tenantId>/<slug>`, and the tenant is required.
+ * @param {{ id?: string; slug?: string } | string | null | undefined} agent
+ * @param {string} [tenantId] required unless the agent is a platform agent
+ */
+export function agentWorkspace(agent, tenantId) {
   const id = typeof agent === "string" ? agent : agent?.id || agent?.slug || "";
   const slug = typeof agent === "string" ? agent : agent?.slug || "";
+  if (!isPlatformAgent(agent)) {
+    if (!tenantId) throw new Error(`Workspace for ${slug || id || "agent"} needs a company tenant`);
+    if (!/^[0-9a-f-]{8,64}$/i.test(String(tenantId))) throw new Error("Invalid company tenant id");
+    return path.join(WORKSPACES_DIR, "tenants", String(tenantId), slug || id || "scratch");
+  }
   if (id === PROPOSAL_AGENT_ID || slug === "proposal") {
     return path.join(WORKSPACES_DIR, "proposal");
   }
@@ -111,6 +138,13 @@ export function agentWorkspace(agent) {
   if (isWebsiteAgent(agent)) return WORKSPACE;
   const folder = isSettingsAgent(agent) ? "settings" : slug || id || "scratch";
   return path.join(WORKSPACES_DIR, folder);
+}
+
+/** Creates (if needed) and returns the workspace folder for an agent inside one company. */
+export async function ensureAgentWorkspace(agent, tenantId) {
+  const dir = agentWorkspace(agent, tenantId);
+  await mkdir(dir, { recursive: true });
+  return dir;
 }
 
 export function isProposalAgent(agent) {
@@ -196,8 +230,8 @@ export function isMediaAiAgent(agent) {
  * Kept inside the agent's workspace but outside its prototypes: the agent
  * reads `source/` and builds standalone HTML beside it, never within it.
  */
-export function agentSourceDir(agent) {
-  return path.join(agentWorkspace(agent), "source");
+export function agentSourceDir(agent, tenantId) {
+  return path.join(agentWorkspace(agent, tenantId), "source");
 }
 
 export const DIST_DIR = path.join(ROOT, "dist");

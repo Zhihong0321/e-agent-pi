@@ -5,11 +5,11 @@ import { z } from "zod";
 async function callHost(body) {
   const base = process.env.MEDIA_AI_URL;
   const token = process.env.MEDIA_AI_TOKEN;
-  if (!base || !token) throw new Error("Media AI host credentials were not injected");
+  if (!base || !token || !process.env.MEDIA_AI_TENANT) throw new Error("Media AI host credentials were not injected");
   const response = await fetch(`${base}/api/internal/media-ai`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, tenant: process.env.MEDIA_AI_TENANT }),
     signal: AbortSignal.timeout(30000),
   });
   const out = await response.json().catch(() => ({}));

@@ -124,14 +124,14 @@ export function mcpServerConfig(server) {
  * @param {{ id: string; rolePrompt: string; slug?: string }} agent
  * @param {{ modelId?: string | null }} [opts]
  */
-export async function buildRoleText(agent, { modelId } = {}) {
+export async function buildRoleText(agent, { modelId, companyId = null } = {}) {
   const role = String(agent.rolePrompt || "").trim();
   const research = agent.id === "company-deep-research" || agent.slug === "company-deep-research";
   const extras = research ? [replyStyleSystemPrompt()] : [replyStyleSystemPrompt(), FILE_SHARING_PROMPT, imagenSystemPrompt()];
   if (agent.id === "website" || agent.slug === "website") extras.push(hostSystemPrompt());
   if (isProposalAgent(agent)) extras.push(proposalSystemPrompt(agent));
   if (isWhatsappAgent(agent)) extras.push(await whatsappNotesSystemPrompt());
-  const sop = await getAgentSop(agent.id).catch(() => null);
+  const sop = await getAgentSop(agent.id, companyId).catch(() => null);
   if (sop?.content) {
     extras.push(`## Mandatory agent SOP\n\nRead and follow this SOP for every task. It is the agent-specific operating procedure.\n\n${sop.content}`);
   }
@@ -147,7 +147,7 @@ export async function buildRoleText(agent, { modelId } = {}) {
  * @param {string} modelsJson
  * @param {{ modelId?: string | null; runtimeKey?: string | null }} [opts]
  */
-export async function materializeAgentRuntime(agent, mcpServers, modelsJson, { modelId, runtimeKey } = {}) {
+export async function materializeAgentRuntime(agent, mcpServers, modelsJson, { modelId, runtimeKey, companyId = null } = {}) {
   if (agent.id === "company-deep-research" || agent.slug === "company-deep-research") {
     mcpServers = mcpServers.filter(server => server.slug === "company-research");
   }
@@ -156,9 +156,9 @@ export async function materializeAgentRuntime(agent, mcpServers, modelsJson, { m
   }
   const dir = path.join(RUNTIME_DIR, runtimeKey || agent.id);
   await mkdir(dir, { recursive: true });
-  const roleText = await buildRoleText(agent, { modelId });
+  const roleText = await buildRoleText(agent, { modelId, companyId });
   await writeFile(path.join(dir, "ROLE.md"), roleText, "utf8");
-  const sop = await getAgentSop(agent.id).catch(() => null);
+  const sop = await getAgentSop(agent.id, companyId).catch(() => null);
   await writeFile(
     path.join(dir, "SOP.md"),
     `${sop?.content?.trim() || "# Agent SOP\n\nNo custom SOP has been set for this agent yet."}\n`,

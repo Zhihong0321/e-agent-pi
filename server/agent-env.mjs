@@ -92,7 +92,7 @@ export function agentEnv(agent, extra = {}, from = process.env) {
   env.PI_PACKAGE_DIR = from.PI_PACKAGE_DIR || PI_PACKAGE_DIR;
   Object.assign(env, researchEnv(agent, from));
   Object.assign(env, adsResearchEnv(agent, from));
-  Object.assign(env, mediaAiEnv(agent, from));
+  Object.assign(env, mediaAiEnv(agent, from, extra.TENANT_ID));
 
   // Web search runs on the host with the saved Jina tokens. The Web Search MCP
   // server (server/web-search-mcp-server.mjs) inherits this URL and per-boot
@@ -167,7 +167,7 @@ export function agentEnv(agent, extra = {}, from = process.env) {
   // Document Intelligence micro-agents: per-agent token for /api/internal/di.
   Object.assign(env, diAgentEnv(agent, from.PORT || process.env.PORT || "8080"));
   Object.assign(env, eeMailEnv(agent, from.PORT || process.env.PORT || "8080"));
-  Object.assign(env, fileSharingEnv(agent, from.PORT || process.env.PORT || "8080"));
+  Object.assign(env, fileSharingEnv(agent, from.PORT || process.env.PORT || "8080", extra.TENANT_ID));
 
   for (const [key, value] of Object.entries(extra)) {
     if (value == null || value === "") continue;

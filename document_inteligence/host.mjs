@@ -1,6 +1,7 @@
 import { manageUsers, managePeople, listPeople, resolveIdentity, ensurePeopleTenant } from '../server/users.mjs';
 import { expenseUserForSession } from '../server/expense-session.mjs';
 import { diSessionUser } from '../server/di-session-user.mjs';
+import { setOperatorTenant, operatorTenantId } from '../server/tenancy.mjs';
 // UIv2 host integration for Document Intelligence: boot (migrate, seed, register the
 // four micro-agents and their shared MCP server), per-agent tokens, the internal
 // endpoint the MCP server calls, and HTML -> PDF rendering.
@@ -25,9 +26,16 @@ export const DI_MCP_SLUG = "document-intelligence";
 export const DI_AGENT_IDS = Object.keys(AGENTS);
 
 const SECRET = randomBytes(32);
-const state = { db: null, tenantId: null, asRole: true };
-/** Where the Forward Deploy Engineer keeps an agent's SOP (the same table the Settings page edits). */
-const SOP_STORE = { get: getAgentSop, save: saveAgentSop, clear: clearAgentSop };
+// `operatorTenantId` is the bootstrap tenant. It is read only by boot/migration code and by
+// operator-authenticated entry points through server/tenancy.mjs. Every other caller passes the
+// tenant it was given by the caller's identity.
+const state = { db: null, operatorTenantId: null, asRole: true };
+/** Where the Forward Deploy Engineer keeps an agent's SOP: the calling company's own version, never the platform default. */
+const sopStoreFor = (tenantId) => ({
+  get: (agentId) => getAgentSop(agentId, tenantId),
+  save: (agentId, content, by) => saveAgentSop(agentId, content, by, tenantId),
+  clear: (agentId) => clearAgentSop(agentId, null, tenantId),
+});
 
 const AGENT_CARDS = {
   "di-onboarding": {
@@ -173,44 +181,43 @@ async function renderPdf(html, absPath) {
 export async function handleDiRequest(req, body, deps) {
   const agent = agentFromRequest(req, body);
   if (!agent) return { status: 401, body: { ok: false, error: "Unauthorized" } };
-  if (["list_users", "create_user", "update_user", "list_people", "create_person", "update_person", "list_company_members", "save_company_member"].includes(body.tool)) {
-    if (body.tool !== "list_company_members" && !["di-onboarding", "di-db"].includes(agent)) return { status: 403, body: { ok: false, error: "People and user administration is unavailable for this agent" } };
-    try {
-      const args = body.args || {};
-      let result;
-      if (body.tool === "list_company_members") {
-        const people = await listPeople(state.tenantId);
-        result = { members: people.people, has_more: people.has_more };
-      } else if (body.tool === "save_company_member") {
-        const saved = await managePeople(args.id ? "update_person" : "create_person", args, { tenantId: state.tenantId, trustedAgent: true });
-        result = { member: saved.person, created: !args.id };
-      }
-      else if (["list_people", "create_person", "update_person"].includes(body.tool)) result = await managePeople(body.tool, args, { tenantId: state.tenantId });
-      else result = await manageUsers(body.tool, args, { tenantId: state.tenantId });
-      return { status: 200, body: { ok: true, result } };
-    } catch (error) { return { status: 403, body: { ok: false, error: error.message } }; }
-  }
   if (!state.db) return { status: 503, body: { ok: false, error: "Document Intelligence is not initialised (database not connected?)" } };
   try {
+    // The tenant is the signed-in session owner's company; a tool call that cannot be tied to
+    // a session owner has no tenant and is refused.
     const sessionId = String(req.headers['x-di-session'] || '');
     const who = agent === 'di-expenses' ? await expenseUserForSession(sessionId)
       : sessionId ? await diSessionUser(agent, sessionId) : undefined;
-    if (!who && ['di-documents', 'di-procurement', 'di-db', 'di-fde'].includes(agent)) {
-      throw new Error('Sign-in required: financial operations need an authenticated session owner');
+    const tenantId = who?.company_tenant_id;
+    if (!tenantId) throw new Error('Sign-in required: this tool connection has no company tenant');
+    if (["list_users", "create_user", "update_user", "list_people", "create_person", "update_person", "list_company_members", "save_company_member"].includes(body.tool)) {
+      if (body.tool !== "list_company_members" && !["di-onboarding", "di-db"].includes(agent)) return { status: 403, body: { ok: false, error: "People and user administration is unavailable for this agent" } };
+      const args = body.args || {};
+      let result;
+      if (body.tool === "list_company_members") {
+        const people = await listPeople(tenantId);
+        result = { members: people.people, has_more: people.has_more };
+      } else if (body.tool === "save_company_member") {
+        const saved = await managePeople(args.id ? "update_person" : "create_person", args, { tenantId, trustedAgent: true });
+        result = { member: saved.person, created: !args.id };
+      }
+      else if (["list_people", "create_person", "update_person"].includes(body.tool)) result = await managePeople(body.tool, args, { tenantId });
+      else result = await manageUsers(body.tool, args, { tenantId });
+      return { status: 200, body: { ok: true, result } };
     }
     const result = await runTool(
       {
         db: state.db,
-        tenantId: () => state.tenantId,
+        tenantId: () => tenantId,
         actor: who?.username || `system:${agent}`,
         asRole: state.asRole,
         resolveIdentity,
         who,
-        workspace: (id) => deps.workspace({ id, slug: id }),
+        workspace: (id) => deps.workspace({ id, slug: id }, tenantId),
         renderPdf,
         publicUrl: publicBaseUrl(),
         filesRoot: path.join(DATA_DIR, "files"),
-        sop: SOP_STORE,
+        sop: sopStoreFor(tenantId),
       },
       { agent, tool: body.tool, args: body.args },
     );
@@ -223,16 +230,16 @@ export async function handleDiRequest(req, body, deps) {
 /**
  * runTool dependencies for host-side callers that already authenticated a user (the /demo
  * routes), so they go through exactly the same tools as the agents do.
- * @param {{ workspace: (agent: {id: string, slug: string}) => string, who?: object, companyId: string }} opts
+ * @param {{ workspace: (agent: {id: string, slug: string}, tenantId: string) => string, who?: object, companyId: string }} opts
  */
 export function diRunDeps({ workspace, who, companyId } = {}) {
   if (!state.db) throw new Error("Document Intelligence is not ready");
   if (!companyId) throw new Error("Company tenant is required");
   return {
     db: state.db, tenantId: () => companyId, actor: who?.username || "system", asRole: state.asRole,
-    workspace: (id) => workspace({ id, slug: id }), renderPdf,
+    workspace: (id) => workspace({ id, slug: id }, companyId), renderPdf,
     publicUrl: publicBaseUrl(), filesRoot: path.join(DATA_DIR, "files"), who,
-    resolveIdentity, sop: SOP_STORE,
+    resolveIdentity, sop: sopStoreFor(companyId),
   };
 }
 
@@ -243,6 +250,7 @@ export function diDispatchDeps({ workspace, user }) {
 
 // ---------------------------------------------------------------- public forms
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RATE = { windowMs: 10 * 60 * 1000, max: 10 };
 const recent = new Map(); // hash(ip + slug) -> submission timestamps
 const MAX_BODY = Math.ceil((LIMITS.submission_mb * 1024 * 1024 * 4) / 3) + 1024 * 1024;
@@ -282,7 +290,7 @@ export async function publicFormRoute({ db, tenantId, asRole = true, workspace, 
     try {
       const live = await withContext(db, ctx, (tx) => loadPublicForm(tx, slug));
       if (live.closed) return { status: 410, headers: pageHeaders(nonce), body: renderMessagePage(live.form.title, live.closed, live.company) };
-      return { status: 200, headers: pageHeaders(nonce), body: renderFormPage({ form: live.form, version: live.version, company: live.company, nonce }) };
+      return { status: 200, headers: pageHeaders(nonce), body: renderFormPage({ form: live.form, version: live.version, company: live.company, nonce, action: `/api/forms/${tenantId}/${slug}` }) };
     } catch (error) {
       if (error?.details?.code === "not_found") return { status: 404, headers: pageHeaders(nonce), body: renderMessagePage("Form not found", "This form does not exist or is no longer available.") };
       return { status: 500, headers: pageHeaders(nonce), body: renderMessagePage("Something went wrong", "Please try again later.") };
@@ -341,17 +349,22 @@ function readCapped(req, max) {
 }
 
 /**
- * Handles GET/POST /api/forms/<slug> (public, no login). Uploaded files land in the
- * Form Clerk's workspace under form-uploads/.
- * @param {{ workspace: (agent: {id: string, slug: string}) => string }} deps
+ * Handles GET/POST /api/forms/<tenantId>/<slug> (public, no login). The link names the
+ * company, because a slug is only unique inside one company. Uploaded files land in that
+ * company's Form Clerk workspace under form-uploads/.
+ * @param {{ workspace: (agent: {id: string, slug: string}, tenantId: string) => string }} deps
  */
 export async function handlePublicForm(req, res, url, deps) {
-  const slug = decodeURIComponent(url.pathname.slice("/api/forms/".length)).replace(/\/+$/, "").toLowerCase();
+  const [tenantId, rawSlug = "", ...extra] = url.pathname.slice("/api/forms/".length).replace(/\/+$/, "").split("/");
+  const slug = decodeURIComponent(rawSlug).toLowerCase();
   const send = ({ status, headers, body }) => {
     res.writeHead(status, headers);
     res.end(body);
   };
   if (!state.db) return send({ status: 503, headers: jsonHeaders, body: JSON.stringify({ ok: false, error: "Forms are not available right now" }) });
+  if (!UUID.test(tenantId) || !slug || extra.length) {
+    return send({ status: 404, headers: jsonHeaders, body: JSON.stringify({ ok: false, error: "Form not found" }) });
+  }
   let bodyText = "";
   if (req.method === "POST") {
     const declared = Number(req.headers["content-length"] || 0);
@@ -367,9 +380,9 @@ export async function handlePublicForm(req, res, url, deps) {
   send(
     await publicFormRoute({
       db: state.db,
-      tenantId: state.tenantId,
+      tenantId,
       asRole: state.asRole,
-      workspace: (id) => deps.workspace({ id, slug: id }),
+      workspace: (id) => deps.workspace({ id, slug: id }, tenantId),
       method: req.method,
       slug,
       contentType: String(req.headers["content-type"] || ""),
@@ -388,9 +401,10 @@ export async function ensureDocumentIntelligence({ pool, catalog, logEvent = () 
   const applied = await migrate(db);
   state.asRole = await roleAvailable(db);
   if (!state.asRole) logEvent("warn", "di: role di_app unavailable; agents run without database role separation");
-  state.tenantId = await ensureDefaultTenant(db);
-  await seedTenant(db, state.tenantId);
-  await ensurePeopleTenant(state.tenantId).catch((error) => logEvent('warn', `people account migration skipped: ${error.message}`));
+  state.operatorTenantId = await ensureDefaultTenant(db);
+  setOperatorTenant(state.operatorTenantId);
+  await seedTenant(db, state.operatorTenantId);
+  await ensurePeopleTenant(state.operatorTenantId).catch((error) => logEvent('warn', `people account migration skipped: ${error.message}`));
   state.db = db;
 
   for (const [id, meta] of Object.entries(AGENTS)) {
@@ -413,19 +427,22 @@ export async function ensureDocumentIntelligence({ pool, catalog, logEvent = () 
   // The stdio forwarding MCP proxy is retired: DI tools are registered as
   // native execution operations (server/execution/registry.mjs) and reach the
   // same runTool handlers through the host dispatcher. Nothing to attach.
-  return { applied, tenantId: state.tenantId, roleSeparation: state.asRole };
+  return { applied, tenantId: state.operatorTenantId, roleSeparation: state.asRole };
 }
 
-/** Live host-selected tenant context; callers never supply a tenant id. */
-export function companyHostContext() {
-  if (!state.db || !state.tenantId) throw new Error("Document Intelligence is not ready");
-  return { db: state.db, tenantId: state.tenantId, asRole: state.asRole };
+export { operatorTenantId };
+
+/** Database context for one named tenant. The tenant is required: there is no default. */
+export function tenantContext(tenantId) {
+  if (!state.db) throw new Error("Document Intelligence is not ready");
+  if (!tenantId) throw new Error("Company tenant is required");
+  return { db: state.db, tenantId, asRole: state.asRole };
 }
 
-export async function companyOnboardingStatus() {
-  const ctx = companyHostContext();
+/** Company readiness for the orchestrator and the prompt: readiness only, never bank details or private fields. */
+export async function companyOnboardingStatus(tenantId) {
+  const ctx = tenantContext(tenantId);
   const result = await withContext(ctx.db, { ...ctx, agent: 'orchestrator' }, getCompanyProfile);
-  // Orchestrator needs readiness, not bank details or the rest of the private profile.
   return { ...result.readiness, revision: result.company.revision, company_name: result.company.name,
     form_url: result.form_url, onboarding_agent: result.onboarding_agent };
 }

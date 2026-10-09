@@ -151,7 +151,7 @@ test("runManageTurn hands all pages to the model and files page receipts only in
     prepareExpenseDelegation, expenseEvidenceModel, modelCatalog: [{ id: "test", available: true, vision: true }],
     getPool: () => ({ query: async () => ({ rows: [{ content: f.file.url }] }) }), updateSession: async () => session,
     agentWorkspace: agent => agent.id === "orchestrator" ? f.sourceWorkspace : f.workspace,
-    path, DATA_DIR: f.dir, companyHostContext: () => ({ tenantId: "company-a" }), defaultModelId: "test",
+    path, DATA_DIR: f.dir, tenantOfSession: async () => "company-a", defaultModelId: "test",
     withAgentLock: async (_agent, fn) => fn(),
     chat: async (message, _model, _session, _event, images) => {
       captured = { message, images };

@@ -164,8 +164,8 @@ export async function manageUsers(action, input = {}, context = {}) {
       if (!current) throw new Error('User not found');
       const role = normalizeRole(input.role) ?? current.role, active = input.active ?? current.active;
       if (current.role === 'admin' && current.active && (role !== 'admin' || !active)) {
-        const count = (await tx.query("SELECT COUNT(*)::int AS count FROM users WHERE role='admin' AND active")).rows[0].count;
-        if (count <= 1) throw new Error('Cannot disable or demote the last active admin');
+        const count = (await tx.query("SELECT COUNT(*)::int AS count FROM users WHERE role='admin' AND active AND company_tenant_id IS NOT DISTINCT FROM $1", [current.company_tenant_id])).rows[0].count;
+        if (count <= 1) throw new Error("Cannot disable or demote the company's last active Superadmin");
       }
       result = await tx.query(`UPDATE users SET username=$2,display_name=$3,password_hash=$4,role=$5,tier=$6,active=$7,updated_at=NOW() WHERE id=$1 RETURNING ${fields}`,
         [current.id,username ?? current.username,input.display_name ?? current.display_name,input.password === undefined ? current.password_hash : hashPassword(input.password),role,input.tier ?? current.tier,active]);

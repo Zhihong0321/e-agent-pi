@@ -92,10 +92,10 @@ test('orchestrator requires minimum setup but permits setup specialists and unre
   assert.equal(companyDispatchGate({id:'di-documents'},{minimum_ready:true}).ok,true);
 });
 
-test('manual company profile and reset endpoints require owner authentication',async()=>{
+test('manual company profile and reset endpoints require a signed-in company admin or the operator',async()=>{
   for(const [path,method,status] of [['/company-profile/','GET',302],['/company-profile/api/profile','GET',401],['/company-profile/api/reset','POST',401]]) {
     let got;
-    await handleCompanyProfile({method,headers:{}},{writeHead:s=>{got=s;},end(){}},new URL(path,'http://localhost'),()=>{throw new Error('must not access database');});
+    await handleCompanyProfile({method,headers:{}},{writeHead:s=>{got=s;},end(){}},new URL(path,'http://localhost'),async()=>null);
     assert.equal(got,status);
   }
 });

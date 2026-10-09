@@ -1,26 +1,31 @@
 import { readFile } from 'node:fs/promises';
-import { hasApiAuth } from './auth.mjs';
-import { companyHostContext } from '../document_inteligence/host.mjs';
+import { tenantContext } from '../document_inteligence/host.mjs';
 import { withContext } from '../document_inteligence/core/db.mjs';
 import { getCompanyProfile, updateCompanyProfile } from '../document_inteligence/core/company.mjs';
 import { previewCompanyReset, resetCompany } from '../document_inteligence/core/reset.mjs';
 
-export async function handleCompanyProfile(req, res, url, getContext = companyHostContext) {
+/**
+ * The Company Profile form edits one company. `identify(req)` says whose: a company admin gets
+ * their own company, the platform operator gets the company it names. Anyone else is refused.
+ * @param {(req: any) => Promise<{ tenantId: string, actor: string } | null>} identify
+ */
+export async function handleCompanyProfile(req, res, url, identify) {
   const route = url.pathname.slice('/company-profile'.length);
   const json = (status, body) => {
     res.writeHead(status, { 'Content-Type':'application/json', 'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff' });
     res.end(JSON.stringify(body));
   };
-  if (!hasApiAuth(req)) {
+  const who = await identify(req);
+  if (!who) {
     if (req.method === 'GET' && !route.startsWith('/api/')) {
-      res.writeHead(302, { Location:'/admin', 'Cache-Control':'no-store' }); res.end();
-    } else json(401, { error:'Unlock Settings to edit Company Profile.' });
+      res.writeHead(302, { Location:'/demo', 'Cache-Control':'no-store' }); res.end();
+    } else json(401, { error:'Sign in as a company admin to edit the Company Profile.' });
     return;
   }
   try {
     if (route.startsWith('/api/')) {
-      const ctx = getContext();
-      const scoped = fn => withContext(ctx.db, { ...ctx, actor:'owner', agent:'company-profile-form' }, fn);
+      const ctx = tenantContext(who.tenantId);
+      const scoped = fn => withContext(ctx.db, { ...ctx, actor:who.actor, agent:'company-profile-form' }, fn);
       if (route === '/api/profile' && req.method === 'GET') return json(200, await scoped(getCompanyProfile));
       if (req.method !== 'POST') return json(405, { error:'Method not allowed' });
       if (req.headers['sec-fetch-site'] === 'cross-site') return json(403, { error:'Open Company Profile in this app.' });

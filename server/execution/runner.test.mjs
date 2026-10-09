@@ -37,7 +37,7 @@ mock.module('../debug.mjs', { namedExports: { logEvent: () => {} } });
 mock.module('../../document_inteligence/host.mjs', {
   namedExports: {
     companyOnboardingStatus: async () => ({ minimum_ready: true, revision: 3, company_name: 'Acme' }),
-    companyHostContext: () => ({ tenantId: holder.tenantId }),
+    operatorTenantId: () => holder.tenantId,
   },
 });
 

@@ -379,7 +379,6 @@ export async function createAgent(input = {}) {
       // Browser MCP is registered at boot.
     }
   }
-  await mkdir(agentWorkspace(created), { recursive: true });
   return created;
 }
 
@@ -1096,7 +1095,6 @@ You are bound to **Open Design** — the open-source local-first design tool at 
     toolProfile: "assistant",
     thinkingLevel: "low",
   });
-  await mkdir(agentWorkspace({ id: MEDIA_AI_AGENT_ID, slug: "media-ai" }), { recursive: true });
 
   const adsResearchRole = await readFile(ADS_RESEARCH_ROLE_FILE, "utf8").catch(() => "You are Ads Research Agent.");
   await seedSystemAgent({
@@ -1111,7 +1109,6 @@ You are bound to **Open Design** — the open-source local-first design tool at 
     toolProfile: "assistant",
     thinkingLevel: "low",
   });
-  await mkdir(agentWorkspace({ id: ADS_RESEARCH_AGENT_ID, slug: "ads-research" }), { recursive: true });
 
   const orchestratorRole = await readFile(ORCHESTRATOR_ROLE_FILE, "utf8").catch(() => "You are Orchestrator.");
   await seedSystemAgent({
@@ -1128,7 +1125,6 @@ You are bound to **Open Design** — the open-source local-first design tool at 
     thinkingLevel: "medium",
     userFacing: true,
   });
-  await mkdir(agentWorkspace({ id: ORCHESTRATOR_AGENT_ID, slug: "orchestrator" }), { recursive: true });
 
   const manageRow = await getPool().query(`SELECT id FROM skills WHERE slug = 'manage-host-settings'`);
   const manageId = manageRow.rows[0]?.id;
@@ -1223,7 +1219,6 @@ You are bound to **Open Design** — the open-source local-first design tool at 
       thinkingLevel: "low",
       userFacing: false,
     });
-    await mkdir(agentWorkspace({ id: slug, slug }), { recursive: true });
   }
 
   await getPool().query(`UPDATE sessions SET agent_id = $1 WHERE agent_id IS NULL`, [WEBSITE_AGENT_ID]);

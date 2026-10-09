@@ -8,7 +8,7 @@ import { runTool, describeError } from "../document_inteligence/core/actions.mjs
 import { withContext } from "../document_inteligence/core/db.mjs";
 import { getSupplierDocumentFile } from "../document_inteligence/core/procurement.mjs";
 import { seedDemoProcurement } from "../document_inteligence/core/procurement-demo.mjs";
-import { companyHostContext, diRunDeps } from "../document_inteligence/host.mjs";
+import { tenantContext, diRunDeps } from "../document_inteligence/host.mjs";
 import { DATA_DIR } from "./paths.mjs";
 import { readSharedFile, sharedFileLocation } from "./shared-files.mjs";
 
@@ -93,7 +93,7 @@ export async function handleDemoProcurement(req, res, url, opts) {
       if (!out.pdf?.id) json(res, 503, { error: "The PDF renderer is not available on this host" });
       else await sendStored(res, who, { id: out.pdf.id, name: out.pdf.name }, { name: out.pdf.name, mime: "application/pdf" });
     } else if (req.method === "GET" && pathname === "/api/demo/procurement/file") {
-      const ctx = { ...companyHostContext(), tenantId: who.company_tenant_id };
+      const ctx = tenantContext(who.company_tenant_id);
       const file = await withContext(ctx.db, { ...ctx, actor: who.username, agent: AGENT }, (tx) => getSupplierDocumentFile(tx, q("id"), { who }));
       const stored = sharedFileLocation(file.path);
       if (!stored) throw new Error("File is not available");

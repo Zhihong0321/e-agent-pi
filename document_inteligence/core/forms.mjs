@@ -314,7 +314,11 @@ async function resolveForm(tx, ref) {
 const versions = async (tx, formId) =>
   (await tx.query("SELECT * FROM di.form_version WHERE form_id = $1 AND deleted_at IS NULL ORDER BY version", [formId])).rows;
 
-export const publicPath = (slug) => `/api/forms/${slug}`;
+/** The public link names the company: a slug is only unique inside one company. */
+export const publicPath = async (tx, slug) => {
+  const { rows } = await tx.query("SELECT current_setting('di.tenant_id', true) AS tenant_id");
+  return `/api/forms/${rows[0].tenant_id}/${slug}`;
+};
 
 async function submissionCounts(tx, formId) {
   const { rows } = await tx.query(
@@ -378,7 +382,7 @@ export async function listForms(tx, { status } = {}) {
       draft_version: vs.find((v) => v.status === "draft")?.version ?? null,
       closes_at: live?.settings?.closes_at ?? null,
       submissions: await submissionCounts(tx, f.id),
-      public_path: f.status === "published" ? publicPath(f.slug) : null,
+      public_path: f.status === "published" ? await publicPath(tx, f.slug) : null,
     });
   }
   return { forms: out };
@@ -403,7 +407,7 @@ export async function getForm(tx, { form, version }) {
       purpose: f.purpose,
       status: f.status,
       published_version: f.published_version,
-      public_path: f.status === "published" ? publicPath(f.slug) : null,
+      public_path: f.status === "published" ? await publicPath(tx, f.slug) : null,
       closed_at: f.closed_at,
       close_reason: f.close_reason,
     },
@@ -570,7 +574,7 @@ export async function publishForm(tx, { form }) {
     [target.version, f.id],
   );
   const out = await getForm(tx, { form: f.id });
-  return { ...out, published: { version: target.version, reopened: !draft }, public_path: publicPath(f.slug), warnings: readiness.warnings };
+  return { ...out, published: { version: target.version, reopened: !draft }, public_path: await publicPath(tx, f.slug), warnings: readiness.warnings };
 }
 
 export async function closeForm(tx, { form, reason }) {

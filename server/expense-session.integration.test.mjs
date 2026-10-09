@@ -62,14 +62,16 @@ test('delegated expense tools inherit the authenticated owner and refuse imperso
       return { ...signedIn, req: { ...request, headers: { cookie: `demo_session=${signedIn.token}` } } };
     };
     const admin = await login('admin'), alice = await login('alice'), bob = await login('bob');
-    const tenantId = di.companyHostContext().tenantId;
+    const tenantId = di.operatorTenantId();
+    // Every login belongs to a company; the fixtures' users are this company's.
+    await pool.query('UPDATE users SET company_tenant_id=$1 WHERE company_tenant_id IS NULL', [tenantId]);
     await pool.query(`UPDATE di.company_profile SET name='Expense identity test', country='MY',
       business_type='services', business_activity='Expense integration fixtures', email='test@example.test'
       WHERE tenant_id=$1`, [tenantId]);
     // PGlite has one connection; the runner's readiness lookup uses a second
     // connection inside its scheduling transaction. Snapshot the real readiness
     // result for that lookup, retaining every actual identity/expense function.
-    const setup = await di.companyOnboardingStatus();
+    const setup = await di.companyOnboardingStatus(tenantId);
     assert.equal(setup.minimum_ready, true);
     mock.module('../document_inteligence/host.mjs', { namedExports: {
       ...di, companyOnboardingStatus: async () => setup,

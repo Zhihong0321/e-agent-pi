@@ -4,12 +4,14 @@ import { publishFile, readSharedFile, sharedFileLocation } from "./shared-files.
 import { fileMime } from "./files.mjs";
 
 const secret = randomBytes(32);
-const tokenFor = (agentId) => createHmac("sha256", secret).update(agentId).digest("hex");
+// The token binds the agent AND the company it is running for, so a run can only publish into
+// its own company's file folder. An agent not tied to a company (platform agent) uses tenant "".
+const tokenFor = (agentId, tenantId = "") => createHmac("sha256", secret).update(JSON.stringify([agentId, tenantId])).digest("hex");
 
-export function fileSharingEnv(agent, port = process.env.PORT || "8080") {
+export function fileSharingEnv(agent, port = process.env.PORT || "8080", tenantId = "") {
   const id = typeof agent === "string" ? agent : agent?.id || agent?.slug;
   if (!id) return {};
-  return { FILE_SHARE_AGENT: id, FILE_SHARE_TOKEN: tokenFor(id), FILE_SHARE_URL: `http://127.0.0.1:${port}` };
+  return { FILE_SHARE_AGENT: id, FILE_SHARE_TENANT: tenantId || "", FILE_SHARE_TOKEN: tokenFor(id, tenantId || ""), FILE_SHARE_URL: `http://127.0.0.1:${port}` };
 }
 
 export const FILE_SHARING_PROMPT = `## Files for the user
@@ -31,28 +33,29 @@ export async function handleFileSharing(req, res, url, ctx) {
       const body = JSON.parse(await ctx.readBody(req));
       const agent = typeof body.agent === "string" ? body.agent : "";
       const got = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
-      const expected = tokenFor(agent);
+      const tenant = typeof body.tenant === "string" ? body.tenant : "";
+      const expected = tokenFor(agent, tenant);
       const left = Buffer.from(got), right = Buffer.from(expected);
       if (!agent || left.length !== right.length || !timingSafeEqual(left, right)) {
         json(401, { error: "Unauthorized" }); return true;
       }
-      const workspace = await ctx.workspaceFor(agent);
+      const workspace = await ctx.workspaceFor(agent, tenant);
       if (!workspace) throw new Error("Unknown agent");
-      const companyId = await ctx.companyId();
+      const companyId = await ctx.companyId(req, null, tenant);
       const file = await publishFile({ root: ctx.root, companyId, workspace, source: body.path, publicUrl: ctx.publicUrl });
       json(200, { shared_files: [file] });
       return true;
     }
     if (req.method !== "GET" && req.method !== "HEAD") { json(405, { error: "GET required" }); return true; }
-    if (!ctx.authorized(req)) {
-      // Reuse the existing owner sign-in; file storage does not introduce user accounts.
+    if (!ctx.user && !ctx.authorized(req)) {
+      // A signed-in user reads their own company's files; the operator reads the tenant it names.
       res.writeHead(401, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
-      res.end('<p>Sign in through <a href="/company-profile/">Company Profile</a>, then open this file again.</p>');
+      res.end('<p>Sign in, then open this file again.</p>');
       return true;
     }
     const location = sharedFileLocation(url.pathname);
     if (!location) { json(404, { error: "File not found" }); return true; }
-    const companyId = await ctx.companyId();
+    const companyId = await ctx.companyId(req, ctx.user);
     const { full, file } = await readSharedFile({ root: ctx.root, companyId, ...location });
     const mime = fileMime(full);
     const inline = mime === "application/pdf" || (mime !== "image/svg+xml" && /^(image|audio|video)\//.test(mime));

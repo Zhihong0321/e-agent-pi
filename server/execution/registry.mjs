@@ -20,7 +20,7 @@ import {
 import { schedulableAgents } from '../scheduler/actions.mjs';
 import { getAgent } from '../catalog.mjs';
 import { clearAgentSop, getAgentSop, saveAgentSop } from '../sops.mjs';
-import { agentWorkspace } from '../paths.mjs';
+import { tenantFromRun } from '../tenancy.mjs';
 import { isSuperadmin, normalizeRole } from '../roles.mjs';
 import { ToolManifestEntrySchema } from './contracts.mjs';
 
@@ -51,6 +51,7 @@ export function registerExternalMcpTools({ binding, tools, profileIds = [] }) {
         if (!adapter?.callExternal) throw Object.assign(new Error(`MCP ${binding.slug} adapter is unavailable`), { execCode: 'EXTERNAL_ERROR' });
         const scopedBinding = {
           ...binding,
+          companyId: ctx.companyId || '',
           scope: `company:${ctx.companyId || 'none'}:user:${ctx.userId || 'none'}`,
         };
         const response = await adapter.callExternal(scopedBinding, tool.mcpTool, args);
@@ -236,7 +237,7 @@ registerOperation({
   async execute(ctx, args) {
     requireAdmin(ctx);
     const agent = await sopAgent(args.agent);
-    const sop = await getAgentSop(agent.id);
+    const sop = await getAgentSop(agent.id, tenantFromRun(ctx));
     return { agent: agent.id, name: agent.name, sop: sop?.content ?? null, updated_at: sop?.updatedAt ?? null, updated_by: sop?.createdBy ?? null };
   },
 });
@@ -255,13 +256,15 @@ registerOperation({
   async execute(ctx, args) {
     requireAdmin(ctx);
     const agent = await sopAgent(args.agent);
-    const previous = await getAgentSop(agent.id);
+    // A company edits its own version of the SOP; the platform default is never changed from here.
+    const companyId = tenantFromRun(ctx);
+    const previous = await getAgentSop(agent.id, companyId);
     const content = keepManagedSopBlock(previous?.content, args.content);
     if (!content) {
-      const removed = await clearAgentSop(agent.id, agentWorkspace(agent));
+      const removed = await clearAgentSop(agent.id, null, companyId);
       return { agent: agent.id, name: agent.name, removed, applies: 'from its next run' };
     }
-    const sop = await saveAgentSop(agent.id, content, ctx.user?.username || ctx.userId);
+    const sop = await saveAgentSop(agent.id, content, ctx.user?.username || ctx.userId, companyId);
     return { agent: agent.id, name: agent.name, saved: true, characters: sop.content.length, applies: 'from its next run' };
   },
 });
@@ -319,9 +322,9 @@ registerOperation({
   effect: 'control',
   timeoutMs: 15_000,
   inputSchema: z.object({}).describe('No arguments'),
-  async execute() {
+  async execute(ctx) {
     if (!controlHandlers.companySetup) throw new Error('Company setup status is not wired');
-    return controlHandlers.companySetup();
+    return controlHandlers.companySetup(ctx);
   },
 });
 

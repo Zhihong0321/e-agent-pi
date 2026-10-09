@@ -11,6 +11,8 @@ import * as dispatch from './dispatch.mjs';
 import { DEFAULT_LIMITS, EXECUTOR_VERSION } from './profiles.mjs';
 import { signedInLine } from '../roles.mjs';
 import { recordApiUsage } from '../usage.mjs';
+import { agentWorkspace } from '../paths.mjs';
+import { userAssignedAgent } from '../agent-access.mjs';
 
 const config = {
   maxConcurrent: 3,
@@ -234,11 +236,14 @@ export async function runAgent({ kind, runRef, profile, user, ctx, input, images
     await config.services.saveSessionRef(ctx.sessionId, ref);
   };
   try {
+    // Company agents get one workspace per company; the run's tenant picks it.
+    const workspace = runKindOpts.workspace || profile.workspace
+      || agentWorkspace(profile.agentRow || { id: profile.agentId, slug: profile.slug }, ctx.companyId);
     worker = await config.workerFactory({
       profile, manifest, token: workerToken, attemptId, runRef, runKind: kind,
       sessionFile: runKindOpts.sessionFile || null, modelId: runKindOpts.modelId || null,
-      cwd: runKindOpts.cwd || profile.workspace || null,
-      workspace: runKindOpts.workspace || profile.workspace || null,
+      cwd: runKindOpts.cwd || workspace,
+      workspace,
       workerUrl: runKindOpts.workerUrl || config.workerUrl || null,
       user: user || null, ctx,
       signal: controller.signal, images: images || [],
@@ -619,7 +624,7 @@ export async function submitPlanHandler(ctx, args) {
   for (const spec of specs) {
     const agent = config.services.getAgent ? await config.services.getAgent(spec.agent || spec.agentId) : null;
     if (!agent) throw Object.assign(new Error(`Unknown agent: ${spec.agent}`), { execCode: 'INPUT_INVALID' });
-    if (ctx.userId && !ctx.sessionId?.startsWith('schedule:') && !(await pool.query('SELECT 1 FROM user_agents WHERE user_id=$1 AND agent_id=$2', [ctx.userId, agent.id])).rows.length) {
+    if (ctx.userId && !ctx.sessionId?.startsWith('schedule:') && !(await userAssignedAgent(ctx.userId, agent.id, pool))) {
       throw Object.assign(new Error(`Agent is not assigned to this user: ${agent.id}`), { execCode: 'PERMISSION_DENIED' });
     }
     if (agent.id === 'orchestrator' || agent.slug === 'orchestrator') {
@@ -765,7 +770,7 @@ async function runClaimedTask(taskRow) {
   const dependencies = await dependencyEvidence(taskRow);
   const input = specialistPrompt(taskRow, dependencies);
   const modelId = taskRow.profile_snapshot?.modelId || profile.modelId || await resolveEffectiveModelId(agent, null);
-  const workspace = config.services.workspaceFor?.(agent) || profile.workspace || null;
+  const workspace = config.services.workspaceFor?.(agent, taskRow.plan_company_id) || profile.workspace || null;
   const user = taskRow.plan_owner_user_id && config.services.userLookup
     ? await config.services.userLookup(taskRow.plan_owner_user_id)
     : null;

@@ -117,7 +117,7 @@ test("forms", async (t) => {
     const pub = await designer("publish_form", { form: "solar-enquiry" });
     assert.equal(pub.form.status, "published");
     assert.equal(pub.published.version, 1);
-    assert.equal(pub.public_url, "https://app.example.test/api/forms/solar-enquiry");
+    assert.equal(pub.public_url, `https://app.example.test/api/forms/${tenantA}/solar-enquiry`);
     const preview = await designer("preview_form", { form: "solar-enquiry" });
     assert.equal(preview.file.name, "form-solar-enquiry-v1.html");
     assert.ok(new URL(preview.file.url).pathname.startsWith("/files/"));

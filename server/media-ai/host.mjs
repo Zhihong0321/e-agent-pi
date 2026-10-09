@@ -5,11 +5,12 @@ import path from "node:path";
 import { getCompanyProfile } from "../../document_inteligence/core/company.mjs";
 import { withContext } from "../../document_inteligence/core/db.mjs";
 import { getPool } from "../db.mjs";
-import { companyHostContext, publicBaseUrl } from "../../document_inteligence/host.mjs";
+import { tenantContext, publicBaseUrl } from "../../document_inteligence/host.mjs";
+import { tenantForRequest } from "../tenancy.mjs";
 import { agentWorkspace, DATA_DIR, ROOT } from "../paths.mjs";
 import { publishFile, readSharedFile } from "../shared-files.mjs";
 import { getAgent, createMcpServer, updateMcpServer, getMcpServer, seedSystemAgent, updateAgent } from "../catalog.mjs";
-import { MEDIA_AI_AGENT_ID, MEDIA_AI_TOKEN, mediaAiAuthorized, shareTokenHash } from "./auth.mjs";
+import { MEDIA_AI_AGENT_ID, MEDIA_AI_TOKEN, mediaAiTenantFrom, shareTokenHash } from "./auth.mjs";
 import { fileMime, resolveWorkspaceFile } from "../files.mjs";
 
 export const MEDIA_AI_MCP_SLUG = "media-ai";
@@ -154,8 +155,7 @@ async function createAssetTx(tx, input) {
   if (!/^[a-f0-9]{64}$/.test(suppliedFile.id || "") || !suppliedFile.name || suppliedFile.name !== path.basename(suppliedFile.name)) throw new Error("Invalid shared file reference");
   let shared;
   try {
-    const ctx = companyHostContext();
-    shared = await readSharedFile({ root: path.join(DATA_DIR, "files"), companyId: ctx.tenantId, id: suppliedFile.id, name: suppliedFile.name, publicUrl: publicBaseUrl() });
+    shared = await readSharedFile({ root: path.join(DATA_DIR, "files"), companyId: input.tenantId, id: suppliedFile.id, name: suppliedFile.name, publicUrl: publicBaseUrl() });
   } catch {
     throw new Error("Shared file not found for this company");
   }
@@ -275,8 +275,8 @@ async function tenantForShare(token) {
 async function sharedManifest(token, filters = {}) {
   const tenantId = await tenantForShare(token);
   if (!tenantId) throw Object.assign(new Error("Media Kit share is invalid or expired"), { statusCode: 404 });
-  const ctx = companyHostContext();
-  const manifest = await withContext(ctx.db, { ...ctx, tenantId, actor: "media-share", agent: "media-share" }, tx => companyManifestTx(tx, filters));
+  const ctx = tenantContext(tenantId);
+  const manifest = await withContext(ctx.db, { ...ctx, actor: "media-share", agent: "media-share" }, tx => companyManifestTx(tx, filters));
   return {
     ...manifest,
     assets: manifest.assets.map(asset => {
@@ -287,8 +287,8 @@ async function sharedManifest(token, filters = {}) {
 }
 
 async function streamAssetFile(tenantId, id, name, req, res, visibility = null) {
-  const ctx = companyHostContext();
-  const allowed = await withContext(ctx.db, { ...ctx, tenantId, actor: "media-kit", agent: "media-kit" }, async tx => {
+  const ctx = tenantContext(tenantId);
+  const allowed = await withContext(ctx.db, { ...ctx, actor: "media-kit", agent: "media-kit" }, async tx => {
     const values = [id, name];
     const extra = visibility ? " AND visibility = $3" : "";
     if (visibility) values.push(visibility);
@@ -322,7 +322,6 @@ async function streamSharedFile(token, id, name, req, res) {
 export async function ensureMediaAi({ log = () => {} } = {}) {
   const rolePrompt = await readFile(path.join(ROOT, "agent", "roles", "media-ai.md"), "utf8").catch(() => "You are Media AI.");
   await seedSystemAgent({ id: MEDIA_AI_AGENT_ID, slug: MEDIA_AI_AGENT_ID, name: "Media AI", short: "MK", headline: "Collects and shares the company media kit", description: "Organizes company logos, event photos, news, certifications, qualifications and awards into a verified, shareable media kit.", color: "emerald", rolePrompt, toolProfile: "assistant", thinkingLevel: "low" });
-  await mkdir(agentWorkspace({ id: MEDIA_AI_AGENT_ID, slug: MEDIA_AI_AGENT_ID }), { recursive: true });
   const payload = { name: "Media AI", slug: MEDIA_AI_MCP_SLUG, command: process.execPath, args: [MEDIA_AI_MCP_SERVER], description: "Company-scoped Media Kit collection, metadata and sharing tools.", config: { directTools: true, lifecycle: "lazy" } };
   const old = await getMcpServer(payload.slug);
   const mcp = old ? await updateMcpServer(old.id, payload) : await createMcpServer(payload);
@@ -335,14 +334,15 @@ export async function ensureMediaAi({ log = () => {} } = {}) {
 
 export function mediaAiConfiguration() { return { agent: MEDIA_AI_AGENT_ID, mcp: MEDIA_AI_MCP_SLUG, ready }; }
 
-export async function mediaAction({ action, ...input }) {
-  const ctx = companyHostContext();
-  if (!ready && action !== "status") throw new Error("Media AI is not initialized");
+/** Every Media AI action runs for one company: `tenantId` is required. */
+export async function mediaAction({ action, tenantId, ...input }) {
+  if (action === "status") return mediaAiConfiguration();
+  const ctx = tenantContext(tenantId);
+  if (!ready) throw new Error("Media AI is not initialized");
   return withContext(ctx.db, { ...ctx, actor: input.actor || "owner", agent: input.agent || MEDIA_AI_AGENT_ID }, async tx => {
-    if (action === "status") return mediaAiConfiguration();
     if (action === "list") return listAssetsTx(tx, input);
     if (action === "manifest") return companyManifestTx(tx, input);
-    if (action === "create") return createAssetTx(tx, input);
+    if (action === "create") return createAssetTx(tx, { ...input, tenantId });
     if (action === "update") return updateAssetTx(tx, input.id, input);
     if (action === "archive") return archiveAssetTx(tx, input.id, true);
     if (action === "restore") return archiveAssetTx(tx, input.id, false);
@@ -366,10 +366,10 @@ export async function mediaAction({ action, ...input }) {
 }
 
 async function ingestFile(input) {
-  const ctx = companyHostContext();
+  const ctx = tenantContext(input.tenantId);
   const agent = await getAgent(MEDIA_AI_AGENT_ID);
   if (!agent) throw new Error("Media AI agent is not available");
-  const workspace = agentWorkspace(agent);
+  const workspace = agentWorkspace(agent, ctx.tenantId);
   const source = cleanText(input.path, "path", 1000);
   const resolved = resolveWorkspaceFile(workspace, source);
   if (!resolved) throw new Error("File must be inside the Media AI workspace");
@@ -404,7 +404,7 @@ async function uploadFile(input) {
   const stem = (requestedName || `media-${randomUUID()}`).replace(/\.[A-Za-z0-9]{1,8}$/, "");
   const name = `${stem}${extension}`;
   const relative = `_media-inbox/${randomUUID()}-${name}`;
-  const workspace = agentWorkspace(agent);
+  const workspace = agentWorkspace(agent, tenantContext(input.tenantId).tenantId);
   await mkdir(path.join(workspace, "_media-inbox"), { recursive: true });
   await writeFile(path.join(workspace, relative), buffer, { flag: "wx" });
   try { return await ingestFile({ ...input, path: relative, mime }); }
@@ -434,35 +434,42 @@ export async function handleMediaAi(req, res, url, { authorized, user = null }) 
     return true;
   }
   const managementAuthorized = authorized(req) || Boolean(user);
-  if (internal ? !mediaAiAuthorized(req) : !managementAuthorized) { json(401, { error: "Unauthorized" }); return true; }
+  if (!internal && !managementAuthorized) { json(401, { error: "Unauthorized" }); return true; }
   try {
     if (internal) {
       if (req.method !== "POST") { json(405, { error: "POST required" }); return true; }
       const body = JSON.parse(await readMediaBody(req) || "{}");
-      const result = body.action === "ingest" ? await ingestFile(body) : body.action === "upload" ? await uploadFile(body) : await mediaAction({ ...body, actor: user?.id || body.actor });
+      // The token binds the company: an agent run can only act inside the company it was started for.
+      const internalTenant = mediaAiTenantFrom(req, body.tenant);
+      if (!internalTenant) { json(401, { error: "Unauthorized" }); return true; }
+      const call = { ...body };
+      delete call.tenant;
+      const result = call.action === "ingest" ? await ingestFile({ ...call, tenantId: internalTenant }) : call.action === "upload" ? await uploadFile({ ...call, tenantId: internalTenant }) : await mediaAction({ ...call, tenantId: internalTenant, actor: user?.id || call.actor });
       json(200, { ok: true, result });
       return true;
     }
-    if (url.pathname === prefix && req.method === "GET") { const requestedVisibility = url.searchParams.get("visibility") || "published"; const assets = await mediaAction({ action: "list", actor: user?.id || undefined, category: url.searchParams.get("category") || undefined, query: url.searchParams.get("q") || undefined, visibility: requestedVisibility === "all" ? undefined : requestedVisibility }); json(200, assets.map(managementAsset)); return true; }
-    if (url.pathname === `${prefix}/profile` && req.method === "GET") { json(200, await mediaAction({ action: "profile", actor: user?.id || undefined })); return true; }
-    if (url.pathname === `${prefix}/manifest` && req.method === "GET") { const manifest = await mediaAction({ action: "manifest", actor: user?.id || undefined }); json(200, { ...manifest, assets: manifest.assets.map(managementAsset) }); return true; }
-    if (url.pathname === `${prefix}/shares` && req.method === "GET") { json(200, await mediaAction({ action: "list_shares", actor: user?.id || undefined })); return true; }
-    if (url.pathname === `${prefix}/shares` && req.method === "POST") { json(201, await mediaAction({ action: "create_share", actor: user?.id || undefined, ...(JSON.parse(await readMediaBody(req) || "{}")) })); return true; }
+    const tenantId = tenantForRequest(req, user);
+    const act = (call) => mediaAction({ ...call, tenantId });
+    if (url.pathname === prefix && req.method === "GET") { const requestedVisibility = url.searchParams.get("visibility") || "published"; const assets = await act({ action: "list", actor: user?.id || undefined, category: url.searchParams.get("category") || undefined, query: url.searchParams.get("q") || undefined, visibility: requestedVisibility === "all" ? undefined : requestedVisibility }); json(200, assets.map(managementAsset)); return true; }
+    if (url.pathname === `${prefix}/profile` && req.method === "GET") { json(200, await act({ action: "profile", actor: user?.id || undefined })); return true; }
+    if (url.pathname === `${prefix}/manifest` && req.method === "GET") { const manifest = await act({ action: "manifest", actor: user?.id || undefined }); json(200, { ...manifest, assets: manifest.assets.map(managementAsset) }); return true; }
+    if (url.pathname === `${prefix}/shares` && req.method === "GET") { json(200, await act({ action: "list_shares", actor: user?.id || undefined })); return true; }
+    if (url.pathname === `${prefix}/shares` && req.method === "POST") { json(201, await act({ action: "create_share", actor: user?.id || undefined, ...(JSON.parse(await readMediaBody(req) || "{}")) })); return true; }
     const fileMatch = url.pathname.slice(`${prefix}/assets/file/`).match(/^([a-f0-9]{64})\/([^/]+)$/i);
     if (url.pathname.startsWith(`${prefix}/assets/file/`) && fileMatch && (req.method === "GET" || req.method === "HEAD")) {
-      const served = await streamAssetFile(companyHostContext().tenantId, fileMatch[1], decodeURIComponent(fileMatch[2]), req, res);
+      const served = await streamAssetFile(tenantId, fileMatch[1], decodeURIComponent(fileMatch[2]), req, res);
       if (!served) json(404, { error: "Media Kit file not found" });
       return true;
     }
     const shareMatch = url.pathname.slice(`${prefix}/shares/`.length).match(/^([0-9a-f-]{36})$/i);
-    if (shareMatch && req.method === "POST") { json(200, await mediaAction({ action: "revoke_share", id: shareMatch[1] })); return true; }
-    if (url.pathname === `${prefix}/assets` && req.method === "POST") { json(201, await mediaAction({ action: "create", ...(JSON.parse(await readMediaBody(req) || "{}")) })); return true; }
-    if (url.pathname === `${prefix}/upload` && req.method === "POST") { json(201, await uploadFile(JSON.parse(await readMediaBody(req) || "{}"))); return true; }
+    if (shareMatch && req.method === "POST") { json(200, await act({ action: "revoke_share", id: shareMatch[1] })); return true; }
+    if (url.pathname === `${prefix}/assets` && req.method === "POST") { json(201, await act({ action: "create", ...(JSON.parse(await readMediaBody(req) || "{}")) })); return true; }
+    if (url.pathname === `${prefix}/upload` && req.method === "POST") { json(201, await uploadFile({ ...JSON.parse(await readMediaBody(req) || "{}"), tenantId })); return true; }
     const match = url.pathname.slice(prefix.length).match(/^\/assets\/([0-9a-f-]{36})$/i);
     if (match && ["PATCH", "POST"].includes(req.method)) {
       const body = JSON.parse(await readMediaBody(req) || "{}");
       const action = body.action === "archive" ? "archive" : body.action === "restore" ? "restore" : "update";
-      json(200, await mediaAction({ action, id: match[1], ...body }));
+      json(200, await act({ action, id: match[1], ...body }));
       return true;
     }
     json(404, { error: "Unknown Media Kit route" });

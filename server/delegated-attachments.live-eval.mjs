@@ -98,7 +98,7 @@ try {
     modelCatalog: [{ id: model, available: true, vision: true }], updateSession: async () => session,
     getPool: () => ({ query: async () => ({ rows: [{ content: file.url }] }) }),
     agentWorkspace: agent => agent.id === "orchestrator" ? sourceWorkspace : workspace,
-    path, DATA_DIR: dir, companyHostContext: () => ({ tenantId: companyId }), defaultModelId: model,
+    path, DATA_DIR: dir, tenantOfSession: async () => companyId, defaultModelId: model,
     withAgentLock: async (_id, fn) => fn(), chat: async (message, _model, _session, _event, images) => {
       report.modelInputs.push({ imageCount: images.length, message });
       assert.equal(images.length, 7);

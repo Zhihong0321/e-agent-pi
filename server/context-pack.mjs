@@ -10,6 +10,7 @@ import {
   ROOT,
   RUNTIME_DIR,
   agentWorkspace,
+  isPlatformAgent,
   isProposalAgent,
 } from "./paths.mjs";
 
@@ -90,7 +91,9 @@ export async function loadContextPack(agent, { modelId } = {}) {
   if (shared.trim()) parts.push(shared.trim());
 
   for (const name of CONTEXT_FILES) {
-    if (name === "STATE.md") {
+    // The runtime journal records what the last chat did. It belongs to platform agents (repo work);
+    // a company agent never reads another company's history from it.
+    if (name === "STATE.md" && isPlatformAgent(agent)) {
       const runtimeId = agent?.id || slug;
       const runtime = await readOptional(path.join(RUNTIME_DIR, runtimeId, "STATE.md"));
       if (runtime.trim()) {
@@ -192,11 +195,13 @@ export async function previewContextPack(agent, { modelId } = {}) {
   listed.push({ file: "vision", bytes: Buffer.byteLength(vision) });
 
   const assembled = texts.filter(Boolean).join("\n\n");
-  const workspace = agentWorkspace(agent);
   const codemap = texts[1 + CONTEXT_FILES.indexOf("CODEMAP.md")] || (await readOptional(path.join(dir, "CODEMAP.md")));
-  for (const rel of extractCodemapPaths(codemap)) {
-    const full = path.join(workspace, rel);
-    if (!existsSync(full)) missingFiles.push(rel);
+  if (isPlatformAgent(agent)) {
+    const workspace = agentWorkspace(agent);
+    for (const rel of extractCodemapPaths(codemap)) {
+      const full = path.join(workspace, rel);
+      if (!existsSync(full)) missingFiles.push(rel);
+    }
   }
 
   return {
@@ -315,6 +320,7 @@ async function listRecentFiles(dir) {
  * @param {{ id?: string; slug?: string }} agent
  */
 export async function recoveryContext(agent) {
+  if (!isPlatformAgent(agent)) return "";
   const dir = agentWorkspace(agent);
   const bits = ["Do not read transcript logs. Recover from the snapshot below and continue the same task."];
   if (existsSync(path.join(dir, ".git"))) {
@@ -384,6 +390,7 @@ async function filesChangedSince(dir, sinceMs) {
  * }} info
  */
 export async function appendStateJournal(agent, info = {}) {
+  if (!isPlatformAgent(agent)) return;
   const slug = contextPackSlug(agent);
   const runtimeId = agent?.id || slug;
   const destDir = path.join(RUNTIME_DIR, runtimeId);

@@ -3,7 +3,7 @@
 // second executor. Profile edits take effect on the next attempt by design.
 import { externalToolIdsForProfile, manifestFor } from './registry.mjs';
 import { manifestRevisionOf } from './contracts.mjs';
-import { agentWorkspace } from '../paths.mjs';
+import { agentWorkspace, isPlatformAgent } from '../paths.mjs';
 
 export const EXECUTOR_VERSION = 'v2';
 
@@ -55,7 +55,8 @@ export function resolveProfileManifest(agent, opts = {}) {
     toolProfile: agent.toolProfile || 'coding',
     thinkingLevel: agent.thinkingLevel || null,
     modelId: agent.modelId || null,
-    workspace: agent.workspace || agentWorkspace(agent),
+    // Company agents have no fixed workspace: each run resolves it from the run's tenant.
+    workspace: agent.workspace || (isPlatformAgent(agent) ? agentWorkspace(agent) : null),
     toolIds,
     mcpServers,
     manifest,

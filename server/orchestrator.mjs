@@ -2,6 +2,8 @@
 // HTTP client; this module runs in the host and owns Postgres + the specialist
 // turn runner (injected from server/index.mjs so we never import the Pi pool).
 import { companyOnboardingStatus } from '../document_inteligence/host.mjs';
+import { tenantOfSession, tenantOfOwner } from './tenancy.mjs';
+import { assignedAgentIds } from './agent-access.mjs';
 import { randomUUID } from "node:crypto";
 import { createSession, getPool, getSession } from "./db.mjs";
 import { getAgent, listAgents } from "./catalog.mjs";
@@ -196,7 +198,7 @@ const TASK_SELECT = `id, plan_id AS "planId", agent_id AS "agentId", title, prom
 
 export async function listSpecialists(userId = null) {
   const agents = await listAgents();
-  const assigned = userId ? (await getPool().query('SELECT agent_id FROM user_agents WHERE user_id=$1', [userId])).rows.map(row => row.agent_id) : null;
+  const assigned = userId ? await assignedAgentIds(userId) : null;
   return agents
     .filter((agent) => agent.id !== ORCHESTRATOR_AGENT_ID && agent.slug !== "orchestrator" && (!assigned || assigned.includes(agent.id)))
     .map((agent) => capabilityCard(agent));
@@ -538,7 +540,7 @@ export async function dispatchTask(input = {}) {
   }
   const agent = await resolveSpecialist(task.agentId);
   if (String(agent.slug || agent.id).startsWith('di-')) {
-    const setup = await companyOnboardingStatus();
+    const setup = await companyOnboardingStatus(await tenantOfSession(taskPlan.parentSessionId));
     const readinessGate = companyDispatchGate(agent, setup);
     if (!readinessGate.ok) return { ...readinessGate, task, company_setup: setup };
   }
@@ -657,7 +659,9 @@ export async function runJobTick() {
       maxParallelSlots(runtime.maxSlots?.() ?? 3) - v1Running.rows[0].n,
       (runtime.maxSlots?.() ?? 3) - (runtime.runningCount?.() ?? v1Running.rows[0].n)
     ));
-    const candidates = await client.query(`SELECT t.* FROM orchestrator_tasks t JOIN orchestrator_plans p ON p.id=t.plan_id
+    const candidates = await client.query(`SELECT t.*, ps.user_id AS owner_user_id, u.company_tenant_id AS owner_tenant_id
+      FROM orchestrator_tasks t JOIN orchestrator_plans p ON p.id=t.plan_id
+      LEFT JOIN sessions ps ON ps.id=p.parent_session_id LEFT JOIN users u ON u.id=ps.user_id
       WHERE p.auto_run AND t.status='pending' AND t.executor_version='v1'
       AND NOT EXISTS (SELECT 1 FROM unnest(t.depends_on) dep(id) LEFT JOIN orchestrator_tasks d ON d.id=dep.id WHERE d.status IS DISTINCT FROM 'done')
       ORDER BY p.created_at,t.sort_order`);
@@ -671,7 +675,7 @@ export async function runJobTick() {
         continue;
       }
       if (String(agent.slug || agent.id).startsWith('di-')) {
-        const setup = await companyOnboardingStatus().catch(() => null);
+        const setup = await (async () => companyOnboardingStatus(tenantOfOwner(row.owner_user_id, row.owner_tenant_id)))().catch(() => null);
         const gate = companyDispatchGate(agent, setup);
         if (!gate.ok) {
           await client.query(`UPDATE orchestrator_tasks SET error=$2 WHERE id=$1`, [row.id, gate.reason]);

@@ -127,7 +127,9 @@ test("contextPackSlug maps ops to settings", () => {
 test("agentWorkspace isolates unknown agents from the website folder", () => {
   assert.equal(agentWorkspace({ id: "website", slug: "website" }), WORKSPACE);
   assert.equal(agentWorkspace({ id: "ops", slug: "settings" }), path.join(WORKSPACES_DIR, "settings"));
-  const created = agentWorkspace({ id: "abc", slug: "test" });
-  assert.equal(created, path.join(WORKSPACES_DIR, "test"));
+  // An agent that is not a platform agent works inside one company, so it needs one.
+  assert.throws(() => agentWorkspace({ id: "abc", slug: "test" }), /company tenant/);
+  const created = agentWorkspace({ id: "abc", slug: "test" }, "1739a61f-08a2-4112-b7f9-601111e8b949");
+  assert.equal(created, path.join(WORKSPACES_DIR, "tenants", "1739a61f-08a2-4112-b7f9-601111e8b949", "test"));
   assert.notEqual(created, WORKSPACE);
 });

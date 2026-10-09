@@ -64,7 +64,6 @@ export async function ensureCompanyResearch({ log = () => {} } = {}) {
   await resolveTavilyKeys();
   const rolePrompt = await readFile(path.join(ROOT, 'agent', 'roles', 'company-deep-research.md'), 'utf8');
   await seedSystemAgent({ id: RESEARCH_AGENT_ID, slug: RESEARCH_AGENT_ID, name: 'Company Deep Research', short: 'CDR', headline: 'Evidence-backed company dossiers', description: 'Researches Malaysian companies with Tavily search, Scrapling page evidence, four restricted Pi sessions, quote validation and reproducible scores.', color: 'cyan', rolePrompt, toolProfile: 'assistant', thinkingLevel: 'low' });
-  await mkdir(agentWorkspace({ id: RESEARCH_AGENT_ID, slug: RESEARCH_AGENT_ID }), { recursive: true });
   const payload = { name: 'Company Deep Research', slug: 'company-research', command: process.execPath, args: [path.join(ROOT, 'server', 'company-research', 'mcp-server.mjs')], description: 'Starts private company research jobs, retrieves dossiers and replays synthesis from saved evidence.', config: { directTools: true, lifecycle: 'eager' } };
   const old = await getMcpServer(payload.slug);
   const mcp = old ? await updateMcpServer(old.id, payload) : await createMcpServer(payload);

@@ -118,8 +118,9 @@ function assertHeadHasDepartment(role, department) {
 
 async function protectAdminChange(tx, current, role, active) {
   if (current?.role === 'admin' && current.active && (role !== 'admin' || !active)) {
-    const count = (await tx.query("SELECT COUNT(*)::int AS count FROM users WHERE role='admin' AND active")).rows[0].count;
-    if (count <= 1) throw new Error('Cannot disable or demote the last active admin');
+    // Every company keeps at least one active Superadmin: count inside this company only.
+    const count = (await tx.query("SELECT COUNT(*)::int AS count FROM users WHERE role='admin' AND active AND company_tenant_id IS NOT DISTINCT FROM $1", [current.company_tenant_id])).rows[0].count;
+    if (count <= 1) throw new Error("Cannot disable or demote the company's last active Superadmin");
   }
 }
 

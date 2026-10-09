@@ -41,7 +41,7 @@ async function resolveBindingEnv(binding) {
     Object.assign(env, adsResearchEnv('ads-research'));
   } else if (binding.slug === 'media-ai') {
     const { mediaAiEnv } = await import('../media-ai/auth.mjs');
-    Object.assign(env, mediaAiEnv('media-ai'));
+    Object.assign(env, mediaAiEnv('media-ai', process.env, binding.companyId));
   } else if (binding.slug === 'company-research') {
     const { researchEnv } = await import('../company-research/auth.mjs');
     Object.assign(env, researchEnv('company-deep-research'));

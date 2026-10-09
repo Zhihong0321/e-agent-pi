@@ -10,7 +10,7 @@ import { withContext } from "../document_inteligence/core/db.mjs";
 import { getReceiptFile } from "../document_inteligence/core/expenses.mjs";
 import { seedDemoClaims } from "../document_inteligence/core/expense-demo.mjs";
 import { loadLayout, resetLayout, resolveLayout, saveLayout } from "../document_inteligence/core/page-layout.mjs";
-import { companyHostContext, diRunDeps } from "../document_inteligence/host.mjs";
+import { tenantContext, diRunDeps } from "../document_inteligence/host.mjs";
 import { logEvent } from "./debug.mjs";
 import { DATA_DIR } from "./paths.mjs";
 import { readSharedFile, sharedFileLocation } from "./shared-files.mjs";
@@ -28,7 +28,7 @@ const LAYOUT_PAGE = "expenses";
 
 /** Runs `fn` in a transaction scoped to the company, as `who`. The page layout is page chrome, not an agent tool. */
 const inCompany = (who, fn) => {
-  const ctx = { ...companyHostContext(), tenantId: who.company_tenant_id };
+  const ctx = tenantContext(who.company_tenant_id);
   return withContext(ctx.db, { ...ctx, actor: who.username, agent: AGENT }, fn);
 };
 
@@ -142,7 +142,7 @@ export async function handleDemoExpenses(req, res, url, opts) {
     } else if (req.method === "GET" && pathname === "/api/demo/expenses/claim") {
       json(res, 200, await toolCall(opts, who)("get_claim", { claim: String(url.searchParams.get("claim") || "") }));
     } else if (req.method === "GET" && pathname === "/api/demo/expenses/receipt") {
-      const ctx = { ...companyHostContext(), tenantId: who.company_tenant_id };
+      const ctx = tenantContext(who.company_tenant_id);
       const receipt = await withContext(ctx.db, { ...ctx, actor: who.username, agent: AGENT }, (tx) => getReceiptFile(tx, String(url.searchParams.get("id") || ""), { who }));
       const stored = sharedFileLocation(receipt.path);
       if (!stored) throw new Error("Receipt file is not available");

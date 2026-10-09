@@ -193,7 +193,6 @@ export async function ensureAdsResearch({ log = () => {} } = {}) {
   await store.load();
   const rolePrompt = await readFile(path.join(ROOT, "agent", "roles", "ads-research.md"), "utf8");
   await seedSystemAgent({ id: ADS_RESEARCH_AGENT_ID, slug: ADS_RESEARCH_AGENT_ID, name: "Ads Research Agent", short: "AR", headline: "Country and keyword advertising intelligence", description: "Runs read-only Meta and Google Ads Transparency Center research and returns evidence-backed reports.", color: "amber", rolePrompt, toolProfile: "assistant", thinkingLevel: "low" });
-  await mkdir(agentWorkspace({ id: ADS_RESEARCH_AGENT_ID, slug: ADS_RESEARCH_AGENT_ID }), { recursive: true });
   const payload = { name: "Ads Research", slug: "ads-research", command: process.execPath, args: [path.join(ROOT, "server", "ads-research", "mcp-server.mjs")], description: "Runs country and advertising-keyword research using the portable Meta and Google ATC collectors.", config: { directTools: true, lifecycle: "eager" } };
   const old = await getMcpServer(payload.slug);
   const mcp = old ? await updateMcpServer(old.id, payload) : await createMcpServer(payload);
