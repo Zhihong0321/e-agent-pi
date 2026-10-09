@@ -7,6 +7,7 @@ import { getChatRun } from '../execution/store.mjs';
 export async function runScheduledAgent({ occurrence, schedule, action, user, onAccepted }) {
   const agent = await getAgent(action.config.agent_id);
   if(!agent || agent.engine === 'agy' || agent.id === 'scheduler') throw new Error('The selected AI agent is no longer runnable');
+  if(!(await getPool().query('SELECT 1 FROM user_agents WHERE user_id=$1 AND agent_id=$2',[user.id,agent.id])).rows.length) throw new Error('The selected AI agent is not assigned to the schedule owner');
   const id = `schedule:${occurrence.id}`;
   let session = await getSession(id);
   if(!session) {

@@ -12,21 +12,23 @@ const profileKeys = new Set([
   "website", "email", "phone", "address", "currency", "tax_status", "tin", "payment_terms_days",
 ]);
 
-function scope(fn) {
-  const ctx = companyHostContext();
+/** Runs `fn` as the signed-in user's company. */
+function scope(tenantId, fn) {
+  if (!tenantId) throw new Error("Company tenant is required");
+  const ctx = { ...companyHostContext(), tenantId };
   return withContext(ctx.db, { ...ctx, actor: "owner", agent: "demo-form" }, fn);
 }
 
-export async function demoCalendar(query = {}) {
+export async function demoCalendar(query = {}, tenantId) {
   const range = validateCalendarRange({ from: query.from, to: query.to, timezone: query.timezone });
   if (query.include_demo !== undefined && !["true", "false"].includes(query.include_demo)) throw new Error("include_demo must be true or false");
-  return scope((tx) => readCalendar(tx, { ...range, sources: query.sources === undefined ? undefined : query.sources.split(","), include_demo: query.include_demo === "true" }));
+  return scope(tenantId, (tx) => readCalendar(tx, { ...range, sources: query.sources === undefined ? undefined : query.sources.split(","), include_demo: query.include_demo === "true" }));
 }
 
-export async function demoState() {
-  const ctx = companyHostContext();
-  const people = await listPeople(ctx.tenantId);
-  return scope(async (tx) => {
+export async function demoState(tenantId) {
+  if (!tenantId) throw new Error("Company tenant is required");
+  const people = await listPeople(tenantId);
+  return scope(tenantId, async (tx) => {
     const [profile, customers, documents] = await Promise.all([
       getCompanyProfile(tx), findCustomers(tx, { limit: 50 }),
       listDocuments(tx, { doc_type: "invoice", limit: 100 }),
@@ -39,14 +41,14 @@ export async function demoState() {
   });
 }
 
-export async function demoAction(body, actorUserId) {
+export async function demoAction(body, actorUserId, tenantId) {
   const action = String(body?.action || "");
   if (action === "person") {
-    const ctx = companyHostContext();
+    if (!tenantId) throw new Error("Company tenant is required");
     const person = body.person || {};
-    return managePeople(body.person_id ? "update_person" : "create_person", { ...person, ...(body.person_id ? { person_id: body.person_id } : {}) }, { tenantId: ctx.tenantId, actorUserId });
+    return managePeople(body.person_id ? "update_person" : "create_person", { ...person, ...(body.person_id ? { person_id: body.person_id } : {}) }, { tenantId, actorUserId });
   }
-  return scope(async (tx) => {
+  return scope(tenantId, async (tx) => {
     switch (action) {
       case "profile": {
         const key = String(body.key || "");

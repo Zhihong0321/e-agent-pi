@@ -194,10 +194,11 @@ const TASK_SELECT = `id, plan_id AS "planId", agent_id AS "agentId", title, prom
   depends_on AS "dependsOn", status, child_session_id AS "childSessionId", result, result_data, error,
   sort_order AS "sortOrder", shared_files, kind, acceptance_criteria`;
 
-export async function listSpecialists() {
+export async function listSpecialists(userId = null) {
   const agents = await listAgents();
+  const assigned = userId ? (await getPool().query('SELECT agent_id FROM user_agents WHERE user_id=$1', [userId])).rows.map(row => row.agent_id) : null;
   return agents
-    .filter((agent) => agent.id !== ORCHESTRATOR_AGENT_ID && agent.slug !== "orchestrator")
+    .filter((agent) => agent.id !== ORCHESTRATOR_AGENT_ID && agent.slug !== "orchestrator" && (!assigned || assigned.includes(agent.id)))
     .map((agent) => capabilityCard(agent));
 }
 

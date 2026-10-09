@@ -136,7 +136,7 @@ async function makeDb() {
     // One PGlite per process (its WASM code space is precious); reset state via SQL.
     await holder.pglite.exec(`DROP SCHEMA IF EXISTS di CASCADE;
       DROP TABLE IF EXISTS users, user_sessions, sessions, messages,
-        execution_runs, execution_tool_calls, execution_events, execution_submissions,
+        user_agents, execution_runs, execution_tool_calls, execution_events, execution_submissions,
         orchestrator_plans, orchestrator_tasks, orchestrator_attempts CASCADE;`);
   }
   const pool = holder.pool;
@@ -144,6 +144,9 @@ async function makeDb() {
   await pool.query(`CREATE TABLE messages (id serial PRIMARY KEY, session_id text, role text, content text, model_id text)`);
   await pool.query(`INSERT INTO sessions (id) VALUES ('parent-chat')`);
   await ensureUsers(pool);
+  // submit_plan only delegates to specialists assigned to the signed-in user.
+  await pool.query(`CREATE TABLE user_agents (user_id text, agent_id text, PRIMARY KEY (user_id, agent_id))`);
+  await pool.query(`INSERT INTO user_agents VALUES ('u-admin', 'worker'), ('u-admin', 'reviewer')`);
   const db = pgliteAdapter(holder.pglite);
   await migrate(db);
   holder.tenantId = await ensureDefaultTenant(db);

@@ -34,7 +34,8 @@ export async function handleSchedulerRoutes(req, res, url, { user, readBody, jso
       json(res,200,{agents:await schedulableAgents()});
       return true;
     }
-    companyId = companyHostContext().tenantId;
+    companyId = user.company_tenant_id;
+    if (!companyId) throw new Error('Company tenant is required');
   } catch {
     json(res, 503, { error: "Company context not ready" });
     return true;

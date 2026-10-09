@@ -79,13 +79,14 @@ export async function recordActivity(event) {
   }
 }
 
-export async function listActivity({ limit = 100, before, userId, isAdmin = false, agentId, eventType, toolName, status, sessionId, since, until } = {}) {
+export async function listActivity({ limit = 100, before, userId, isAdmin = false, companyId, agentId, eventType, toolName, status, sessionId, since, until } = {}) {
   const values = [];
   const clauses = [];
   const add = (value) => { values.push(value); return `$${values.length}`; };
   const bounded = Math.min(Math.max(Number.parseInt(limit, 10) || 100, 1), 250);
   if (!isAdmin && userId) clauses.push(`e.user_id = ${add(userId)}`);
   else if (isAdmin && userId) clauses.push(`e.user_id = ${add(userId)}`);
+  if (companyId) clauses.push(`u.company_tenant_id = ${add(companyId)}`);
   if (agentId) clauses.push(`e.agent_id = ${add(agentId)}`);
   if (eventType) clauses.push(`e.event_type = ${add(eventType)}`);
   if (toolName) clauses.push(`e.tool_name ILIKE ${add(`%${toolName}%`)}`);

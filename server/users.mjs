@@ -13,7 +13,7 @@ import {
 export { countUserAccounts, ensurePeopleTenant, publicPerson };
 
 const digest = value => createHash('sha256').update(value).digest('hex');
-const fields = 'id, username, display_name, role, tier, active, email, phone, position, department, location, notes, created_at, updated_at';
+const fields = 'id, username, display_name, role, tier, active, email, phone, position, department, location, notes, company_tenant_id, created_at, updated_at';
 export function hashPassword(password) {
   if (typeof password !== 'string' || password.length < 4 || password.length > 256) throw new Error('Password must contain 4–256 characters');
   const salt = randomBytes(16).toString('hex');

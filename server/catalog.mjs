@@ -41,6 +41,7 @@ import {
   SALES_AGENT_ID,
   SALES_ROLE_FILE,
   SETTINGS_ROLE_FILE,
+  ROOT,
   SKILLS_DIR,
   SOLAR_ROI_AGENT_ID,
   SOLAR_ROI_ROLE_FILE,
@@ -1204,6 +1205,25 @@ You are bound to **Open Design** — the open-source local-first design tool at 
       WEBSITE_AGENT_ID,
       websitePlaybooksId,
     ]);
+  }
+
+  const packages = path.join(ROOT, "agent", "packages");
+  for (const folder of await readdir(packages, { withFileTypes: true })) {
+    if (!folder.isDirectory()) continue;
+    const slug = folder.name;
+    const dir = path.join(packages, slug);
+    const { name, description } = JSON.parse(await readFile(path.join(dir, "agent.json"), "utf8"));
+    await seedSystemAgent({
+      id: slug, slug, name, description,
+      short: slug.slice(0, 2).toUpperCase(),
+      headline: description,
+      color: "slate",
+      rolePrompt: await readFile(path.join(dir, "ROLE.md"), "utf8"),
+      toolProfile: "assistant",
+      thinkingLevel: "low",
+      userFacing: false,
+    });
+    await mkdir(agentWorkspace({ id: slug, slug }), { recursive: true });
   }
 
   await getPool().query(`UPDATE sessions SET agent_id = $1 WHERE agent_id IS NULL`, [WEBSITE_AGENT_ID]);

@@ -8,6 +8,7 @@ import { ProcurementPanel } from "./procurement";
 import { ResearchPanel } from "./research";
 import { ObservabilityPanel } from "./observability";
 import { SchedulesPanel } from './schedules';
+import { AgentAccessPanel } from "./agent-access";
 import "./theme.css";
 
 type Area = "home" | "onboarding" | "people" | "calendar" | "schedules" | "expenses" | "procurement" | "research" | "logs" | "usage" | "activity";
@@ -26,6 +27,13 @@ const insights: { area: Area; label: string; icon: string }[] = [
   { area: "usage", label: "Usage", icon: "grid" },
   { area: "activity", label: "Activity", icon: "database" },
 ];
+// A section shows only when its agent is assigned to this account (/api/agents lists only assigned agents).
+const areaAgent: Partial<Record<Area, string>> = {
+  onboarding: "di-onboarding", calendar: "di-calendar", schedules: "scheduler", expenses: "di-expenses",
+  procurement: "di-procurement", research: "company-deep-research",
+};
+const hasAgent = (agents: { id: string; slug?: string }[], id: string) => agents.some(agent => agent.id === id || agent.slug === id);
+const areaOffered = (area: Area, agents: { id: string; slug?: string }[]) => !areaAgent[area] || hasAgent(agents, areaAgent[area]!);
 const validAreas = new Set<Area>([...navigation, ...insights].map(item => item.area));
 const logHeadings = {
   logs: { title: "Chat logs", description: "Browse saved conversations and delegated agent transcripts." },
@@ -497,7 +505,7 @@ function DemoWorkspace({ user, initialArea = "home", onLogout }: { user: DemoUse
       <a className="demo-brand" href="/demo" aria-label="e by Eternalgy"><span className="demo-brand-mark"><img src="/branding/e-logo.png" alt=""/></span><span><strong>e</strong><small>by Eternalgy</small></span></a>
       <label className="demo-sidebar-search"><Icon name="search" size={15}/><input aria-label="Search chats" value={chatSearch} onChange={event => setChatSearch(event.target.value)} placeholder="Search chats"/></label>
       <div className="demo-navigation">
-        <nav aria-label="Workspace sections">{navigation.map(navButton)}<button onClick={() => window.location.assign("/media-kit")}><Icon name="spark"/><span>Media Kit</span></button></nav>
+        <nav aria-label="Workspace sections">{navigation.filter(item => areaOffered(item.area, studio.agents)).map(navButton)}{hasAgent(studio.agents, "media-ai") && <button onClick={() => window.location.assign("/media-kit")}><Icon name="spark"/><span>Media Kit</span></button>}</nav>
         <div className="demo-rail-label demo-insights-label">INSIGHTS</div>
         <nav className="demo-insights-nav" aria-label="Workspace insights">{insights.map(navButton)}</nav>
       </div>
@@ -546,10 +554,11 @@ function DemoWorkspace({ user, initialArea = "home", onLogout }: { user: DemoUse
             <div className="demo-chat-scroll">{studio.history.length === 0 ? <div className="demo-welcome"><div className="demo-welcome-orb" aria-hidden="true"/><h1>Hello, {displayName.split(" ")[0]}<br/>How can I <span>help you today?</span></h1>{area !== "home" && <p>Share a little about your business, or upload a document.</p>}</div> : <div className="demo-chat-date">TODAY</div>}{studio.history.map((message, index) => <div className={`demo-message ${message.role}`} key={message.id ?? index}><div className="demo-message-avatar">{message.role === "assistant" ? <img src="/branding/e-logo.png" alt=""/> : (user.display_name || user.username).slice(0, 1).toUpperCase()}</div><div className="demo-message-body"><div className="demo-message-name">{message.role === "assistant" ? "e" : (user.display_name || user.username)}</div><div className="demo-bubble"><ChatCopy text={message.content || (message.streaming ? studio.liveStatus || "Working…" : "")} agentId={studio.selected.id} streaming={message.streaming} onOpen={(src, alt) => studio.setMedia({ src, alt })}/>{message.role === "assistant" && message.blocks?.filter((block) => block.type === "tool" || block.type === "note").map((block, blockIndex) => <div className="demo-agent-activity" key={blockIndex}>{block.type === "tool" ? `${block.running ? "Running" : "Used"} ${block.name}` : block.text}{block.type === "tool" && block.shared_files?.map((file) => <a href={file.url} key={file.id} target="_blank" rel="noopener noreferrer">{file.name}</a>)}</div>)}</div></div></div>)}{studio.error && <div className="demo-chat-error" role="alert">{studio.error}</div>}<div ref={chatEnd}/></div>
             {area === "onboarding" ? <div className="demo-suggestions"><span>TRY SAYING</span><button onClick={() => sendMessage("My company is Acme Studio")}>My company is Acme Studio</button><button onClick={() => sendMessage("My email is hello@acme.example")}>Add business email</button></div> : area === "people" ? <div className="demo-suggestions"><span>TRY SAYING</span><button onClick={() => sendMessage("Name: Maya Tan; Position: Operations Manager; Department: Operations; Email: maya@acme.example")}>Share example contact</button><button onClick={() => sendMessage("Name: Daniel Lee")}>Start with a name</button></div> : null}
             <div className="demo-composer-wrap">{attachments.length > 0 && <div className="demo-attachments">{attachments.map((file, index) => <span key={`${file.name}-${index}`}><Icon name="file" size={14}/>{file.name}<button aria-label={`Remove ${file.name}`} onClick={() => setAttachments(old => old.filter((_, i) => i !== index))}><Icon name="close" size={12}/></button></span>)}</div>}<form className="demo-composer" onSubmit={event => { event.preventDefault(); void sendMessage(); }}><input ref={fileInput} type="file" accept="application/pdf,image/*" multiple hidden onChange={event => addFiles(event.target.files)}/><div className="demo-composer-input"><Icon name="spark" size={16}/><textarea aria-label="Message" rows={3} disabled={studio.loading} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void sendMessage(); } }} placeholder={area === "onboarding" ? "Tell me about your business…" : area === "people" ? "Share a person's details…" : "Ask a question or give your assistant a task…"}/></div><div className="demo-composer-toolbar"><button type="button" className="demo-attach" disabled={studio.loading} onClick={() => fileInput.current?.click()} aria-label="Attach PDF or image"><Icon name="upload" size={14}/> Attach file</button><span className="demo-composer-file-hint">PDF & images</span><button type="submit" className="demo-send" disabled={studio.loading || !studio.agents.length || (!draft.trim() && !attachments.length)} aria-label="Send message"><Icon name="send" size={15}/></button></div></form><div className="demo-composer-note">{studio.loading ? studio.liveStatus || "Your assistant is working…" : "Enter to send · Shift + Enter for a new line"}</div></div>
-            {area === "home" && studio.history.length === 0 && <div className="demo-suggestions"><button onClick={() => setArea("onboarding")}>Set up my company</button><button onClick={() => setArea("research")}>Explore research</button><button onClick={() => setArea("expenses")}>Organize expenses</button></div>}
+            {area === "home" && studio.history.length === 0 && <div className="demo-suggestions">{areaOffered("onboarding", studio.agents) && <button onClick={() => setArea("onboarding")}>Set up my company</button>}{areaOffered("research", studio.agents) && <button onClick={() => setArea("research")}>Explore research</button>}{areaOffered("expenses", studio.agents) && <button onClick={() => setArea("expenses")}>Organize expenses</button>}</div>}
           </section>
 
           {area === "onboarding" ? <OnboardingPanel profile={profile} setProfile={setProfile} doneCount={doneCount} essentialCount={essentialCount} onSave={(key, value) => { void saveProfile(key, value); }} onNavigate={() => setArea("people")}/> : area === "people" ? <PeoplePanel members={companyMembers} draft={memberDraft} setDraft={setMemberDraft} onSave={saveCompanyMember} onNavigate={() => setArea("home")} onNotice={setNotice} isAdmin={user.role === "admin"}/> : null}
+          {area === "people" && user.role === "admin" && <AgentAccessPanel onNotice={setNotice}/>}
         </div>}
       </div>
     </main>

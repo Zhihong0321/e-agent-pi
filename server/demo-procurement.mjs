@@ -16,7 +16,7 @@ const AGENT = "di-procurement";
 const safeName = (name) => path.basename(String(name || "file")).replace(/[^A-Za-z0-9._-]+/g, "-").slice(0, 80) || "file";
 
 const toolCall = (opts, who) => (tool, args = {}) =>
-  runTool(diRunDeps({ workspace: opts.workspace, who }), { agent: AGENT, tool, args });
+  runTool(diRunDeps({ workspace: opts.workspace, who, companyId: who.company_tenant_id }), { agent: AGENT, tool, args });
 
 /** Everything the panel needs, in one round trip. */
 async function panelState(opts, who) {
@@ -54,14 +54,14 @@ async function act(opts, who, body) {
     case "quotation":
       return call("decide_supplier_quotation", { doc: String(body.doc || ""), decision: body.decision, ...(body.note ? { note: String(body.note) } : {}) });
     case "seed":
-      return seedDemoProcurement(diRunDeps({ workspace: opts.workspace, who }), who);
+      return seedDemoProcurement(diRunDeps({ workspace: opts.workspace, who, companyId: who.company_tenant_id }), who);
     default:
       throw new Error("Unknown procurement action");
   }
 }
 
-async function sendStored(res, stored, { name, mime }) {
-  const { full, file } = await readSharedFile({ root: path.join(DATA_DIR, "files"), companyId: companyHostContext().tenantId, ...stored });
+async function sendStored(res, who, stored, { name, mime }) {
+  const { full, file } = await readSharedFile({ root: path.join(DATA_DIR, "files"), companyId: who.company_tenant_id, ...stored });
   res.writeHead(200, {
     "Content-Type": mime, "Content-Length": file.bytes, "Content-Disposition": `inline; filename="${safeName(name)}"`,
     "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store",
@@ -91,13 +91,13 @@ export async function handleDemoProcurement(req, res, url, opts) {
     } else if (req.method === "GET" && pathname === "/api/demo/procurement/po-pdf") {
       const out = await toolCall(opts, who)("po_pdf", { po: q("po") });
       if (!out.pdf?.id) json(res, 503, { error: "The PDF renderer is not available on this host" });
-      else await sendStored(res, { id: out.pdf.id, name: out.pdf.name }, { name: out.pdf.name, mime: "application/pdf" });
+      else await sendStored(res, who, { id: out.pdf.id, name: out.pdf.name }, { name: out.pdf.name, mime: "application/pdf" });
     } else if (req.method === "GET" && pathname === "/api/demo/procurement/file") {
-      const ctx = companyHostContext();
+      const ctx = { ...companyHostContext(), tenantId: who.company_tenant_id };
       const file = await withContext(ctx.db, { ...ctx, actor: who.username, agent: AGENT }, (tx) => getSupplierDocumentFile(tx, q("id"), { who }));
       const stored = sharedFileLocation(file.path);
       if (!stored) throw new Error("File is not available");
-      await sendStored(res, stored, { name: file.name, mime: file.mime });
+      await sendStored(res, who, stored, { name: file.name, mime: file.mime });
     } else if (req.method === "POST" && pathname === "/api/demo/procurement") {
       const body = JSON.parse((await opts.readBody(req)) || "{}");
       json(res, 200, { result: await act(opts, who, body) });

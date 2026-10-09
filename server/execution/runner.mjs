@@ -10,6 +10,7 @@ import * as store from './store.mjs';
 import * as dispatch from './dispatch.mjs';
 import { DEFAULT_LIMITS, EXECUTOR_VERSION } from './profiles.mjs';
 import { signedInLine } from '../roles.mjs';
+import { recordApiUsage } from '../usage.mjs';
 
 const config = {
   maxConcurrent: 3,
@@ -267,6 +268,17 @@ export async function runAgent({ kind, runRef, profile, user, ctx, input, images
     const turnCountingOnEvent = (event) => {
       if (event?.type === 'message_end' && event.message?.role === 'assistant') {
         modelTurns += 1;
+        void recordApiUsage({
+          service: 'llm',
+          operation: `${kind}_turn`,
+          modelId: runKindOpts.modelId || event.message.model || null,
+          userId: ctx.userId,
+          sessionId: ctx.sessionId,
+          agentId: ctx.profileId,
+          status: event.message.errorMessage ? 'error' : 'ok',
+          error: event.message.errorMessage,
+          usage: event.message.usage || {},
+        });
           if (limits?.modelTurns && modelTurns > limits.modelTurns) controller.abort();
       }
     };
@@ -607,6 +619,9 @@ export async function submitPlanHandler(ctx, args) {
   for (const spec of specs) {
     const agent = config.services.getAgent ? await config.services.getAgent(spec.agent || spec.agentId) : null;
     if (!agent) throw Object.assign(new Error(`Unknown agent: ${spec.agent}`), { execCode: 'INPUT_INVALID' });
+    if (ctx.userId && !ctx.sessionId?.startsWith('schedule:') && !(await pool.query('SELECT 1 FROM user_agents WHERE user_id=$1 AND agent_id=$2', [ctx.userId, agent.id])).rows.length) {
+      throw Object.assign(new Error(`Agent is not assigned to this user: ${agent.id}`), { execCode: 'PERMISSION_DENIED' });
+    }
     if (agent.id === 'orchestrator' || agent.slug === 'orchestrator') {
       throw Object.assign(new Error('Cannot delegate to Orchestrator'), { execCode: 'PERMISSION_DENIED' });
     }

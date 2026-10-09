@@ -113,6 +113,7 @@ function filters(options = {}) {
   if (options.provider) clauses.push(`provider = ${add(options.provider)}`);
   if (options.modelId) clauses.push(`model_id = ${add(options.modelId)}`);
   if (options.userId) clauses.push(`user_id = ${add(options.userId)}`);
+  if (options.companyId) clauses.push(`user_id IN (SELECT id FROM users WHERE company_tenant_id = ${add(options.companyId)})`);
   return { where: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "", values };
 }
 

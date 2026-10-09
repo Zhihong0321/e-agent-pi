@@ -400,10 +400,21 @@ function publicModels(catalog) {
   }));
 }
 
+const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES) || 32 * 1024 * 1024;
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    req.on("data", (chunk) => chunks.push(chunk));
+    let size = 0;
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        chunks.length = 0;
+        if (size - chunk.length <= MAX_BODY_BYTES) reject(Object.assign(new Error("Request body too large"), { status: 413 }));
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
     req.on("error", reject);
   });
@@ -603,12 +614,20 @@ async function defaultChatAgentId() {
   return WEBSITE_AGENT_ID;
 }
 
+/** Signed-in users may only open the default chat agent and agents ticked for them; the owner path (no user) is unrestricted. */
+async function userMayUseAgent(user, agentId) {
+  if (!user || agentId === (await defaultChatAgentId())) return true;
+  return (await getPool().query('SELECT 1 FROM user_agents WHERE user_id=$1 AND agent_id=$2', [user.id, agentId])).rowCount > 0;
+}
+
 /** Compact roster + live company readiness for the submit_plan planning loop. */
-async function listSpecialistsPublic() {
-  return {
-    specialists: await listSpecialists(),
-    company_setup: await companyOnboardingStatus().catch(() => ({ available: false, minimum_ready: false })),
-  };
+async function listSpecialistsPublic(ctx) {
+  const scoped = Boolean(ctx.userId) && !ctx.sessionId?.startsWith('schedule:');
+  const specialists = await listSpecialists(scoped ? ctx.userId : null);
+  const company_setup = await companyOnboardingStatus().catch(() => ({ available: false, minimum_ready: false }));
+  return scoped
+    ? { specialists, company_setup, note: 'Only the specialists assigned to this account are listed. If the capability the user needs is missing, tell them it is not assigned to their account and an admin can assign it; do not say it is not deployed.' }
+    : { specialists, company_setup };
 }
 
 async function resolveAgentProfile(agentId) {
@@ -2072,7 +2091,7 @@ async function bootServices() {
         services: {
           logEvent,
           userLookup: async (userId) => {
-            const rows = await getPool().query('SELECT id, username, display_name, role, active, department, position FROM users WHERE id=$1', [userId]);
+            const rows = await getPool().query('SELECT id, username, display_name, role, active, department, position, company_tenant_id FROM users WHERE id=$1', [userId]);
             return rows.rows[0] || null;
           },
           getAgent,
@@ -2081,7 +2100,7 @@ async function bootServices() {
           refreshPlanStatus: (planId) => refreshPlanStatus(planId),
           canDelegate: (profileId) => profileId === ORCHESTRATOR_AGENT_ID,
           runTool,
-          diDeps: ({ ctx }) => diRunDeps({ workspace: agentWorkspace, who: ctx.user }),
+          diDeps: ({ ctx }) => diRunDeps({ workspace: agentWorkspace, who: ctx.user, companyId: ctx.companyId }),
           mcpAdapter: {
             connectBinding: (binding) => import('./execution/mcp-adapter.mjs').then((m) => m.connectBinding(binding)),
             callExternal: (binding, toolName, args) => import('./execution/mcp-adapter.mjs').then((m) => m.callExternal(binding, toolName, args)),
@@ -2244,6 +2263,13 @@ async function bootServices() {
   boot.step = "catalog";
   try {
     await ensureCatalog();
+    if (dbReady()) await getPool().query(`DO $$ BEGIN
+      IF to_regclass('public.user_agents') IS NULL THEN
+        CREATE TABLE user_agents (user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+          agent_id TEXT REFERENCES agents(id) ON DELETE CASCADE, PRIMARY KEY (user_id, agent_id));
+        INSERT INTO user_agents SELECT users.id, agents.id FROM users CROSS JOIN agents;
+      END IF;
+    END $$;`);
     // Discover external MCP tools once at boot and register them as canonical
     // host operations. Calls later use the same adapter with a tenant/user scope.
     for (const agent of await listAgents()) {
@@ -2376,6 +2402,23 @@ const server = createServer(async (req, res) => {
       } catch (error) { return json(res, 401, { error: error.message }); }
     }
     if (accountRoute && !user) return json(res, 401, { error: "Please sign in" });
+    if (pathname === '/api/demo/user-agents' && !user.company_tenant_id) return json(res, 400, { error: 'Company tenant is required' });
+    if (pathname === '/api/demo/user-agents') {
+      if (user.role !== 'admin') return json(res, 403, { error: 'Admin access required' });
+      if (req.method === 'GET') {
+        const users = (await getPool().query('SELECT id, username, display_name FROM users WHERE company_tenant_id=$1 ORDER BY username', [user.company_tenant_id])).rows;
+        const assignments = (await getPool().query('SELECT user_id, agent_id FROM user_agents WHERE user_id IN (SELECT id FROM users WHERE company_tenant_id=$1)', [user.company_tenant_id])).rows;
+        return json(res, 200, { users, agents: (await listAgents()).map(({ id, name }) => ({ id, name })), assignments });
+      }
+      if (req.method === 'POST') {
+        const { userId, agentId, enabled } = JSON.parse((await readBody(req)) || '{}');
+        if (typeof userId !== 'string' || typeof agentId !== 'string' || typeof enabled !== 'boolean') return json(res, 400, { error: 'Invalid assignment' });
+        if (!(await getPool().query('SELECT id FROM users WHERE id=$1 AND company_tenant_id=$2', [userId, user.company_tenant_id])).rowCount || !await getAgent(agentId)) return json(res, 404, { error: 'User or agent not found' });
+        await getPool().query(enabled ? 'INSERT INTO user_agents VALUES ($1,$2) ON CONFLICT DO NOTHING' : 'DELETE FROM user_agents WHERE user_id=$1 AND agent_id=$2', [userId, agentId]);
+        return json(res, 200, { ok: true });
+      }
+      return json(res, 405, { error: 'Method not allowed' });
+    }
     if (req.method === "GET" && ["/api/demo/chat-logs", "/api/demo/usage", "/api/demo/activity", "/api/demo/db-log", "/api/demo/metrics"].includes(pathname)) {
       const data = await demoObservability(pathname, url.searchParams, user);
       return data ? json(res, 200, data) : json(res, 403, { error: "Admin access required" });
@@ -2389,7 +2432,7 @@ const server = createServer(async (req, res) => {
     if (await handleDemoExpenses(req, res, url, { user, readBody, json, workspace: agentWorkspace })) return;
     if (await handleDemoProcurement(req, res, url, { user, readBody, json, workspace: agentWorkspace })) return;
     if (req.method === "GET" && pathname === "/api/demo/state") {
-      json(res, 200, await demoState());
+      json(res, 200, await demoState(user.company_tenant_id));
       return;
     }
     if (req.method === "GET" && pathname === "/api/demo/calendar") {
@@ -2400,7 +2443,7 @@ const server = createServer(async (req, res) => {
           timezone: url.searchParams.get("timezone") || undefined,
           sources: url.searchParams.get("sources") ?? undefined,
           include_demo: url.searchParams.get("include_demo") ?? undefined,
-        }));
+        }, user.company_tenant_id));
       } catch (error) {
         json(res, 400, { error: error instanceof Error ? error.message : String(error) });
       }
@@ -2413,7 +2456,7 @@ const server = createServer(async (req, res) => {
       }
       const body = JSON.parse((await readBody(req)) || "{}");
       try {
-        json(res, 200, { result: await demoAction(body, user.id) });
+        json(res, 200, { result: await demoAction(body, user.id, user.company_tenant_id) });
       } catch (error) {
         json(res, error?.details?.code === "conflict" ? 409 : 400, { error: error instanceof Error ? error.message : String(error) });
       }
@@ -2995,8 +3038,10 @@ const server = createServer(async (req, res) => {
     }
 
     if (req.method === "GET" && pathname === "/api/agents") {
+      if (!user && !authorized(req)) return json(res, 401, { error: 'Please sign in' });
+      const assigned = user ? (await getPool().query('SELECT agent_id FROM user_agents WHERE user_id=$1', [user.id])).rows.map(row => row.agent_id) : null;
       json(res, 200, {
-        agents: dbReady() ? (await listAgents()).map((row) => publicAgent(row, { includeRole: authorized(req) })) : [],
+        agents: dbReady() ? (await listAgents()).filter(row => !assigned || assigned.includes(row.id)).map((row) => publicAgent(row, { includeRole: authorized(req) })) : [],
       });
       return;
     }
@@ -3227,6 +3272,7 @@ const server = createServer(async (req, res) => {
         json(res, 400, { error: "Unknown agent" });
         return;
       }
+      if (!(await userMayUseAgent(user, agent.id))) return json(res, 403, { error: "Agent is not assigned to your account" });
       const requestedEngine =
         body.engine === "agy" ? "agy" : body.engine === "pi" ? "pi" : agent.engine || "pi";
       const session = await createSession({
@@ -3402,6 +3448,10 @@ const server = createServer(async (req, res) => {
         });
       }
 
+      if (!(await userMayUseAgent(user, session.agentId))) {
+        json(res, 403, { error: "Agent is not assigned to your account" });
+        return;
+      }
       if (session.agentId === 'di-expenses' && (!user || session.userId !== user.id)) {
         json(res, 401, { error: 'Sign-in required: expense chat must belong to the signed-in user' });
         return;
@@ -3548,8 +3598,8 @@ const server = createServer(async (req, res) => {
         if (runsOnRunner && session.engine !== "agy") {
           // Execution-system path: durable run record, native host tools, Pi's own
           // answer. SSE remains presentation; the records are truth.
-          let chatCompanyId = null;
-          try { chatCompanyId = companyHostContext().tenantId; } catch { chatCompanyId = null; }
+          const chatCompanyId = user ? user.company_tenant_id : companyHostContext().tenantId;
+          if (!chatCompanyId) throw new Error('Company tenant is required');
           try {
             const { run, deduped } = await acceptChatRun({
               session,
@@ -3736,8 +3786,9 @@ const server = createServer(async (req, res) => {
 
     await serveStatic(res, pathname);
   } catch (error) {
-    logEvent("error", sanitizeError(error));
-    json(res, 500, { error: sanitizeError(error), boot });
+    const status = error?.status === 413 ? 413 : error instanceof SyntaxError ? 400 : 500;
+    logEvent(status === 500 ? "error" : "warn", sanitizeError(error));
+    json(res, status, { error: status === 400 ? "Invalid JSON body" : sanitizeError(error), boot });
   }
 });
 

@@ -9,11 +9,11 @@ test('demo insights force account scope and reject privilege parameters', async 
     const data = await demoObservability(path, params, { id: 'me', role: 'user' }, services);
     assert.equal(data.userId, 'me');
     if (path.endsWith('/activity')) assert.equal(data.isAdmin, false);
-    const admin = await demoObservability(path, params, { id: 'admin', role: 'admin' }, services);
+    const admin = await demoObservability(path, params, { id: 'admin', role: 'admin', company_tenant_id: 'co-a' }, services);
     assert.equal(admin.userId, undefined);
   }
   assert.equal(await demoObservability('/api/demo/metrics', params, { id: 'me', role: 'user' }, services), null);
-  assert.deepEqual(await demoObservability('/api/demo/metrics', params, { id: 'admin', role: 'admin' }, services), { metrics: true });
+  assert.deepEqual(await demoObservability('/api/demo/metrics', params, { id: 'admin', role: 'admin', company_tenant_id: 'co-a' }, services), { metrics: true });
   await assert.rejects(demoObservability('/api/demo/usage', params, null, services), /Please sign in/);
 });
 
@@ -23,7 +23,7 @@ test('DB Log is admin-only and never accepts caller-provided account scope', asy
   const params = new URLSearchParams({ userId: 'admin', isAdmin: 'true', search: 'INV-001' });
   assert.equal(await demoObservability('/api/demo/db-log', params, { id: 'me', role: 'user' }, services), null);
   assert.equal(calls, 0);
-  const admin = { id: 'real-admin', role: 'admin' };
+  const admin = { id: 'real-admin', role: 'admin', company_tenant_id: 'co-a' };
   const result = await demoObservability('/api/demo/db-log', params, admin, services);
   assert.equal(result.user, admin);
   assert.equal(result.options.search, 'INV-001');

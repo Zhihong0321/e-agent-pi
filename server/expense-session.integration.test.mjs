@@ -78,7 +78,7 @@ test('delegated expense tools inherit the authenticated owner and refuse imperso
     await pool.query(`INSERT INTO di.company_member(tenant_id,name,user_id,email) VALUES
       ($1,'Alice','alice','alice@example.test'),($1,'Bob','bob','bob@example.test')`, [tenantId]);
     for (const person of [alice, bob]) {
-      await runTool(di.diRunDeps({ workspace: () => workspace, who: person.user }), {
+      await runTool(di.diRunDeps({ workspace: () => workspace, who: person.user, companyId: tenantId }), {
         agent: 'di-expenses', tool: 'file_claim', args: {
           expense_date: '2026-10-01', merchant: `${person.user.username} merchant`, category: 'transport',
           amount: 12, no_receipt_reason: 'Test fixture has no receipt',

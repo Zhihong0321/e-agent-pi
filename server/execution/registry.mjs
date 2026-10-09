@@ -307,9 +307,9 @@ registerOperation({
   effect: 'control',
   timeoutMs: 60_000,
   inputSchema: z.object({}).describe('No arguments'),
-  async execute() {
+  async execute(ctx) {
     if (!controlHandlers.listSpecialists) throw new Error('Specialist roster is not wired');
-    return controlHandlers.listSpecialists();
+    return controlHandlers.listSpecialists(ctx);
   },
 });
 

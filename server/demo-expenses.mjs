@@ -22,13 +22,13 @@ const MONTH = /^\d{4}-\d{2}$/;
 const safeName = (name) => path.basename(String(name || "receipt")).replace(/[^A-Za-z0-9._-]+/g, "-").slice(0, 80) || "receipt";
 
 const toolCall = (opts, who) => (tool, args = {}) =>
-  runTool(diRunDeps({ workspace: opts.workspace, who }), { agent: AGENT, tool, args });
+  runTool(diRunDeps({ workspace: opts.workspace, who, companyId: who.company_tenant_id }), { agent: AGENT, tool, args });
 
 const LAYOUT_PAGE = "expenses";
 
 /** Runs `fn` in a transaction scoped to the company, as `who`. The page layout is page chrome, not an agent tool. */
 const inCompany = (who, fn) => {
-  const ctx = companyHostContext();
+  const ctx = { ...companyHostContext(), tenantId: who.company_tenant_id };
   return withContext(ctx.db, { ...ctx, actor: who.username, agent: AGENT }, fn);
 };
 
@@ -61,7 +61,7 @@ async function panelState(opts, who, month) {
 async function storeUploads(opts, who, uploads) {
   const list = Array.isArray(uploads) ? uploads : [];
   if (list.length > MAX_UPLOADS) throw new Error(`Attach at most ${MAX_UPLOADS} receipts`);
-  const dir = path.join(diRunDeps({ workspace: opts.workspace, who }).workspace(AGENT), "_inbox");
+  const dir = path.join(diRunDeps({ workspace: opts.workspace, who, companyId: who.company_tenant_id }).workspace(AGENT), "_inbox");
   await mkdir(dir, { recursive: true });
   const stamp = Date.now();
   const paths = [];
@@ -107,14 +107,14 @@ async function act(opts, who, body) {
     case "layout_reset":
       return inCompany(who, (tx) => resetLayout(tx, LAYOUT_PAGE, { who }));
     case "seed":
-      return seedDemoClaims(diRunDeps({ workspace: opts.workspace, who }), who);
+      return seedDemoClaims(diRunDeps({ workspace: opts.workspace, who, companyId: who.company_tenant_id }), who);
     default:
       throw new Error("Unknown expenses action");
   }
 }
 
 async function sendStored(res, opts, stored, { name, mime, download = false }) {
-  const { full, file } = await readSharedFile({ root: path.join(DATA_DIR, "files"), companyId: companyHostContext().tenantId, ...stored });
+  const { full, file } = await readSharedFile({ root: path.join(DATA_DIR, "files"), companyId: opts.user.company_tenant_id, ...stored });
   res.writeHead(200, {
     "Content-Type": mime,
     "Content-Length": file.bytes,
@@ -142,7 +142,7 @@ export async function handleDemoExpenses(req, res, url, opts) {
     } else if (req.method === "GET" && pathname === "/api/demo/expenses/claim") {
       json(res, 200, await toolCall(opts, who)("get_claim", { claim: String(url.searchParams.get("claim") || "") }));
     } else if (req.method === "GET" && pathname === "/api/demo/expenses/receipt") {
-      const ctx = companyHostContext();
+      const ctx = { ...companyHostContext(), tenantId: who.company_tenant_id };
       const receipt = await withContext(ctx.db, { ...ctx, actor: who.username, agent: AGENT }, (tx) => getReceiptFile(tx, String(url.searchParams.get("id") || ""), { who }));
       const stored = sharedFileLocation(receipt.path);
       if (!stored) throw new Error("Receipt file is not available");

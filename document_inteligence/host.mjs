@@ -223,12 +223,13 @@ export async function handleDiRequest(req, body, deps) {
 /**
  * runTool dependencies for host-side callers that already authenticated a user (the /demo
  * routes), so they go through exactly the same tools as the agents do.
- * @param {{ workspace: (agent: {id: string, slug: string}) => string, who?: object }} opts
+ * @param {{ workspace: (agent: {id: string, slug: string}) => string, who?: object, companyId: string }} opts
  */
-export function diRunDeps({ workspace, who } = {}) {
+export function diRunDeps({ workspace, who, companyId } = {}) {
   if (!state.db) throw new Error("Document Intelligence is not ready");
+  if (!companyId) throw new Error("Company tenant is required");
   return {
-    db: state.db, tenantId: () => state.tenantId, actor: who?.username || "system", asRole: state.asRole,
+    db: state.db, tenantId: () => companyId, actor: who?.username || "system", asRole: state.asRole,
     workspace: (id) => workspace({ id, slug: id }), renderPdf,
     publicUrl: publicBaseUrl(), filesRoot: path.join(DATA_DIR, "files"), who,
     resolveIdentity, sop: SOP_STORE,
@@ -237,7 +238,7 @@ export function diRunDeps({ workspace, who } = {}) {
 
 /** runTool dependencies for the execution dispatcher (who resolved by the host per call). */
 export function diDispatchDeps({ workspace, user }) {
-  return diRunDeps({ workspace, who: user });
+  return diRunDeps({ workspace, who: user, companyId: user?.company_tenant_id });
 }
 
 // ---------------------------------------------------------------- public forms
