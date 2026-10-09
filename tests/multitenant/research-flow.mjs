@@ -1,0 +1,21 @@
+// A company can use Company Research, and the dossier is visible to that company only.
+import { loadFixtures, makeClient, probe } from './client.mjs';
+const f = loadFixtures();
+const sql = (q, p = []) => probe('sql', { q, p });
+const mk = (u) => { const c = makeClient(u); c.setCookie(f.cookies[u]); return c; };
+const a = mk('mt-a-user1'), b = mk('mt-b-user1');
+const name = `MT1009 Research Test ${Date.now().toString().slice(-6)}`;
+const started = await a.post('/api/company-research/dossiers', { seed: { name } });
+console.log('A start', started.status, JSON.stringify(started.data).slice(0, 200));
+const id = started.data?.id;
+const row = sql('SELECT company_id, status FROM company_research_dossiers WHERE id=$1', [id])[0];
+console.log('dossier row', JSON.stringify(row));
+const aList = await a.get('/api/company-research/dossiers?status=all&q=' + encodeURIComponent(name));
+const bList = await b.get('/api/company-research/dossiers?status=all&q=' + encodeURIComponent(name));
+const bGet = await b.get('/api/company-research/dossiers/' + id);
+const aGet = await a.get('/api/company-research/dossiers/' + id);
+const startedAgainByB = await b.post('/api/company-research/dossiers', { seed: { name } });
+console.log('A list total', aList.data?.total, '| B list total', bList.data?.total, '| A get', aGet.status, '| B get', bGet.status);
+console.log('B starting the same company name gets its own dossier:', startedAgainByB.data?.id !== id && startedAgainByB.data?.cached === false);
+const ok = started.status === 202 && row?.company_id === f.companies.A.tenantId && aList.data?.total === 1 && bList.data?.total === 0 && aGet.status === 200 && bGet.status === 400 && startedAgainByB.data?.id !== id;
+console.log(ok ? 'PASS T17.4 company A uses research; the dossier is A-only; B has its own' : 'FAIL T17.4');

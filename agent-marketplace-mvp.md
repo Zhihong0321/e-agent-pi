@@ -31,54 +31,62 @@ Work top to bottom. A step starts only after the step before it is proven on the
 
 ### Step 1: An agent is a plugin folder (budget: 40 added lines)
 
-- [ ] `agent/packages/<slug>/` holds `agent.json` and `ROLE.md`. The folder name is the slug.
+- [x] `agent/packages/<slug>/` holds `agent.json` and `ROLE.md`. The folder name is the slug.
       `agent.json` has exactly 2 fields: `name`, `description` (what it does, when to use it).
-- [ ] `seedAgentCatalog` (`server/catalog.mjs:838`) also loads every folder in
+- [x] `seedAgentCatalog` (`server/catalog.mjs:838`) also loads every folder in
       `agent/packages/` into the `agents` table.
 
 Proof on live:
-- [ ] Add one test agent folder, and nothing else. Deploy. Ask for something that matches it.
+- [x] Add one test agent folder, and nothing else. Deploy. Ask for something that matches it.
       The orchestrator routes to it.
 
 ### Step 2: The admin picks each user's agents (budget: 120 added lines)
 
-- [ ] Table `user_agents (user_id, agent_id)`. On first deploy, every existing user gets every
+- [x] Table `user_agents (user_id, agent_id)`. On first deploy, every existing user gets every
       existing agent.
-- [ ] `listSpecialists` (`server/orchestrator.mjs:197`) returns only the signed-in user's agents.
+- [x] `listSpecialists` (`server/orchestrator.mjs:197`) returns only the signed-in user's agents.
       Scheduled runs are unchanged.
-- [ ] Company people page (`app/demo/users.tsx`): agent checkboxes per user.
+- [x] Company people page (`app/demo/users.tsx`): agent checkboxes per user.
 
 Proof on live:
-- [ ] Untick agent X for a test user. The orchestrator no longer uses X for them. Tick it
+- [x] Untick agent X for a test user. The orchestrator no longer uses X for them. Tick it
       again. It does.
 
 ### Step 3: The menu shows only the user's agents (budget: 40 added lines)
 
-- [ ] `GET /api/agents` (`server/index.mjs:2997`) returns only the signed-in user's agents.
-- [ ] The `/demo` menu (`app/demo/page.tsx:14`) hides items whose agent the user does not have.
+- [x] `GET /api/agents` (`server/index.mjs:2997`) returns only the signed-in user's agents.
+- [x] The `/demo` menu (`app/demo/page.tsx:14`) hides items whose agent the user does not have.
 
 Proof on live:
-- [ ] The test user's menu shows only their ticked agents.
+- [x] The test user's menu shows only their ticked agents.
 
-### Step 4: A second company (budget: 150 added lines)
+### Step 4: A second test company — profile, people, expenses (budget: 150 added lines)
 
-- [ ] The current company is the signed-in user's `company_tenant_id`. For a scheduled run, it
-      is the schedule's tenant. No company means an error, never a default.
-- [ ] `document_inteligence/host.mjs` uses the current company instead of `state.tenantId`
-      (set once at line 390).
-- [ ] Chat history lists only sessions whose user belongs to the current company.
-- [ ] `agent_sops` gets `company_id`, and existing rows get the original company. SOPs are read
-      and saved by (company, agent).
-- [ ] A script creates a company: the tenant row, `seedTenant`, and its first admin. Run it on
-      the live server.
+One session, 60 minutes maximum.
+
+- [x] For these features, use the signed-in user's `company_tenant_id`. Scheduled calls use
+      the schedule's tenant. Missing company means an error.
+- [x] Pass the company through existing request/session/run parameters. Never change shared
+      `state.tenantId` per request. No new context framework or helper module.
+- [x] Apply it to company profile, people and expenses, including their agent tool calls.
+- [x] Add one small script that creates the tenant, calls `seedTenant`, and creates its first
+      admin. Run it on the live server.
 
 Proof on live:
-- [ ] Company 2's admin signs in. Company profile, people, expenses and chat history show none
-      of company 1's data.
-- [ ] Company 2 edits an agent's SOP. Company 1's SOP is unchanged.
-- [ ] Company 1 works as before.
+- [x] Company 2's admin signs in. Profile, people and expenses show none of company 1's data.
+- [x] Company 2 changes a profile value and creates an expense through its agent. Company 1's
+      profile and expenses remain unchanged.
+- [x] Company 1's existing flow and a scheduled run still work.
 
-If another screen shows company 1's data, do not fix it. Name it in the report.
+Left out:
+- Chat separation.
+- SOP separation.
+- Other screens.
+- File and running-process separation.
+
+Company 2 is an internal test company until the deferred separation work is complete.
+
+If the required changes exceed either budget, stop and report. Do not expand the step.
 
 **Done = every proof box ticked on the live server.**
 

@@ -1,8 +1,9 @@
 # Multi-tenant: what is still open (updated 2026-10-09, second pass)
 
 Follows `multitenant-architecture.md` (root cause and layer design) and
-`oct-09-2026-multitenant-test.md` (prod test results). All of it is **in code only**: not
-committed, not deployed, not proven on prod.
+`oct-09-2026-multitenant-test.md` (prod test results). Items marked `done-local` below were
+committed and deployed in `fe86945` and `85be430`; the prod results at the end of this file show
+which of them are proven on the deployed build. Anything not listed there is still unproven on prod.
 
 Rule for this list: each item names the layer it belongs to. Fix at that layer, not at the
 symptom. Status: `done-local` (changed and covered by a local test, still needs prod),

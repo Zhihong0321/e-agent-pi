@@ -67,3 +67,7 @@ new-template/
 # Generated slide decks, previews, and source artifacts are kept locally only.
 /slide/
 /document_inteligence/slides/
+
+# multi-tenant test: local fixtures (passwords, cookies) and evidence
+tests/multitenant/.fixtures.local.json
+tests/multitenant/evidence/
