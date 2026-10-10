@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import JobsSettings from "./jobs-settings";
+import QueueSettings from "./queue-settings";
 import ActivityLog from "./activity-log";
 import ChatLogs from "./chat-logs";
 
@@ -56,8 +57,8 @@ type Settings = {
   jinaKeysSet: boolean[];
 };
 
-type Tab = "keys" | "models" | "agents" | "sops" | "blueprints" | "sites" | "skills" | "mcp" | "whatsapp" | "display" | "usage" | "jobs" | "activity" | "logs";
-const TABS: Tab[] = ["logs", "usage", "activity", "keys", "models", "agents", "sops", "blueprints", "sites", "skills", "mcp", "whatsapp", "display", "jobs"];
+type Tab = "keys" | "models" | "agents" | "sops" | "blueprints" | "sites" | "skills" | "mcp" | "whatsapp" | "display" | "usage" | "jobs" | "queue" | "activity" | "logs";
+const TABS: Tab[] = ["logs", "usage", "activity", "keys", "models", "agents", "sops", "blueprints", "sites", "skills", "mcp", "whatsapp", "display", "jobs", "queue"];
 
 const AI_REPLY_DARK_KEY = "e-agent-ai-reply-dark";
 const BLUEPRINT_APPROVER_KEY = "e-agent-blueprint-approver";
@@ -1104,12 +1105,13 @@ export default function SettingsPage() {
           <nav className="settings-tabs">
             {TABS.map((item) => (
               <button key={item} type="button" className={tab === item ? "active" : ""} onClick={() => goTab(item)}>
-                {item === "logs" ? "Chat logs" : item === "usage" ? "Usage Dashboard" : item === "mcp" ? "MCP" : item === "whatsapp" ? "WhatsApp" : item[0].toUpperCase() + item.slice(1)}
+                {item === "logs" ? "Chat logs" : item === "queue" ? "Job queue" : item === "usage" ? "Usage Dashboard" : item === "mcp" ? "MCP" : item === "whatsapp" ? "WhatsApp" : item[0].toUpperCase() + item.slice(1)}
               </button>
             ))}
           </nav>
 
           {tab === "jobs" && <JobsSettings />}
+          {tab === "queue" && <QueueSettings />}
           {tab === "activity" && <ActivityLog />}
           {tab === "logs" && <ChatLogs />}
           {tab === "keys" && (

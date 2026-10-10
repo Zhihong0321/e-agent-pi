@@ -215,8 +215,9 @@ import { piWorkerFactory, setModelsJsonProvider, setBeforeSpawn } from "./execut
 import { piGate } from "./queue/pi-gate.mjs";
 import { waitForMemoryRoom } from "./queue/memory-room.mjs";
 import { createSilenceWatch } from "./queue/silence.mjs";
-import { isWaitingAtLlmGate, registerProviderBase } from "./queue/llm-gate.mjs";
+import { isWaitingAtLlmGate, llmStats, registerProviderBase } from "./queue/llm-gate.mjs";
 import { enableLlmProxy, handleLlmProxy, isLlmProxyPath } from "./queue/llm-proxy.mjs";
+import { QUEUE_SETTING, applyQueueLimits, parseSavedLimits, queueReport, validateQueueLimits } from "./queue/limits.mjs";
 import { closeAllConnections as closeExecutionMcpConnections, connectBinding } from "./execution/mcp-adapter.mjs";
 import { ensureExecutionSchema, findChatRunBySubmission, withRecordedAnswers } from "./execution/store.mjs";
 import {
@@ -490,6 +491,7 @@ async function snapshot() {
     scrapling: await scraplingPublic().catch(() => null),
     piPoolSize: piPool.size,
     piPoolMax: MAX_PI_SLOTS,
+    queue: { pi: piGate.stats(), llm: llmStats() },
     piKeepWarm: PI_KEEP_WARM,
     piIdleMs: PI_SLOT_IDLE_MS,
     piPinned: [...PI_PIN_AGENTS],
@@ -1829,6 +1831,13 @@ async function bootServices() {
     logEvent("error", `pi models copy failed: ${sanitizeError(error)}`);
   }
 
+  boot.step = "queue-limits";
+  try {
+    if (dbReady()) applyQueueLimits(parseSavedLimits(await getSetting(QUEUE_SETTING)), { defaultMaxPi: MAX_PI_SLOTS });
+  } catch (error) {
+    logEvent("error", `queue limits not applied: ${sanitizeError(error)}`);
+  }
+
   boot.step = "workspace";
   try {
     await initWorkspace();
@@ -2864,6 +2873,25 @@ const server = createServer(async (req, res) => {
       const planId = url.searchParams.get("planId");
       json(res, 200, planId ? await jobReport(planId) : { jobs: await listJobs() });
       return;
+    }
+    // Admin limits for the queue: max Pi at once, per provider concurrent calls and calls per minute.
+    if (pathname === "/api/settings/queue") {
+      if (!dbReady()) return json(res, 503, { error: "Database is not connected" });
+      if (req.method === "GET") {
+        return json(res, 200, queueReport(parseSavedLimits(await getSetting(QUEUE_SETTING)), { defaultMaxPi: MAX_PI_SLOTS }));
+      }
+      if (req.method === "PUT") {
+        try {
+          const limits = validateQueueLimits(JSON.parse((await readBody(req)) || "{}"));
+          await setSetting(QUEUE_SETTING, JSON.stringify(limits));
+          applyQueueLimits(limits, { defaultMaxPi: MAX_PI_SLOTS });
+          logEvent("info", `queue limits saved: maxPi=${limits.maxPi ?? "default"} providers=${Object.keys(limits.providers).join(",") || "none"}`);
+          return json(res, 200, queueReport(limits, { defaultMaxPi: MAX_PI_SLOTS }));
+        } catch (error) {
+          return json(res, 400, { error: error instanceof Error ? error.message : String(error) });
+        }
+      }
+      return json(res, 405, { error: "Method not allowed" });
     }
     if (req.method === "GET" && pathname === "/api/settings") {
       json(res, 200, publicSettings());

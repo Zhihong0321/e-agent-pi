@@ -4,6 +4,8 @@
 import { dispatchTool, getBindingByToken } from './dispatch.mjs';
 import { admissionState, activeAttemptCount, dispatchServices } from './runner.mjs';
 import { dbReady } from '../db.mjs';
+import { piGate } from '../queue/pi-gate.mjs';
+import { llmStats } from '../queue/llm-gate.mjs';
 
 function bearerToken(req) {
   const header = String(req.headers.authorization || '');
@@ -73,5 +75,7 @@ export function executionHealth({ maxConcurrent } = {}) {
     admission: admissionState(),
     activeAttempts: activeAttemptCount(),
     maxConcurrent: maxConcurrent || null,
+    // The lines: how many are running, how many are waiting, and how long the oldest has waited.
+    queue: { pi: piGate.stats(), llm: llmStats() },
   };
 }

@@ -6,6 +6,8 @@ import assert from 'node:assert/strict';
 import test, { mock } from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 import { randomUUID } from 'node:crypto';
+import { createServer } from 'node:http';
+import { once } from 'node:events';
 import { migrate, pgliteAdapter } from '../../document_inteligence/core/db.mjs';
 import { createTestCompany } from '../../document_inteligence/test/company-fixture.mjs';
 
@@ -897,4 +899,149 @@ withDb('restart: interrupted attempts are blocked for inspection, committed resu
   assert.equal(task.rows[0].status, 'blocked');
   const calls = await store.listToolCalls(attemptId);
   assert.equal(calls.length, 1, 'committed result remains inspectable');
+});
+
+// ---------------------------------------------------------------- load: the whole line, end to end
+
+const llmGateModule = await import('../queue/llm-gate.mjs');
+const llmProxyModule = await import('../queue/llm-proxy.mjs');
+
+/** A provider that answers slowly-ish and says 429 a third of the time. */
+async function flakyProvider({ rateLimitOdds = 0.33 } = {}) {
+  const stats = { requests: 0, rateLimited: 0, ok: 0, inFlight: 0, peak: 0 };
+  const server = createServer((req, res) => {
+    req.resume();
+    req.on('end', () => {
+      stats.requests += 1;
+      stats.inFlight += 1;
+      stats.peak = Math.max(stats.peak, stats.inFlight);
+      setTimeout(() => {
+        stats.inFlight -= 1;
+        if (Math.random() < rateLimitOdds) {
+          stats.rateLimited += 1;
+          res.writeHead(429, { 'retry-after-ms': String(20 + Math.floor(Math.random() * 40)) });
+          res.end('{"error":"rate limited"}');
+        } else {
+          stats.ok += 1;
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end('{"choices":[{"message":{"content":"ok"}}]}');
+        }
+      }, 25);
+    });
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  return { url: `http://127.0.0.1:${server.address().port}/v1`, stats, close: () => new Promise((resolve) => { server.closeAllConnections?.(); server.close(resolve); }) };
+}
+
+/** This host with only the LLM gate route mounted, as Pi children see it. */
+async function gateHost() {
+  const server = createServer((req, res) => {
+    if (llmProxyModule.isLlmProxyPath(new URL(req.url, 'http://x').pathname)) return void llmProxyModule.handleLlmProxy(req, res);
+    res.writeHead(404).end();
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  llmProxyModule.enableLlmProxy({ origin: `http://127.0.0.1:${server.address().port}` });
+  return { close: () => new Promise((resolve) => { llmProxyModule.disableLlmProxy(); server.closeAllConnections?.(); server.close(resolve); }) };
+}
+
+withDb('load: 30 chats from 6 companies and 6 specialist tasks, a provider that answers 429 a third of the time - zero rejections, caps held, everyone finishes', async () => {
+  const PI_CAP = 5;
+  const LLM_CAP = 4;
+  const provider = await flakyProvider();
+  const host = await gateHost();
+  llmGateModule.resetLlmGatesForTests();
+  llmGateModule.setLlmLimits('prov', { maxConcurrent: LLM_CAP, perMinute: 3000 });
+  try {
+    let piRunning = 0;
+    let piPeak = 0;
+    const started = [];
+    const factory = fakeWorkerFactory();
+    // What a Pi does: three model calls through its gated base URL, then it answers.
+    const piWorkerWithModelCalls = (opts) => {
+      const worker = factory(opts);
+      const prompt = worker.prompt;
+      worker.prompt = async (message, extra) => {
+        piRunning += 1; piPeak = Math.max(piPeak, piRunning);
+        started.push(message.split('\n')[0]);
+        try {
+          const base = llmProxyModule.gateBaseUrl('prov', provider.url, `execution/${opts.attemptId}`);
+          for (let call = 0; call < 3; call += 1) {
+            const res = await fetch(`${base}/chat/completions`, { method: 'POST', headers: { authorization: 'Bearer sk-real' }, body: '{"messages":[]}' });
+            assert.equal(res.status, 200, 'a 429 never reaches the Pi');
+            await res.text();
+          }
+          return await prompt(message, extra);
+        } finally { piRunning -= 1; }
+      };
+      return worker;
+    };
+    factory.setScript((message, ctx) => (ctx.runKind === 'task' ? { finishRun: { status: 'done', summary: 'task done' } } : { text: 'answer' }));
+    setupRunner(piWorkerWithModelCalls, { maxConcurrent: PI_CAP, services: { profileFor: (agent) => profiles.resolveProfileManifest(agent, { peopleTools: true }) } });
+    resetPiGateForTests({ maxConcurrent: PI_CAP }); // clean line for the measurement
+
+    const companies = Array.from({ length: 6 }, () => randomUUID());
+    const accepted = [];
+    for (let i = 0; i < 30; i += 1) {
+      const company = companies[i % 6];
+      const result = await runner.acceptChatRun({
+        session: { id: `load-${i}`, parentSessionId: null }, profile: CATALOG.orchestrator, user: admin, prompt: `chat-${i}`, images: [],
+        modelId: 'm', submissionKey: `k-${randomUUID()}`, manifest: orchestratorProfile(), chatContext: { companyId: company }, sessionFile: null,
+      });
+      accepted.push({ i, id: result.run.id });
+    }
+    for (const agent of ['worker', 'reviewer']) {
+      for (let plan = 0; plan < 3; plan += 1) {
+        await runner.submitPlanHandler(
+          { sessionId: 'parent-chat', userId: admin.id, companyId: holder.tenantId, profileId: 'orchestrator', runRef: `load-plan-${agent}-${plan}`, requestId: randomUUID() },
+          { title: `Load ${agent} ${plan}`, tasks: [{ id: 't', agent, prompt: `task-${agent}-${plan}` }] });
+      }
+    }
+
+    const deadline = Date.now() + 120_000;
+    for (;;) {
+      await runner.tick();
+      const chats = await holder.pool.query(`SELECT status, COUNT(*)::int n FROM execution_runs GROUP BY status`);
+      const tasks = await holder.pool.query(`SELECT status, COUNT(*)::int n FROM orchestrator_tasks GROUP BY status`);
+      const count = (rows, status) => rows.rows.find((r) => r.status === status)?.n || 0;
+      if (count(chats, 'done') === 30 && count(tasks, 'done') === 6) break;
+      assert.equal(count(chats, 'failed') + count(chats, 'blocked') + count(chats, 'cancelled'), 0, 'no chat was rejected, failed or killed');
+      assert.equal(count(tasks, 'failed') + count(tasks, 'blocked') + count(tasks, 'cancelled'), 0, 'no task was rejected, failed or killed');
+      assert.ok(Date.now() < deadline, `everything finishes (chats ${JSON.stringify(chats.rows)}, tasks ${JSON.stringify(tasks.rows)})`);
+      await sleep(100);
+    }
+
+    assert.ok(piPeak <= PI_CAP, `Pi count never above the cap (${piPeak} <= ${PI_CAP})`);
+    assert.ok(piPeak >= 2, `the load really ran in parallel (peak ${piPeak})`);
+    assert.ok(provider.stats.peak <= LLM_CAP, `provider calls never above the cap (${provider.stats.peak} <= ${LLM_CAP})`);
+    assert.ok(provider.stats.rateLimited >= 5, `the provider really rate-limited (${provider.stats.rateLimited} 429s), and the Pis never saw one`);
+    assert.equal(provider.stats.ok, (30 + 6) * 3, 'every model call was eventually answered, once');
+    const chatStarts = started.filter((m) => m.startsWith('chat-')).map((m) => Number(m.slice(5)));
+    assert.equal(new Set(chatStarts).size, 30, 'every chat ran');
+    const displacement = Math.max(...chatStarts.map((n, position) => Math.abs(n - position)));
+    assert.ok(displacement <= 8, `nobody was starved: the line stayed in arrival order within ${displacement} places`);
+    console.log(`# load: pi peak ${piPeak}/${PI_CAP}, provider peak ${provider.stats.peak}/${LLM_CAP}, ${provider.stats.requests} upstream requests (${provider.stats.rateLimited} were 429, all absorbed), start order displacement ${displacement}`);
+    const finalStats = llmGateModule.llmStats().prov;
+    assert.equal(finalStats.active, 0);
+    assert.equal(finalStats.queued, 0);
+  } finally {
+    await host.close();
+    await provider.close();
+  }
+});
+
+withDb('queue (60 s): every slot held for a minute - waiters are not rejected, and run the moment a slot frees', async () => {
+  const factory = fakeWorkerFactory();
+  const hold = deferred();
+  factory.setScript(async (message) => { if (said(message) === 'hog') await hold.promise; return { text: said(message) }; });
+  setupRunner(factory, { maxConcurrent: 2 });
+  await submitChat({ sessionId: 'hold-a', prompt: 'hog' });
+  await submitChat({ sessionId: 'hold-b', prompt: 'hog' });
+  const waiting = [];
+  for (let i = 0; i < 6; i += 1) waiting.push(await submitChat({ sessionId: `hold-w${i}`, prompt: `w${i}` }));
+  await sleep(61_000);
+  for (const w of waiting) assert.equal(await runStatus(w.run.id), 'queued', 'a minute in, every waiter is still waiting - none refused, none timed out');
+  hold.resolve();
+  for (const w of waiting) assert.equal((await settleChat(w.run.id, 20_000)).status, 'done');
 });

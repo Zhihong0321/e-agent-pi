@@ -25,6 +25,11 @@ export function registerProviderBase(provider, baseUrl) {
   if (provider && baseUrl) bases.set(provider, String(baseUrl).replace(/\/+$/, ''));
 }
 
+/** Providers the host knows about (so the admin page can list them before any call has been made). */
+export function knownProviders() {
+  return [...bases.keys()];
+}
+
 /** The gate key for a URL: the provider whose base URL it starts with, else its host. */
 export function providerForUrl(url) {
   const text = String(url);
