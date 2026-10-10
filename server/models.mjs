@@ -1,5 +1,6 @@
 import { secret } from "./secrets.mjs";
 import { recordApiUsage } from "./usage.mjs";
+import { gatedFetch } from "./queue/llm-gate.mjs";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -102,14 +103,13 @@ export async function testModelRoundTrip(entry, env) {
   const responses = entry.api === "openai-responses";
   const url = `${String(baseUrl).replace(/\/+$/, "")}/${responses ? "responses" : "chat/completions"}`;
   const started = Date.now();
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20000);
   try {
     const headers = { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` };
     if (entry.requiresStream) headers.Accept = "text/event-stream";
     // OpenCode GO's gateway routes by session and 400s without this header.
     if (entry.provider === "opencode-go") headers["x-opencode-session"] = randomUUID();
-    const res = await fetch(url, {
+    // Through the provider's gate; the 20 s limit starts when the request is sent, not while it waits in line.
+    const res = await gatedFetch(entry.provider, url, {
       method: "POST",
       headers,
       body: JSON.stringify(
@@ -124,7 +124,7 @@ export async function testModelRoundTrip(entry, env) {
               stream: Boolean(entry.requiresStream),
             },
       ),
-      signal: controller.signal,
+      runTimeoutMs: 20000,
     });
     const latencyMs = Date.now() - started;
     if (!res.ok) {
@@ -140,11 +140,9 @@ export async function testModelRoundTrip(entry, env) {
     return { id: entry.id, ok: true, latencyMs };
   } catch (error) {
     const latencyMs = Date.now() - started;
-    const message = error instanceof Error ? (error.name === "AbortError" ? "Timed out after 20s" : error.message) : String(error);
+    const message = error instanceof Error ? (error.name === "TimeoutError" || error.name === "AbortError" ? "Timed out after 20s" : error.message) : String(error);
     void recordApiUsage({ service: "llm", provider: entry.provider, operation: "round_trip", modelId: entry.id, status: "error", durationMs: latencyMs, error: message, metadata: { endpoint: url } });
     return { id: entry.id, ok: false, latencyMs, error: message };
-  } finally {
-    clearTimeout(timeout);
   }
 }
 

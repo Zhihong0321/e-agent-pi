@@ -193,8 +193,9 @@ async function runChatAgent({ runId, session, profile, user, prompt, images, mod
   try {
     try {
       await untilAborted(previous, waiting.signal);
-      run = await store.getChatRun(runId);
-      if (!run || run.status !== 'queued') return;
+      // A database hiccup here must not strand the run: only a row that is gone or already settled stops it.
+      run = await store.getChatRun(runId).catch(() => undefined);
+      if (run === null || (run && run.status !== 'queued')) return;
       release = await piGate.acquire({
         signal: waiting.signal,
         onPosition: (position, queued) => { try { onQueue?.({ position, queued }); } catch { /* presentation only */ } },
@@ -217,7 +218,7 @@ async function runChatAgent({ runId, session, profile, user, prompt, images, mod
     const deadlineAt = new Date(startedAt + DEFAULT_LIMITS.chat.durationMs);
     await store.updateChatRun(runId, { status: 'running', deadlineAt });
     await store.dropQueuedInput(runId).catch(() => {});
-    await store.recordEvent({ kind: 'run.started', sessionId: session.id, runRef: runId, data: { waitedMs: startedAt - new Date(run.createdAt).getTime() } });
+    await store.recordEvent({ kind: 'run.started', sessionId: session.id, runRef: runId, data: { waitedMs: run?.createdAt ? startedAt - new Date(run.createdAt).getTime() : null } });
     try {
       await runAgent({
         kind: 'chat', runRef: runId, session, profile, user,

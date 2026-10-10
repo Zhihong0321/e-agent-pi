@@ -8,6 +8,7 @@ import { proposalSystemPrompt } from "./github.mjs";
 import { loadContextPack } from "./context-pack.mjs";
 import { getAgentSop } from "./sops.mjs";
 import { interpolatePiModels } from "./models.mjs";
+import { gateModelsJson } from "./queue/llm-proxy.mjs";
 import {
   DEFAULT_BUILTIN_TOOLS,
   DEFAULT_TOOL_PROFILE,
@@ -164,7 +165,9 @@ export async function materializeAgentRuntime(agent, mcpServers, modelsJson, { m
     `${sop?.content?.trim() || "# Agent SOP\n\nNo custom SOP has been set for this agent yet."}\n`,
     "utf8",
   );
-  await writeFile(path.join(dir, "models.json"), interpolatePiModels(modelsJson));
+  // Pi calls its providers directly, so the base URLs are pointed at this host's LLM gate, which forwards
+  // each call to the real provider once the provider's line lets it through.
+  await writeFile(path.join(dir, "models.json"), gateModelsJson(interpolatePiModels(modelsJson), runtimeKey || agent.id));
   /** @type {Record<string, unknown>} */
   const mcp = {};
   for (const server of mcpServers) {

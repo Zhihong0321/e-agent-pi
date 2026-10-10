@@ -214,6 +214,9 @@ import { handleExecutionToolRoute, handleExecutionStatusRoute, executionHealth }
 import { piWorkerFactory, setModelsJsonProvider, setBeforeSpawn } from "./execution/pi-adapter.mjs";
 import { piGate } from "./queue/pi-gate.mjs";
 import { waitForMemoryRoom } from "./queue/memory-room.mjs";
+import { createSilenceWatch } from "./queue/silence.mjs";
+import { isWaitingAtLlmGate, registerProviderBase } from "./queue/llm-gate.mjs";
+import { enableLlmProxy, handleLlmProxy, isLlmProxyPath } from "./queue/llm-proxy.mjs";
 import { closeAllConnections as closeExecutionMcpConnections, connectBinding } from "./execution/mcp-adapter.mjs";
 import { ensureExecutionSchema, findChatRunBySubmission, withRecordedAnswers } from "./execution/store.mjs";
 import {
@@ -274,6 +277,7 @@ import { chatAgy, AGY_MODELS } from "./agy-stream.mjs";
 
 const HOST = "0.0.0.0";
 const PORT = Number(process.env.PORT) || 8080;
+enableLlmProxy({ origin: `http://127.0.0.1:${PORT}` });
 const startedAt = Date.now();
 
 /** @type {{ step: string; error: string | null; ready: boolean }} */
@@ -1406,14 +1410,16 @@ async function setDefaultModel(modelId) {
  * tools, tokens) is killed with "Timeout waiting for agent to become idle"
  * even though the process is alive. Reset the timer on every event instead.
  * Subscribe before prompt() so a fast agent_settled is not missed.
+ * Time the turn spends waiting in a provider's line is not silence (see queue/silence.mjs).
  * @param {import("@earendil-works/pi-coding-agent").RpcClient} pi
  * @param {number} [inactivityMs]
+ * @param {() => boolean} [isWaiting] true while this turn's model call waits at an LLM gate
  */
-function waitUntilAgentSettled(pi, inactivityMs = 300_000) {
+function waitUntilAgentSettled(pi, inactivityMs = 300_000, isWaiting) {
   /** @type {() => void} */
   let unsubscribe = () => {};
-  /** @type {ReturnType<typeof setTimeout> | undefined} */
-  let timer;
+  /** @type {ReturnType<typeof createSilenceWatch> | undefined} */
+  let silence;
   let finished = false;
   /** @type {(ok: boolean, error?: Error) => void} */
   let finish = () => {};
@@ -1422,25 +1428,23 @@ function waitUntilAgentSettled(pi, inactivityMs = 300_000) {
     finish = (ok, error) => {
       if (finished) return;
       finished = true;
-      clearTimeout(timer);
+      silence?.stop();
       unsubscribe();
       if (ok) resolve();
       else reject(error ?? new Error("Agent wait cancelled"));
     };
-    const bump = () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        finish(false, new Error("Agent went silent before finishing the turn."));
-      }, inactivityMs);
-    };
+    silence = createSilenceWatch({
+      limitMs: inactivityMs,
+      isWaiting,
+      onSilent: () => finish(false, new Error("Agent went silent before finishing the turn.")),
+    });
     unsubscribe = pi.onEvent((event) => {
       if (event?.type === "agent_settled") {
         finish(true);
         return;
       }
-      bump();
+      silence.bump();
     });
-    bump();
   });
   promise.cancel = () => finish(false, new Error("Agent wait cancelled"));
   void promise.catch(() => {});
@@ -1541,7 +1545,7 @@ async function chatPi(message, modelId, session, onEvent, images) {
         }
       });
 
-      const settled = waitUntilAgentSettled(pi);
+      const settled = waitUntilAgentSettled(pi, undefined, () => isWaitingAtLlmGate(slot.runtimeKey));
       try {
         onEvent?.({ type: "status", text: "Working…" }, turn);
         promptedAt = Date.now();
@@ -1752,6 +1756,8 @@ async function buildPiModelsJson() {
   if (opencodeGo) raw.providers["opencode-go"].baseUrl = opencodeGo;
   if (hiveAi) raw.providers["hive-ai"].baseUrl = hiveAi;
   if (yerplan) raw.providers.yerplan.baseUrl = yerplan;
+  // The LLM gate keys its lines by provider; tell it which base URL is whose (server-side callers only know a URL).
+  for (const [id, provider] of Object.entries(raw.providers || {})) registerProviderBase(id, provider.baseUrl);
   return JSON.stringify(raw, null, 2);
 }
 
@@ -2097,9 +2103,9 @@ async function bootServices() {
           getAgent,
           profileFor: (agent) => manifestForAgent(agent),
           saveSessionRef: (sessionId, ref) => updateSession(sessionId, { piSessionId: ref.sessionId, piSessionFile: ref.sessionFile }),
-          refreshPlanStatus: (planId) => refreshPlanStatus(planId),
           sessionFileFor: async (sessionId) => (await getSession(sessionId))?.piSessionFile || null,
           chatProfileFor: (agentId) => resolveAgentProfile(agentId),
+          refreshPlanStatus: (planId) => refreshPlanStatus(planId),
           canDelegate: (profileId) => profileId === ORCHESTRATOR_AGENT_ID,
           runTool,
           diDeps: ({ ctx }) => diRunDeps({ workspace: agentWorkspace, who: ctx.user, companyId: ctx.companyId }),
@@ -2374,6 +2380,9 @@ const server = createServer(async (req, res) => {
   if (pathname === "/db-viewer" || pathname.startsWith("/db-viewer/")) {
     return handleDiViewer(req, res, url);
   }
+
+  // Pi's calls to its model providers, queued per provider and then forwarded (the path carries a per-process secret).
+  if (isLlmProxyPath(pathname)) return handleLlmProxy(req, res);
 
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
@@ -3657,10 +3666,10 @@ const server = createServer(async (req, res) => {
               manifest: manifestForAgent(profile),
               sessionFile: session.piSessionFile || null,
               chatContext: { companyId: chatCompanyId },
+              onEvent,
               onQueue: ({ position }) => {
                 if (!res.writableEnded) writeSse(res, { type: "queue", status: position > 0 ? `Queued, position ${position}` : "Working…" });
               },
-              onEvent,
             });
             if (deduped) {
               // Two simultaneous posts of the same message: the other one owns the turn.

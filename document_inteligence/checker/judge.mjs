@@ -2,6 +2,7 @@
 // Default: MiniMax M3.1 Flash Preview through M Plan.
 import { randomUUID } from "node:crypto";
 import { recordApiUsage } from "../../server/usage.mjs";
+import { gatedFetch, providerForUrl } from "../../server/queue/llm-gate.mjs";
 
 export function judgeConfigFromEnv(env = process.env) {
   return {
@@ -37,8 +38,10 @@ export function createJudge(config = judgeConfigFromEnv()) {
     const started = Date.now();
     let raw = "";
     try {
-      const res = await fetch(`${config.baseUrl}/chat/completions`, {
-        method: "POST", headers, body: JSON.stringify(body), signal: AbortSignal.timeout(config.timeoutMs),
+      // Same gate as every other call to this provider; the timeout starts when the request is sent, not while it waits in line.
+      const url = `${config.baseUrl}/chat/completions`;
+      const res = await gatedFetch(providerForUrl(url), url, {
+        method: "POST", headers, body: JSON.stringify(body), runTimeoutMs: config.timeoutMs, callerKey: "di-checker",
       });
       raw = await res.text();
       let payload = null;

@@ -12,6 +12,8 @@ import { findModel, resolveModelCredentials } from '../models.mjs';
 import { agentWorkspace, PI_CLI_PATH, PI_PACKAGE_DIR, ROOT, RUNTIME_DIR, STORAGE } from '../paths.mjs';
 import { buildPiArgs, materializeAgentRuntime, resolveToolProfile } from '../runtime.mjs';
 import { manifestRevisionOf } from './contracts.mjs';
+import { isWaitingAtLlmGate } from '../queue/llm-gate.mjs';
+import { createSilenceWatch } from '../queue/silence.mjs';
 
 const HOST_TOOLS_EXTENSION = path.join(ROOT, 'agent', 'extensions', 'host-tools.ts');
 
@@ -122,11 +124,12 @@ export function piWorkerFactory(opts) {
     const currentTurn = { blocks: [], text: '' };
     let settle;
     const settled = new Promise((resolve, reject) => { settle = { resolve, reject }; });
-    let timer = null;
-    const bump = () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => settle.reject(new Error('Worker went silent before finishing the turn')), 300_000);
-    };
+    // A Pi whose model call waits in a provider's line has nothing to say; that is queueing, not silence.
+    const silence = createSilenceWatch({
+      isWaiting: () => isWaitingAtLlmGate(`execution/${attemptId}`),
+      onSilent: () => settle.reject(new Error('Worker went silent before finishing the turn')),
+    });
+    const bump = () => silence.bump();
     const unsubscribe = pi.onEvent((event) => {
       try {
         bump();
@@ -162,7 +165,7 @@ export function piWorkerFactory(opts) {
       if (signal?.aborted) throw Object.assign(new Error('Run was aborted'), { execCode: 'CANCELLED' });
       throw error;
     } finally {
-      clearTimeout(timer);
+      silence.stop();
       unsubscribe();
     }
   }

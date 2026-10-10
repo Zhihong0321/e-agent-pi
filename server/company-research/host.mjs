@@ -10,7 +10,8 @@ import { tenantForRequest } from '../tenancy.mjs';
 import { Seed, reconcile, renderDossier } from './core.mjs';
 import { ResearchStore } from './store.mjs';
 import { connectScrapling } from './adapters.mjs';
-import { PiResearchRunner, researchModelRuntime } from './runner.mjs';
+import { PiResearchRunner, RESEARCH_CALLER, researchModelRuntime } from './runner.mjs';
+import { gateBaseUrl } from '../queue/llm-proxy.mjs';
 import { researchCompany } from './pipeline.mjs';
 import { createMetadataLanes } from './metadata.mjs';
 
@@ -57,7 +58,9 @@ async function configuredRunner(modelId) {
   const selected = resolved.models.find(m => m.id === chosen && m.available);
   if (!selected) throw new Error('No research model with a saved API key is available in the existing model catalog');
   const prefix = selected.envPrefix.toLowerCase();
-  const { runtime, model } = await researchModelRuntime({ modelsPath: BUNDLED_MODELS, provider: selected.provider, model: selected.model, apiKey: secret(`${prefix}_api_key`), baseUrl: resolved.env[`${selected.envPrefix}_BASE_URL`] });
+  // The SDK calls the provider itself, so its base URL goes through this host's LLM gate.
+  const realBase = resolved.env[`${selected.envPrefix}_BASE_URL`];
+  const { runtime, model } = await researchModelRuntime({ modelsPath: BUNDLED_MODELS, provider: selected.provider, model: selected.model, apiKey: secret(`${prefix}_api_key`), baseUrl: realBase ? gateBaseUrl(selected.provider, realBase, RESEARCH_CALLER) : realBase });
   return new PiResearchRunner({ modelRuntime: runtime, model });
 }
 export async function ensureCompanyResearch({ log = () => {} } = {}) {

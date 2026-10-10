@@ -52,8 +52,8 @@ const store = await import('./store.mjs');
 const dispatch = await import('./dispatch.mjs');
 const runner = await import('./runner.mjs');
 const profiles = await import('./profiles.mjs');
-const { resetPiGateForTests } = await import('../queue/pi-gate.mjs');
 const registry = await import('./registry.mjs');
+const { resetPiGateForTests } = await import('../queue/pi-gate.mjs');
 
 // Wire the registry's control operations to the runner (as boot does).
 registry.registerControlHandlers({
@@ -161,9 +161,9 @@ const admin = { id: 'u-admin', role: 'admin', active: true, username: 'admin' };
 
 function setupRunner(workerFactory, { maxConcurrent = 4, planBudgetMs, services: serviceOverrides = {} } = {}) {
   runner.initExecution({
-    planBudgetMs,
     pool: holder.pool,
     maxConcurrent,
+    planBudgetMs,
     workerFactory,
     services: {
       logEvent: () => {},

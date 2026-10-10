@@ -48,14 +48,9 @@ async function analyzeDirect(store, cfg, pending, { log }) {
   // 3, not 12: the provider rate-limits well below what raw concurrency allows,
   // and a 429 storm costs far more wall-clock than a smaller window ever saves.
   const concurrency = cfg.performance?.analysisConcurrency ?? 3;
-  let waited = 0;
   const results = await completeMany(pending.map(buildPrompt), {
     concurrency,
     maxTokens: 4000,
-    onWait: (secs) => {
-      waited++;
-      if (waited % 10 === 1) log(`  rate limited — waiting ${secs}s (${waited} waits so far)`);
-    },
     onDone: (i, r) => {
       if (r.ok) analysed++; else { failed++; log(`  ! ad ${pending[i].native_id} (${pending[i].advertiser}): ${r.error}`); }
       const done = analysed + failed;

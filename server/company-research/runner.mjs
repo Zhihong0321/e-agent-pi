@@ -6,6 +6,11 @@ import { PI_PACKAGE_DIR, ROOT } from '../paths.mjs';
 import { Findings, validateFindings, checkedFindings } from './core.mjs';
 import { recordApiUsage } from '../usage.mjs';
 import { piGate } from '../queue/pi-gate.mjs';
+import { createRunClock } from '../queue/run-clock.mjs';
+import { isWaitingAtLlmGate } from '../queue/llm-gate.mjs';
+
+// The caller name this host puts on research calls at the LLM gate (see company-research/host.mjs).
+export const RESEARCH_CALLER = 'company-research';
 
 const piRequire = createRequire(path.join(PI_PACKAGE_DIR, 'package.json'));
 const { Type } = await import(pathToFileURL(piRequire.resolve('typebox')).href);
@@ -163,7 +168,7 @@ export class PiResearchRunner {
         } });
       };
     }
-    let timer, unsubscribe;
+    let clock, unsubscribe;
     try {
       assertResearchTools(session);
       unsubscribe = session.subscribe(event => {
@@ -178,7 +183,8 @@ export class PiResearchRunner {
           if (tokens >= this.tokenBudget && !accepted) stop('token_budget_exhausted');
         }
       });
-      timer = setTimeout(() => stop('timeout'), this.timeoutMs);
+      // The lane's time budget is running time: a model call waiting in the provider's line does not spend it.
+      clock = createRunClock({ limitMs: this.timeoutMs, isWaiting: () => isWaitingAtLlmGate(RESEARCH_CALLER), onExpire: () => stop('timeout') });
       const context = researchContext(evidence, lane);
       await session.prompt(`TASK: ${TASKS[lane]}\nGAPS: ${JSON.stringify(gaps)}\n${gaps.length ? 'Gap-fill phase: make at most one targeted lookup, then submit findings.' : 'Final synthesis phase: call submit_findings now from the supplied evidence. Do not search or fetch. Omit unsupported claims and list unknowns.'} Text is excerpted; omitted text is not a quote.\n<untrusted_seed>${JSON.stringify(seed)}</untrusted_seed>\nIDENTITY LOCK: ${JSON.stringify(identity)}\n<untrusted_evidence>${JSON.stringify(context)}</untrusted_evidence>`);
       if (!accepted && !stopReason) {
@@ -187,6 +193,6 @@ export class PiResearchRunner {
       return { lane, status: accepted ? 'ok' : salvaged ? 'partial' : 'failed', findings: accepted || salvaged, tokens, credits: searches, ms: Date.now() - started, transcript, error: accepted ? null : stopReason || 'No accepted submission' };
     } catch (error) {
       return { lane, status: accepted ? 'ok' : salvaged ? 'partial' : 'failed', findings: accepted || salvaged, tokens, credits: searches, ms: Date.now() - started, transcript, error: accepted ? null : error.message };
-    } finally { clearTimeout(timer); unsubscribe?.(); this.sessions.delete(session); await session.abort().catch(() => {}); session.dispose(); }
+    } finally { clock?.stop(); unsubscribe?.(); this.sessions.delete(session); await session.abort().catch(() => {}); session.dispose(); }
   }
 }

@@ -8,6 +8,12 @@ import { ADS_RESEARCH_AGENT_ID, adsResearchTenantFrom } from "./auth.mjs";
 import { tenantForRequest } from "../tenancy.mjs";
 import { AdsResearchStore } from "./store.mjs";
 import { resolveModelCredentials } from "../models.mjs";
+import { gateBaseUrl } from "../queue/llm-proxy.mjs";
+import { isWaitingAtLlmGate } from "../queue/llm-gate.mjs";
+import { createRunClock } from "../queue/run-clock.mjs";
+
+// The caller name this host puts on ads-research model calls at the LLM gate.
+const ADS_CALLER = "ads-research";
 
 const PORTABLE_ROOT = process.env.ADS_RESEARCH_PORTABLE_ROOT?.trim()
   ? path.resolve(process.env.ADS_RESEARCH_PORTABLE_ROOT)
@@ -140,7 +146,9 @@ async function runPortable(input) {
     const env = {
       PATH: process.env.PATH || "", HOME: process.env.HOME || process.env.USERPROFILE || "", NODE_PATH: process.env.NODE_PATH || "",
       ADS_CONFIG_ROOT: CONFIG_ROOT, DATA_ROOT, PUBLIC_BASE_URL: baseUrl(), HOSTED_MODE: "true", NODE_ENV: "production",
-      ADS_LLM_BASE_URL: selectedBase, ADS_LLM_MODEL: selected.model, ADS_LLM_KEY: selectedKey,
+      // The portable pipeline calls the provider itself; its calls go through this host's LLM gate.
+      ADS_LLM_BASE_URL: gateBaseUrl(selected.provider, selectedBase, ADS_CALLER), ADS_LLM_PROVIDER_HOST: new URL(selectedBase).host,
+      ADS_LLM_MODEL: selected.model, ADS_LLM_KEY: selectedKey,
       ...(process.env.PLAYWRIGHT_BROWSERS_PATH ? { PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH } : {}),
     };
     const args = [PORTABLE_CLI, "run", "--topic", input.topic, "--lang", input.language, "--archive", "false"];
@@ -149,10 +157,11 @@ async function runPortable(input) {
     let stdout = "", stderr = "";
     child.stdout.on("data", chunk => { stdout += chunk; });
     child.stderr.on("data", chunk => { stderr += chunk; });
-    const timer = setTimeout(() => { child.kill("SIGTERM"); reject(new Error("Ads research timed out")); }, RUN_TIMEOUT_MS);
-    child.on("error", error => { clearTimeout(timer); reject(error); });
+    // The run budget is running time: a model call waiting in the provider's line does not spend it.
+    const clock = createRunClock({ limitMs: RUN_TIMEOUT_MS, isWaiting: () => isWaitingAtLlmGate(ADS_CALLER), onExpire: () => { child.kill("SIGTERM"); reject(new Error("Ads research timed out")); } });
+    child.on("error", error => { clock.stop(); reject(error); });
     child.on("close", code => {
-      clearTimeout(timer); activeChild = undefined;
+      clock.stop(); activeChild = undefined;
       if (code !== 0) return reject(new Error(`Ads research failed (${code}): ${safeOutput(stderr)}`));
       try { resolve({ output: JSON.parse(stdout), log: safeOutput(stderr) }); }
       catch { reject(new Error(`Ads research returned invalid JSON: ${safeOutput(stdout)} ${safeOutput(stderr)}`)); }
