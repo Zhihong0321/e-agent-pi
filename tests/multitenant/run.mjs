@@ -9,7 +9,7 @@ const phase = process.argv[2] || 'http';
 const TINY_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 const f = loadFixtures();
 const results = [];
-const T = { A: () => f.companies.A, B: () => f.companies.B, H: () => f.companies.H };
+const T = { A: () => f.companies.A, B: () => f.companies.B };
 const uid = (name) => f.userIds[name];
 
 function check(id, desc, ok, detail = '') {
@@ -226,7 +226,6 @@ async function http() {
     const bChanged = JSON.stringify(byT(beforeCounts, B.tenantId)) !== JSON.stringify(byT(afterCounts, B.tenantId));
     check('T2.7', 'A seed buttons write only into A', e.status === 200 && p.status === 200 && !bChanged, `expenses ${e.status}, procurement ${p.status}, B changed ${bChanged}`);
   }
-  skip('T2.8', "H admin sees none of A's or B's records", 'no H admin password or owner token for e-agent in the vault; H rows checked by DB in P3 snapshot');
 
   // T3 Insights
   {
@@ -236,9 +235,9 @@ async function http() {
     const bOpened = await c.adminA.get('/api/demo/chat-logs?sessionId=' + f.sessions.B);
     check('T3.1b', 'A admin opening a B session id gets session null', bOpened.data?.session === null || bOpened.data?.session === undefined, JSON.stringify(bOpened.data).slice(0, 150));
     const usage = JSON.stringify((await c.adminA.get('/api/demo/usage')).data);
-    check('T3.2', 'usage for A admin excludes B and H users', leaked(usage, foreignForA).length === 0, leaked(usage, foreignForA).join(',').slice(0, 200));
+    check('T3.2', 'usage for A admin excludes B users', leaked(usage, foreignForA).length === 0, leaked(usage, foreignForA).join(',').slice(0, 200));
     const act = JSON.stringify((await c.adminA.get('/api/demo/activity')).data);
-    check('T3.3', 'activity for A admin excludes B and H rows', leaked(act, foreignForA).length === 0, leaked(act, foreignForA).join(',').slice(0, 200));
+    check('T3.3', 'activity for A admin excludes B rows', leaked(act, foreignForA).length === 0, leaked(act, foreignForA).join(',').slice(0, 200));
     const dbl = await c.adminA.get('/api/demo/db-log');
     check('T3.4a', 'db-log for A admin excludes foreign rows', leaked(JSON.stringify(dbl.data), foreignForA).length === 0, `status ${dbl.status}`);
     const dbl1 = await c.user1A.get('/api/demo/db-log');
@@ -311,7 +310,7 @@ async function http() {
   }
 
   // Foreign-id sweep on the B company as well, for the record
-  note('SWEEP-B', 'B admin usage excludes A and H ids', leaked(JSON.stringify((await c.adminB.get('/api/demo/usage')).data), foreignForB).length === 0 ? 'clean' : 'contains foreign ids');
+  note('SWEEP-B', 'B admin usage excludes A ids', leaked(JSON.stringify((await c.adminB.get('/api/demo/usage')).data), foreignForB).length === 0 ? 'clean' : 'contains foreign ids');
 }
 
 // T5 agent runs: real LLM chats in both companies at the same time. Pass/fail comes from DB records.
@@ -458,12 +457,15 @@ async function surface() {
   const after = sql('SELECT count(*)::int n FROM sessions WHERE user_id=$1', [uid('mt-a-user2')])[0].n;
   check('T15', 'a chat with an unassigned agent is refused and creates no session', refused.status === 403 && after === before, `status ${refused.status}, sessions ${before} -> ${after}`);
 
-  // T17 research data belongs to one company. Existing dossiers belong to the operator company (H).
+  // T17 research data belongs to one company. Existing dossiers belong to the company that made them.
   const dossiers = sql('SELECT id, company_id FROM company_research_dossiers ORDER BY created_at LIMIT 3');
   check('T17.0', 'every existing dossier has a company', sql('SELECT count(*)::int n FROM company_research_dossiers WHERE company_id IS NULL')[0].n === 0, JSON.stringify(dossiers.map((d) => d.company_id)));
   for (const [who, client] of [['A', c.user1A], ['B', c.user1B]]) {
     const list = await client.get('/api/company-research/dossiers?status=all&limit=50');
-    check('T17.1 ' + who, 'company ' + who + ' lists none of the operator company dossiers', list.status === 200 && list.data?.total === 0, `status ${list.status}, total ${list.data?.total}`);
+    const own = who === 'A' ? f.companies.A.tenantId : f.companies.B.tenantId;
+    const foreignIds = sql('SELECT id FROM company_research_dossiers WHERE company_id <> $1', [own]).map((r) => r.id);
+    const listed = JSON.stringify(list.data);
+    check('T17.1 ' + who, 'company ' + who + ' lists no dossier of another company', list.status === 200 && !foreignIds.some((id) => listed.includes(id)), `status ${list.status}, listed ${list.data?.total}, other companies hold ${foreignIds.length}`);
     for (const d of dossiers.slice(0, 1)) {
       const base = '/api/company-research/dossiers/' + d.id;
       const got = await client.get(base);
@@ -482,7 +484,7 @@ async function surface() {
 
   // Cases that need credentials or an LLM turn; listed so they are not forgotten.
   skip('T12 workspace', 'company A and B agent workspaces are separate folders', 'needs a delegated run that writes a file (llm phase) and a container listing');
-  skip('T13 SOP', 'a company edit of an SOP does not change another company or the default', 'needs a Superadmin chat with the Forward Deploy Engineer (llm phase)');
+  skip('T13 SOP', 'a company edit of an SOP does not change another company', 'needs a Superadmin chat with the Forward Deploy Engineer (llm phase)');
   skip('T14 company create', 'operator creates a company with its Superadmin', 'needs the operator credential (not in the vault)');
   skip('T16 form link', 'form link carries the company and does not open under another company id', 'needs a di-forms chat to publish a form (llm phase)');
 }
