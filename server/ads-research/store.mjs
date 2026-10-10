@@ -65,15 +65,6 @@ export class AdsResearchStore {
     return row && row.companyId === needCompany(companyId) ? row : null;
   }
 
-  /** One-time migration: jobs made before they had a company belong to the company that made them (the operator's). */
-  async assignLegacy(companyId) {
-    await this.load();
-    let changed = 0;
-    for (const row of this.jobs.values()) if (!row.companyId) { row.companyId = companyId; changed += 1; }
-    if (changed) await this.save();
-    return changed;
-  }
-
   async update(id, patch) {
     await this.load();
     const row = this.jobs.get(id);

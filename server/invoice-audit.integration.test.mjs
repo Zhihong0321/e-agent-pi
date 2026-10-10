@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import test, { mock } from 'node:test';
 import http from 'node:http';
 import { PGlite } from '@electric-sql/pglite';
+import { pgliteAdapter } from '../document_inteligence/core/db.mjs';
+import { createTestCompany } from '../document_inteligence/test/company-fixture.mjs';
 
 test('invoice creation and editing through authenticated HTTP produce exact DB Log history', async t => {
   const postgres = new PGlite();
@@ -39,10 +41,10 @@ test('invoice creation and editing through authenticated HTTP produce exact DB L
       seedSystemAgent: async () => {}, getMcpServer: async () => ({ id: 'mcp' }),
       updateMcpServer: async () => {}, attachAgentResources: async () => {},
     } });
+    const tenantId = await createTestCompany(pgliteAdapter(postgres), 'Invoice audit test');
     await pool.query(`INSERT INTO users(id,username,password_hash,display_name,role) VALUES
       ('audit-alice','audit_alice',$1,'Audit Alice','user'),
       ('audit-carol','audit_carol',$1,'Audit Carol','admin')`, [users.hashPassword('isolated-fixture-password')]);
-    const tenantId = di.operatorTenantId();
     await pool.query(`UPDATE users SET company_tenant_id=$1 WHERE id LIKE 'audit-%'`, [tenantId]);
     const customer = (await pool.query(`INSERT INTO di.customer(tenant_id,code,name) VALUES ($1,'C-AUDIT','Audit Test Customer') RETURNING id`, [tenantId])).rows[0].id;
     host = http.createServer(async (req, res) => {

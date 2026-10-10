@@ -11,6 +11,8 @@ import { fileURLToPath } from 'node:url';
 import { mkdtemp } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { pgliteAdapter } from '../document_inteligence/core/db.mjs';
+import { createTestCompany } from '../document_inteligence/test/company-fixture.mjs';
 
 test('delegated expense tools inherit the authenticated owner and refuse impersonation', async t => {
   const postgres = new PGlite();
@@ -54,17 +56,17 @@ test('delegated expense tools inherit the authenticated owner and refuse imperso
       seedSystemAgent: async () => {}, getMcpServer: async () => ({ id: 'mcp' }),
       updateMcpServer: async () => {}, attachAgentResources: async () => {},
     } });
+    const tenantId = await createTestCompany(pgliteAdapter(postgres), 'Expense identity test');
     await pool.query(`INSERT INTO users(id,username,password_hash,display_name) VALUES
       ('alice','alice',$1,'Alice'),('bob','bob',$1,'Bob')`, [users.hashPassword('fixture-password')]);
+    // Every login belongs to a company; the fixtures' users are this company's.
+    await pool.query('UPDATE users SET company_tenant_id=$1 WHERE company_tenant_id IS NULL', [tenantId]);
     const request = { headers: {}, socket: { remoteAddress: 'test' } };
     const login = async username => {
       const signedIn = await users.loginUser(request, { username, password: username === 'admin' ? '1234' : 'fixture-password' });
       return { ...signedIn, req: { ...request, headers: { cookie: `demo_session=${signedIn.token}` } } };
     };
     const admin = await login('admin'), alice = await login('alice'), bob = await login('bob');
-    const tenantId = di.operatorTenantId();
-    // Every login belongs to a company; the fixtures' users are this company's.
-    await pool.query('UPDATE users SET company_tenant_id=$1 WHERE company_tenant_id IS NULL', [tenantId]);
     await pool.query(`UPDATE di.company_profile SET name='Expense identity test', country='MY',
       business_type='services', business_activity='Expense integration fixtures', email='test@example.test'
       WHERE tenant_id=$1`, [tenantId]);

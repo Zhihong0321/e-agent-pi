@@ -206,11 +206,6 @@ export async function ensureAdsResearch({ log = () => {} } = {}) {
   return { portableRoot: PORTABLE_ROOT, ready: true };
 }
 
-/** One-time migration: jobs made before they had a company belong to the operator's company. */
-export async function assignLegacyAdsJobs(companyId) {
-  return store && companyId ? store.assignLegacy(companyId) : 0;
-}
-
 export async function stopAdsResearch() {
   stopped = true;
   clearInterval(ensureAdsResearch.timer);

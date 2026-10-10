@@ -15,12 +15,12 @@ test('company onboarding, concurrent updates, isolation and recoverable reset', 
   try {
     await migrate(db);
     assert.ok((await db.query("SELECT 1 FROM information_schema.columns WHERE table_schema='di' AND table_name='company_member' AND column_name='user_id'")).rows.length);
-    const a = (await db.query("INSERT INTO di.tenant(name) VALUES ('My Company') RETURNING id")).rows[0].id;
+    const a = (await db.query("INSERT INTO di.tenant(name) VALUES ('Company A') RETURNING id")).rows[0].id;
     const b = (await db.query("INSERT INTO di.tenant(name) VALUES ('Other') RETURNING id")).rows[0].id;
     await seedTenant(db,a); await seedTenant(db,b);
     const call = (tool,args={},tenantId=a,agent='di-onboarding') => runTool({db,tenantId:()=>tenantId},{agent,tool,args});
     let p = await call('get_onboarding_status');
-    assert.equal(p.company.name,''); assert.equal(p.readiness.minimum_ready,false);
+    assert.equal(p.company.name,'Company A'); assert.equal(p.readiness.minimum_ready,false);
     p = await call('update_company_profile',{name:'Real Company',country:'my',business_type:'services',business_activity:'Consulting',email:'hello@example.com',currency:'MYR',address:'1 Main Street',source:'invoice'});
     assert.equal(p.readiness.minimum_ready,false, 'extraction requires confirmation');
     p = await call('update_company_profile',{name:'Real Company',country:'MY',business_type:'services',business_activity:'Consulting',email:'hello@example.com',currency:'MYR',address:'1 Main Street',tax_status:'not_registered',expected_revision:p.company.revision});

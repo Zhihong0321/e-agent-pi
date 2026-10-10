@@ -106,11 +106,6 @@ async function tick(log) {
     log('warn', `company research job ${job?.id || 'queue'} failed: ${message}`);
   } finally { clearInterval(heartbeat); activeJob = activeRunner = activeHeartbeat = undefined; await scrapling?.close().catch(() => {}); busy = false; }
 }
-/** One-time migration: dossiers made before they had a company belong to the company that made them (the operator's). */
-export async function assignLegacyDossiers(companyId) {
-  if (!store || !companyId) return 0;
-  return (await getPool().query('UPDATE company_research_dossiers SET company_id=$1 WHERE company_id IS NULL', [companyId])).rowCount || 0;
-}
 export async function stopCompanyResearch() {
   stopped = true;
   clearInterval(workerTimer);

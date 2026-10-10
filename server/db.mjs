@@ -87,6 +87,7 @@ export async function connectDb() {
   await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS engine TEXT NOT NULL DEFAULT 'pi'`);
   await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS agy_conversation_id TEXT`);
   await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS parent_session_id TEXT`);
+  await pool.query(`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS company_tenant_id TEXT`);
   await pool.query(`CREATE INDEX IF NOT EXISTS sessions_parent_session_id_idx ON sessions (parent_session_id)`);
   await pool.query(`ALTER TABLE agents ADD COLUMN IF NOT EXISTS engine TEXT NOT NULL DEFAULT 'pi'`);
   await pool.query(`ALTER TABLE git_syncs ADD COLUMN IF NOT EXISTS repo TEXT`);
@@ -147,17 +148,19 @@ export async function createSession(row = {}) {
   const engine = row.engine === "agy" ? "agy" : "pi";
   const agyConversationId = row.agyConversationId ?? (engine === "agy" ? id : null);
   const userId = row.userId ?? null;
+  const companyTenantId = row.companyTenantId ?? null;
   const result = await getPool().query(
-    `INSERT INTO sessions (id, title, pi_session_id, pi_session_file, model_id, agent_id, engine, agy_conversation_id, parent_session_id, user_id)
+    `INSERT INTO sessions (id, title, pi_session_id, pi_session_file, model_id, agent_id, engine, agy_conversation_id, parent_session_id, user_id, company_tenant_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
-             COALESCE($10, (SELECT user_id FROM sessions WHERE id = $9)))
+             COALESCE($10, (SELECT user_id FROM sessions WHERE id = $9)),
+             COALESCE($11, (SELECT company_tenant_id FROM sessions WHERE id = $9)))
      RETURNING id, title, pi_session_id AS "piSessionId", pi_session_file AS "piSessionFile",
                model_id AS "modelId", agent_id AS "agentId",
                COALESCE(engine, 'pi') AS engine,
                agy_conversation_id AS "agyConversationId",
                user_id AS "userId", parent_session_id AS "parentSessionId",
                created_at AS "createdAt", updated_at AS "updatedAt"`,
-    [id, title, row.piSessionId ?? null, row.piSessionFile ?? null, row.modelId ?? null, row.agentId ?? null, engine, agyConversationId, row.parentSessionId ?? null, userId],
+    [id, title, row.piSessionId ?? null, row.piSessionFile ?? null, row.modelId ?? null, row.agentId ?? null, engine, agyConversationId, row.parentSessionId ?? null, userId, companyTenantId],
   );
   const session = result.rows[0];
   if (session?.userId) {

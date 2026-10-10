@@ -185,33 +185,6 @@ export async function countUserAccounts(tenantId) {
   };
 }
 
-export async function backfillPeopleLinks(tenantId) {
-  if (!tenantId) return { linked: 0 };
-  const result = await withTenantPool(tenantId, (tx) => tx.query(`WITH candidates AS (
-    SELECT m.id AS member_id, min(u.id) AS user_id
-      FROM di.company_member m JOIN users u ON lower(u.email)=lower(m.email)
-     WHERE m.tenant_id=$1::uuid AND m.deleted_at IS NULL AND m.user_id IS NULL AND m.email IS NOT NULL
-       AND u.company_tenant_id=$1::text
-     GROUP BY m.id HAVING count(u.id)=1
-  ) UPDATE di.company_member m SET user_id=c.user_id
-      FROM candidates c
-     WHERE m.id=c.member_id AND NOT EXISTS (
-       SELECT 1 FROM di.company_member other WHERE other.tenant_id=$1::uuid AND other.user_id=c.user_id
-         AND other.deleted_at IS NULL AND other.id<>m.id
-     )`, [tenantId]));
-  return { linked: result.rowCount || 0 };
-}
-
-export async function ensurePeopleTenant(tenantId) {
-  if (!tenantId) return { assigned: 0, linked: 0 };
-  const assigned = await getPool().query(
-    'UPDATE users SET company_tenant_id=$1 WHERE company_tenant_id IS NULL',
-    [tenantId],
-  );
-  const links = await backfillPeopleLinks(tenantId);
-  return { assigned: assigned.rowCount || 0, ...links };
-}
-
 /**
  * One person create/update/list, inside the caller's transaction (tenant
  * already selected via set_config). `context.actorUser` is the host-vouched

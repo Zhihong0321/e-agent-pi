@@ -6,7 +6,7 @@ import test, { mock } from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 import { randomUUID } from 'node:crypto';
 import { migrate, pgliteAdapter } from '../../document_inteligence/core/db.mjs';
-import { ensureDefaultTenant, seedTenant } from '../../document_inteligence/core/seed.mjs';
+import { createTestCompany } from '../../document_inteligence/test/company-fixture.mjs';
 import { ensureUsers } from '../users.mjs';
 
 const holder = { pool: null, tenantId: null, pglite: null };
@@ -42,8 +42,7 @@ async function makeDb() {
   await ensureUsers(holder.pool);
   const db = pgliteAdapter(pglite);
   await migrate(db);
-  holder.tenantId = await ensureDefaultTenant(db);
-  await seedTenant(db, holder.tenantId);
+  holder.tenantId = await createTestCompany(db, "Test Co");
   store.resetSchemaMemoForTests();
   await store.ensureExecutionSchema();
 }

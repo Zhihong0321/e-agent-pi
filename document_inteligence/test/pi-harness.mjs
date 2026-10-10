@@ -15,7 +15,7 @@ import { chromium } from "playwright";
 import { findChromiumExecutable } from "../../server/browser.mjs";
 import { NON_CODING_SYSTEM_PROMPT } from "../../server/agent-profiles.mjs";
 import { migrate, pgliteAdapter } from "../core/db.mjs";
-import { ensureDefaultTenant, seedTenant } from "../core/seed.mjs";
+import { createTestCompany } from "./company-fixture.mjs";
 import { runTool, describeError } from "../core/actions.mjs";
 import { createChecker, blockedMessage, isGated } from "../checker/index.mjs";
 import { createJudge, judgeConfigFromEnv } from "../checker/judge.mjs";
@@ -91,8 +91,7 @@ export async function runStressTest(opts) {
 
   const db = pgliteAdapter(new PGlite());
   await migrate(db);
-  const tenantId = await ensureDefaultTenant(db);
-  await seedTenant(db, tenantId);
+  const tenantId = await createTestCompany(db, "Test Co");
 
   let browser;
   async function renderPdf(html, absPath) {

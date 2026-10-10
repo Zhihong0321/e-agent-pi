@@ -116,19 +116,6 @@ export const ENTITY_DEFS = [
   },
 ];
 
-/** Returns the default tenant id, creating "My Company" on first boot. Runs as owner. */
-export async function ensureDefaultTenant(db, name = "My Company") {
-  const existing = await db.query(
-    "SELECT id FROM di.tenant WHERE is_default AND deleted_at IS NULL ORDER BY created_at LIMIT 1",
-  );
-  if (existing.rows[0]) return existing.rows[0].id;
-  const { rows } = await db.query(
-    "INSERT INTO di.tenant (name, is_default) VALUES ($1, true) RETURNING id",
-    [name],
-  );
-  return rows[0].id;
-}
-
 export async function seedTenant(db, tenantId) {
   return withContext(db, { tenantId, actor: "system", agent: "seed", asRole: false }, (tx) => seedTenantTx(tx, tenantId));
 }

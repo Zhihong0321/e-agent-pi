@@ -9,7 +9,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { migrate, pgliteAdapter } from "../core/db.mjs";
-import { ensureDefaultTenant, seedTenant } from "../core/seed.mjs";
+import { createTestCompany } from "./company-fixture.mjs";
 import { runTool, describeError } from "../core/actions.mjs";
 import { diTokenFor } from "../host.mjs";
 import { toolsFor } from "../core/tools.mjs";
@@ -19,8 +19,7 @@ const SERVER = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "mc
 test("MCP server exposes per-agent tools and round-trips through the host", async () => {
   const db = pgliteAdapter(new PGlite());
   await migrate(db);
-  const tenantId = await ensureDefaultTenant(db);
-  await seedTenant(db, tenantId);
+  const tenantId = await createTestCompany(db, "Test Co");
 
   const host = http.createServer(async (req, res) => {
     let raw = "";

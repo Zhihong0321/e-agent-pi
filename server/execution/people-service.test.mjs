@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import test, { mock } from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 import { migrate, pgliteAdapter } from '../../document_inteligence/core/db.mjs';
-import { ensureDefaultTenant, seedTenant } from '../../document_inteligence/core/seed.mjs';
+import { createTestCompany } from '../../document_inteligence/test/company-fixture.mjs';
 
 // Inject the embedded Postgres as the service's pool before importing the
 // modules under test (they read getPool() from server/db.mjs).
@@ -47,8 +47,7 @@ async function makeDb() {
   poolHolder.current = pool;
   const db = pgliteAdapter(pglite);
   await migrate(db);
-  const tenantId = await ensureDefaultTenant(db);
-  await seedTenant(db, tenantId);
+  const tenantId = await createTestCompany(db, "Test Co");
   return { pool, tenantId };
 }
 

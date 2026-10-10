@@ -7,7 +7,7 @@ import test, { mock } from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
 import { randomUUID } from 'node:crypto';
 import { migrate, pgliteAdapter } from '../../document_inteligence/core/db.mjs';
-import { ensureDefaultTenant, seedTenant } from '../../document_inteligence/core/seed.mjs';
+import { createTestCompany } from '../../document_inteligence/test/company-fixture.mjs';
 
 // ---- module seams: embedded Postgres + fake catalog -------------------------
 const holder = { pool: null, tenantId: null, pglite: null };
@@ -37,7 +37,6 @@ mock.module('../debug.mjs', { namedExports: { logEvent: () => {} } });
 mock.module('../../document_inteligence/host.mjs', {
   namedExports: {
     companyOnboardingStatus: async () => ({ minimum_ready: true, revision: 3, company_name: 'Acme' }),
-    operatorTenantId: () => holder.tenantId,
   },
 });
 
@@ -150,8 +149,7 @@ async function makeDb() {
   await pool.query(`INSERT INTO user_agents VALUES ('u-admin', 'worker'), ('u-admin', 'reviewer')`);
   const db = pgliteAdapter(holder.pglite);
   await migrate(db);
-  holder.tenantId = await ensureDefaultTenant(db);
-  await seedTenant(db, holder.tenantId);
+  holder.tenantId = await createTestCompany(db, "Test Co");
   store.resetSchemaMemoForTests();
   orchestrator.resetOrchestratorSchemaMemoForTests();
   await orchestrator.ensureOrchestratorSchema();

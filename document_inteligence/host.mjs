@@ -1,7 +1,6 @@
-import { manageUsers, managePeople, listPeople, resolveIdentity, ensurePeopleTenant } from '../server/users.mjs';
+import { manageUsers, managePeople, listPeople, resolveIdentity } from '../server/users.mjs';
 import { expenseUserForSession } from '../server/expense-session.mjs';
 import { diSessionUser } from '../server/di-session-user.mjs';
-import { setOperatorTenant, operatorTenantId } from '../server/tenancy.mjs';
 // UIv2 host integration for Document Intelligence: boot (migrate, seed, register the
 // four micro-agents and their shared MCP server), per-agent tokens, the internal
 // endpoint the MCP server calls, and HTML -> PDF rendering.
@@ -12,7 +11,6 @@ import { fileURLToPath } from "node:url";
 import { DATA_DIR } from "../server/paths.mjs";
 import { clearAgentSop, getAgentSop, saveAgentSop } from "../server/sops.mjs";
 import { migrate, pgAdapter, roleAvailable, withContext } from "./core/db.mjs";
-import { ensureDefaultTenant, seedTenant } from "./core/seed.mjs";
 import { getCompanyProfile } from './core/company.mjs';
 import { runTool, describeError } from "./core/actions.mjs";
 import { AGENTS } from "./core/tools.mjs";
@@ -26,10 +24,7 @@ export const DI_MCP_SLUG = "document-intelligence";
 export const DI_AGENT_IDS = Object.keys(AGENTS);
 
 const SECRET = randomBytes(32);
-// `operatorTenantId` is the bootstrap tenant. It is read only by boot/migration code and by
-// operator-authenticated entry points through server/tenancy.mjs. Every other caller passes the
-// tenant it was given by the caller's identity.
-const state = { db: null, operatorTenantId: null, asRole: true };
+const state = { db: null, asRole: true };
 /** Where the Forward Deploy Engineer keeps an agent's SOP: the calling company's own version, never the platform default. */
 const sopStoreFor = (tenantId) => ({
   get: (agentId) => getAgentSop(agentId, tenantId),
@@ -393,18 +388,13 @@ export async function handlePublicForm(req, res, url, deps) {
 }
 
 /**
- * Boot: migrate the di schema, seed the default tenant, upsert the micro-agents and
- * attach the shared MCP server to each.
+ * Boot: migrate the di schema, upsert the micro-agents and attach the shared MCP server to each.
  */
 export async function ensureDocumentIntelligence({ pool, catalog, logEvent = () => {} }) {
   const db = pgAdapter(pool);
   const applied = await migrate(db);
   state.asRole = await roleAvailable(db);
   if (!state.asRole) logEvent("warn", "di: role di_app unavailable; agents run without database role separation");
-  state.operatorTenantId = await ensureDefaultTenant(db);
-  setOperatorTenant(state.operatorTenantId);
-  await seedTenant(db, state.operatorTenantId);
-  await ensurePeopleTenant(state.operatorTenantId).catch((error) => logEvent('warn', `people account migration skipped: ${error.message}`));
   state.db = db;
 
   for (const [id, meta] of Object.entries(AGENTS)) {
@@ -427,10 +417,8 @@ export async function ensureDocumentIntelligence({ pool, catalog, logEvent = () 
   // The stdio forwarding MCP proxy is retired: DI tools are registered as
   // native execution operations (server/execution/registry.mjs) and reach the
   // same runTool handlers through the host dispatcher. Nothing to attach.
-  return { applied, tenantId: state.operatorTenantId, roleSeparation: state.asRole };
+  return { applied, roleSeparation: state.asRole };
 }
-
-export { operatorTenantId };
 
 /** Database context for one named tenant. The tenant is required: there is no default. */
 export function tenantContext(tenantId) {

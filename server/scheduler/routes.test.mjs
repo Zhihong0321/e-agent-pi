@@ -1,5 +1,4 @@
 import test,{mock} from 'node:test';import assert from 'node:assert/strict';import {PGlite} from '@electric-sql/pglite';
-mock.module('../../document_inteligence/host.mjs',{namedExports:{operatorTenantId:()=>'company-a'}});
 const {handleSchedulerRoutes}=await import('./routes.mjs');const {ensureSchedulerSchema,setSchedulerPool}=await import('./store.mjs');
 test('schedule HTTP routes require account auth, reject cross-site mutations, and retain URL identity',async()=>{
  const pg=new PGlite();await ensureSchedulerSchema(pg);setSchedulerPool({query:(...args)=>pg.query(...args),connect:async()=>({query:(...args)=>pg.query(...args),release(){}})});

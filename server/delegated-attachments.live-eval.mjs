@@ -34,7 +34,7 @@ await mkdir(workspace, { recursive: true });
 const pg = new PGlite();
 const db = pgliteAdapter(pg);
 await migrate(db);
-const companyId = (await db.query("INSERT INTO di.tenant(name,is_default) VALUES ('Synthetic handoff evaluation',true) RETURNING id")).rows[0].id;
+const companyId = (await db.query("INSERT INTO di.tenant(name) VALUES ('Synthetic handoff evaluation') RETURNING id")).rows[0].id;
 await seedTenant(db, companyId);
 const who = { id: "handoff-eval", username: "handoff-eval", display_name: "Pipeline Test", role: "admin" };
 await db.query("INSERT INTO di.company_member(tenant_id,name,user_id,department) VALUES ($1,'Pipeline Test','handoff-eval','Test')", [companyId]);

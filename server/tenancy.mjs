@@ -1,20 +1,7 @@
-// Tenancy kernel: the only place a request, run or session is turned into a tenant id.
-// Rule: an operation runs for exactly one tenant, named by the caller's identity. Nothing here
-// (or anywhere else) may fall back to a process-wide default; a missing tenant is an error.
+// Tenancy kernel: the only place a request, run or session is turned into a company id.
+// Rule: an operation runs for exactly one company, named by the caller's identity. Nothing here
+// (or anywhere else) may fall back to a default company; a missing company is an error.
 // This module imports nothing from the host or the database at load time, so any layer can use it.
-
-let operatorTenant = '';
-
-/** Boot only: records the bootstrap company the platform operator acts on when it names none. */
-export function setOperatorTenant(id) {
-  operatorTenant = present(id);
-}
-
-/** The operator's default company. Use only through tenantForRequest / tenantOfSession. */
-export function operatorTenantId() {
-  if (!operatorTenant) throw new Error('Document Intelligence is not ready');
-  return operatorTenant;
-}
 
 export class TenantRequired extends Error {
   constructor(message = 'Company tenant is required') {
@@ -26,21 +13,21 @@ export class TenantRequired extends Error {
 
 const present = (id) => (typeof id === 'string' && id.trim() ? id.trim() : '');
 
-/** The tenant of a signed-in user. */
+/** The company of a signed-in user. */
 export function tenantOf(user) {
   const id = present(user?.company_tenant_id);
   if (!id) throw new TenantRequired();
   return id;
 }
 
-/** The tenant of an execution context (chat run, delegated task, scheduled run). */
+/** The company of an execution context (chat run, delegated task, scheduled run). */
 export function tenantFromRun(ctx) {
   const id = present(ctx?.companyId);
   if (!id) throw new TenantRequired('This run has no company tenant');
   return id;
 }
 
-/** Validates a tenant id that must already be known (e.g. read from a stored plan or schedule). */
+/** Validates a company id that must already be known (e.g. read from a stored plan or schedule). */
 export function requireTenant(id, what = 'operation') {
   const value = present(id);
   if (!value) throw new TenantRequired(`${what} has no company tenant`);
@@ -48,33 +35,25 @@ export function requireTenant(id, what = 'operation') {
 }
 
 /**
- * Tenant for a request that is either a signed-in user or the platform operator (owner
- * credential). The operator is a platform identity: it acts on the tenant it names with
- * `X-Tenant-Id`, else on the operator tenant. Only call this from operator-authenticated
- * entry points; a user request never reaches the operator tenant.
+ * Company for a request. A signed-in user acts for their own company. The platform operator
+ * (owner credential, no login) names the company it acts for with `X-Tenant-Id`; without it the
+ * request is refused. Only call this from operator-authenticated entry points for the operator.
  */
 export function tenantForRequest(req, user) {
   if (user) return tenantOf(user);
   const named = present(req?.headers?.['x-tenant-id']);
-  return named || operatorTenantId();
+  if (!named) throw new TenantRequired();
+  return named;
 }
 
-/** The tenant that owns a chat session: its owner's company, or the operator tenant for owner-token chats. */
+/** The company that owns a chat session: its owner's company, or the one stored on an owner-credential session. */
 export async function tenantOfSession(sessionId) {
   const { getPool } = await import('./db.mjs');
   const { rows } = await getPool().query(
-    `SELECT s.user_id, u.company_tenant_id FROM sessions s LEFT JOIN users u ON u.id = s.user_id WHERE s.id = $1`,
+    `SELECT COALESCE(u.company_tenant_id, s.company_tenant_id) AS company_tenant_id
+       FROM sessions s LEFT JOIN users u ON u.id = s.user_id WHERE s.id = $1`,
     [sessionId],
   );
   if (!rows[0]) throw new TenantRequired('Session not found');
-  return tenantOfOwner(rows[0].user_id, rows[0].company_tenant_id);
-}
-
-/**
- * The tenant for a row already joined to its owner: the owner's company, or the operator tenant
- * when the row has no owner (an owner-credential chat). An owner with no company is an error.
- */
-export function tenantOfOwner(userId, ownerCompanyId) {
-  if (!userId) return operatorTenantId();
-  return requireTenant(ownerCompanyId, 'session owner');
+  return requireTenant(rows[0].company_tenant_id, 'session');
 }

@@ -9,12 +9,10 @@ import { handleFileSharing, fileSharingEnv } from './file-sharing.mjs';
 import { publishFile } from './shared-files.mjs';
 import { mediaAiEnv, mediaAiTenantFrom } from './media-ai/auth.mjs';
 import { assignedAgentIds, userAssignedAgent } from './agent-access.mjs';
-import { tenantForRequest, tenantOf, tenantFromRun, setOperatorTenant, TenantRequired } from './tenancy.mjs';
+import { tenantForRequest, tenantOf, tenantFromRun, TenantRequired } from './tenancy.mjs';
 
 const A = '1739a61f-08a2-4112-b7f9-601111e8b949';
 const B = '9baf99c3-0085-4532-b023-b2a5bbb47329';
-const OP = 'd0ac1f92-0000-4000-8000-000000000000';
-setOperatorTenant(OP);
 
 function fakeRes() {
   const chunks = [];
@@ -104,9 +102,9 @@ test('tenant resolution never falls back for a signed-in user', () => {
   assert.throws(() => tenantOf({ company_tenant_id: '' }), TenantRequired);
   assert.throws(() => tenantOf(null), TenantRequired);
   assert.throws(() => tenantFromRun({ companyId: null }), TenantRequired);
-  // A user request ignores the operator header; the operator without a name gets the operator company.
+  // A user request ignores the operator header; an operator request must name its company.
   assert.equal(tenantForRequest({ headers: { 'x-tenant-id': B } }, { company_tenant_id: A }), A);
-  assert.equal(tenantForRequest({ headers: {} }, null), OP);
+  assert.throws(() => tenantForRequest({ headers: {} }, null), TenantRequired);
   assert.equal(tenantForRequest({ headers: { 'x-tenant-id': B } }, null), B);
 });
 

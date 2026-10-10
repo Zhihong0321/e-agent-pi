@@ -14,7 +14,7 @@ const TENANT_COLS = ['tenant_id', 'company_id', 'company_tenant_id', 'owner_user
 try {
   if (req.op === 'snapshot') {
     emit({
-      tenants: await q('SELECT id, name, is_default FROM di.tenant ORDER BY name'),
+      tenants: await q('SELECT id, name, FROM di.tenant ORDER BY name'),
       users: await q('SELECT id, username, role, active, company_tenant_id FROM users ORDER BY company_tenant_id, username'),
       userAgentsPerUser: await q('SELECT user_id, count(*)::int n FROM user_agents GROUP BY 1'),
       userAgentRows: (await q('SELECT count(*)::int n FROM user_agents'))[0].n,

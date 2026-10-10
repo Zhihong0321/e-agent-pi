@@ -36,7 +36,7 @@ const CAP_WARN = { id: "mileage-cap", when: { category: ["mileage"] }, check: "a
 async function setup() {
   const db = pgliteAdapter(new PGlite());
   await migrate(db);
-  const mk = async (name) => (await db.query("INSERT INTO di.tenant (name, is_default) VALUES ($1, $2) RETURNING id", [name, name === "A"])).rows[0].id;
+  const mk = async (name) => (await db.query("INSERT INTO di.tenant (name) VALUES ($1) RETURNING id", [name])).rows[0].id;
   const tenantA = await mk("A");
   const tenantB = await mk("B");
   await seedTenant(db, tenantA);

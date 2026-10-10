@@ -3,14 +3,13 @@ import { getPool } from './db.mjs';
 import { normalizeRole, roleLabel } from './roles.mjs';
 import {
   countUserAccounts,
-  ensurePeopleTenant,
   listPeople as listPeopleShared,
   managePeopleCore,
   personActor as sharedPersonActor,
   publicPerson,
 } from './people-service.mjs';
 
-export { countUserAccounts, ensurePeopleTenant, publicPerson };
+export { countUserAccounts, publicPerson };
 
 const digest = value => createHash('sha256').update(value).digest('hex');
 const fields = 'id, username, display_name, role, tier, active, email, phone, position, department, location, notes, company_tenant_id, created_at, updated_at';
@@ -80,7 +79,8 @@ function cookieToken(req) {
 }
 export async function userByHash(hash) {
   const result = await getPool().query(`SELECT ${fields.split(', ').map(f => `u.${f}`).join(', ')} FROM users u
-    JOIN user_sessions s ON s.user_id=u.id WHERE s.token_hash=$1 AND s.expires_at>NOW() AND u.active`, [hash]);
+    JOIN user_sessions s ON s.user_id=u.id WHERE s.token_hash=$1 AND s.expires_at>NOW() AND u.active
+      AND u.company_tenant_id IS NOT NULL AND u.company_tenant_id <> ''`, [hash]);
   return result.rows[0] || null;
 }
 export async function requestUser(req) { return cookieToken(req) ? userByHash(digest(cookieToken(req))) : null; }
@@ -99,6 +99,7 @@ export async function loginUser(req, input) {
   const row = (await getPool().query('SELECT * FROM users WHERE username=$1', [String(input.username || '').trim().toLowerCase()])).rows[0];
   const valid = verifyPassword(input.password, row?.password_hash || dummyHash);
   if (!row?.active || !valid) throw new Error('Invalid username or password');
+  if (!row.company_tenant_id) throw new Error('This login has no company. Ask the platform operator to assign one.');
   attempts.delete(key);
   const token = randomBytes(32).toString('hex');
   await getPool().query('DELETE FROM user_sessions WHERE expires_at<=NOW()');

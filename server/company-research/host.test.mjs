@@ -7,7 +7,6 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { handleCompanyResearch, tavilyKeyFromMcp, savedTavilyKeys } from './host.mjs';
 import { ResearchStore } from './store.mjs';
 import { researchEnv } from './auth.mjs';
-import { setOperatorTenant } from '../tenancy.mjs';
 import { reconcile } from './core.mjs';
 import { publicSettings, rememberSecret, secret } from '../secrets.mjs';
 
@@ -32,7 +31,6 @@ test('Tavily settings expose saved-slot flags and never return raw keys', async 
 });
 
 const CO = 'company-a', OTHER = 'company-b';
-setOperatorTenant(CO);
 test('private API, SSE, report publication, replay and chat MCP tools work end to end', async () => {
   const db = new PGlite();
   const repository = new ResearchStore({ query: (sql, params) => params ? db.query(sql, params) : db.exec(sql).then(r => r.at(-1)) });
@@ -65,7 +63,7 @@ test('private API, SSE, report publication, replay and chat MCP tools work end t
     const input = { seed: { name: 'Acme Solar' }, identity: { status: 'locked' }, evidence: [], runs: [], startedAt: '2026-10-02T00:00:00Z' };
     const result = reconcile(input, new Date('2026-10-02T00:01:00Z'));
     await repository.finish(id, { ...input, status: 'partial', result });
-    const authed = { headers: { Authorization: 'Bearer owner-test' } };
+    const authed = { headers: { Authorization: 'Bearer owner-test', 'X-Tenant-Id': CO } };
     const queued = await repository.enqueue({ name: 'Other Company', website: 'https://other.example/' }, false, {}, CO);
     const history = await (await fetch(`${base}${route}?q=acme`, authed)).json();
     assert.equal(history.total, 1); assert.equal(history.items[0].name, 'Acme Solar');

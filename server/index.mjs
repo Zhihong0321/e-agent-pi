@@ -8,7 +8,7 @@ import { handleCompanyProfile } from './company-profile.mjs';
 import { routeAccess } from "./route-access.mjs";
 import { createCompany, listCompanies, companiesWithoutSuperadmin, companyExists } from "./companies.mjs";
 import { assignedAgentIds, userAssignedAgent } from "./agent-access.mjs";
-import { tenantFromRun, tenantForRequest, tenantOfSession, tenantOf } from "./tenancy.mjs";
+import { tenantFromRun, tenantForRequest, tenantOfSession, tenantOf, requireTenant } from "./tenancy.mjs";
 import { companyOnboardingStatus, publicBaseUrl, diAgentEnv } from '../document_inteligence/host.mjs';
 import { handleFileSharing } from './file-sharing.mjs';
 import { filesFromBlocks } from '../shared/shared-files.mjs';
@@ -159,8 +159,8 @@ import { ensureSalesMcp } from "./sales-mcp.mjs";
 import { ensureGoogleAdsMcp } from "./google-ads-mcp.mjs";
 import { ensureOmMcp } from "./om-mcp.mjs";
 import { ensureWebSearchMcp } from "./web-search-mcp.mjs";
-import { ensureCompanyResearch, handleCompanyResearch, stopCompanyResearch, assignLegacyDossiers } from "./company-research/host.mjs";
-import { ensureAdsResearch, handleAdsResearch, stopAdsResearch, assignLegacyAdsJobs } from "./ads-research/host.mjs";
+import { ensureCompanyResearch, handleCompanyResearch, stopCompanyResearch } from "./company-research/host.mjs";
+import { ensureAdsResearch, handleAdsResearch, stopAdsResearch } from "./ads-research/host.mjs";
 import { ensureMediaAi, handleMediaAi } from "./media-ai/host.mjs";
 import { ensureScheduler } from './scheduler/host.mjs';
 import { handleSchedulerRoutes } from './scheduler/routes.mjs';
@@ -1578,7 +1578,7 @@ async function chatPi(message, modelId, session, onEvent, images) {
   });
 }
 
-async function runManageTurn({ message, agentId, sessionId, modelId }) {
+async function runManageTurn({ message, agentId, sessionId, modelId, companyId }) {
   const trimmed = String(message || "").trim();
   let session =
     typeof sessionId === "string" && sessionId.trim() ? await getSession(sessionId.trim()) : null;
@@ -1588,6 +1588,7 @@ async function runManageTurn({ message, agentId, sessionId, modelId }) {
     const agent = await getAgent(ref);
     if (!agent) throw new Error("Unknown agent");
     session = await createSession({
+      companyTenantId: requireTenant(companyId, "manage turn"),
       title: titleFromMessage(trimmed),
       modelId: typeof modelId === "string" ? modelId : defaultModelId,
       agentId: agent.id,
@@ -2139,10 +2140,6 @@ async function bootServices() {
   try {
     if (dbReady()) {
       const di = await ensureDocumentIntelligence({ pool: getPool(), catalog: catalogApi, logEvent });
-      const legacy = await assignLegacyDossiers(di.tenantId).catch(() => 0);
-      if (legacy) logEvent("info", `company research: ${legacy} earlier dossiers assigned to the operator company`);
-      const legacyAds = await assignLegacyAdsJobs(di.tenantId).catch(() => 0);
-      if (legacyAds) logEvent("info", `ads research: ${legacyAds} earlier jobs assigned to the operator company`);
       logEvent(
         "info",
         `document-intelligence ready (migrations: ${di.applied.join(", ") || "none"}; role separation: ${di.roleSeparation})`,
@@ -2549,7 +2546,7 @@ const server = createServer(async (req, res) => {
         readBody,
         sanitizeError,
         resetPi: resetPiPool,
-        runTurn: runManageTurn,
+        runTurn: (turn) => runManageTurn({ ...turn, companyId: tenantForRequest(req, null) }),
         snapshot,
       });
       if (handled) return;
@@ -3319,6 +3316,7 @@ const server = createServer(async (req, res) => {
       const requestedEngine =
         body.engine === "agy" ? "agy" : body.engine === "pi" ? "pi" : agent.engine || "pi";
       const session = await createSession({
+        companyTenantId: user ? null : tenantForRequest(req, null),
         title,
         modelId:
           typeof body.modelId === "string"
@@ -3481,6 +3479,7 @@ const server = createServer(async (req, res) => {
         const requestedEngine =
           body.engine === "agy" ? "agy" : body.engine === "pi" ? "pi" : agent.engine || "pi";
         session = await createSession({
+          companyTenantId: user ? null : tenantForRequest(req, null),
           modelId:
             typeof modelId === "string"
               ? modelId

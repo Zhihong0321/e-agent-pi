@@ -133,7 +133,7 @@ test("runManageTurn hands all pages to the model and files page receipts only in
   const db = pgliteAdapter(pg);
   t.after(() => pg.close());
   await migrate(db);
-  const tenant = (await db.query("INSERT INTO di.tenant(name,is_default) VALUES ('Handoff test',true) RETURNING id")).rows[0].id;
+  const tenant = (await db.query("INSERT INTO di.tenant(name) VALUES ('Handoff test') RETURNING id")).rows[0].id;
   await seedTenant(db, tenant);
   const who = { id: "test-owner", username: "handoff-test", display_name: "Handoff Test", role: "admin" };
   await db.query("INSERT INTO di.company_member(tenant_id,name,user_id,department) VALUES ($1,'Handoff Test','test-owner','Test')", [tenant]);
