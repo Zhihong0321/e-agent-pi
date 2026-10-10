@@ -277,10 +277,10 @@
   .demo-suggestions button { font-size: 9px; padding: 7px 8px; }
   .demo-profile-grid { grid-template-columns: 1fr; }
 }
-/* Compact rail: narrow, icon tiles two per row (labels live in the tooltip), live clock. */
+/* Compact rail: narrow, icon tiles two per row with a small caption under each icon, live clock. */
 .demo-rail-clock { display: block; margin: -6px 0 10px; padding: 0 4px; color: #827d8e; font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; min-height: 14px; }
 @media (min-width: 821px) {
-  .demo-rail { width: 152px; padding: 16px 10px 10px; }
+  .demo-rail { width: 168px; padding: 16px 10px 10px; }
   .demo-brand { padding: 0 4px 12px; gap: 8px; }
   .demo-brand-mark { width: 28px; height: 28px; }
   .demo-brand strong { font-size: 20px; }
@@ -289,8 +289,8 @@
   .demo-sidebar-search { padding: 7px 9px; margin: 0 0 12px; gap: 6px; border-radius: 9px; }
   .demo-sidebar-search input { font-size: 11px; }
   .demo-rail nav { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
-  .demo-rail nav button { min-height: 36px; padding: 0; justify-content: center; border-radius: 9px; }
-  .demo-rail nav button span { display: none; }
+  .demo-rail nav button { min-height: 54px; padding: 6px 2px 5px; flex-direction: column; justify-content: center; gap: 3px; border-radius: 9px; }
+  .demo-rail nav button span { display: block; font-size: 9.5px; line-height: 1.15; text-align: center; overflow-wrap: anywhere; }
   .demo-rail nav button svg { width: 18px; height: 18px; }
   .demo-rail-label { padding: 0 4px; margin-bottom: 6px; }
   .demo-insights-label, .demo-recent-chats { margin-top: 12px; }
