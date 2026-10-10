@@ -19,7 +19,7 @@ Date expectations are relative to the run date: 30-day quotation validity, 14-da
 
 ## Phase A setup — original first batch
 
-Start with a fresh database/tenant containing only the application's default tenant, tax codes, workflow rules, numbering and templates. Do not pre-create the company, customers, catalogue, documents or payments. Tests 1–10 create them. The original repeatable runner is `test/manual-pi-eval.mjs`.
+Start with a fresh database with no company, only the application's tax codes, workflow rules, numbering and templates. Do not pre-create the company, customers, catalogue, documents or payments. Tests 1–10 create them. The original repeatable runner is `test/manual-pi-eval.mjs`.
 
 ## Phase A — tests 1–10
 

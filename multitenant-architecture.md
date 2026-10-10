@@ -1,6 +1,7 @@
 # Multi-tenant architecture: root cause and layer design
 
 Written 2026-10-09 after the multi-tenant test (`oct-09-2026-multitenant-test.md` §9).
+Updated 2026-10-10: the default company is removed (see §7).
 
 ## 1. The model we want
 
@@ -17,20 +18,20 @@ identity, never by the process.**
 
 The data layer follows the model: `users.company_tenant_id`, `withContext()` and row-level security.
 
-The application layer was built for "one deployment = one company", and that model is still
+The application layer was built for "one deployment = one company", and that model was still
 there as a second, hidden rule:
 
-1. **An ambient tenant.** `document_inteligence/host.mjs` kept `state.tenantId`, the default
-   tenant chosen at boot, plus `companyHostContext()` to read it with no argument. Any code can
-   ask "which tenant?" and get an answer without being told. A missing tenant is therefore never
-   an error: it silently becomes tenant H.
-2. **No Platform layer.** Tenant H (a real customer) doubles as the platform. The owner token,
-   public endpoints, and platform defaults all run as H, so platform state and customer H data
-   are the same thing.
+1. **An ambient tenant.** `document_inteligence/host.mjs` kept one module-level tenant id, a default
+   company chosen at boot, and a helper read it with no argument. Any code could ask "which
+   tenant?" and get an answer without being told. A missing tenant was therefore never an error:
+   it silently became the default company.
+2. **No Platform layer.** The default company doubled as the platform. The owner token,
+   public endpoints, and platform defaults all ran as that company, so platform state and the
+   company's data were the same thing.
 3. **Agent inputs have no tenant in their signature.** An agent receives data through three
    channels. Only the tool channel (`ctx.companyId` → `diRunDeps` → `withContext`) carries a
    tenant. The prompt channel (company status, SOP), the file channel (workspace, attachments,
-   shared files, media) and the control tools (`get_company_setup`) take none, so they use the
+   shared files, media) and the control tools (`get_company_setup`) took none, so they used the
    ambient tenant or no tenant at all.
 4. **Resources keyed by agent only.** `agent_sops` is keyed by `agent_id`; `agentWorkspace()`
    maps an agent to one folder. Both are shared by every tenant using that agent.
@@ -47,16 +48,17 @@ Patching call sites would leave the cause and the next call site.
 Owns: agent definitions, models, skills, context pack, health, operator endpoints
 (`/api/debug`, `/api/metrics`).
 - Operator endpoints require operator auth.
-- The owner/operator credential is a **platform** identity. It acts on a tenant only when it
-  names one: `X-Tenant-Id` header or `?tenant=`. If it names none, the single bootstrap tenant is
-  used, and only at operator-auth entry points (§4).
+- The owner/operator credential is a **platform** identity with no login. It acts on a company
+  only when it names one with the `X-Tenant-Id` header, and that company must exist. With no
+  header, a route that needs a company returns 400 "Company tenant is required". There is no
+  fallback company.
 
 ### L1 Tenancy kernel — `server/tenancy.mjs` (new, the only place tenant resolution lives)
 - `tenantOf(user)`: the user's `company_tenant_id`, else throws `TenantRequired`.
 - `tenantFromRun(ctx)`: `ctx.companyId`, else throws.
-- `operatorTenant(req)`: resolves the tenant for an operator-authenticated request.
 - `tenantDb(tenantId)`: `{ db, tenantId, asRole }` for `withContext`; `tenantId` is required.
-- `bootstrapTenantId()`: used at boot and migration only.
+- Operator requests: the company comes from `X-Tenant-Id` only. No ambient company is read.
+- Boot creates no company, so there is no boot-time tenant for the kernel to return.
 
 ### L2 Tenant-owned resources (each takes a `tenantId`, none read an ambient one)
 | Resource | Rule |
@@ -76,15 +78,15 @@ path, SOP, company status for the prompt, attachment destination, and the tool c
 runs, delegated runs and scheduled runs all use it. No other code puts tenant data in a prompt.
 
 ### L4 Enforcement
-- Static guard test: ambient accessors (`operatorContext`, `bootstrapTenantId`) may only be
-  imported by an allow-list of files. Adding a use fails the build.
+- Static guard test: fails the build if an ambient tenant accessor is imported outside an
+  allow-list of files. No ambient accessor exists now.
 - `agentWorkspace()` and `companyOnboardingStatus()` throw without a tenant.
 - Conformance harness (`tests/multitenant/`): every route and tool is exercised as A and B with
   markers and fails if a marker lands in the other tenant.
 
 ## 4. Operator entry points (allow-list)
-Boot and migration; the owner-authenticated branches of `/api/chat`, `/company-profile/*`,
-file sharing and media; nothing else.
+The owner-authenticated branches of `/api/chat`, `/company-profile/*`, file sharing and media;
+nothing else. Operator requests name their company with `X-Tenant-Id`.
 
 ## 5. Order of work
 1. L1 kernel; remove the ambient accessor; make L2 profile, control tools, orchestrator gate,
@@ -94,9 +96,9 @@ file sharing and media; nothing else.
 4. L4 guard test and the conformance harness; rerun the T-cases on prod.
 
 ## 6. Migration notes
-Alpha, no important data. Existing workspace folders move under the host tenant's id; existing
-SOP rows keep `company_id = NULL` (platform default). Existing form links need the tenant
-segment; the form page renders the new link.
+Alpha, no important data. Existing workspace folders under `workspaces/<slug>` are not moved to
+the tenant paths. Existing SOP rows keep `company_id = NULL` (platform default). Existing form
+links need the tenant segment; the form page renders the new link.
 
 ## 7. Status (2026-10-09, local, not deployed, not proven on prod)
 
@@ -104,9 +106,11 @@ Done in code, each at its layer:
 
 | Layer | Change |
 |---|---|
-| L1 kernel | `server/tenancy.mjs`: `tenantOf`, `tenantFromRun`, `tenantForRequest`, `tenantOfSession`, `tenantOfOwner`. `companyHostContext()` and `state.tenantId` are gone; the bootstrap tenant is `operatorTenantId()`, readable only through the kernel and `host.mjs`. |
+| L1 kernel | `server/tenancy.mjs`: `tenantOf`, `tenantFromRun`, `tenantForRequest`, `tenantOfSession`. The ambient tenant accessors and the boot tenant are removed; the company is always the caller's own company, the run's company, or the session's company. |
 | L0 access | `server/route-access.mjs`: every `/api/` route is public, user or operator, and an unlisted route is operator. This replaces the deny-list `wantsAuth`, which left every GET not named in it open (`/api/sessions`, `/api/messages`, `/api/files`, `/api/debug`, `/api/metrics`, `POST /api/model`). |
 | L0 agents | `isPlatformAgent()` marks only agents that work on the operator's own repos and infrastructure (website dev, proposal, newpages, ...). A feature that handles company data is never platform: it is a company agent whose records carry the company. `server/agent-access.mjs`: a company user can use only an assigned company agent, so platform agents cannot be assigned or used by company logins, whatever `user_agents` says. |
+| L0 operator | The owner credential has no login. It must send `X-Tenant-Id` naming an existing company; with no header, company-needing routes return 400 "Company tenant is required". Owner-credential chats store their company on the session (`sessions.company_tenant_id`); child sessions inherit it from their parent. Background runs, delegated tasks and schedules use the company stored on them. |
+| Default company (2026-10-10) | Removed. A fresh database has zero companies. Boot creates no company, seeds nothing at boot, and does not attach orphan logins to any company. The one-time code that assigned orphan dossiers and ads jobs is removed. `createCompany` (`server/companies.mjs`) creates a company, seeds it and creates its first admin login. A login with no company cannot sign in. Migration 011 (`document_inteligence/sql/011_no_default_company.sql`) drops `di.tenant.is_default` and replaces the `di.new_company_profile` trigger. Migration 003 is applied and is not edited. |
 | L2 workspace | `agentWorkspace(agent, tenantId)`: company agents get `workspaces/tenants/<tenantId>/<slug>` and throw without a tenant. The runner picks it from the run's company. |
 | L2 SOP | `agent_sops` has `company_id` (NULL = platform default). Reads fall back to the default; writes from a company, including the Forward Deploy Engineer, only touch that company's row. |
 | L2 prompt | `companyOnboardingStatus(tenantId)` requires a tenant. `get_company_setup`, the roster, the chat prompt and the dispatch gate all pass the run's company. The runtime `STATE.md` journal (what the last chat did) is platform-agents only. |

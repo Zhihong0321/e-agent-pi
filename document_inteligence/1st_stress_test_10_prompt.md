@@ -6,7 +6,7 @@
 
 ## Test setup and scope
 
-The prompts below were run in order through the Pi CLI, using the actual Document Intelligence role prompts and MCP server. The completed run used `qwen3.8-max`, an isolated PGlite database, and Chromium PDF rendering. The database started empty except for the application's default tenant, tax codes, workflows, numbering, and templates. No real customer or production tenant was changed.
+The prompts below were run in order through the Pi CLI, using the actual Document Intelligence role prompts and MCP server. The completed run used `qwen3.8-max`, an isolated PGlite database, and Chromium PDF rendering. The database started with no company, only the application's tax codes, workflows, numbering, and templates. No real customer or production tenant was changed.
 
 This was an **agent and MCP workflow test**, not a live UIv2 deployment test. The local UIv2 host had no `DATABASE_URL`, so production Postgres startup, chat UI display, authentication, and `/api/files/raw` links were not exercised. A separate attempt with `deepseek-v4-flash` timed out after MCP tool discovery without making a business-tool call; the 10-prompt run below used `qwen3.8-max` and completed.
 

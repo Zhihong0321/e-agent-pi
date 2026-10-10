@@ -341,7 +341,7 @@ document_inteligence/
     admin.mjs           company profile, describeSchema, custom fields, rules, numbering, templates, audit, archive
     workflows.mjs       CHECKS vocabulary, DEFAULT_WORKFLOWS, evaluate()
     templates.mjs       logic-less template engine, render context, default A4 templates
-    seed.mjs            default tenant + idempotent per-tenant seed (tax, numbering, rules, templates)
+    seed.mjs            idempotent per-company seed (tax, numbering, rules, templates), run when a company is created
   mcp-server.mjs        stdio MCP server; DI_AGENT picks the tool set; forwards to host
   core/expenses.mjs     expense claims + monthly submissions (cut-off math, filing, review, closing)
   core/receipts.mjs     receipt files from chat attachments: checks, durable copy
@@ -380,11 +380,13 @@ cd document_inteligence && npm install     # once: installs PGlite (dev only)
 npm test                                   # 52 tests, ~15 s, no database needed
 ```
 
-In UIv2 nothing extra is needed: on boot the host migrates `di`, creates the default tenant
-"My Company", seeds it, registers the four agents and the MCP server. Look for
+In UIv2 nothing extra is needed: on boot the host migrates `di`, registers the four agents and
+the MCP server. Boot creates no company: a fresh database has zero companies. Create one with
+`POST /api/platform/companies` (or `scripts/create-test-company.mjs`); `createCompany` makes the
+company, seeds it and creates its first admin login. Look for
 `document-intelligence ready (migrations: …; role separation: true)` in the event log.
 
-**First run in the app:** the default tenant has no address, so issuing is blocked
+**First run in the app:** a new company has no address, so issuing is blocked
 (by design) until you tell the **DB Manager** your company details (name, legal name,
 SSM, address, bank details; TIN/SST/MSIC for MyInvois later).
 
@@ -429,7 +431,7 @@ write `agent/roles/<id>.md` (knowledge first, rules last; see `agent/AGENT_BLUEP
 and list it in the `agents` array of the tools it needs.
 
 **Change a template's look.** Ask the Template Designer. It saves a new version, and
-old documents keep theirs. The seeded default only changes for *new* tenants.
+old documents keep theirs. The seeded default only changes for *new* companies.
 
 ---
 
@@ -471,8 +473,9 @@ In rough priority order:
    and let `allowed()` check role × tool, e.g. sales can use Records Clerk and Document
    Agent but not archive, DB Manager or void. The DB layer needs no change: `di.actor`
    is already recorded on every audit row.
-2. **Tenant selection.** Agents act on the default tenant (`tenant.is_default`). With
-   users, resolve the tenant from the user; the RLS plumbing already takes any tenant id.
+2. **Tenant selection.** Agents act on the company stored on the run, schedule or delegated
+   task. A signed-in user's company comes from `users.company_tenant_id`; an owner-credential
+   chat names its company with `X-Tenant-Id`. The RLS plumbing already takes any tenant id.
 3. **Images through the Orchestrator.** `dispatch_task` forwards text only, so name cards
    must go straight to the Records Clerk. Forwarding `_inbox/` attachments to specialists
    would fix it.
@@ -480,8 +483,8 @@ In rough priority order:
    tool (link to the invoice, negative allocation) does not.
 5. **MyInvois submission.** Fields and warnings exist; the LHDN API integration
    (submission, validation UUID, QR) is not built (it would be the first external call).
-6. **Forms.** Public links resolve against the default tenant only (multi-tenant needs the
-   tenant in the URL). Rate limits are in memory (per process, reset on restart). Uploads
+6. **Forms.** Public links carry the company in the URL (`/api/forms/<tenantId>/<slug>`), so
+   they do not depend on a default company. Rate limits are in memory (per process, reset on restart). Uploads
    live on the app's disk, not object storage, and have no virus scan. No conditional
    (show-if) fields, no email/WhatsApp notification on new submissions.
 6. **Email / send.** Documents are rendered, not sent.

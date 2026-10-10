@@ -46,8 +46,9 @@ old setup context. This is not a secure-erasure operation.
 Deploy host code and migration together, then restart the host. The migration is
 automatic on boot; it does not reset business data. Back up the database before
 deployment because legacy tenant profile columns are moved to the new table.
-The host currently selects its default tenant: this change creates profiles for
-every tenant but does not add user-to-tenant authentication or tenant switching.
+The host no longer selects a default company: this change creates profiles for every
+company. A signed-in user works on their own company, and an owner-credential request names
+its company with `X-Tenant-Id`.
 
 Website/invoice sources are optional. The onboarding agent does not gain a new
 crawler or OCR service; inaccessible inputs are requested as readable facts/file

@@ -209,7 +209,7 @@ Local server with the throwaway `pg`-over-PGlite shim (boot takes about 90 s), t
 
 ## 10. Out of scope now, in rough order of value
 
-1. **Real multi-tenant host.** Today the host pins one tenant (`state.tenantId` in `host.mjs`; the demo file route also reads `companyHostContext().tenantId`). Agent workspaces (`_inbox`) are per agent, not per tenant. This must be solved before this is honestly "SaaS", but the layout code is already tenant-correct because it only sees a tenant-scoped transaction.
+1. **Real multi-tenant host.** Done (this item was obsolete once the default company was removed). The host no longer pins a company: there is no default company, a signed-in user's requests use their own company, and an owner-credential request names its company with `X-Tenant-Id`. Company agent workspaces are per company (see `multitenant-architecture.md` §7). The layout code was already tenant-correct because it only sees a tenant-scoped transaction.
 2. Nav label and visibility, and the page heading (shared `page.tsx`).
 3. Show the company's own policy fields in the claim form (the existing gap in `panelState`).
 4. Agent parity: a config tool, `policySummary` awareness, per-tenant tool on/off, and a capped instruction note, kept out of `ROLE.md` to avoid one warm process per tenant.

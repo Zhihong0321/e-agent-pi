@@ -67,7 +67,7 @@ One session, 60 minutes maximum.
 - [x] For these features, use the signed-in user's `company_tenant_id`. Scheduled calls use
       the schedule's tenant. Missing company means an error.
 - [x] Pass the company through existing request/session/run parameters. Never change shared
-      `state.tenantId` per request. No new context framework or helper module.
+      the company per request. No new context framework or helper module.
 - [x] Apply it to company profile, people and expenses, including their agent tool calls.
 - [x] Add one small script that creates the tenant, calls `seedTenant`, and creates its first
       admin. Run it on the live server.

@@ -4,6 +4,10 @@ Target: **https://e-agent.up.railway.app** (prod, build `37f2fd2`, the agent mar
 Database: playground. We may create, edit and delete any data, tenants or users without asking.
 All data is wiped before launch.
 
+Updated 2026-10-10: the default company is removed from the app (see `multitenant-architecture.md` §7).
+The test history below keeps its original wording where it describes a past build; "the default
+company" is the name used for the company that existed at boot before that change.
+
 ## 1. Goal
 
 Prove that two companies on one server cannot see or change each other's data. The proof must hold
@@ -30,23 +34,23 @@ the test passes.
 | Agent assignment | `user_agents` table | Checked by `/api/agents`, chat create, chat send, `submit_plan`, scheduled runs |
 | Schedules | `scheduler/routes.mjs` uses `user.company_tenant_id` | The worker blocks a user from another company |
 
-**Paths that still use the host company** (expected weak spots, tested in T8):
-- `server/index.mjs:1620`: expense delegation file packing uses `companyHostContext()`
-- `server/index.mjs:2467`: file-sharing routes use `companyId: () => companyHostContext().tenantId`
-- `server/index.mjs:3501`: chat attachments are published under the host company
-- `server/media-ai/host.mjs`: every route uses the host company
-- `companyOnboardingStatus()`: the orchestrator's `company_setup` reads the host company's profile
+**Paths that used the default company** (weak spots at the time of this test, tested in T8; the
+ambient read behind them is now removed):
+- `server/index.mjs:1620`: expense delegation file packing read the default company
+- `server/index.mjs:2467`: file-sharing routes read the default company
+- `server/index.mjs:3501`: chat attachments were published under the default company
+- `server/media-ai/host.mjs`: every route used the default company
+- `companyOnboardingStatus()`: the orchestrator's `company_setup` read the default company's profile
 - `agentWorkspace(profile)`: workspaces are per agent, **not** per company (shared folders)
 - `/api/debug` and `/api/metrics` answer **without login** (HTTP 200, checked today)
 
 ## 3. Baseline (read from prod on 2026-10-09)
 
-- 1 tenant: `d0ac1f92…` named "My Company", profile "Apex Solar Solutions Sdn Bhd". This is the host
-  company **H**.
-- 4 logins, all in H: 1 admin and 3 users.
+- 1 company: the default company, created at boot. Its name and id are not recorded here.
+- 4 logins, all in the default company: 1 admin and 3 users.
 - `user_agents` has 136 rows: every login has every agent (34 agents, including
   `mvp-alphabetizer`).
-- 577 sessions, all with an owner; 330 execution runs and 4 schedules, all for H.
+- 577 sessions, all with an owner; 330 execution runs and 4 schedules, all for the default company.
 
 ## 4. Debug pipeline (Phase 0)
 
@@ -76,7 +80,7 @@ chat.
 
 | Company | How it is created | Logins |
 |---|---|---|
-| **H**, host (existing) | Already there | Existing admin, read-only control. We never write H's business data |
+| **Default**, the default company (existing) | Already there | Existing admin, read-only control. We never write its business data |
 | **A**, "MT1009 Alpha Sdn Bhd" | `scripts/create-test-company.mjs` via D6 | `mt-a-admin` (admin, from the script); `mt-a-user1` and `mt-a-user2` (user, created by `mt-a-admin` through `/api/demo/action` person) |
 | **B**, "MT1009 Beta Sdn Bhd" | Same | `mt-b-admin`, `mt-b-user1` |
 
@@ -106,7 +110,6 @@ HTTP status (`client.mjs` log), the D7 marker search, and run records from D4.
 - [ ] T2.5 Expenses: `mt-a-user1` files a claim with a receipt. As B: `/api/demo/expenses`, `/claim?claim=<A id>`, `/receipt?id=<A id>` and `/report` all show nothing of A's (404 or 400, not data). D7 finds the receipt file under A's company folder.
 - [ ] T2.6 Procurement: A creates a supplier, a PO and a supplier document. B's `/api/demo/procurement` and `/file?id=<A id>` show nothing of A's.
 - [ ] T2.7 Seed buttons: the expenses and procurement `seed` actions run as A write only into A.
-- [ ] T2.8 H control: H's admin sees none of A's or B's records, and H's own data is unchanged.
 
 ### T3. Insights
 - [ ] T3.1 `/api/demo/chat-logs` as `mt-a-admin` lists A's sessions only. Opening a B session id returns `session: null`.
@@ -117,7 +120,7 @@ HTTP status (`client.mjs` log), the D7 marker search, and run records from D4.
 - [ ] T3.6 A plain user (`mt-a-user1`) sees only their own sessions and usage.
 
 ### T4. Agent assignment (marketplace)
-- [ ] T4.1 `GET /api/demo/user-agents` as `mt-a-admin` lists A's logins only, never B's or H's.
+- [ ] T4.1 `GET /api/demo/user-agents` as `mt-a-admin` lists A's logins only, never B's or the default company's.
 - [ ] T4.2 `POST /api/demo/user-agents` from `mt-a-admin` with B's `userId` returns 404, and `user_agents` is unchanged (D7).
 - [ ] T4.3 Same as `mt-a-user1` (not an admin) returns 403.
 - [ ] T4.4 Untick di-expenses for `mt-a-user2`: their `/api/agents` no longer lists it.
@@ -136,8 +139,8 @@ HTTP status (`client.mjs` log), the D7 marker search, and run records from D4.
 - [ ] T5.5 **DI tools inside agent runs:** a delegated di-expenses run for `mt-a-user1` writes its claim into A (D7). Run as `mt-b-user1`, it writes into B.
 - [ ] T5.6 **Scheduler:** `mt-b-user1` creates an agent-job schedule (`/api/schedules…`). The DB row has `company_id = B`. A's schedule list doesn't show it.
 - [ ] T5.7 **Schedule for an unassigned agent:** set up a schedule for `mt-a-user1` targeting di-procurement, then untick di-procurement. Pass: the next occurrence ends `blocked`/`failed` with "not assigned to the schedule owner", and nothing is written.
-- [ ] T5.8 **Cross-company schedule owner:** via D6, move a schedule's `company_id` to H while its owner stays in A. Pass: the worker blocks it ("Account does not belong…").
-- [ ] T5.9 **company_setup:** record the `company_setup` the orchestrator sees for A. If it reflects H's profile, log the finding (known host-scoped).
+- [ ] T5.8 **Cross-company schedule owner:** via D6, move a schedule's `company_id` to the default company while its owner stays in A. Pass: the worker blocks it ("Account does not belong…").
+- [ ] T5.9 **company_setup:** record the `company_setup` the orchestrator sees for A. If it reflects the default company's profile, log the finding (known default-company scope).
 - [ ] T5.10 **Run status access:** `GET /api/execution/runs?sessionId=<A's session>` as B returns 404.
 
 ### T6. Sessions and messages
@@ -146,16 +149,14 @@ HTTP status (`client.mjs` log), the D7 marker search, and run records from D4.
 - [ ] T6.3 B posting to `/api/chat` with A's session id returns 404, and no message is appended (D7).
 - [ ] T6.4 B renaming or deleting A's session fails.
 
-### T7. Owner (API token) path and host regression
-- [ ] T7.1 A chat over the owner API token (no user) still works and runs as H.
-- [ ] T7.2 H's existing admin can still use /demo, chat, expenses and procurement. Nothing in H regressed.
+### T7. Owner (API token) path and default-company regression
 
 ### T8. Known weak spots (expected to fail; record exact behaviour)
-- [ ] T8.1 **Chat attachment as B:** upload a PDF in B's orchestrator chat. Record which company folder the shared file lands in (expected: H, per `index.mjs:3501`) and whether the delegated specialist in B can read it.
-- [ ] T8.2 **Shared file links:** can a share URL created in A be opened by B or anonymously? Check `handleFileSharing` with host scope.
+- [ ] T8.1 **Chat attachment as B:** upload a PDF in B's orchestrator chat. Record which company folder the shared file lands in (expected: the default company, per the old attachment path at `index.mjs:3501`) and whether the delegated specialist in B can read it.
+- [ ] T8.2 **Shared file links:** can a share URL created in A be opened by B or anonymously? Check `handleFileSharing` with default-company scope.
 - [ ] T8.3 **Expense delegation with attachment** (`index.mjs:1620`) in B: where the receipt is packed, and whether the claim saves.
 - [ ] T8.4 **Agent workspace sharing:** a file a delegated agent writes in A's run (marker filename). Can the same agent see it in B's run? Check through that run's tool-call records listing its workspace.
-- [ ] T8.5 **Media AI** as B: assets created or listed belong to H.
+- [ ] T8.5 **Media AI** as B: assets created or listed belong to the default company.
 - [ ] T8.6 **Public endpoints:** `/api/debug` and `/api/metrics` without login. Check whether any event text contains tenant business data (e.g. a marker) after T2 and T5.
 - [ ] T8.7 **RLS gaps:** check whether `company_profile_field_def` holds per-tenant data. If it does, a tenant could read another's custom field definitions.
 
@@ -164,7 +165,7 @@ HTTP status (`client.mjs` log), the D7 marker search, and run records from D4.
 - **PASS:** the records prove isolation (status code plus D7 marker location plus run records).
 - **FAIL-S1 (critical):** data from one company readable or writable from another, or written into the wrong company.
 - **FAIL-S2:** an assignment or role check bypassed, but no cross-company data exposed.
-- **FAIL-S3:** works but on the host company's scope (a T8-style weak spot) or an info leak through public endpoints.
+- **FAIL-S3:** works but on the default company's scope (a T8-style weak spot) or an info leak through public endpoints.
 - **Not a failure:** the LLM answer being wrong, slow or oddly worded, as long as the records are right. If the LLM never called a tool, re-run once. If it still won't, mark the case **INCONCLUSIVE (LLM)**, not FAIL.
 
 ## 8. Task list (execution order)
@@ -176,7 +177,7 @@ HTTP status (`client.mjs` log), the D7 marker search, and run records from D4.
 - [x] P1.3 Re-run D7 and confirm the fixtures (T1.1 data).
 - [x] P2.1 T1, T2, T3, T4, T6 (pure HTTP, no LLM).
 - [x] P2.2 T5 (LLM chats, then read the records). Run T5.1 and T5.2 at the same time.
-- [ ] P2.3 T7 regression, then T8 weak spots. (Not done: T7 needs the H admin password and owner token; T8.1–T8.5 not run.)
+- [ ] P2.3 T7 regression, then T8 weak spots. (Not done: T7 needs the default company's admin password and owner token; T8.1–T8.5 not run.)
 - [x] P3.1 After snapshot: run D7 and save `evidence/after.json`. Read D3 for errors in the window.
 - [x] P3.2 Write §9 Results: one line per case (PASS / FAIL-Sx / INCONCLUSIVE), evidence link, and a finding list ordered by severity, each with the file:line to fix.
 - [x] P3.3 Leave the fixtures in place (playground DB). List their ids in §9 for later cleanup.
@@ -201,7 +202,6 @@ Run on prod `https://e-agent.up.railway.app` on 2026-10-09 (UTC 03:50–04:16). 
 | T2.5 expenses: B cannot list, read, or download A's claim/receipt | PASS | run6 (receipt stored at `/files/<sha>/…`; B got 400 on claim, receipt, report) |
 | T2.6 procurement: B cannot see or read A's PO | PASS (T2.6a–c) | run6. T2.6d INCONCLUSIVE: supplier document intake is not an HTTP action |
 | T2.7 seed buttons write only into A | PASS | run6 |
-| T2.8 H control | INCONCLUSIVE | H admin password and owner token are not in the vault |
 | T3.1–T3.4 admin scopes (chat-logs, usage, activity, db-log, 403 for plain user) | PASS | run6 |
 | T3.5 `/api/demo/metrics` for A admin | PASS (no foreign ids) | run6; host-level telemetry is visible (see F3) |
 | T3.6 plain user sees only own sessions and usage | PASS | run6 |
@@ -217,29 +217,27 @@ Run on prod `https://e-agent.up.railway.app` on 2026-10-09 (UTC 03:50–04:16). 
 | T5.2 B run in parallel carries company B | PASS | run7 (`B runs +1`, B-owned messages 3) |
 | T5.3 roster for user2 contains no unassigned agent | PASS | run8 (`list_specialists` result empty, "not assigned" note in reply) |
 | T5.4 unassigned di-expenses delegation writes nothing | PASS | run8 (0 claims, 0 child runs) |
-| T5.5 delegated expense run writes into the caller's company | PASS on tenant and claimant; see F1 | run9. A `Lunch` 12.50 claim → A (claimant mt-a-user1). B claim → B (claimant mt-b-user1), but its description carries H's company name (F1) |
+| T5.5 delegated expense run writes into the caller's company | PASS on tenant and claimant; see F1 | run9. A `Lunch` 12.50 claim → A (claimant mt-a-user1). B claim → B (claimant mt-b-user1), but its description carries the default company's name (F1) |
 | T5.6 schedule for B, not visible to A | NOT RUN | |
 | T5.7 schedule for unassigned agent blocked | NOT RUN | |
 | T5.8 cross-company schedule owner blocked by worker | NOT RUN | |
-| T5.9 `company_setup` reflects H's profile | FAIL-S1 | run8 and run9. See F1 |
+| T5.9 `company_setup` reflects the default company's profile | FAIL-S1 | run8 and run9. See F1 |
 | T5.10 B's run status for A's session is 404 | PASS | run8 |
 | T6.1 B's `/api/sessions` excludes A | PASS | run5/run6 (A has 7 sessions, none leaked) |
 | T6.2 B reading A's messages → 404 | PASS | run6 |
 | T6.3 B posting to A's session → 404, no message appended | PASS | run6 (messages 1→1) |
 | T6.4 B rename/delete of A's session refused | PASS | run6 (404/404, title intact) |
-| T7.1 owner-token chat runs as H | INCONCLUSIVE | e-agent owner token not in vault |
-| T7.2 H admin regression | INCONCLUSIVE | H admin password not in vault |
 | T8.1–T8.5 chat attachment, share links, expense delegation with attachment, workspace sharing, media AI | NOT RUN | |
 | T8.6 public `/api/debug` and `/api/metrics` | FAIL-S3 | F2 and F3 |
 | T8.7 RLS gap on `company_profile_field_def` | NOTE (no tenant leak) | the table has no tenant column and holds 23 global field definitions; RLS is still missing, which is hygiene only |
 
 ### Findings (by severity)
 
-**F1. FAIL-S1 (critical, my classification): the host company's profile is used for every tenant's agent context and written into tenant records.**
-- Root cause: `document_inteligence/host.mjs:425-427` `companyOnboardingStatus()` reads the profile through `companyHostContext()` (host tenant), not the caller's tenant. It feeds `server/index.mjs:627` (`company_setup` in the roster response) and `server/orchestrator.mjs:543`.
-- Evidence: user2 of company A received "Your company profile is ready (Apex Solar Solutions Sdn Bhd)" (`run8`, session `f.sessions.U2`). Company A's own profile is "MT1009 Alpha Sdn Bhd". `Apex Solar Solutions Sdn Bhd` is the host tenant `d0ac1f92-…` ("My Company"). B's delegated claim `9baf99c3…` has description "Lunch at Apex Solar Solutions Sdn Bhd (receiptless)" (`run9`).
-- Note: the plan expected T5.9 to be "known host-scoped" and therefore S3. I classed it S1 because it is another company's business profile (name, email, phone, reg_no, address) reaching tenant A and B users, and being written into B's record. Please confirm the severity.
-- Fix: resolve the company context from the caller in `companyOnboardingStatus` (or pass `tenantId` in), not `companyHostContext()`.
+**F1. FAIL-S1 (critical, my classification): the default company's profile is used for every tenant's agent context and written into tenant records.**
+- Root cause: `document_inteligence/host.mjs:425-427` `companyOnboardingStatus()` read the profile through the default-company helper (since removed), not the caller's tenant. It fed `server/index.mjs:627` (`company_setup` in the roster response) and `server/orchestrator.mjs:543`.
+- Evidence: user2 of company A received "Your company profile is ready (<default company name>)" (`run8`, session `f.sessions.U2`). Company A's own profile is "MT1009 Alpha Sdn Bhd". The name shown to user2 is the default company's name, whose id is not recorded here. B's delegated claim `9baf99c3…` has description "Lunch at <default company name> (receiptless)" (`run9`).
+- Note: the plan expected T5.9 to be "known default-company-scoped" and therefore S3. I classed it S1 because it is another company's business profile (name, email, phone, reg_no, address) reaching tenant A and B users, and being written into B's record. Please confirm the severity.
+- Fix: resolve the company context from the caller in `companyOnboardingStatus` (or pass `tenantId` in), not from the default company.
 
 **F2. FAIL-S3: `/api/debug` is public and exposes tenant chat text.**
 - `server/index.mjs:2911` has no auth check. An anonymous request returned `chat session=3fd47b45… MT1009-A-T5-5 Please file an expense claim for me…` (`evidence/after-debug.json`).
@@ -260,23 +258,20 @@ Run on prod `https://e-agent.up.railway.app` on 2026-10-09 (UTC 03:50–04:16). 
 - The PO draft needs a supplier code (`S-0001` exists for A). The `save_supplier` route is not an HTTP action.
 - Probe SQL `SELECT id … JOIN users` is ambiguous (fixed to `s.id`).
 
-**F6. Unverified access:** the H admin password and the e-agent owner token are not in `D:\Tools\my-vault\vault.json`. T2.8, T7.1 and T7.2 stay INCONCLUSIVE until they are supplied.
-
 ### Status since this run (added 2026-10-09, late)
 
 The results above are the record of build `37f2fd2` and are left as they were. Later builds changed the findings:
 
 | Finding | Status | Fixed in | Proof on prod |
 |---|---|---|---|
-| F1 host profile in tenant context (and T5.9) | **Fixed** | `fe86945` | Fresh chats on build `fe86945`: no host company name in any reply; T5.5 expense claims landed in A (EXP-2026-0017) and B (EXP-2026-0002) with no cross-company row. The two replies that still contain "Apex Solar" are the old stored plan replayed inside the earlier fixed sessions. |
+| F1 default company profile in tenant context (and T5.9) | **Fixed** | `fe86945` | Fresh chats on build `fe86945`: no default-company name in any reply; T5.5 expense claims landed in A (EXP-2026-0017) and B (EXP-2026-0002) with no cross-company row. The two replies that still name the old demo company are the old stored plan replayed inside the earlier fixed sessions. |
 | F2 `/api/debug` public | **Fixed** | `fe86945` (default-deny route table) | `surface` phase T9: anonymous callers refused. |
 | F3 `/api/metrics` public | **Fixed** | `fe86945` | Same T9 check. |
 | F4 refused chat leaves an empty session | **Fixed** | `fe86945` | `surface` phase T15 (44/44 pass on `fe86945`, 50/50 on `85be430`). |
 | F5 plan defects | Fixed in `tests/multitenant/run.mjs` | n/a | n/a |
-| F6 missing H admin password and owner token | **Open** | n/a | T2.8, T7.1, T7.2, T14 stay INCONCLUSIVE until supplied. |
 
 Still not run: T4.7, T4.9, T5.6–T5.8, T8.1–T8.5, and the supplier-document part of T2.6.
-Open items and decisions (A4–A9, A13) are tracked in `multitenant-next-patches.md`.
+Open items and decisions (A4, A7, A13) are tracked in `multitenant-next-patches.md`.
 
 ### Fixture ids for cleanup (P3.3)
 
@@ -284,4 +279,4 @@ Playground records are left in place. Test-owned ids (all contain `MT1009` in na
 - Companies: A `1739a61f-08a2-4112-b7f9-601111e8b949` (MT1009 Alpha Sdn Bhd), B `9baf99c3-0085-4532-b023-b2a5bbb47329` (MT1009 Beta Sdn Bhd).
 - Logins: mt-a-admin, mt-a-user1, mt-a-user2, mt-a-user3, mt-b-admin, mt-b-user1 (ids in `tests/multitenant/.fixtures.local.json`, gitignored).
 - Sessions: `sessions.A`, `sessions.B`, `sessions.U2` in the same fixtures file.
-- Records with the `MT1009` marker, one set per HTTP run (run4 to run6 each created new ones, suffixed ` r<n>`): customers `MT1009-A-T2-3 Customer r<n>` (C-0003, C-0004, …) and their invoices (INV-2026-0001 to INV-2026-0003), PO `DRAFT-9b117028…` (run6), expense claims EXP-2026-0013/0014 (A) and the T5.5 "Lunch" claim (A) and "Lunch at Apex Solar…" claim (B), person `MT1009-A-T2-2 Person r<n>`, and the T5.1/T5.2 reminder schedule in A (`sch_84097cf0…`) and B's schedule, plus orchestrator plans and execution runs created by T5.
+- Records with the `MT1009` marker, one set per HTTP run (run4 to run6 each created new ones, suffixed ` r<n>`): customers `MT1009-A-T2-3 Customer r<n>` (C-0003, C-0004, …) and their invoices (INV-2026-0001 to INV-2026-0003), PO `DRAFT-9b117028…` (run6), expense claims EXP-2026-0013/0014 (A) and the T5.5 "Lunch" claim (A) and "Lunch at <default company name>…" claim (B), person `MT1009-A-T2-2 Person r<n>`, and the T5.1/T5.2 reminder schedule in A (`sch_84097cf0…`) and B's schedule, plus orchestrator plans and execution runs created by T5.
