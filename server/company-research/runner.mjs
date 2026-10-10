@@ -148,7 +148,7 @@ export class PiResearchRunner {
         return result;
       }),
     ];
-    const settings = SettingsManager.inMemory({ compaction: { enabled: false }, retry: { enabled: false } });
+    const settings = SettingsManager.inMemory({ compaction: { enabled: false }, retry: { enabled: false }, httpIdleTimeoutMs: 0 });
     const loader = new DefaultResourceLoader({ cwd: ROOT, agentDir: ROOT, settingsManager: settings, noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true, systemPromptOverride: () => `${PREAMBLE}\nPreserve useful company detail in observations:[{category,value,evidence_id,quote}]. Categories: operating_scale (capacity, managed sites, employee ranges, staff PLUS contractors), credentials (certifications and partnerships), projects (delivered project descriptions without inventing client names), locations (offices/warehouses, not assumed registered addresses), milestones (year/month-only events without inventing dates). Values must be literal excerpts from their quotes, 8–200 characters. These observations do not establish audited metrics or verified registry status. Prioritize these observations for your section. Use fetch_pages on cited original pages when excerpts omit important company information.` });
     await loader.reload();
     const created = await this.sessionFactory({ cwd: ROOT, agentDir: ROOT, modelRuntime: this.modelRuntime, model: this.model, thinkingLevel: 'off', tools: RESEARCH_TOOLS, customTools, resourceLoader: loader, settingsManager: settings, sessionManager: SessionManager.inMemory(ROOT) });

@@ -180,6 +180,10 @@ export async function materializeAgentRuntime(agent, mcpServers, modelsJson, { m
       {
         packages: [],
         enableSkillCommands: true,
+        // Pi's HTTP client gives up on a call that is silent for 5 minutes. A call waiting in a provider's line
+        // (see queue/llm-gate.mjs) is silent by design, so that limit is off; the host's silence watch still
+        // catches a Pi that is really stuck, and it does not count time spent waiting.
+        httpIdleTimeoutMs: 0,
       },
       null,
       2,
