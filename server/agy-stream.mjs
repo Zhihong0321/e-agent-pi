@@ -9,6 +9,7 @@ import { FILE_SHARING_PROMPT } from "./file-sharing.mjs";
 import { sharedFilesFromResult } from "../shared/shared-files.mjs";
 import { loadContextPack } from "./context-pack.mjs";
 import { agentEnv } from "./agent-env.mjs";
+import { piGate } from './queue/pi-gate.mjs';
 import { withExpenseSession } from './expense-session.mjs';
 import { diAgentEnv } from '../document_inteligence/host.mjs';
 import { agentWorkspace, isProposalAgent, IMAGEN_SKILL_DIR, SKILLS_DIR } from "./paths.mjs";
@@ -292,7 +293,17 @@ function applyAgyStreamEvent(turn, ev, onEvent) {
  * @returns {Promise<ReturnType<typeof createTurn>>}
  */
 export async function chatAgy({ message, modelId, session, profile, onEvent, images }) {
-  return withExpenseSession(session, () => chatAgyProcess({ message, modelId, session, profile, onEvent, images }));
+  // An agy turn is a child process like a Pi turn: it takes one place in the Pi line.
+  let waited = false;
+  return piGate.run(() => {
+    if (waited) onEvent?.({ type: "queue", status: "Working with Antigravity…" });
+    return withExpenseSession(session, () => chatAgyProcess({ message, modelId, session, profile, onEvent, images }));
+  }, {
+    onPosition: (position) => {
+      waited = true;
+      onEvent?.({ type: "queue", status: `Queued, position ${position}` });
+    },
+  });
 }
 
 async function chatAgyProcess({ message, modelId, session, profile, onEvent }) {

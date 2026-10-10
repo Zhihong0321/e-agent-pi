@@ -204,16 +204,16 @@ import {
   startClaimLoop,
   reconcileOnStartup,
   drainExecution,
-  setLegacyLoadProvider,
   acceptChatRun,
-  activeAttemptCount,
   submitPlanHandler,
   stopTaskHandler,
   waitForChatRun,
   isInitialized as isExecutionReady,
 } from "./execution/runner.mjs";
 import { handleExecutionToolRoute, handleExecutionStatusRoute, executionHealth } from "./execution/routes.mjs";
-import { piWorkerFactory, setModelsJsonProvider } from "./execution/pi-adapter.mjs";
+import { piWorkerFactory, setModelsJsonProvider, setBeforeSpawn } from "./execution/pi-adapter.mjs";
+import { piGate } from "./queue/pi-gate.mjs";
+import { waitForMemoryRoom } from "./queue/memory-room.mjs";
 import { closeAllConnections as closeExecutionMcpConnections, connectBinding } from "./execution/mcp-adapter.mjs";
 import { ensureExecutionSchema, findChatRunBySubmission, withRecordedAnswers } from "./execution/store.mjs";
 import {
@@ -305,6 +305,7 @@ const boot = { step: "starting", error: null, ready: false };
 /** @type {Map<string, PiSlot>} */
 const piPool = new Map();
 const MAX_PI_SLOTS = envInt("PI_POOL_SIZE", 3, { min: 1, max: 16 });
+piGate.setLimits({ maxConcurrent: MAX_PI_SLOTS });
 const PI_SLOT_IDLE_MS = envInt("PI_SLOT_IDLE_MS", 180_000, { min: 15_000 });
 const PI_KEEP_WARM = envInt("PI_KEEP_WARM", 2, { min: 1, max: 8 });
 const PI_IDLE_SWEEP_MS = envInt("PI_IDLE_SWEEP_MS", 30_000, { min: 10_000, max: 300_000 });
@@ -752,26 +753,32 @@ function pct(ratio) {
   return `${Math.round(ratio * 100)}%`;
 }
 
+/** How often a start that is waiting for memory looks again. Only a re-check: nothing here gives up. */
+const PI_MEM_RECHECK_MS = 1000;
+
 /**
  * Before spawning another Pi: if the container is above the hard threshold,
  * stop least-recently-used idle slots (never the one we are booting for,
- * never a busy one) until there is room, else refuse with a clear message
- * instead of letting the kernel OOM-kill whatever it likes.
- * @param {PiSlot} slot
+ * never a busy one) until there is room. When no idle Pi can be stopped the
+ * start waits for memory to come down; it never fails and never touches a
+ * running turn.
+ * @param {PiSlot | null} slot the slot being booted, if it has one
  */
 async function ensureMemoryHeadroom(slot) {
-  for (let round = 0; round < MAX_PI_SLOTS + 1; round += 1) {
-    const ratio = await memoryRatio();
-    if (ratio == null || ratio < PI_MEM_HARD) return;
-    const victim = pickEvictable([...piPool.values()], { keepWarm: 0, exclude: slot })[0];
-    if (!victim) {
-      throw new Error(
-        `Host is at memory capacity (${pct(ratio)} of the container limit) and no idle Pi can be stopped. Try again in a minute.`,
-      );
-    }
-    logEvent("warn", `memory ${pct(ratio)} >= hard ${pct(PI_MEM_HARD)}: evicting agent=${victim.agentSlug} to start agent=${slot.agentSlug}`);
-    await stopSlot(victim);
-  }
+  const who = slot?.agentSlug || "a new run";
+  await waitForMemoryRoom({
+    readRatio: memoryRatio,
+    hardLimit: PI_MEM_HARD,
+    evictOne: async (ratio) => {
+      const victim = pickEvictable([...piPool.values()], { keepWarm: 0, exclude: slot })[0];
+      if (!victim) return false;
+      logEvent("warn", `memory ${pct(ratio)} >= hard ${pct(PI_MEM_HARD)}: evicting agent=${victim.agentSlug} to start agent=${who}`);
+      await stopSlot(victim);
+      return true;
+    },
+    pause: () => new Promise((resolve) => setTimeout(resolve, PI_MEM_RECHECK_MS)),
+    onWait: (ratio) => logEvent("warn", `memory ${pct(ratio)} >= hard ${pct(PI_MEM_HARD)} and no idle Pi to stop: start for ${who} waits for memory`),
+  });
 }
 
 async function sweepIdleSlots() {
@@ -994,14 +1001,17 @@ async function prewarmSlot(agentRef, modelId, reason) {
       logEvent("warn", `prewarm skipped (${reason}): model ${wanted || "none"} unavailable for agent=${agent.slug}`);
       return false;
     }
-    const startedAt = Date.now();
-    const slot = await getOrCreatePiSlot(agent, model.id);
-    // Force Pi to finish loading now, not when the first message arrives.
-    if (slot.client) {
-      await slot.client.getState();
-      markSlotReady(slot);
-    }
-    logEvent("info", `prewarmed agent=${agent.slug} model=${model.id} pid=${slot.pid || "?"} readyMs=${Date.now() - startedAt} (${reason})`);
+    // The boot takes its place in the Pi line like any other start.
+    await piGate.run(async () => {
+      const startedAt = Date.now();
+      const slot = await getOrCreatePiSlot(agent, model.id);
+      // Force Pi to finish loading now, not when the first message arrives.
+      if (slot.client) {
+        await slot.client.getState();
+        markSlotReady(slot);
+      }
+      logEvent("info", `prewarmed agent=${agent.slug} model=${model.id} pid=${slot.pid || "?"} readyMs=${Date.now() - startedAt} (${reason})`);
+    });
     return true;
   } catch (error) {
     logEvent("warn", `prewarm failed (${reason}) agent=${agentRef}: ${sanitizeError(error)}`);
@@ -1438,7 +1448,17 @@ function waitUntilAgentSettled(pi, inactivityMs = 300_000) {
 }
 
 async function chat(message, modelId, session, onEvent, images) {
-  return withExpenseSession(session, () => chatPi(message, modelId, session, onEvent, images));
+  // The turn (including booting its Pi) takes one place in the Pi line and gives it back when it ends.
+  let waited = false;
+  return piGate.run(() => {
+    if (waited) onEvent?.({ type: "queue", status: "Working…" });
+    return withExpenseSession(session, () => chatPi(message, modelId, session, onEvent, images));
+  }, {
+    onPosition: (position) => {
+      waited = true;
+      onEvent?.({ type: "queue", status: `Queued, position ${position}` });
+    },
+  });
 }
 
 async function chatPi(message, modelId, session, onEvent, images) {
@@ -2077,6 +2097,8 @@ async function bootServices() {
           profileFor: (agent) => manifestForAgent(agent),
           saveSessionRef: (sessionId, ref) => updateSession(sessionId, { piSessionId: ref.sessionId, piSessionFile: ref.sessionFile }),
           refreshPlanStatus: (planId) => refreshPlanStatus(planId),
+          sessionFileFor: async (sessionId) => (await getSession(sessionId))?.piSessionFile || null,
+          chatProfileFor: (agentId) => resolveAgentProfile(agentId),
           canDelegate: (profileId) => profileId === ORCHESTRATOR_AGENT_ID,
           runTool,
           diDeps: ({ ctx }) => diRunDeps({ workspace: agentWorkspace, who: ctx.user, companyId: ctx.companyId }),
@@ -2105,7 +2127,7 @@ async function bootServices() {
         },
         workerFactory: piWorkerFactory,
       });
-      setLegacyLoadProvider(() => [...piPool.values()].filter((slot) => slot.busy).length);
+      setBeforeSpawn(() => ensureMemoryHeadroom(null));
       // Claiming starts only after the DI host schema and tenant context are ready.
       logEvent("info", "execution system configured (one runner, native tools, typed completion)");
     }
@@ -2310,7 +2332,7 @@ async function bootServices() {
     runAgentTurn: runManageTurn,
     maxSlots: () => MAX_PI_SLOTS,
     // Shared host capacity: warm slots (legacy chat + v1 jobs) plus execution-system attempts.
-    runningCount: () => [...piPool.values()].filter((slot) => slot.busy).length + activeAttemptCount(),
+    runningCount: () => { const { active, queued } = piGate.stats(); return active + queued; },
     agentBusy: (agentId) => [...piPool.values()].some(slot => slot.agentId === agentId && slot.busy),
     activeOrchestratorSessionId: () => {
       for (const slot of piPool.values()) {
@@ -3636,6 +3658,9 @@ const server = createServer(async (req, res) => {
               manifest: manifestForAgent(profile),
               sessionFile: session.piSessionFile || null,
               chatContext: { companyId: chatCompanyId },
+              onQueue: ({ position }) => {
+                if (!res.writableEnded) writeSse(res, { type: "queue", status: position > 0 ? `Queued, position ${position}` : "Working…" });
+              },
               onEvent,
             });
             if (deduped) {

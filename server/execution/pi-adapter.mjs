@@ -20,6 +20,12 @@ export function setModelsJsonProvider(fn) {
   modelsJsonProvider = fn;
 }
 
+/** Runs before every worker process is spawned; the host uses it to wait for memory headroom. */
+let beforeSpawn = null;
+export function setBeforeSpawn(fn) {
+  beforeSpawn = fn;
+}
+
 /**
  * The worker factory the runner calls. Opts (from runAgent):
  *   profile, manifest, token, attemptId, runRef, runKind, sessionFile, modelId,
@@ -81,6 +87,7 @@ export function piWorkerFactory(opts) {
     const cwd = opts.cwd || opts.workspace || profile.workspace || agentWorkspace(agent, opts.ctx?.companyId);
     await mkdir(cwd, { recursive: true });
 
+    await beforeSpawn?.();
     pi = new RpcClient({
       cliPath: PI_CLI_PATH,
       cwd,

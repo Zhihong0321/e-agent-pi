@@ -261,6 +261,11 @@ export async function updateChatRun(id, patch, expectedGeneration) {
   return getChatRun(id);
 }
 
+/** Once a queued run starts, a restart no longer needs the copy of its input. */
+export async function dropQueuedInput(id) {
+  await db().query(`UPDATE execution_runs SET profile_snapshot = profile_snapshot - 'queuedInput' WHERE id=$1`, [id]);
+}
+
 export async function hasActiveChatRun(sessionId) {
   const result = await db().query(
     `SELECT id FROM execution_runs WHERE session_id=$1 AND status IN ('queued','running') LIMIT 1`, [sessionId]);

@@ -16,7 +16,6 @@ export const ERROR_CODES = {
   CONFLICT: { kind: 'input', effectState: 'none' },
   PERMISSION_DENIED: { kind: 'permission', effectState: 'none' },
   SIGN_IN_REQUIRED: { kind: 'permission', effectState: 'none' },
-  CAPACITY_UNAVAILABLE: { kind: 'availability', effectState: 'none' },
   DRAINING: { kind: 'availability', effectState: 'none' },
   OPERATION_DEADLINE: { kind: 'availability', effectState: 'unknown' },
   EXTERNAL_TIMEOUT: { kind: 'availability', effectState: 'unknown' },

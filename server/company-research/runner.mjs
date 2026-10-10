@@ -5,6 +5,7 @@ import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager
 import { PI_PACKAGE_DIR, ROOT } from '../paths.mjs';
 import { Findings, validateFindings, checkedFindings } from './core.mjs';
 import { recordApiUsage } from '../usage.mjs';
+import { piGate } from '../queue/pi-gate.mjs';
 
 const piRequire = createRequire(path.join(PI_PACKAGE_DIR, 'package.json'));
 const { Type } = await import(pathToFileURL(piRequire.resolve('typebox')).href);
@@ -96,9 +97,21 @@ export class PiResearchRunner {
   constructor({ modelRuntime, model, maxTurns = 8, tokenBudget = 40000, timeoutMs = 120000, sessionFactory = createAgentSession }) {
     Object.assign(this, { modelRuntime, model, maxTurns, tokenBudget, timeoutMs, sessionFactory });
     this.sessions = new Set();
+    this.waiting = new Set();
   }
-  async abort() { await Promise.allSettled([...this.sessions].map(session => session.abort())); }
-  async run({ lane, seed, identity, evidence, tools, gaps = [] }) {
+  async abort() {
+    for (const controller of this.waiting) controller.abort();
+    await Promise.allSettled([...this.sessions].map(session => session.abort()));
+  }
+  // A lane takes its place in the Pi line and starts (and starts its own clock) when its turn comes.
+  async run(input) {
+    const controller = new AbortController();
+    this.waiting.add(controller);
+    let release;
+    try { release = await piGate.acquire({ signal: controller.signal }); } finally { this.waiting.delete(controller); }
+    try { return await this.runLane(input); } finally { release(); }
+  }
+  async runLane({ lane, seed, identity, evidence, tools, gaps = [] }) {
     const started = Date.now();
     const transcript = [];
     let accepted = null, salvaged = null, submissions = 0, turns = 0, tokens = 0, searches = 0, fetches = 0, stopReason = null;

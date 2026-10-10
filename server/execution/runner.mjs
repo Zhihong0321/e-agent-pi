@@ -13,12 +13,11 @@ import { signedInLine } from '../roles.mjs';
 import { recordApiUsage } from '../usage.mjs';
 import { agentWorkspace } from '../paths.mjs';
 import { userAssignedAgent } from '../agent-access.mjs';
+import { piGate, resetPiGateForTests } from '../queue/pi-gate.mjs';
 
 const config = {
-  maxConcurrent: 3,
   planBudgetMs: 1_800_000,
-  admissionWaitMs: 20_000,
-  pool: null,               // injectable for tests
+  pool: null,              // injectable for tests
   services: {},             // userLookup, logEvent, getAgent, profileFor, refreshPlanStatus, canDelegate
   workerFactory: null,      // (opts) => worker
   resolveModelId: null,     // (agent, requestedModelId) => effective model id
@@ -27,9 +26,8 @@ const config = {
 
 let initialized = false;
 export function initExecution(options = {}) {
-  config.maxConcurrent = options.maxConcurrent || config.maxConcurrent;
+  if (options.maxConcurrent) piGate.setLimits({ maxConcurrent: options.maxConcurrent });
   config.planBudgetMs = options.planBudgetMs || config.planBudgetMs;
-  config.admissionWaitMs = options.admissionWaitMs ?? config.admissionWaitMs;
   config.pool = options.pool || null;
   config.services = { ...config.services, ...options.services };
   config.workerFactory = options.workerFactory || config.workerFactory;
@@ -76,42 +74,37 @@ export function activeAttemptCount() {
   return activeAttempts.size;
 }
 
-// ---------------------------------------------------------------- capacity
+// ---------------------------------------------------------------- queue
 
-let capacityInUse = 0;
+// Capacity is the Pi gate (server/queue): a run that cannot start yet waits in
+// line and is never refused or timed out. A run's deadline starts when the run
+// starts, so time spent waiting never counts against it.
 
-/** Legacy load (warm Pi slots, v1 jobs) shares the same host limit. */
-export function setLegacyLoadProvider(fn) {
-  config.legacyLoad = fn;
-}
-function legacyLoad() {
-  try { return config.legacyLoad?.() || 0; } catch { return 0; }
-}
+/** runId -> AbortController of a chat run waiting in line (a cancel or a drain removes it). */
+const waitingChats = new Map();
+/** taskId -> { controller, agentId } of a specialist task waiting in the Pi line (still 'pending' in the DB). */
+const waitingTasks = new Map();
+/** sessionId -> promise of the newest run queued or running in that chat; the next message waits behind it. */
+const sessionLines = new Map();
+/** runRef -> wake-ups for waitForChatRun. */
+const settleListeners = new Map();
 
-async function durableTaskLoad() {
-  try {
-    const pool = config.pool || getPool();
-    const result = await pool.query("SELECT COUNT(*)::int AS count FROM orchestrator_tasks WHERE status='running' AND executor_version=$1", [EXECUTOR_VERSION]);
-    return Number(result.rows[0]?.count || 0);
-  } catch {
-    return 0;
-  }
+function cancelledWhileWaiting(reason) {
+  return Object.assign(new Error('Cancelled while waiting in line'), { name: 'AbortError', reason });
 }
 
-async function acquireCapacity({ waitMs, what }) {
-  const deadline = Date.now() + Math.max(0, waitMs);
-  while (capacityInUse + await durableTaskLoad() + legacyLoad() >= config.maxConcurrent) {
-    if (Date.now() >= deadline) {
-      throw Object.assign(new Error(`Host is at execution capacity; try again shortly (${what})`),
-        { execCode: 'CAPACITY_UNAVAILABLE', retryable: true });
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  capacityInUse += 1;
+/** Resolves with `promise`; rejects only if `signal` is aborted first (cancel or drain). */
+function untilAborted(promise, signal) {
+  if (signal.aborted) return Promise.reject(cancelledWhileWaiting(signal.reason));
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(cancelledWhileWaiting(signal.reason));
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
 }
 
-function releaseCapacitySlot() {
-  capacityInUse = Math.max(0, capacityInUse - 1);
+function notifyRunSettled(runRef) {
+  for (const wake of [...(settleListeners.get(runRef) || [])]) wake();
 }
 
 // ---------------------------------------------------------------- model policy
@@ -130,10 +123,13 @@ function submissionDigest({ prompt, images, modelId, profileId }) {
 // ---------------------------------------------------------------- chat entry
 
 /**
- * Accept a conversational run: durably identifiable, deduped by submission
- * key, capacity-bounded. Returns the execution_runs row.
+ * Accept a conversational run: durably identifiable and deduped by submission
+ * key. The run is recorded as queued at once and starts when the Pi gate lets it
+ * through; it is never refused for load. Returns the execution_runs row.
+ * `onQueue({ position, queued })` reports the place in line while it waits
+ * (position 0 = it is starting).
  */
-export async function acceptChatRun({ session, profile, user, prompt, images, modelId, submissionKey, onEvent, manifest, sessionFile, chatContext }) {
+export async function acceptChatRun({ session, profile, user, prompt, images, modelId, submissionKey, onEvent, onQueue, manifest, sessionFile, chatContext }) {
   if (admission !== 'open') throw Object.assign(new Error('The service is draining for restart; please retry shortly'), { execCode: 'DRAINING', retryable: true });
   const effectiveModelId = await resolveEffectiveModelId(profile?.agentRow || profile, modelId);
   const digest = submissionDigest({ prompt, images, modelId: effectiveModelId, profileId: profile.id });
@@ -145,21 +141,21 @@ export async function acceptChatRun({ session, profile, user, prompt, images, mo
     return { run: existing, deduped: true };
   }
 
-  const active = await store.hasActiveChatRun(session.id);
-  if (active) throw Object.assign(new Error('This chat already has an active run'), { execCode: 'CONFLICT', retryable: false });
-
-  await acquireCapacity({ waitMs: config.admissionWaitMs, what: 'chat' });
   const runId = newId();
   const deadlineAt = new Date(Date.now() + DEFAULT_LIMITS.chat.durationMs);
   try {
     await store.createChatRun({
       id: runId, sessionId: session.id, userId: user?.id || null, companyId: chatContext?.companyId || null,
-      profileId: profile.id, profileSnapshot: { slug: profile.slug, name: profile.name, toolProfile: profile.toolProfile, modelId: effectiveModelId },
+      profileId: profile.id,
+      profileSnapshot: {
+        slug: profile.slug, name: profile.name, toolProfile: profile.toolProfile, modelId: effectiveModelId,
+        // What a restart needs to put this run back in line (dropped once the run starts).
+        queuedInput: { prompt, images: images || [], sessionFile: sessionFile || null, parentSessionId: session.parentSessionId || null },
+      },
       submissionKey, submissionDigest: digest, deadlineAt,
     });
     await store.recordEvent({ kind: 'run.queued', sessionId: session.id, runRef: runId, data: { profile: profile.id } });
   } catch (error) {
-    releaseCapacitySlot();
     if (error?.code === '23505') {
       const run = await store.findChatRunBySubmission(session.id, submissionKey);
       if (run) {
@@ -171,30 +167,74 @@ export async function acceptChatRun({ session, profile, user, prompt, images, mo
     }
     throw error;
   }
-  void runChatAgent({ runId, session, profile, user, prompt, images, modelId: effectiveModelId, onEvent, manifest, sessionFile, chatContext, deadlineAt })
-    .catch((error) => config.services.logEvent?.('error', `chat run ${runId}: ${error?.message || error}`));
+  queueChatRun({ runId, session, profile, user, prompt, images, modelId: effectiveModelId, onEvent, onQueue, manifest, sessionFile, chatContext });
   const run = await store.getChatRun(runId);
   return { run, deduped: false };
 }
 
-async function runChatAgent({ runId, session, profile, user, prompt, images, modelId, onEvent, manifest, sessionFile, chatContext, deadlineAt }) {
-  const run = await store.getChatRun(runId);
-  if (!run || run.status !== 'queued') { releaseCapacitySlot(); return; }
-  await store.updateChatRun(runId, { status: 'running' });
-  await store.recordEvent({ kind: 'run.started', sessionId: session.id, runRef: runId, data: {} });
+/**
+ * Put an already recorded chat run in line. A second message in the same chat
+ * waits behind the first without holding a slot, then takes its place in the Pi line.
+ */
+function queueChatRun(job) {
+  const previous = sessionLines.get(job.session.id) || Promise.resolve();
+  const waiting = new AbortController();
+  waitingChats.set(job.runId, waiting);
+  const mine = runChatAgent(job, { previous, waiting }).catch((error) => {
+    config.services.logEvent?.('error', `chat run ${job.runId}: ${error?.message || error}`);
+  });
+  sessionLines.set(job.session.id, mine);
+  void mine.finally(() => { if (sessionLines.get(job.session.id) === mine) sessionLines.delete(job.session.id); });
+}
+
+async function runChatAgent({ runId, session, profile, user, prompt, images, modelId, onEvent, onQueue, manifest, sessionFile, chatContext }, { previous, waiting }) {
+  let release;
+  let run;
   try {
-    await runAgent({
-      kind: 'chat', runRef: runId, session, profile, user,
-      ctx: {
-        runRef: runId, runKind: 'chat', sessionId: session.id, parentRunId: session.parentSessionId || null,
-        userId: user?.id || null, companyId: chatContext?.companyId || null, profileId: profile.id,
-      },
-      input: prompt, images, deadlineAt, limits: DEFAULT_LIMITS.chat,
-      manifest, onEvent, runKindOpts: { sessionFile, modelId },
-    });
-  } catch (error) {
-    // runAgent finalizes internally; a throw here means finalization itself failed.
-    config.services.logEvent?.('error', `chat run ${runId} crashed: ${error?.message || error}`);
+    try {
+      await untilAborted(previous, waiting.signal);
+      run = await store.getChatRun(runId);
+      if (!run || run.status !== 'queued') return;
+      release = await piGate.acquire({
+        signal: waiting.signal,
+        onPosition: (position, queued) => { try { onQueue?.({ position, queued }); } catch { /* presentation only */ } },
+      });
+    } catch (error) {
+      if (!waiting.signal.aborted) throw error;
+      // Cancelled (or the host is draining) while waiting: it never held a slot.
+      // A drain leaves the run queued so the replacement host puts it back in line.
+      if (waiting.signal.reason !== 'drain') {
+        await finalizeRun(runId, 'chat', { status: 'cancelled', summary: 'Cancelled while waiting in line', outputs: {} }, { sessionId: session.id });
+      }
+      return;
+    } finally {
+      waitingChats.delete(runId);
+    }
+    try { onQueue?.({ position: 0, queued: 0 }); } catch { /* presentation only */ }
+    // The chat's own earlier message may have moved Pi's session file on.
+    const latestFile = await Promise.resolve(config.services.sessionFileFor?.(session.id)).catch(() => null);
+    const startedAt = Date.now();
+    const deadlineAt = new Date(startedAt + DEFAULT_LIMITS.chat.durationMs);
+    await store.updateChatRun(runId, { status: 'running', deadlineAt });
+    await store.dropQueuedInput(runId).catch(() => {});
+    await store.recordEvent({ kind: 'run.started', sessionId: session.id, runRef: runId, data: { waitedMs: startedAt - new Date(run.createdAt).getTime() } });
+    try {
+      await runAgent({
+        kind: 'chat', runRef: runId, session, profile, user,
+        ctx: {
+          runRef: runId, runKind: 'chat', sessionId: session.id, parentRunId: session.parentSessionId || null,
+          userId: user?.id || null, companyId: chatContext?.companyId || null, profileId: profile.id,
+        },
+        input: prompt, images, deadlineAt, limits: DEFAULT_LIMITS.chat,
+        manifest, onEvent, runKindOpts: { sessionFile: latestFile || sessionFile, modelId },
+      });
+    } catch (error) {
+      // runAgent finalizes internally; a throw here means finalization itself failed.
+      config.services.logEvent?.('error', `chat run ${runId} crashed: ${error?.message || error}`);
+    }
+  } finally {
+    waitingChats.delete(runId);
+    release?.();
   }
 }
 
@@ -205,7 +245,7 @@ async function runChatAgent({ runId, session, profile, user, prompt, images, mod
  * prompt → outcome → finalize. Chat and specialists both land here; a chat turn's
  * outcome is Pi's own answer, a specialist's is its typed finish_run completion.
  */
-export async function runAgent({ kind, runRef, profile, user, ctx, input, images, deadlineAt, limits, manifest, onEvent, runKindOpts = {}, generation = 0, capacityOwned = kind === 'chat' }) {
+export async function runAgent({ kind, runRef, profile, user, ctx, input, images, deadlineAt, limits, manifest, onEvent, runKindOpts = {}, generation = 0 }) {
   const attemptId = kind === 'chat' ? runRef : newId();
   const workerToken = randomBytes(24).toString('hex');
   const manifestRevision = manifest.revision;
@@ -340,7 +380,6 @@ export async function runAgent({ kind, runRef, profile, user, ctx, input, images
     if (worker?.dispose) await worker.dispose().catch(() => {});
     dispatch.revokeAttempt(attemptId);
     activeAttempts.delete(attemptId);
-    if (capacityOwned) releaseCapacitySlot();
   }
 }
 
@@ -500,6 +539,7 @@ export async function finalizeRun(runRef, kind, outcome, { attemptId, generation
     await store.updateChatRun(runRef, { status: record.status, outcome: record.outcome, error: record.error }, current.generation);
     await store.recordEvent({ kind: 'run.finished', sessionId, runRef, attemptId,
       data: { status, summary: outcome.summary || error?.message || '', reasonCode: outcome.reasonCode || error?.code || null } });
+    notifyRunSettled(runRef);
     return;
   }
 
@@ -564,6 +604,7 @@ export async function cancelRun({ runRef, runKind, reason = 'Cancelled' }) {
     const run = await store.getChatRun(runRef);
     if (!run || ['done', 'failed', 'cancelled', 'blocked'].includes(run.status)) return false;
     await store.updateChatRun(runRef, { stopRequested: true });
+    waitingChats.get(runRef)?.abort('cancel'); // still in line: it leaves the line and never starts
   } else {
     const pool = config.pool || getPool();
     const claimed = await pool.query(
@@ -572,6 +613,7 @@ export async function cancelRun({ runRef, runKind, reason = 'Cancelled' }) {
        WHERE id=$1 AND status IN ('running','pending') RETURNING generation, plan_id`,
       [runRef, JSON.stringify({ code: 'CANCELLED', message: reason })]);
     if (!claimed.rows.length) return false;
+    waitingTasks.get(runRef)?.controller.abort('cancel'); // still in line: it leaves the line and never starts
     const nextGeneration = claimed.rows[0]?.generation;
     const state = [...activeAttempts.values()].find((s) => s.runRef === runRef);
     if (state) {
@@ -692,8 +734,10 @@ export async function tick() {
   }
 }
 
+let lastWaitSweepAt = null;
+
 async function tickInner() {
-  const claimed = [];
+  const picks = [];
   const pool = config.pool || getPool();
   const client = await pool.connect();
   try {
@@ -703,6 +747,20 @@ async function tickInner() {
       await client.query('ROLLBACK');
       return;
     }
+    // A plan's deadline measures running time: while a plan has an eligible task but nothing of it
+    // is running, it is only waiting in line, so its clock stands still.
+    const sweepAt = Date.now();
+    if (lastWaitSweepAt != null) {
+      await client.query(
+        `UPDATE orchestrator_plans p SET request_deadline_at = request_deadline_at + ($1::text || ' milliseconds')::interval
+         WHERE p.executor_version='v2' AND p.auto_run AND p.request_deadline_at IS NOT NULL
+           AND EXISTS (SELECT 1 FROM orchestrator_tasks t WHERE t.plan_id=p.id AND t.executor_version='v2' AND t.status='pending'
+                       AND NOT EXISTS (SELECT 1 FROM unnest(t.depends_on) dep(id) LEFT JOIN orchestrator_tasks d ON d.id=dep.id
+                                       WHERE d.status IS DISTINCT FROM 'done'))
+           AND NOT EXISTS (SELECT 1 FROM orchestrator_tasks r WHERE r.plan_id=p.id AND r.status='running')`,
+        [String(Math.max(0, sweepAt - lastWaitSweepAt))]);
+    }
+    lastWaitSweepAt = sweepAt;
     // Plans past their request deadline stop scheduling with an explicit blocker.
     await client.query(
       `UPDATE orchestrator_tasks t SET status='blocked', error=$1::jsonb, updated_at=NOW()
@@ -719,10 +777,8 @@ async function tickInner() {
       [JSON.stringify({ code: 'DEPENDENCY_BLOCKED', message: 'A dependency failed, was blocked or was cancelled' })]);
 
     const running = await client.query(`SELECT agent_id FROM orchestrator_tasks WHERE status='running' AND executor_version='v2'`);
-    const activeAgents = new Set(running.rows.map((r) => r.agent_id));
-    // Durable task rows are the source of truth for specialist reservations;
-    // capacityInUse covers only chat admission. A task is never counted in both.
-    let capacity = Math.max(0, config.maxConcurrent - capacityInUse - legacyLoad() - running.rowCount);
+    // One task per agent at a time: a running one, or one already waiting in line, keeps the agent taken.
+    const takenAgents = new Set([...running.rows.map((r) => r.agent_id), ...[...waitingTasks.values()].map((w) => w.agentId)]);
     const candidates = await client.query(
       `SELECT t.*, p.parent_session_id, p.owner_user_id AS plan_owner_user_id, p.company_id AS plan_company_id
        FROM orchestrator_tasks t JOIN orchestrator_plans p ON p.id=t.plan_id
@@ -731,20 +787,9 @@ async function tickInner() {
                        WHERE d.status IS DISTINCT FROM 'done')
        ORDER BY p.created_at, t.sort_order`);
     for (const row of candidates.rows) {
-      if (capacity <= 0) break;
-      if (activeAgents.has(row.agent_id)) continue;
-      const updated = await client.query(
-        `UPDATE orchestrator_tasks SET status='running', generation=generation+1, error=NULL, updated_at=NOW(),
-           deadline_at=LEAST(
-             NOW() + ($2::text || ' milliseconds')::interval,
-             COALESCE((SELECT request_deadline_at FROM orchestrator_plans WHERE id=$3), NOW() + ($2::text || ' milliseconds')::interval)
-           )
-         WHERE id=$1 AND status='pending' RETURNING generation, deadline_at`,
-        [row.id, String(DEFAULT_LIMITS.task.durationMs), row.plan_id]);
-      if (!updated.rows.length) continue;
-      claimed.push({ ...row, generation: updated.rows[0].generation, deadline_at: updated.rows[0].deadline_at });
-      activeAgents.add(row.agent_id);
-      capacity -= 1;
+      if (waitingTasks.has(row.id) || takenAgents.has(row.agent_id)) continue;
+      takenAgents.add(row.agent_id);
+      picks.push(row);
     }
     await client.query('COMMIT');
   } catch (error) {
@@ -753,13 +798,59 @@ async function tickInner() {
   } finally {
     client.release();
   }
-  for (const task of claimed) {
-    void runClaimedTask(task).catch(async (error) => {
-      config.services.logEvent?.('error', `task ${task.id}: ${error?.message || error}`);
-      await finalizeRun(task.id, 'task', { status: 'failed', error: execError(error?.execCode || 'EXECUTION_FAILED', error?.message || 'Task failed') },
-        { attemptId: task.id, generation: task.generation }).catch(() => {});
-    });
+  // Every eligible task goes into the Pi line. Tasks stay 'pending' in the database until their
+  // turn comes, so a restart simply finds them again. The ones a free slot is waiting for are
+  // claimed before this tick returns; the rest are claimed whenever their turn arrives.
+  const { maxConcurrent, active, queued } = piGate.stats();
+  const free = maxConcurrent == null ? picks.length : Math.max(0, maxConcurrent - active - queued);
+  const entered = picks.map((row) => enterPiLine(row));
+  await Promise.all(entered.slice(0, free));
+}
+
+/** Waits for the task's turn in the Pi line, claims it, and runs it. Resolves once it is claimed or gone. */
+async function enterPiLine(row) {
+  const controller = new AbortController();
+  waitingTasks.set(row.id, { controller, agentId: row.agent_id });
+  let release;
+  try {
+    try {
+      release = await piGate.acquire({ signal: controller.signal });
+    } catch (error) {
+      if (!controller.signal.aborted) throw error;
+      return; // cancelled (or draining) while waiting: still pending or already cancelled in the database
+    }
+    const claimed = await claimTask(row);
+    if (!claimed) { release(); release = null; return; } // cancelled or blocked while it waited
+    const held = release;
+    release = null;
+    void runClaimedTask(claimed)
+      .catch(async (error) => {
+        config.services.logEvent?.('error', `task ${claimed.id}: ${error?.message || error}`);
+        await finalizeRun(claimed.id, 'task', { status: 'failed', error: execError(error?.execCode || 'EXECUTION_FAILED', error?.message || 'Task failed') },
+          { attemptId: claimed.id, generation: claimed.generation }).catch(() => {});
+      })
+      .finally(held);
+  } catch (error) {
+    config.services.logEvent?.('error', `task ${row.id} could not start: ${error?.message || error}`);
+    release?.();
+  } finally {
+    waitingTasks.delete(row.id);
   }
+}
+
+/** The task's turn has come: mark it running. Its run deadline starts now, not when it was submitted. */
+async function claimTask(row) {
+  const pool = config.pool || getPool();
+  const updated = await pool.query(
+    `UPDATE orchestrator_tasks SET status='running', generation=generation+1, error=NULL, updated_at=NOW(),
+       deadline_at=LEAST(
+         NOW() + ($2::text || ' milliseconds')::interval,
+         COALESCE((SELECT request_deadline_at FROM orchestrator_plans WHERE id=$3), NOW() + ($2::text || ' milliseconds')::interval)
+       )
+     WHERE id=$1 AND status='pending' RETURNING generation, deadline_at`,
+    [row.id, String(DEFAULT_LIMITS.task.durationMs), row.plan_id]);
+  if (!updated.rows.length) return null;
+  return { ...row, generation: updated.rows[0].generation, deadline_at: updated.rows[0].deadline_at };
 }
 
 async function runClaimedTask(taskRow) {
@@ -779,7 +870,7 @@ async function runClaimedTask(taskRow) {
     ctx: { runRef: taskRow.id, runKind: 'task', sessionId: taskRow.parent_session_id, parentRunId: taskRow.parent_session_id || null,
       userId: taskRow.plan_owner_user_id || null, companyId: taskRow.plan_company_id || null, profileId: agent.id },
     input, images: [], deadlineAt: taskRow.deadline_at, limits: DEFAULT_LIMITS.task, manifest: profile,
-    generation: taskRow.generation, onEvent: undefined, capacityOwned: false,
+    generation: taskRow.generation, onEvent: undefined,
     runKindOpts: { modelId, workspace, cwd: workspace, workerUrl: config.workerUrl, taskKind: taskRow.kind || null },
   });
 }
@@ -892,7 +983,32 @@ export async function reconcileOnStartup() {
   for (const row of staleChats.rows) {
     await store.updateChatRun(row.id, { status: 'blocked', error: execError('EXECUTION_FAILED', 'Execution interrupted by a host restart') });
   }
-  return { tasks: staleTasks.rows.length, chats: staleChats.rows.length };
+  // Chats that were still waiting in line go back in line, oldest first. (Pending tasks are found by the claim loop.)
+  const queuedChats = await pool.query(`SELECT id FROM execution_runs WHERE kind='chat' AND status='queued' ORDER BY created_at`);
+  let requeued = 0;
+  for (const row of queuedChats.rows) {
+    if (waitingChats.has(row.id)) continue;
+    if (await requeueChatRun(row.id)) requeued += 1;
+    else await store.updateChatRun(row.id, { status: 'blocked', error: execError('EXECUTION_FAILED', 'Execution interrupted by a host restart before this message could be put back in line') });
+  }
+  return { tasks: staleTasks.rows.length, chats: staleChats.rows.length, requeued };
+}
+
+/** Rebuilds a queued chat run from its row and puts it back in the Pi line. False if the row cannot be rebuilt. */
+async function requeueChatRun(runId) {
+  const run = await store.getChatRun(runId);
+  const input = run?.profileSnapshot?.queuedInput;
+  if (!run || !input || !config.services.chatProfileFor || !config.services.profileFor) return false;
+  const profile = await config.services.chatProfileFor(run.profileId);
+  if (!profile) return false;
+  const user = run.userId && config.services.userLookup ? await config.services.userLookup(run.userId) : null;
+  queueChatRun({
+    runId, session: { id: run.sessionId, parentSessionId: input.parentSessionId || null }, profile, user,
+    prompt: input.prompt, images: input.images || [], modelId: run.profileSnapshot.modelId,
+    manifest: config.services.profileFor(profile), sessionFile: input.sessionFile || null,
+    chatContext: { companyId: run.companyId || null },
+  });
+  return true;
 }
 
 /**
@@ -902,6 +1018,9 @@ export async function reconcileOnStartup() {
 export async function drainExecution({ timeoutMs = 45_000, activeTurns = () => 0 } = {}) {
   admission = 'draining';
   stopClaimLoop();
+  // Work still waiting in line must not start now; it stays queued/pending for the replacement host.
+  for (const controller of waitingChats.values()) controller.abort('drain');
+  for (const { controller } of waitingTasks.values()) controller.abort('drain');
   const deadline = Date.now() + Math.max(0, timeoutMs);
   while (activeAttempts.size && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -930,22 +1049,41 @@ export function resetForTests() {
   stopClaimLoop();
   for (const state of activeAttempts.values()) state.controller.abort();
   activeAttempts.clear();
-  capacityInUse = 0;
+  for (const controller of waitingChats.values()) controller.abort('drain');
+  for (const { controller } of waitingTasks.values()) controller.abort('drain');
+  waitingChats.clear();
+  waitingTasks.clear();
+  sessionLines.clear();
+  lastWaitSweepAt = null;
+  resetPiGateForTests();
   claiming = false;
   admission = 'open';
 }
 
 // ---------------------------------------------------------------- UI snapshot
 
-/** Resolves when a chat run reaches a terminal state (for reattached SSE requests). */
-export async function waitForChatRun(runId, timeoutMs = 600_000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
+/**
+ * Resolves when a chat run reaches a terminal state (for reattached SSE requests).
+ * It waits for as long as the run is queued or running: there is no timeout, because a run
+ * waiting in line is not a failed run. Finalization wakes it at once; the re-check interval
+ * only covers a run that was finalized by another process.
+ */
+export async function waitForChatRun(runId) {
+  for (;;) {
     const run = await store.getChatRun(runId);
-    if (run && ['done', 'failed', 'blocked', 'cancelled'].includes(run.status)) return run;
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    if (!run || ['done', 'failed', 'blocked', 'cancelled'].includes(run.status)) return run;
+    await new Promise((resolve) => {
+      const wake = () => {
+        clearTimeout(timer);
+        settleListeners.get(runId)?.delete(wake);
+        if (settleListeners.get(runId)?.size === 0) settleListeners.delete(runId);
+        resolve();
+      };
+      const timer = setTimeout(wake, 1000);
+      if (!settleListeners.has(runId)) settleListeners.set(runId, new Set());
+      settleListeners.get(runId).add(wake);
+    });
   }
-  return store.getChatRun(runId);
 }
 
 export async function runStatusForSession(sessionId, { after = 0 } = {}) {

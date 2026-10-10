@@ -53,6 +53,7 @@ const store = await import('./store.mjs');
 const dispatch = await import('./dispatch.mjs');
 const runner = await import('./runner.mjs');
 const profiles = await import('./profiles.mjs');
+const { resetPiGateForTests } = await import('../queue/pi-gate.mjs');
 const registry = await import('./registry.mjs');
 
 // Wire the registry's control operations to the runner (as boot does).
@@ -160,8 +161,9 @@ async function makeDb() {
 
 const admin = { id: 'u-admin', role: 'admin', active: true, username: 'admin' };
 
-function setupRunner(workerFactory, { maxConcurrent = 4, services: serviceOverrides = {} } = {}) {
+function setupRunner(workerFactory, { maxConcurrent = 4, planBudgetMs, services: serviceOverrides = {} } = {}) {
   runner.initExecution({
+    planBudgetMs,
     pool: holder.pool,
     maxConcurrent,
     workerFactory,
@@ -567,16 +569,282 @@ withDb('cancellation race: new calls stop, committed effects remain, late comple
   assert.equal(effect.rows[0].n, 1, 'committed effects survive cancellation');
 });
 
-withDb('capacity: chat admission respects the shared host bound', async () => {
-  const factory = fakeWorkerFactory();
-  factory.setScript(() => ({ finishRun: { status: 'blocked', reasonCode: 'WAIT', summary: 'waiting' } }));
-  setupRunner(factory, { maxConcurrent: 1 });
-  runner.setLegacyLoadProvider(() => 1); // one legacy slot busy
-  await assert.rejects(() => runner.acceptChatRun({
-    session: { id: 'chat-cap' }, profile: CATALOG.orchestrator, user: admin, prompt: 'hi', images: [],
+// ---------------------------------------------------------------- queue: nothing is refused for load
+
+/** The chat's own words: the host appends a signed-in line after them. */
+const said = (message) => String(message).split('\n')[0];
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+function deferred() {
+  let resolve;
+  const promise = new Promise((r) => { resolve = r; });
+  return { promise, resolve };
+}
+
+/** Submit one chat message without re-initialising the runner (so limits and factory stay as the test set them). */
+function submitChat({ sessionId, prompt = 'hi', sessionFile = null, onQueue } = {}) {
+  return runner.acceptChatRun({
+    session: { id: sessionId, parentSessionId: null }, profile: CATALOG.orchestrator, user: admin, prompt, images: [],
     modelId: 'm', submissionKey: `k-${randomUUID()}`, manifest: orchestratorProfile(), chatContext: { companyId: holder.tenantId },
-  }), /capacity/i);
-  runner.setLegacyLoadProvider(() => 0);
+    sessionFile, onQueue,
+  });
+}
+
+async function runStatus(runId) {
+  return (await store.getChatRun(runId)).status;
+}
+
+withDb('queue (kill point 1): with every slot held a chat run waits in line, is never refused, and runs when a slot frees', async () => {
+  const factory = fakeWorkerFactory();
+  const hold = deferred();
+  const started = [];
+  factory.setScript(async (message) => {
+    started.push(said(message));
+    if (said(message) === 'first') await hold.promise;
+    return { text: `answer to ${said(message)}` };
+  });
+  setupRunner(factory, { maxConcurrent: 1 });
+  const positions = [];
+  const first = await submitChat({ sessionId: 'chat-a', prompt: 'first' });
+  const second = await submitChat({ sessionId: 'chat-b', prompt: 'second', onQueue: ({ position }) => positions.push(position) });
+  assert.equal(second.deduped, false, 'accepted at once, no CAPACITY_UNAVAILABLE');
+  await sleep(2500); // the old admission limit was 20 s; there is no timer on this path any more
+  assert.equal(await runStatus(second.run.id), 'queued', 'still waiting, not failed');
+  assert.deepEqual(started, ['first'], 'the second run has not started');
+  assert.deepEqual(positions, [1], 'the waiting user is told their place in line');
+  hold.resolve();
+  const settled = await settleChat(second.run.id);
+  assert.equal(settled.status, 'done');
+  assert.equal(settled.outcome.summary, 'answer to second');
+  assert.deepEqual(positions, [1, 0], 'and told when it starts');
+  assert.equal((await settleChat(first.run.id)).status, 'done');
+});
+
+withDb('queue (kill point 3): a second message in a busy chat waits behind the first instead of being refused', async () => {
+  const factory = fakeWorkerFactory();
+  const hold = deferred();
+  const order = [];
+  factory.setScript(async (message) => {
+    order.push(`start:${said(message)}`);
+    if (said(message) === 'one') await hold.promise;
+    order.push(`end:${said(message)}`);
+    return { text: said(message) };
+  });
+  setupRunner(factory, { maxConcurrent: 4 });
+  const one = await submitChat({ sessionId: 'same-chat', prompt: 'one' });
+  const two = await submitChat({ sessionId: 'same-chat', prompt: 'two' });
+  assert.notEqual(one.run.id, two.run.id, 'the second message is its own run, not a CONFLICT');
+  await sleep(300);
+  assert.deepEqual(order, ['start:one'], 'two waits for one even though slots are free');
+  assert.equal(await runStatus(two.run.id), 'queued');
+  hold.resolve();
+  await settleChat(two.run.id);
+  assert.deepEqual(order, ['start:one', 'end:one', 'start:two', 'end:two']);
+  assert.equal((await settleChat(one.run.id)).status, 'done');
+});
+
+withDb('queue (kill point 3): the queued message resumes the Pi session file the first message left behind', async () => {
+  const seen = [];
+  const inner = fakeWorkerFactory();
+  const wrapped = (opts) => { seen.push(opts.sessionFile); return inner(opts); };
+  inner.setScript(async (message) => { if (said(message) === 'one') await sleep(200); return { text: said(message) }; });
+  setupRunner(wrapped, { maxConcurrent: 4, services: { sessionFileFor: async () => '/data/latest.jsonl' } });
+  await submitChat({ sessionId: 'resume-chat', prompt: 'one' });
+  const two = await submitChat({ sessionId: 'resume-chat', prompt: 'two' });
+  await settleChat(two.run.id);
+  assert.equal(seen.at(-1), '/data/latest.jsonl');
+});
+
+withDb('queue (kill point 4): a chat run\'s deadline starts when it starts, not while it waits', async () => {
+  const original = profiles.DEFAULT_LIMITS.chat.durationMs;
+  profiles.DEFAULT_LIMITS.chat.durationMs = 1500;
+  try {
+    const factory = fakeWorkerFactory();
+    const hold = deferred();
+    factory.setScript(async (message) => {
+      if (said(message) === 'first') await hold.promise;
+      return { text: said(message) };
+    });
+    setupRunner(factory, { maxConcurrent: 1 });
+    await submitChat({ sessionId: 'dl-a', prompt: 'first' });
+    const second = await submitChat({ sessionId: 'dl-b', prompt: 'second' });
+    await sleep(2500); // longer than the whole run budget
+    hold.resolve();
+    const settled = await settleChat(second.run.id);
+    assert.equal(settled.status, 'done', `waiting must not eat the deadline: ${JSON.stringify(settled.error)}`);
+    assert.ok(new Date(settled.deadlineAt).getTime() > Date.now() - 1500, 'the deadline was set when the run started');
+  } finally {
+    profiles.DEFAULT_LIMITS.chat.durationMs = original;
+  }
+});
+
+withDb('queue (kill point 4): a plan\'s deadline does not run while its tasks only wait in line', async () => {
+  const factory = fakeWorkerFactory();
+  const hold = deferred();
+  factory.setScript(async (message, ctx) => {
+    if (ctx.runKind === 'chat' && said(message) === 'hog') await hold.promise;
+    if (ctx.runKind === 'task') return { finishRun: { status: 'done', summary: 'task ran after waiting' } };
+    return { text: 'ok' };
+  });
+  setupRunner(factory, { maxConcurrent: 1, planBudgetMs: 1500, services: { profileFor: (agent) => profiles.resolveProfileManifest(agent, { peopleTools: true }) } });
+  await runner.submitPlanHandler(
+    { sessionId: 'parent-chat', userId: admin.id, companyId: holder.tenantId, profileId: 'orchestrator', runRef: 'plan-run', requestId: randomUUID() },
+    { title: 'Waiting job', tasks: [{ id: 't1', agent: 'worker', prompt: 'work' }] });
+  await submitChat({ sessionId: 'hog-chat', prompt: 'hog' }); // holds the only slot
+  await sleep(100);
+  for (let i = 0; i < 14; i += 1) { await runner.tick(); await sleep(200); } // 2.8 s > the 1.5 s plan budget
+  const waiting = await holder.pool.query(`SELECT status, error FROM orchestrator_tasks`);
+  assert.equal(waiting.rows[0].status, 'pending', `still waiting, not blocked: ${waiting.rows[0].error}`);
+  hold.resolve();
+  await sleep(200);
+  await runner.tick();
+  await settleTasks();
+  const done = await holder.pool.query(`SELECT status, result FROM orchestrator_tasks`);
+  assert.equal(done.rows[0].status, 'done');
+  assert.equal(done.rows[0].result, 'task ran after waiting');
+});
+
+withDb('queue: specialist tasks beyond the cap wait in line and all finish, never above the cap', async () => {
+  const factory = fakeWorkerFactory();
+  let running = 0;
+  let peak = 0;
+  factory.setScript(async (message, ctx) => {
+    if (ctx.runKind !== 'task') return { text: 'ok' };
+    running += 1;
+    peak = Math.max(peak, running);
+    await sleep(150);
+    running -= 1;
+    return { finishRun: { status: 'done', summary: `done ${message.slice(0, 6)}` } };
+  });
+  setupRunner(factory, { maxConcurrent: 2, services: { profileFor: (agent) => profiles.resolveProfileManifest(agent, { peopleTools: true }) } });
+  const agents = ['worker', 'reviewer'];
+  for (let plan = 0; plan < 3; plan += 1) {
+    await runner.submitPlanHandler(
+      { sessionId: 'parent-chat', userId: admin.id, companyId: holder.tenantId, profileId: 'orchestrator', runRef: `plan-run-${plan}`, requestId: randomUUID() },
+      { title: `Job ${plan}`, tasks: agents.map((agent) => ({ id: `t-${agent}`, agent, prompt: `job ${plan} ${agent}` })) });
+  }
+  const deadline = Date.now() + 20_000;
+  for (;;) {
+    await runner.tick();
+    const left = await holder.pool.query(`SELECT COUNT(*)::int n FROM orchestrator_tasks WHERE status NOT IN ('done')`);
+    if (!left.rows[0].n) break;
+    assert.ok(Date.now() < deadline, 'all tasks finish');
+    await sleep(100);
+  }
+  assert.ok(peak <= 2, `peak concurrency ${peak} stayed within the cap`);
+  assert.equal((await holder.pool.query(`SELECT COUNT(*)::int n FROM orchestrator_tasks WHERE status='done'`)).rows[0].n, 6);
+});
+
+withDb('queue: a parent that submits a plan frees its slot, so its children can run with a cap of one', async () => {
+  const factory = fakeWorkerFactory();
+  factory.setScript((message, ctx) => {
+    if (ctx.runKind === 'task') return { finishRun: { status: 'done', summary: 'child done' } };
+    return { toolCalls: [{ toolId: 'submit_plan', args: { title: 'One slot', tasks: [{ id: 't1', agent: 'worker', prompt: 'child' }] } }],
+      finishRun: { status: 'done', summary: 'submitted' } };
+  });
+  setupRunner(factory, {
+    maxConcurrent: 1,
+    services: { profileFor: (agent) => profiles.resolveProfileManifest(agent, agent.id === 'worker' ? { peopleTools: true } : { peopleTools: true, controlTools: true }) },
+  });
+  const parent = await submitChat({ sessionId: 'parent-chat', prompt: 'delegate' });
+  assert.equal((await settleChat(parent.run.id)).status, 'done');
+  const deadline = Date.now() + 10_000;
+  for (;;) {
+    await runner.tick();
+    const rows = await holder.pool.query(`SELECT status FROM orchestrator_tasks`);
+    if (rows.rows[0]?.status === 'done') break;
+    assert.ok(Date.now() < deadline, 'the child got the only slot once the parent ended its turn');
+    await sleep(100);
+  }
+});
+
+withDb('queue: cancelling a run that is still in line removes it; it never starts', async () => {
+  const factory = fakeWorkerFactory();
+  const hold = deferred();
+  const started = [];
+  factory.setScript(async (message) => { started.push(said(message)); if (said(message) === 'first') await hold.promise; return { text: said(message) }; });
+  setupRunner(factory, { maxConcurrent: 1 });
+  await submitChat({ sessionId: 'c-a', prompt: 'first' });
+  const second = await submitChat({ sessionId: 'c-b', prompt: 'second' });
+  const third = await submitChat({ sessionId: 'c-c', prompt: 'third' });
+  await sleep(100);
+  assert.equal(await runner.cancelRun({ runRef: second.run.id, runKind: 'chat' }), true);
+  assert.equal((await settleChat(second.run.id)).status, 'cancelled');
+  hold.resolve();
+  assert.equal((await settleChat(third.run.id)).status, 'done', 'the run behind it moved up and ran');
+  assert.deepEqual(started, ['first', 'third'], 'the cancelled run never started');
+});
+
+withDb('queue: waitForChatRun has no timeout while a run waits in line', async () => {
+  const factory = fakeWorkerFactory();
+  const hold = deferred();
+  factory.setScript(async (message) => { if (said(message) === 'first') await hold.promise; return { text: said(message) }; });
+  setupRunner(factory, { maxConcurrent: 1 });
+  await submitChat({ sessionId: 'w-a', prompt: 'first' });
+  const second = await submitChat({ sessionId: 'w-b', prompt: 'second' });
+  let result = null;
+  const waiter = runner.waitForChatRun(second.run.id).then((run) => { result = run; });
+  await sleep(2500);
+  assert.equal(result, null, 'still waiting, not handed a non-final answer');
+  hold.resolve();
+  await waiter;
+  assert.equal(result.status, 'done');
+});
+
+withDb('queue: if the gate itself throws, the run still starts (fail open)', async () => {
+  const factory = fakeWorkerFactory();
+  factory.setScript(() => ({ text: 'ran anyway' }));
+  setupRunner(factory, { maxConcurrent: 1 });
+  resetPiGateForTests({ maxConcurrent: 1, now: () => { throw new Error('gate clock broke'); }, onError: () => {} });
+  const { run } = await submitChat({ sessionId: 'fail-open' });
+  assert.equal((await settleChat(run.id)).status, 'done');
+});
+
+withDb('queue (restart): runs that were waiting in line are put back in line from their rows', async () => {
+  const factory = fakeWorkerFactory();
+  const hold = deferred();
+  const started = [];
+  factory.setScript(async (message) => { started.push(said(message)); if (said(message) === 'first') await hold.promise; return { text: `answer ${said(message)}` }; });
+  const services = {
+    chatProfileFor: async () => CATALOG.orchestrator,
+    profileFor: () => orchestratorProfile(),
+    userLookup: async (id) => (id === 'u-admin' ? admin : null),
+  };
+  setupRunner(factory, { maxConcurrent: 1, services });
+  const first = await submitChat({ sessionId: 'r-a', prompt: 'first' });
+  const second = await submitChat({ sessionId: 'r-b', prompt: 'second' });
+  await sleep(100);
+  assert.equal(await runStatus(second.run.id), 'queued');
+  // The host restarts: memory is gone, the rows are not.
+  runner.resetForTests();
+  hold.resolve();
+  await sleep(300);
+  void first;
+  assert.equal(await runStatus(second.run.id), 'queued', 'nothing marked it failed');
+  setupRunner(factory, { maxConcurrent: 1, services });
+  const summary = await runner.reconcileOnStartup();
+  assert.equal(summary.requeued, 1);
+  const settled = await settleChat(second.run.id);
+  assert.equal(settled.status, 'done');
+  assert.equal(settled.outcome.summary, 'answer second');
+  assert.deepEqual(started, ['first', 'second']);
+});
+
+withDb('queue (drain): work still in line is left queued for the replacement host, not started', async () => {
+  const factory = fakeWorkerFactory();
+  const hold = deferred();
+  const started = [];
+  factory.setScript(async (message) => { started.push(said(message)); if (said(message) === 'first') await hold.promise; return { text: said(message) }; });
+  setupRunner(factory, { maxConcurrent: 1 });
+  await submitChat({ sessionId: 'd-a', prompt: 'first' });
+  const second = await submitChat({ sessionId: 'd-b', prompt: 'second' });
+  await sleep(100);
+  const draining = runner.drainExecution({ timeoutMs: 5000, activeTurns: () => 0 });
+  await sleep(100);
+  hold.resolve();
+  const drained = await draining;
+  assert.equal(drained.drained, true);
+  assert.equal(await runStatus(second.run.id), 'queued', 'still queued in the database');
+  assert.deepEqual(started, ['first'], 'it was not started while shutting down');
 });
 
 withDb('shutdown drain: accepted work finalizes, pending work is left for the replacement host', async () => {
