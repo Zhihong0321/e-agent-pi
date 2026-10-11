@@ -284,7 +284,7 @@ registerOperation({
       .describe('Field keys and values to save, e.g. {"company_name":"Acme","country":"MY"}'),
   }),
   async execute(ctx, args) {
-    requireUser(ctx);
+    requireAdmin(ctx);
     const result = await updateCompanyProfile(ctx.tx, {
       expected_revision: args.expected_revision,
       source: 'user',
@@ -398,6 +398,7 @@ export function registerDiTool(toolName, spec, agentId, needsUser) {
     access: { user: needsUser },
     inputSchema: z.object(input),
     async execute(ctx, args, services) {
+      if (spec.superadminOnly) requireAdmin(ctx);
       const result = await services.runTool(services.diDeps({ ctx }), { agent: ctx.profileId, tool: toolName, args });
       return result;
     },

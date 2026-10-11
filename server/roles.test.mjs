@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { headsDepartment, isDepartmentHead, isSuperadmin, normalizeRole, roleLabel, signedInLine } from './roles.mjs';
-import { getOperation, keepManagedSopBlock } from './execution/registry.mjs';
+import { getOperation, keepManagedSopBlock, registerDiTool } from './execution/registry.mjs';
 import { manifestForAgent, SOP_TOOL_IDS } from './execution/profiles.mjs';
+import { TOOLS } from '../document_inteligence/core/tools.mjs';
 
 test('role names from the UI, agents and old data map onto three stored keys', () => {
   for (const name of ['superadmin', 'Superadmin', 'super admin', 'admin', 'owner']) assert.equal(normalizeRole(name), 'admin');
@@ -52,6 +53,17 @@ test('SOP tools refuse anyone but a Superadmin before touching anything', async 
     await assert.rejects(op.execute({ userId: null }, args), (error) => error.execCode === 'SIGN_IN_REQUIRED');
     await assert.rejects(op.execute({ userId: 'u2', user: { role: 'department_head', department: 'Sales' } }, args), (error) => error.execCode === 'PERMISSION_DENIED');
     await assert.rejects(op.execute({ userId: 'u3', user: { role: 'user' } }, args), (error) => error.execCode === 'PERMISSION_DENIED');
+  }
+});
+
+test('company profile writes refuse anyone but a Superadmin, on the generic and the Onboarding paths', async () => {
+  registerDiTool('update_company_profile', TOOLS.update_company_profile, 'di-onboarding', false);
+  for (const profileId of [null, 'di-onboarding']) {
+    const op = getOperation('update_company_profile', profileId);
+    const args = { name: 'Hacked Ltd' };
+    await assert.rejects(op.execute({ userId: null }, args, {}), (error) => error.execCode === 'SIGN_IN_REQUIRED');
+    await assert.rejects(op.execute({ userId: 'u2', user: { role: 'department_head', department: 'Sales' } }, args, {}), (error) => error.execCode === 'PERMISSION_DENIED');
+    await assert.rejects(op.execute({ userId: 'u3', user: { role: 'user' } }, args, {}), (error) => error.execCode === 'PERMISSION_DENIED');
   }
 });
 

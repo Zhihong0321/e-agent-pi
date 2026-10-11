@@ -176,7 +176,7 @@ const customerFields = {
   custom,
 };
 
-/** @type {Record<string, { agents: string[], description: string, input: Record<string, z.ZodTypeAny>, run: Function, pdf?: Function, previewPdf?: boolean, saveFile?: Function, identity?: boolean, receipts?: string, report?: boolean }>} */
+/** @type {Record<string, { agents: string[], description: string, input: Record<string, z.ZodTypeAny>, run: Function, pdf?: Function, previewPdf?: boolean, saveFile?: Function, identity?: boolean, receipts?: string, report?: boolean, superadminOnly?: boolean }>} */
 export const TOOLS = {
   ...USER_TOOLS,
   get_onboarding_status: {
@@ -551,7 +551,7 @@ export const TOOLS = {
 
   // -------------------------------------------------------------- company / DB Manager
   update_company_profile: {
-    agents: [DB, TPL, ONBOARD],
+    agents: [DB, TPL, ONBOARD], superadminOnly: true,
     description: "Update your company's details (name, legal name, SSM, TIN, SST no, MSIC, address, phone, email, bank details, logo_url).",
     input: {
       name: z.string().optional(),
