@@ -1,6 +1,6 @@
 // Boots the Go WhatsApp sidecar (whatsmeow) as a long-lived child process,
 // restarting it if it exits, and registers its MCP server in the catalog
-// attached to the WhatsApp Assistant agent. See whatsapp-auto-plan.md.
+// attached to the WhatsApp Assistant agent. See archive/housekeeping-2026-10-11/plans/whatsapp-auto-plan.md.
 import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import {

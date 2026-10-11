@@ -11,7 +11,7 @@
     "dev:ui": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern legacy_archive",
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern archive",
     "pi": "pi",
     "pi:version": "pi --version",
     "test": "npm run test:execution && npm run test:queue",

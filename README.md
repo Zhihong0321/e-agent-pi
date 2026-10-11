@@ -175,7 +175,13 @@ This README does not certify the active deployment, its revision, models, creden
 | `agent/extensions/host-tools.ts` | Native host-tool bridge for migrated workers. |
 | `sidecar/` | Go WhatsApp service. |
 | `docs/` | Architecture, research, jobs, and release evidence. |
+| `report/` | The latest report (`post-mortem-question-menu-run.md`) and the question menu (`question-menu.md`). Only the latest report is kept here. |
+| `archive/` | Retired plans, reports, old test evidence and the legacy Cloudflare code. Local only (git-ignored); `archive/housekeeping-2026-10-11/MANIFEST.md` lists where each file came from. |
 | `graft/` | Repository graph with exact source spans. |
+
+Live design documents in the repository root: [`AI-Orchestration-and-agent-design.md`](AI-Orchestration-and-agent-design.md) (routing and prompt rules; read before touching any agent, prompt or orchestration code), [`multitenant-architecture.md`](multitenant-architecture.md) and [`multitenant-next-patches.md`](multitenant-next-patches.md) (tenant layers and open items), [`job-queue-manager-plan.md`](job-queue-manager-plan.md) (the never-kill queue contract), and [`CODING-SOP.MD`](CODING-SOP.MD).
+
+**Note, 11 October 2026:** the status table under "Current repository status" was last written on 5 October and has not been re-verified. Since then the routing rework, multi-tenant company model, job queue manager and question-menu test harness were added; the documents above are the current source for those.
 
 Further reading: [agent blueprint](agent/AGENT_BLUEPRINT.md), [document intelligence](document_inteligence/README.md), [company research](docs/company-deep-research.md), [research pipeline review](docs/company-research-pipeline-review.md), and [orchestrator jobs](docs/orchestrator-jobs.md). Domain documents may retain earlier transport descriptions; the execution migration notes above describe the current boundary.
 

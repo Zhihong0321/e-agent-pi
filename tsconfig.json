@@ -14,5 +14,5 @@
     "jsx": "react-jsx"
   },
   "include": ["src", "app", "shared"],
-  "exclude": ["node_modules", "legacy_archive"]
+  "exclude": ["node_modules", "archive"]
 }

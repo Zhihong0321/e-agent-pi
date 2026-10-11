@@ -6,7 +6,7 @@
 // The output is the complete transitive closure of every schema reachable from
 // the resources an agent can create, with each field's type, enum values and
 // Google's own description of each value. Committed to the repo so campaign
-// planning needs no network access at all — see google-ads-agent-plan.md, Core 1.
+// planning needs no network access at all — see archive/housekeeping-2026-10-11/plans/google-ads-agent-plan.md, Core 1.
 //
 // Re-run when the pinned API version changes. Google Ads majors last 12 months.
 import { writeFile } from "node:fs/promises";

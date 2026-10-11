@@ -1,6 +1,6 @@
 // WhatsApp sidecar: pairs by QR, stores history + live messages in SQLite
 // with full-text search, and exposes five MCP tools over HTTP. See
-// whatsapp-auto-plan.md for the full plan and phase breakdown.
+// archive/housekeeping-2026-10-11/plans/whatsapp-auto-plan.md for the full plan and phase breakdown.
 package main
 
 import (

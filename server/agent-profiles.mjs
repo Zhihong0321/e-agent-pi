@@ -2,7 +2,7 @@
  * Per-agent tool profiles and thinking levels. These trade Pi's default
  * coding-assistant prompt and built-in tool set for a smaller footprint on
  * agents that only answer questions through MCP tools or read-only
- * shell/API calls — see pi-agent-diet-plan.md.
+ * shell/API calls — see archive/housekeeping-2026-10-11/plans/pi-agent-diet-plan.md.
  */
 
 /** Under 60 words: who you act for, answer first, use MCP tools, never claim edits. */

@@ -71,3 +71,11 @@ new-template/
 # multi-tenant test: local fixtures (passwords, cookies) and evidence
 tests/multitenant/.fixtures.local.json
 tests/multitenant/evidence/
+
+tests/question-menu/.fixtures.local.json
+tests/question-menu/evidence/
+tests/question-menu/v2/.fixtures-rep*.local.json
+tests/question-menu/v2/evidence/
+
+# retired plans, reports and old test evidence; local only (see archive/*/MANIFEST.md)
+/archive/

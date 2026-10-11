@@ -1,7 +1,7 @@
 // Google Ads API client — OAuth refresh, GAQL search, and nothing else.
 //
 // Read-only by design for Phase 1: there is no mutate path here yet, so no
-// tool built on this module can spend money. See google-ads-agent-plan.md.
+// tool built on this module can spend money. See archive/housekeeping-2026-10-11/plans/google-ads-agent-plan.md.
 //
 // Credentials arrive as env vars from server/agent-env.mjs, the same way the
 // sales agent gets its Postgres proxy token. Nothing is read from disk.
