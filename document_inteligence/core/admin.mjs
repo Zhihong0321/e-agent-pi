@@ -53,6 +53,8 @@ export async function describeSchema(tx, { entity } = {}) {
   };
 }
 
+/** More than this per table is a sign of a design problem, and it keeps the bible small. */
+export const MAX_FIELDS_PER_ENTITY = 50;
 const CUSTOM_ENTITIES = ["customer", "contact", "product", "package", "document", "payment", "expense_claim"];
 // Keys the system itself writes into a claim's custom bag (withdraw reason, demo marker).
 const RESERVED_KEYS = { expense_claim: ["withdrawn_reason", "withdrawn_by", "demo"] };
@@ -80,6 +82,11 @@ export async function defineCustomField(tx, { entity, key, label, type, options 
   ).rows;
   if (standard.length) throw new DiError(`${entity}.${key} is already a standard column; no custom field needed`);
   const existing = (await tx.query("SELECT * FROM di.field_def WHERE entity = $1 AND key = $2", [entity, key])).rows[0];
+  if (!existing || existing.deleted_at) {
+    // A new field, or a removed one coming back, takes one of the live places.
+    const live = (await tx.query("SELECT count(*)::int AS n FROM di.field_def WHERE entity = $1 AND deleted_at IS NULL", [entity])).rows[0].n;
+    if (live >= MAX_FIELDS_PER_ENTITY) throw new DiError(`This company already has ${MAX_FIELDS_PER_ENTITY} fields on ${entity}`);
+  }
   if (existing) {
     if (existing.type !== type) throw new DiError(`${entity}.${key} exists as ${existing.type}; changing type would break stored values. Pick a new key.`);
     await tx.query(
@@ -108,12 +115,35 @@ export async function removeCustomField(tx, { entity, key }) {
   return { entity, key, removed: rows.length > 0 };
 }
 
+/**
+ * A custom_field rule must name a live field on a table it can read. A rule on a field that does not exist
+ * blocks every issue (or claim) with a message nobody can satisfy: the company locks itself out.
+ */
+async function requireLiveFields(tx, docType, rules) {
+  const readable = docType === "expense_claim" ? ["expense_claim"] : ["document", "customer", "contact"];
+  for (const rule of rules) {
+    if (rule.check !== "custom_field") continue;
+    const [entity, key] = String(rule.arg).split(".");
+    if (!readable.includes(entity)) {
+      throw new DiError(`Rule custom_field names ${rule.arg}: a rule on ${docType} can only read fields on ${readable.join(", ")}`);
+    }
+    const live = (await tx.query("SELECT 1 FROM di.field_def WHERE entity = $1 AND key = $2 AND deleted_at IS NULL", [entity, key])).rows;
+    if (!live.length) {
+      const known = (await tx.query("SELECT key FROM di.field_def WHERE entity = $1 AND deleted_at IS NULL ORDER BY key", [entity])).rows.map((r) => r.key);
+      throw new DiError(
+        `Rule custom_field names ${rule.arg}, but that field is not defined (defined on ${entity}: ${known.join(", ") || "none"}). Define the field first, or fix the name.`,
+      );
+    }
+  }
+}
+
 export async function setWorkflowRules(tx, { doc_type, transition = "issue", rules }) {
   try {
     validateRules(rules, doc_type);
   } catch (error) {
     throw new DiError(error.message);
   }
+  await requireLiveFields(tx, doc_type, rules);
   const blocking = rules.filter((r) => r.severity === "block").map((r) => r.check);
   // Documents break without these; expense claims have no such invariants.
   for (const must of doc_type === "expense_claim" ? [] : ["customer_selected", "has_lines", "template_available"]) {
