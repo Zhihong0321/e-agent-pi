@@ -215,7 +215,7 @@ test("mileage policy: fields, categories, attachment kinds and rules held as dat
     const kept = (await db.query("SELECT count(*)::int AS n FROM di.expense_claim WHERE custom ? 'distance_km'")).rows[0].n;
     assert.ok(kept >= 3, "claims keep the values they were filed with");
     assert.deepEqual((await boss("get_expense_settings")).policy.fields, []);
-    await admin(tenantA, (tx) => defineCustomField(tx, { entity: "expense_claim", key: "distance_km", label: "Distance (km)", type: "number" }));
+    await admin(tenantA, (tx) => defineCustomField(tx, { entity: "expense_claim", key: "distance_km", label: "Distance (km)", type: "number", help: "Total km from Google Maps" }));
     assert.equal((await boss("get_expense_settings")).policy.fields[0].key, "distance_km");
   });
 

@@ -10,7 +10,7 @@
 // Both tools preview first: no `fingerprint` = dry run (writes nothing); the fingerprint of that preview
 // (changeset + the state it was computed against) applies it, and is refused if anything changed since.
 import { createHash } from "node:crypto";
-import { DiError } from "./common.mjs";
+import { DiError, checkText } from "./common.mjs";
 import { defineCustomField, removeCustomField, setWorkflowRules } from "./admin.mjs";
 import { CLAIM_CHECKS, KIND_KEY, RULE_ID, evaluate, validateRules } from "./workflows.mjs";
 import { DEFAULT_KIND, POLICY_DOC_TYPE, POLICY_TRANSITION, loadPolicy, mergeCategories, tenantCategories } from "./expense-policy.mjs";
@@ -101,7 +101,14 @@ export function normaliseChangeset(input) {
       if (!FIELD_TYPES.includes(f.type)) throw new DiError(`field ${key}: type must be one of ${FIELD_TYPES.join(", ")}`);
       const options = f.type === "select" ? (f.options ?? []).map((o) => text(o, `option of ${key}`, 60)) : [];
       if (f.type === "select" && !options.length) throw new DiError(`field ${key}: a select needs options`);
-      return { key, label: text(f.label, `label of field ${key}`, 60), type: f.type, options, help: text(f.help, `help of field ${key}`, 200, { required: false }) };
+      const label = text(f.label, `label of field ${key}`, 60);
+      const help = text(f.help, `help of field ${key}`, 200);
+      // The same free-text check as define_custom_field: these texts reach every agent of the company.
+      for (const [kind, value, what] of [["label", label, `label of field ${key}`], ["meaning", help, `help of field ${key}`], ...options.map((o) => ["option", o, `option of ${key}`])]) {
+        const why = checkText(kind, value);
+        if (why) throw new DiError(`${what}: ${why}`);
+      }
+      return { key, label, type: f.type, options, help };
     });
   }
   if (cs.rules?.length) {

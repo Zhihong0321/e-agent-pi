@@ -194,8 +194,8 @@ test("preview, apply, enforce, undo, remove one item, reset to default", async (
   await t.test("references are checked: unknown field, unknown category, and a field someone else owns", async () => {
     await rejects(fde("fde_apply", { changeset: mileage({ custom_fields: undefined }) }), /needs field expense_claim\.distance_km/);
     await rejects(fde("fde_apply", { changeset: mileage({ rules: [{ ...NEEDS_MAP, when: { category: ["flying"] } }] }) }), /category "flying", which does not exist/);
-    await withContext(db, { tenantId: tenantA, actor: "dba" }, (tx) => defineCustomField(tx, { entity: "expense_claim", key: "cost_centre", label: "Cost centre", type: "text" }));
-    await rejects(fde("fde_apply", { changeset: mileage({ custom_fields: [{ key: "cost_centre", label: "Cost centre 2", type: "text" }] }) }), /not created by the Forward Deploy Engineer/);
+    await withContext(db, { tenantId: tenantA, actor: "dba" }, (tx) => defineCustomField(tx, { entity: "expense_claim", key: "cost_centre", label: "Cost centre", type: "text", help: "Cost centre the claim is charged to" }));
+    await rejects(fde("fde_apply", { changeset: mileage({ custom_fields: [{ key: "cost_centre", label: "Cost centre 2", type: "text", help: "Cost centre the claim is charged to" }] }) }), /not created by the Forward Deploy Engineer/);
   });
 
   await t.test("applied: the rule is enforced for claims, and the SOP block sits beside the human text", async () => {

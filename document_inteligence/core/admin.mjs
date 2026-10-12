@@ -2,7 +2,7 @@
 // custom fields, readiness rules, numbering, tax codes, templates, audit, archiving.
 // "Changing the schema" here means data in di.field_def / di.workflow_def: agents
 // never run DDL, so a tenant's customisation can't break the tables.
-import { DiError, defined, isUuid, requireRow, round2, setClause } from "./common.mjs";
+import { DiError, checkText, defined, isUuid, requireRow, round2, setClause } from "./common.mjs";
 import { CHECKS, CLAIM_ONLY_CHECKS, validateRules } from "./workflows.mjs";
 import { addressLines, checkTemplate, partyView, renderTemplate, sampleContext } from "./templates.mjs";
 
@@ -61,6 +61,16 @@ export async function defineCustomField(tx, { entity, key, label, type, options 
   if (!/^[a-z][a-z0-9_]{0,47}$/.test(key || "")) throw new DiError("key must be snake_case, start with a letter, max 48 chars");
   if (RESERVED_KEYS[entity]?.includes(key)) throw new DiError(`${entity}.${key} is used by the system; pick another key`);
   if (type === "select" && !options.length) throw new DiError("a select field needs options");
+  // Every call, create or update: a re-define writes help too, so an update without one would wipe the meaning.
+  const bad = (kind, value, what) => {
+    const why = checkText(kind, value);
+    if (why) throw new DiError(`${entity}.${key} ${what}: ${why}`);
+  };
+  bad("label", label, "label");
+  bad("meaning", help, "help (what this field is in this company and how to fill it)");
+  for (const option of options) bad("option", option, `option ${JSON.stringify(option)}`);
+  label = String(label).trim();
+  help = String(help).trim();
   if (required_for && !/^(save|(quotation|invoice|credit_note)\.issue)$/.test(required_for)) {
     throw new DiError("required_for must be save, quotation.issue, invoice.issue or credit_note.issue");
   }

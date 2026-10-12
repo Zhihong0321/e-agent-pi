@@ -34,7 +34,7 @@ const MILEAGE = {
   target_agent: "di-expenses",
   summary: "Mileage claims need a route screenshot and the distance",
   categories: [{ key: "mileage", label: "Mileage (km driven)" }],
-  custom_fields: [{ key: "distance_km", label: "Distance (km)", type: "number" }, { key: "note_text", label: "Note", type: "text" }],
+  custom_fields: [{ key: "distance_km", label: "Distance (km)", type: "number", help: "Total km from Google Maps" }, { key: "note_text", label: "Note", type: "text", help: "Free note about the trip" }],
   rules: [
     { id: "mileage-distance", when: { category: ["mileage"] }, check: "custom_field", arg: "expense_claim.distance_km", severity: "block", message: "Mileage claims need the distance in km." },
     { id: "mileage-map", when: { category: ["mileage"] }, check: "attachment_kind", arg: "route_map", severity: "block", message: "Mileage claims need the Google Maps route screenshot." },
@@ -270,7 +270,7 @@ test("monthly mileage for all sales employees: added in chat, previewed on real 
 
 test("a report on a company with no claims yet says so instead of failing the preview", async () => {
   const { fde } = await setup();
-  const preview = await fde("fde_apply", { changeset: { ...reportChange(), custom_fields: [{ key: "distance_km", label: "Distance (km)", type: "number" }], categories: [{ key: "mileage", label: "Mileage" }] } });
+  const preview = await fde("fde_apply", { changeset: { ...reportChange(), custom_fields: [{ key: "distance_km", label: "Distance (km)", type: "number", help: "Total km from Google Maps" }], categories: [{ key: "mileage", label: "Mileage" }] } });
   assert.match(preview.impact.reports[0].note, /no open monthly submission/i);
   assert.equal(preview.valid, true);
 });

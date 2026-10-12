@@ -141,7 +141,7 @@ test("document intelligence", async (t) => {
 
   await t.test("custom fields must be defined by the DB Manager first", async () => {
     await rejects(clerk("save_customer", { id: acme.id, custom: { segment: "C&I" } }), /Unknown custom field customer\.segment/);
-    await dbm("define_custom_field", { entity: "customer", key: "segment", label: "Segment", type: "select", options: ["Residential", "C&I"] });
+    await dbm("define_custom_field", { entity: "customer", key: "segment", label: "Segment", type: "select", options: ["Residential", "C&I"], help: "Market segment of the customer" });
     await clerk("save_customer", { id: acme.id, custom: { segment: "C&I" } });
     await rejects(clerk("save_customer", { id: acme.id, custom: { segment: "Other" } }), /must be one of/);
   });
@@ -271,7 +271,7 @@ test("document intelligence", async (t) => {
   });
 
   await t.test("custom field can become a hard requirement for issuing", async () => {
-    await dbm("define_custom_field", { entity: "document", key: "po_number", label: "Customer PO no.", type: "text", required_for: "invoice.issue" });
+    await dbm("define_custom_field", { entity: "document", key: "po_number", label: "Customer PO no.", type: "text", required_for: "invoice.issue", help: "Purchase order number from the customer" });
     const draft = await docs("create_draft", { doc_type: "invoice", customer: "C-0001", lines: [{ product: "PNL-550", quantity: 2 }], due_date: "2099-01-01" });
     assert.ok(draft.document.readiness.blockers.some((b) => b.field === "document.po_number"));
     await docs("update_draft", { document: draft.document.id, set: { custom: { po_number: "PO-1" } } });

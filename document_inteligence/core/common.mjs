@@ -116,6 +116,34 @@ export async function nextNumber(tx, key, today = todayMY()) {
   return number;
 }
 
+// Free text that reaches the company schema bible (core/schema-bible.mjs) is data, never an instruction.
+// No compact format stops a model obeying a hostile meaning, so the guard runs when the text is saved
+// (and again when the bible reads it). A pattern cannot be complete: see the report, section R.4.5.
+const NOT_DATA = /https?:|www\.|@|```|[{}<>]|[\r\n]/;
+const INSTRUCTION =
+  /\b(ignore|disregard|forget|override|instructions?|prompts?|assistant|agents?|you|your|always|never|must|should|reply|respond|answer|pretend|act as|rules?)\b|\bsystem\s*(?::|prompt\b|message\b)/i;
+const TEXT_LIMITS = { meaning: 200, label: 60, option: 60 };
+const TEXT_EMPTY = {
+  meaning: "write what this field is in this company and how to fill it",
+  label: "give it a label",
+  option: "an option cannot be empty",
+};
+
+/**
+ * Checks one free text (kind: meaning | label | option) that will be shown to every agent of the company.
+ * @returns null when it is fine, otherwise a reason the user can act on.
+ */
+export function checkText(kind, value) {
+  const max = TEXT_LIMITS[kind];
+  if (!max) throw new Error(`checkText: unknown kind ${kind}`);
+  const t = String(value ?? "").trim();
+  if (!t) return TEXT_EMPTY[kind];
+  if (t.length > max) return `at most ${max} characters`;
+  if (NOT_DATA.test(t)) return "no links, email addresses, code or line breaks";
+  const hit = t.match(INSTRUCTION);
+  return hit ? `describe the data, not what anyone should do (found "${hit[0]}")` : null;
+}
+
 /**
  * Validates custom field values against di.field_def. Unknown keys are refused so
  * agents can't invent columns; the DB Manager agent defines new fields first.

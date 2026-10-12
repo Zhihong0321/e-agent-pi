@@ -45,7 +45,7 @@ test('company onboarding, concurrent updates, isolation and recoverable reset', 
     assert.equal(String(draft.document.due_date).slice(0,10),'2026-10-01');
     await call('issue_document',{document:draft.document.id},a,'di-documents');
     await call('save_customer',{name:'Keep Me'},b,'di-records');
-    await call('define_custom_field',{entity:'customer',key:'site',label:'Site',type:'text'});
+    await call('define_custom_field',{entity:'customer',key:'site',label:'Site',type:'text',help:'Where the customer is located'});
     let preview=await previewCompanyReset(db,a);
     assert.equal(preview.counts.customer,1);
     assert.equal(preview.counts.company_member,1);

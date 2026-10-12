@@ -80,7 +80,8 @@ const fdeChangeset = z.object({
   categories: z.array(z.object({ key: z.string(), label: z.string() })).max(10).optional().describe("Extra expense categories, e.g. {key: mileage, label: Mileage}"),
   custom_fields: z.array(z.object({
     key: z.string(), label: z.string(), type: z.enum(["text", "number", "date", "boolean", "select"]),
-    options: z.array(z.string()).optional().describe("select only"), help: z.string().optional(),
+    options: z.array(z.string()).optional().describe("select only"),
+    help: z.string().describe("What this field is in this company and how to fill it. A plain description of the data, max 200 characters"),
   })).max(10).optional().describe("Extra values a claim can carry, e.g. {key: distance_km, label: Distance (km), type: number}"),
   rules: z.array(fdeRule).max(20).optional(),
   reports: z.array(fdeReport).max(10).optional().describe("Saved reports the Expenses Clerk can run, e.g. monthly mileage by employee"),
@@ -594,7 +595,7 @@ export const TOOLS = {
       type: z.enum(["text", "number", "date", "boolean", "select"]),
       options: z.array(z.string()).optional(),
       required_for: z.string().nullable().optional(),
-      help: z.string().optional(),
+      help: z.string().describe("What this field is in this company and how to fill it. A plain description of the data, max 200 characters. Required on every call, including a relabel"),
     },
     run: admin.defineCustomField,
   },
