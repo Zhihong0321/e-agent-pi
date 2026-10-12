@@ -371,3 +371,53 @@ export async function findCustomers(tx, { query = "", limit = 10 } = {}) {
 }
 
 export { resolveCustomerRef };
+
+// ---------------------------------------------------------------- own tables
+
+const recordView = (r) => ({ id: r.id, kind: r.kind, title: r.title, custom: r.custom ?? {}, created_at: r.created_at, updated_at: r.updated_at });
+
+async function requireOwnTable(tx, kind) {
+  const live = (await tx.query("SELECT entity FROM di.entity_def WHERE own AND deleted_at IS NULL ORDER BY entity")).rows.map((r) => r.entity);
+  if (!live.includes(kind)) {
+    throw new DiError(`${kind || "kind"} is not one of this company's own tables${live.length ? ` (${live.join(", ")})` : " (it has none yet)"}. Ask the DB Manager agent to define it first.`);
+  }
+}
+
+/** Creates or updates one row of an own table. Values are checked against the table's fields, like any custom field. */
+export async function saveRecord(tx, { kind, id, title, custom } = {}) {
+  await requireOwnTable(tx, kind);
+  if (id) {
+    const existing = (await tx.query("SELECT * FROM di.record WHERE id = $1 AND deleted_at IS NULL", [id])).rows[0];
+    if (!existing || existing.kind !== kind) throw new DiError(`${kind} ${id} not found (or archived)`);
+    const next = title === undefined ? existing.title : String(title ?? "").trim();
+    if (!next) throw new DiError("title cannot be empty");
+    const values = custom ? { ...existing.custom, ...(await validateCustom(tx, kind, custom, { creating: false })) } : existing.custom;
+    const { rows } = await tx.query("UPDATE di.record SET title = $1, custom = $2 WHERE id = $3 RETURNING *", [next, JSON.stringify(values), id]);
+    return { record: recordView(rows[0]), changed: ["updated"] };
+  }
+  const name = String(title ?? "").trim();
+  if (!name) throw new DiError(`A ${kind} record needs a title (the short text people will search by)`);
+  const values = await validateCustom(tx, kind, custom, { creating: true });
+  const { rows } = await tx.query("INSERT INTO di.record (kind, title, custom) VALUES ($1,$2,$3) RETURNING *", [kind, name, JSON.stringify(values)]);
+  return { record: recordView(rows[0]), changed: ["created"] };
+}
+
+const likeEscape = (s) => s.replace(/[\%_]/g, (c) => `\${c}`);
+
+/** Finds rows of an own table by words in the title or any text value, or by the id they link to. */
+export async function findRecords(tx, { kind, query, linked_to, limit } = {}) {
+  await requireOwnTable(tx, kind);
+  if (linked_to !== undefined && !isUuid(linked_to)) throw new DiError("linked_to must be the id of a record or customer");
+  const size = Math.min(Math.max(Math.floor(Number(limit)) || 20, 1), 50);
+  const like = query && String(query).trim() ? `%${likeEscape(String(query).trim().toLowerCase())}%` : null;
+  const { rows } = await tx.query(
+    `SELECT * FROM di.record
+      WHERE kind = $1 AND deleted_at IS NULL
+        AND ($2::text IS NULL OR lower(title) LIKE $2 ESCAPE '\'
+             OR EXISTS (SELECT 1 FROM jsonb_each_text(custom) e WHERE lower(e.value) LIKE $2 ESCAPE '\'))
+        AND ($3::text IS NULL OR EXISTS (SELECT 1 FROM jsonb_each_text(custom) e WHERE lower(e.value) = $3))
+      ORDER BY created_at DESC, id LIMIT $4`,
+    [kind, like, linked_to ? String(linked_to).toLowerCase() : null, size],
+  );
+  return { kind, records: rows.map(recordView), ...(rows.length === size ? { note: `Showing the first ${size}; narrow the search for more.` } : {}) };
+}

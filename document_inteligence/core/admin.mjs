@@ -59,12 +59,41 @@ const CUSTOM_ENTITIES = ["customer", "contact", "product", "package", "document"
 // Keys the system itself writes into a claim's custom bag (withdraw reason, demo marker).
 const RESERVED_KEYS = { expense_claim: ["withdrawn_reason", "withdrawn_by", "demo"] };
 
-export async function defineCustomField(tx, { entity, key, label, type, options = [], required_for = null, help = null }) {
-  if (!CUSTOM_ENTITIES.includes(entity)) throw new DiError(`entity must be one of ${CUSTOM_ENTITIES.join(", ")}`);
+const FIELD_TYPES = ["text", "number", "date", "boolean", "select", "link"];
+/** More own tables than this is a sign of a design problem, and it keeps the bible small. */
+export const MAX_OWN_TABLES = 30;
+const OWN_NAME = /^[a-z][a-z0-9_]{0,47}$/;
+
+const liveOwnTable = async (tx, name) =>
+  (await tx.query("SELECT * FROM di.entity_def WHERE entity = $1 AND own AND deleted_at IS NULL", [name])).rows[0] ?? null;
+const liveOwnNames = async (tx) =>
+  (await tx.query("SELECT entity FROM di.entity_def WHERE own AND deleted_at IS NULL ORDER BY entity")).rows.map((r) => r.entity);
+
+/** A platform entity or one of the company's own tables; the second is data, so it is looked up. */
+async function requireFieldEntity(tx, entity) {
+  if (CUSTOM_ENTITIES.includes(entity)) return { own: false };
+  if (await liveOwnTable(tx, entity)) return { own: true };
+  const own = await liveOwnNames(tx);
+  throw new DiError(
+    `entity must be one of ${CUSTOM_ENTITIES.join(", ")}${own.length ? `, or one of your own tables: ${own.join(", ")}` : ""}`,
+  );
+}
+
+export async function defineCustomField(tx, { entity, key, label, type, options = [], required_for = null, help = null, link_to = null }) {
+  const { own } = await requireFieldEntity(tx, entity);
   if (!/^[a-z][a-z0-9_]{0,47}$/.test(key || "")) throw new DiError("key must be snake_case, start with a letter, max 48 chars");
   if (RESERVED_KEYS[entity]?.includes(key)) throw new DiError(`${entity}.${key} is used by the system; pick another key`);
+  if (!FIELD_TYPES.includes(type)) throw new DiError(`type must be one of ${FIELD_TYPES.join(", ")}`);
   if (type === "select" && !options.length) throw new DiError("a select field needs options");
+  if (type === "link") {
+    const targets = ["customer", ...(await liveOwnNames(tx))];
+    if (!targets.includes(link_to)) throw new DiError(`a link field needs link_to: one of ${targets.join(", ")}`);
+  } else if (link_to) {
+    throw new DiError("link_to only applies to a link field");
+  }
+  link_to = type === "link" ? link_to : null;
   if (entity === "document_line" && required_for) throw new DiError("a line field cannot be required: leave required_for empty (it cannot block issuing)");
+  if (own && required_for && required_for !== "save") throw new DiError("on an own table, required_for is empty or save");
   // Every call, create or update: a re-define writes help too, so an update without one would wipe the meaning.
   const bad = (kind, value, what) => {
     const why = checkText(kind, value);
@@ -90,14 +119,15 @@ export async function defineCustomField(tx, { entity, key, label, type, options 
   }
   if (existing) {
     if (existing.type !== type) throw new DiError(`${entity}.${key} exists as ${existing.type}; changing type would break stored values. Pick a new key.`);
+    if ((existing.link_to ?? null) !== link_to) throw new DiError(`${entity}.${key} links to ${existing.link_to}; a new target is a new key.`);
     await tx.query(
       "UPDATE di.field_def SET label = $1, options = $2, required_for = $3, help = $4, deleted_at = NULL, deleted_by = NULL WHERE id = $5",
       [label, JSON.stringify(options), required_for, help, existing.id],
     );
   } else {
     await tx.query(
-      "INSERT INTO di.field_def (entity, key, label, type, options, required_for, help) VALUES ($1,$2,$3,$4,$5,$6,$7)",
-      [entity, key, label, type, JSON.stringify(options), required_for, help],
+      "INSERT INTO di.field_def (entity, key, label, type, options, required_for, help, link_to) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+      [entity, key, label, type, JSON.stringify(options), required_for, help, link_to],
     );
   }
   return describeSchema(tx, { entity });
@@ -108,12 +138,71 @@ export async function defineCustomField(tx, { entity, key, label, type, options 
  * defining the same key again brings them back (defineCustomField clears deleted_at).
  */
 export async function removeCustomField(tx, { entity, key }) {
-  if (!CUSTOM_ENTITIES.includes(entity)) throw new DiError(`entity must be one of ${CUSTOM_ENTITIES.join(", ")}`);
+  await requireFieldEntity(tx, entity);
   const { rows } = await tx.query(
     "UPDATE di.field_def SET deleted_at = now() WHERE entity = $1 AND key = $2 AND deleted_at IS NULL RETURNING id",
     [entity, key],
   );
   return { entity, key, removed: rows.length > 0 };
+}
+
+/**
+ * Creates (or brings back) one of the company's own tables: a record type with its own fields. Only data
+ * changes: a row in di.entity_def. Its rows live in the shared di.record, told apart by kind.
+ */
+export async function defineOwnTable(tx, { name, label, description }) {
+  if (!OWN_NAME.test(name || "")) throw new DiError("name must be snake_case, start with a letter, max 48 chars");
+  if (name === "record" || CUSTOM_ENTITIES.includes(name)) throw new DiError(`${name} is a platform table; pick another name`);
+  const inDi = (await tx.query("SELECT 1 FROM information_schema.tables WHERE table_schema = 'di' AND table_name = $1", [name])).rows;
+  if (inDi.length) throw new DiError(`${name} is a platform table; pick another name`);
+  for (const [kind, value, what] of [["label", label, "label"], ["meaning", description, "description (what this record type is in this company)"]]) {
+    const why = checkText(kind, value);
+    if (why) throw new DiError(`${name} ${what}: ${why}`);
+  }
+  const existing = (await tx.query("SELECT * FROM di.entity_def WHERE entity = $1", [name])).rows[0];
+  if (existing && !existing.own) throw new DiError(`${name} is a platform table; pick another name`);
+  const restored = Boolean(existing?.deleted_at);
+  if (!existing || restored) {
+    const live = (await tx.query("SELECT count(*)::int AS n FROM di.entity_def WHERE own AND deleted_at IS NULL")).rows[0].n;
+    if (live >= MAX_OWN_TABLES) throw new DiError(`This company already has ${MAX_OWN_TABLES} own tables`);
+  }
+  const [cleanLabel, cleanDescription] = [String(label).trim(), String(description).trim()];
+  if (existing) {
+    await tx.query(
+      "UPDATE di.entity_def SET label = $1, description = $2, deleted_at = NULL, deleted_by = NULL WHERE id = $3",
+      [cleanLabel, cleanDescription, existing.id],
+    );
+  } else {
+    await tx.query("INSERT INTO di.entity_def (entity, label, description, match_keys, own) VALUES ($1,$2,$3,'[]',true)", [
+      name, cleanLabel, cleanDescription,
+    ]);
+  }
+  const { text, version } = await schemaBible(tx, { full: true });
+  return { table: { name, label: cleanLabel, description: cleanDescription, ...(restored ? { restored: true } : {}) }, bible: text, version };
+}
+
+/**
+ * Takes an own table out of use. Its rows and fields stay (nothing is erased) and defining the name again
+ * brings them back; the bible stops showing it. Refused while a live field of another table links to it.
+ */
+export async function removeOwnTable(tx, { name }) {
+  const table = await liveOwnTable(tx, name);
+  if (!table) throw new DiError(`No own table ${name}`);
+  const links = (
+    await tx.query(
+      `SELECT f.entity, f.key FROM di.field_def f
+        WHERE f.deleted_at IS NULL AND f.link_to = $1 AND f.entity <> $1
+          AND (f.entity = ANY($2) OR EXISTS (SELECT 1 FROM di.entity_def e WHERE e.entity = f.entity AND e.own AND e.deleted_at IS NULL))
+        ORDER BY f.entity, f.key`,
+      [name, CUSTOM_ENTITIES],
+    )
+  ).rows;
+  if (links.length) {
+    throw new DiError(`Cannot remove ${name}: ${links.map((l) => `${l.entity}.${l.key}`).join(", ")} link to it. Remove those fields first.`);
+  }
+  await tx.query("UPDATE di.entity_def SET deleted_at = now() WHERE id = $1", [table.id]);
+  const { text, version } = await schemaBible(tx, { full: true });
+  return { removed: name, restorable: true, bible: text, version };
 }
 
 /**
@@ -238,6 +327,7 @@ const ARCHIVABLE = {
     if (!others) throw new DiError(`That is the last ${row.doc_type} template; create a replacement before archiving it`);
   },
   field_def: null,
+  record: null,
 };
 
 export function archiver(allowed) {
@@ -247,7 +337,7 @@ export function archiver(allowed) {
     const row = await requireRow(tx, entity, id, entity);
     await ARCHIVABLE[entity]?.(tx, row);
     await tx.query(`UPDATE di.${entity} SET deleted_at = now() WHERE id = $1`, [id]);
-    return { archived: { entity, id, name: row.name || row.label || row.key || row.code }, reason: reason ?? null, restorable: true };
+    return { archived: { entity, id, name: row.name || row.title || row.label || row.key || row.code }, reason: reason ?? null, restorable: true };
   };
 }
 

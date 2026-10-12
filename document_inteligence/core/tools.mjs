@@ -4,6 +4,7 @@ import { USER_TOOLS } from './user-tools.mjs';
 // advertise tools; the host reads it to authorise and run them. One source of truth,
 // so an agent can never be offered a tool the host would refuse, or vice versa.
 import { z } from "zod";
+import { DiError } from "./common.mjs";
 import * as records from "./records.mjs";
 import * as catalog from "./catalog.mjs";
 import * as documents from "./documents.mjs";
@@ -361,9 +362,28 @@ export const TOOLS = {
   get_package: { agents: ALL, description: "A package with its items and effective price.", input: { ref: z.string() }, run: catalog.getPackage },
   archive_record: {
     agents: [RECORDS],
-    description: "Soft-delete (archive) a customer, contact, product or package. Restorable; nothing is ever erased.",
-    input: { entity: z.enum(["customer", "contact", "product", "package"]), id: z.string(), reason: z.string().optional() },
-    run: admin.archiver(["customer", "contact", "product", "package"]),
+    description: "Soft-delete (archive) a customer, contact, product, package or a row of one of the company's own tables (entity record). Restorable; nothing is ever erased.",
+    input: { entity: z.enum(["customer", "contact", "product", "package", "record"]), id: z.string(), reason: z.string().optional() },
+    run: admin.archiver(["customer", "contact", "product", "package", "record"]),
+  },
+  save_record: {
+    agents: [RECORDS],
+    description:
+      "Create or update a row of one of the company's own tables (see the company schema). kind = the table's name; title = the short text people will search by (required when creating); custom = the table's own field values. A link field takes the id of the customer or row it points to. Updating merges custom into what is stored.",
+    input: {
+      kind: z.string().describe("The own table's name, e.g. patient"),
+      id: z.string().optional().describe("Give it to update that row"),
+      title: z.string().optional(),
+      custom,
+    },
+    run: records.saveRecord,
+  },
+  find_records: {
+    agents: ALL,
+    description:
+      "Search rows of one of the company's own tables. query = words in the title or any text value; linked_to = the id of a customer or row that a link field points to (e.g. every appointment of one patient). Up to 50.",
+    input: { kind: z.string(), query: z.string().optional(), linked_to: z.string().optional(), limit: z.number().optional() },
+    run: records.findRecords,
   },
 
   // -------------------------------------------------------------- Document Agent
@@ -605,17 +625,39 @@ export const TOOLS = {
   define_custom_field: {
     agents: [DB, ONBOARD],
     description:
-      "Add (or relabel) a company-specific field on customer/contact/product/package/document/payment. required_for: save | quotation.issue | invoice.issue makes it mandatory at that step. Type cannot change later.",
+      "Add (or relabel) a company-specific field on customer/contact/product/package/document/document_line/payment, or on one of the company's own tables. required_for: save | quotation.issue | invoice.issue makes it mandatory at that step (on an own table: save; never on a line). Type cannot change later. A link field holds the id of a customer or of a row of another own table.",
     input: {
-      entity: z.enum(["customer", "contact", "product", "package", "document", "document_line", "payment"]),
+      entity: z.string().describe("customer | contact | product | package | document | document_line | payment, or the name of one of the company's own tables"),
       key: z.string().describe("snake_case"),
       label: z.string(),
-      type: z.enum(["text", "number", "date", "boolean", "select"]),
+      type: z.enum(["text", "number", "date", "boolean", "select", "link"]),
       options: z.array(z.string()).optional(),
+      link_to: z.string().optional().describe("link only: customer, or the name of an own table"),
       required_for: z.string().nullable().optional(),
       help: z.string().describe("What this field is in this company and how to fill it. A plain description of the data, max 200 characters. Required on every call, including a relabel"),
     },
-    run: admin.defineCustomField,
+    run: (tx, args) => {
+      // Expense claim fields belong to the Forward Deploy Engineer, which calls the same function directly.
+      if (args.entity === "expense_claim") throw new DiError("Expense claim fields are changed by the Forward Deploy Engineer");
+      return admin.defineCustomField(tx, args);
+    },
+  },
+  define_own_table: {
+    agents: [DB, ONBOARD],
+    description:
+      "Create one of the company's own record types (a clinic's patient, a roofer's site_visit), or bring a removed one back. Then add its fields with define_custom_field (entity = the table's name). Rows are saved with save_record. Changes data only; nothing about the database structure.",
+    input: {
+      name: z.string().describe("snake_case, e.g. patient"),
+      label: z.string().describe("Max 60 characters, e.g. Patient"),
+      description: z.string().describe("What this record type is in this company. A plain description of the data, max 200 characters"),
+    },
+    run: admin.defineOwnTable,
+  },
+  remove_own_table: {
+    agents: [DB, ONBOARD],
+    description: "Take an own table out of use. Its rows and fields are kept and come back if the name is defined again. Refused while a field of another table links to it.",
+    input: { name: z.string() },
+    run: admin.removeOwnTable,
   },
   set_workflow_rules: {
     agents: [DB, ONBOARD],
@@ -672,7 +714,7 @@ export const TOOLS = {
   restore_record: {
     agents: [DB],
     description: "Bring back an archived record.",
-    input: { entity: z.enum(["customer", "contact", "product", "package", "template", "field_def"]), id: z.string() },
+    input: { entity: z.enum(["customer", "contact", "product", "package", "template", "field_def", "record"]), id: z.string() },
     run: admin.restoreRecord,
   },
 

@@ -178,6 +178,17 @@ export async function validateCustom(tx, entity, custom, { creating = false, def
       const options = Array.isArray(def.options) ? def.options : [];
       if (!options.includes(value)) throw new DiError(`${def.label} must be one of: ${options.join(", ")}`);
       out[key] = value;
+    } else if (def.type === "link") {
+      // The id of a live customer, or of a live record of the field's own table. Row-level security scopes the
+      // lookup to this company's transaction, so another company's id is simply not found.
+      const id = String(value).toLowerCase();
+      const found =
+        isUuid(id) &&
+        (def.link_to === "customer"
+          ? await tx.query("SELECT 1 FROM di.customer WHERE id = $1 AND deleted_at IS NULL", [id])
+          : await tx.query("SELECT 1 FROM di.record WHERE id = $1 AND kind = $2 AND deleted_at IS NULL", [id, def.link_to]));
+      if (!found || !found.rows.length) throw new DiError(`${def.label} must be the id of an existing ${def.link_to}`);
+      out[key] = id;
     } else {
       out[key] = String(value);
     }

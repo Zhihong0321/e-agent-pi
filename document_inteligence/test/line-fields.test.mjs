@@ -10,7 +10,6 @@ import { migrate, pgliteAdapter, withContext } from "../core/db.mjs";
 import { seedTenant } from "../core/seed.mjs";
 import { describeError, runTool } from "../core/actions.mjs";
 import { removeCustomField } from "../core/admin.mjs";
-import { TOOLS } from "../core/tools.mjs";
 
 const rejects = async (promise, pattern) => {
   try {
@@ -39,7 +38,6 @@ const panel = (custom, over = {}) => ({ description: "Solar panel 550W", quantit
 
 test("a line field is defined through the tool, stored on the line, and read back", async () => {
   const { dbm, docs, clerk } = await setup();
-  assert.deepEqual(TOOLS.define_custom_field.input.entity.options, ["customer", "contact", "product", "package", "document", "document_line", "payment"]);
   const defined = await dbm("define_custom_field", SERIAL);
   // The label "Serial no." is the key read as words, so the line leaves it out.
   assert.match(defined.bible, /^document_line \(platform\)\n {2}serial_no text "Panel or inverter serial number, one per line"$/m);

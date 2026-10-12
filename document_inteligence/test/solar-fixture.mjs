@@ -122,3 +122,13 @@ export async function seedSolar(db, name = "Alpha Solar", { lineFields = true } 
   });
   return tenant;
 }
+
+/** Defines the solar company's two own tables and their fields (site_visit first: installation links to it). */
+export async function seedOwnTables(db, tenant) {
+  await asTenant(db, tenant, async (tx) => {
+    for (const t of OWN_TABLES) {
+      await admin.defineOwnTable(tx, { name: t.name, label: t.label, description: t.description });
+      for (const { link, ...f } of t.fields) await admin.defineCustomField(tx, { entity: t.name, ...f, ...(link ? { link_to: link } : {}) });
+    }
+  });
+}

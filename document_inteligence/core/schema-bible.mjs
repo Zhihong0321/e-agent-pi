@@ -58,11 +58,13 @@ function tableLine(t, meanings) {
 /** Every live company table with its fields, in the fixed order: platform tables, then own tables A–Z. */
 async function loadTables(tx) {
   const defs = (
-    await tx.query("SELECT entity, key, label, type, options, required_for, help FROM di.field_def WHERE deleted_at IS NULL")
+    await tx.query("SELECT entity, key, label, type, options, required_for, help, link_to FROM di.field_def WHERE deleted_at IS NULL")
   ).rows;
+  const ownTables = (await tx.query("SELECT entity, description FROM di.entity_def WHERE own AND deleted_at IS NULL")).rows;
   const rules = (await tx.query("SELECT doc_type, transition, rules FROM di.workflow_def WHERE deleted_at IS NULL")).rows;
   const tables = [];
   for (const name of PLATFORM_TABLES) tables.push({ name, own: false, fields: [] });
+  for (const o of [...ownTables].sort((a, b) => byText(a.entity, b.entity))) tables.push({ name: o.entity, own: true, description: o.description, fields: [] });
   for (const d of defs) {
     const t = tables.find((x) => x.name === d.entity);
     if (t) t.fields.push({ ...d, required: new Set(d.required_for ? [d.required_for] : []), warn: new Set() });
@@ -77,7 +79,8 @@ async function loadTables(tx) {
     }
   }
   for (const t of tables) t.fields.sort((a, b) => byText(a.key, b.key));
-  return tables.filter((t) => t.fields.length);
+  // A platform table with no company fields is left out; an own table is the company's, so it shows even before it has fields.
+  return tables.filter((t) => t.own || t.fields.length);
 }
 
 function render(company, tables, { meanings, notShown }) {
