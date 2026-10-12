@@ -173,6 +173,7 @@ const lineInput = z.object({
   unit_price: z.number().optional().describe("Overrides the catalogue price"),
   discount_amount: z.number().optional().describe("Discount in currency for the whole line"),
   tax_code: z.string().optional().describe("e.g. SV8, ST10, NT"),
+  custom: z.record(z.string(), z.any()).optional().describe("This company's own line fields (see the company schema, document_line)"),
 });
 const customerFields = {
   kind: z.enum(["company", "individual"]).optional(),
@@ -434,6 +435,7 @@ export const TOOLS = {
             unit_price: z.number().optional(),
             discount_amount: z.number().optional(),
             tax_code: z.string().optional(),
+            custom: z.record(z.string(), z.any()).optional().describe("Line field values to set; others on the line stay"),
           }),
         )
         .optional(),
@@ -605,7 +607,7 @@ export const TOOLS = {
     description:
       "Add (or relabel) a company-specific field on customer/contact/product/package/document/payment. required_for: save | quotation.issue | invoice.issue makes it mandatory at that step. Type cannot change later.",
     input: {
-      entity: z.enum(["customer", "contact", "product", "package", "document", "payment"]),
+      entity: z.enum(["customer", "contact", "product", "package", "document", "document_line", "payment"]),
       key: z.string().describe("snake_case"),
       label: z.string(),
       type: z.enum(["text", "number", "date", "boolean", "select"]),

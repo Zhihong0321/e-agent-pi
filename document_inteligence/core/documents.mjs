@@ -61,18 +61,19 @@ async function buildLine(tx, input, sort) {
     subtotal,
     tax_amount: taxAmount,
     total: round2(subtotal + taxAmount),
+    custom: input.custom ? await validateCustom(tx, "document_line", input.custom) : {},
   };
 }
 
 async function insertLine(tx, documentId, line) {
   await tx.query(
     `INSERT INTO di.document_line (document_id, sort, kind, product_id, package_id, description, quantity, unit,
-       unit_price, discount_amount, tax_code, tax_rate, subtotal, tax_amount, total, meta)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+       unit_price, discount_amount, tax_code, tax_rate, subtotal, tax_amount, total, meta, custom)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
     [
       documentId, line.sort, line.kind, line.product_id ?? null, line.package_id ?? null, line.description,
       line.quantity, line.unit, line.unit_price, line.discount_amount, line.tax_code, line.tax_rate,
-      line.subtotal, line.tax_amount, line.total, JSON.stringify(line.meta || {}),
+      line.subtotal, line.tax_amount, line.total, JSON.stringify(line.meta || {}), JSON.stringify(line.custom || {}),
     ],
   );
 }
@@ -158,6 +159,7 @@ function summary(ctx, readiness) {
       tax_code: l.tax_code,
       tax_amount: num(l.tax_amount),
       total: num(l.total),
+      ...(l.custom && Object.keys(l.custom).length ? { custom: l.custom } : {}),
     })),
     subtotal: num(doc.subtotal),
     tax_total: num(doc.tax_total),
@@ -447,6 +449,8 @@ export async function updateDraft(tx, { document, set = {}, add_lines = [], upda
       },
       old.sort,
     );
+    // New values merge into the line's own; keys it already holds are not re-checked, so a field removed since does not block an edit.
+    line.custom = { ...old.custom, ...(change.custom ? await validateCustom(tx, "document_line", change.custom) : {}) };
     // Keep a draft line's identity so the database audit trigger captures an
     // actual before/after edit. Historical values remain in the append-only log.
     const fields = Object.keys(line);

@@ -55,7 +55,7 @@ export async function describeSchema(tx, { entity } = {}) {
 
 /** More than this per table is a sign of a design problem, and it keeps the bible small. */
 export const MAX_FIELDS_PER_ENTITY = 50;
-const CUSTOM_ENTITIES = ["customer", "contact", "product", "package", "document", "payment", "expense_claim"];
+const CUSTOM_ENTITIES = ["customer", "contact", "product", "package", "document", "document_line", "payment", "expense_claim"];
 // Keys the system itself writes into a claim's custom bag (withdraw reason, demo marker).
 const RESERVED_KEYS = { expense_claim: ["withdrawn_reason", "withdrawn_by", "demo"] };
 
@@ -64,6 +64,7 @@ export async function defineCustomField(tx, { entity, key, label, type, options 
   if (!/^[a-z][a-z0-9_]{0,47}$/.test(key || "")) throw new DiError("key must be snake_case, start with a letter, max 48 chars");
   if (RESERVED_KEYS[entity]?.includes(key)) throw new DiError(`${entity}.${key} is used by the system; pick another key`);
   if (type === "select" && !options.length) throw new DiError("a select field needs options");
+  if (entity === "document_line" && required_for) throw new DiError("a line field cannot be required: leave required_for empty (it cannot block issuing)");
   // Every call, create or update: a re-define writes help too, so an update without one would wipe the meaning.
   const bad = (kind, value, what) => {
     const why = checkText(kind, value);
