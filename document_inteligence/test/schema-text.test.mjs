@@ -106,7 +106,7 @@ test("defineCustomField stores the label and meaning trimmed", async () => {
     assert.equal(row.label, "Segment");
     assert.equal(row.help, "Market segment of the customer");
     const schema = await describeSchema(tx, { entity: "customer" });
-    assert.equal(schema.custom_fields.find((f) => f.key === "segment").help, "Market segment of the customer");
+    assert.ok(schema.bible.includes('\n  segment one of "Residential"|"C&I" "Market segment of the customer"'));
   });
 });
 

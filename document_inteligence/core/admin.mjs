@@ -4,31 +4,16 @@
 // never run DDL, so a tenant's customisation can't break the tables.
 import { DiError, checkText, defined, isUuid, requireRow, round2, setClause } from "./common.mjs";
 import { CHECKS, CLAIM_ONLY_CHECKS, validateRules } from "./workflows.mjs";
+import { schemaBible } from "./schema-bible.mjs";
 import { addressLines, checkTemplate, partyView, renderTemplate, sampleContext } from "./templates.mjs";
 
 import { getCompanyProfile } from './company.mjs';
 export { getCompanyProfile, updateCompanyProfile } from './company.mjs';
 
 export async function describeSchema(tx, { entity } = {}) {
-  const entities = (
+  const tables = (
     await tx.query(
       "SELECT entity, label, description, match_keys FROM di.entity_def WHERE deleted_at IS NULL AND ($1::text IS NULL OR entity = $1) ORDER BY entity",
-      [entity ?? null],
-    )
-  ).rows;
-  const columns = (
-    await tx.query(
-      `SELECT table_name AS entity, column_name, data_type, is_nullable = 'YES' AS nullable
-         FROM information_schema.columns
-        WHERE table_schema = 'di' AND ($1::text IS NULL OR table_name = $1)
-          AND column_name NOT IN ('tenant_id', 'created_at', 'created_by', 'updated_at', 'updated_by', 'deleted_at', 'deleted_by', 'custom')
-        ORDER BY table_name, ordinal_position`,
-      [entity ?? null],
-    )
-  ).rows;
-  const fields = (
-    await tx.query(
-      "SELECT entity, key, label, type, options, required_for, help FROM di.field_def WHERE deleted_at IS NULL AND ($1::text IS NULL OR entity = $1) ORDER BY entity, key",
       [entity ?? null],
     )
   ).rows;
@@ -38,12 +23,28 @@ export async function describeSchema(tx, { entity } = {}) {
   const sequences = (
     await tx.query("SELECT key, prefix, padding, next_number, yearly_reset, current_year FROM di.document_sequence WHERE deleted_at IS NULL ORDER BY key")
   ).rows;
-  const byTable = {};
-  for (const c of columns) (byTable[c.entity] ??= []).push(`${c.column_name} ${c.data_type}${c.nullable ? "" : " not null"}`);
+  // The company's own fields and tables are the bible, never sliced. The platform's standard columns are the
+  // same for every company, so they come only when one table is asked for.
+  const { text, version } = await schemaBible(tx, { full: true });
+  let standard;
+  if (entity) {
+    const columns = (
+      await tx.query(
+        `SELECT table_name AS entity, column_name, data_type, is_nullable = 'YES' AS nullable
+           FROM information_schema.columns
+          WHERE table_schema = 'di' AND table_name = $1
+            AND column_name NOT IN ('tenant_id', 'created_at', 'created_by', 'updated_at', 'updated_by', 'deleted_at', 'deleted_by', 'custom')
+          ORDER BY ordinal_position`,
+        [entity],
+      )
+    ).rows;
+    standard = { [entity]: columns.map((c) => `${c.column_name} ${c.data_type}${c.nullable ? "" : " not null"}`) };
+  }
   return {
-    entities,
-    standard_columns: byTable,
-    custom_fields: fields,
+    bible: text,
+    version,
+    tables,
+    ...(standard ? { standard_columns: standard } : {}),
     workflows: entity ? undefined : workflows,
     numbering: entity ? undefined : sequences,
     available_checks: Object.keys(CHECKS).filter((name) => !CLAIM_ONLY_CHECKS.includes(name)),

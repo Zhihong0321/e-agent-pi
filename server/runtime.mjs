@@ -118,6 +118,28 @@ export function mcpServerConfig(server) {
 }
 
 /**
+ * The company's schema bible for this agent: its slice of the company's own fields and tables, generated
+ * by code (document_inteligence/core/schema-bible.mjs). "" for agents with no company-record tools, for an
+ * empty slice, and when the read fails: the bible must never stop an agent from starting.
+ */
+async function companySchemaBible(agent, companyId) {
+  if (!companyId || !agent?.id) return "";
+  try {
+    const { BIBLE_TABLES } = await import("../document_inteligence/core/tools.mjs");
+    if (!Object.hasOwn(BIBLE_TABLES, agent.id)) return "";
+    const { tenantContext } = await import("../document_inteligence/host.mjs");
+    const { withContext } = await import("../document_inteligence/core/db.mjs");
+    const { schemaBible } = await import("../document_inteligence/core/schema-bible.mjs");
+    const ctx = tenantContext(companyId);
+    const { text } = await withContext(ctx.db, { ...ctx, agent: agent.id }, (tx) => schemaBible(tx, { agent: agent.id }));
+    return text;
+  } catch (error) {
+    console.error(`schema bible for ${agent.id} (company ${companyId}) not added: ${error?.message || error}`);
+    return "";
+  }
+}
+
+/**
  * Assembles ROLE.md's text: role prompt, then reply-style/imagen/host/proposal extras, then
  * the context pack (which itself ends with the one model-varying line, the vision note) —
  * the long agent- and skill-stable prefix comes first so provider prompt caches hit on it
@@ -132,6 +154,8 @@ export async function buildRoleText(agent, { modelId, companyId = null } = {}) {
   if (agent.id === "website" || agent.slug === "website") extras.push(hostSystemPrompt());
   if (isProposalAgent(agent)) extras.push(proposalSystemPrompt(agent));
   if (isWhatsappAgent(agent)) extras.push(await whatsappNotesSystemPrompt());
+  // Above the SOP: the company's schema, so the SOP reads against it. Platform-only text stays first for the prompt cache.
+  extras.push(await companySchemaBible(agent, companyId));
   const sop = await getAgentSop(agent.id, companyId).catch(() => null);
   if (sop?.content) {
     extras.push(`## Mandatory agent SOP\n\nRead and follow this SOP for every task. It is the agent-specific operating procedure.\n\n${sop.content}`);

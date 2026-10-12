@@ -35,6 +35,22 @@ export const AGENTS = {
   "di-fde": { name: "Forward Deploy Engineer", short: "FD" },
 };
 
+// Which tables of the company schema bible each agent's prompt carries (core/schema-bible.mjs): the tables
+// its tools touch. "all" = every table; "@own" = every table the company created itself; [] = no section.
+export const BIBLE_TABLES = {
+  "di-db": "all",
+  "di-onboarding": "all",
+  "di-records": ["customer", "contact", "@own"],
+  "di-documents": ["customer", "contact", "document", "document_line", "product", "package"],
+  "di-templates": ["customer", "document", "document_line"],
+  "di-forms": ["customer"],
+  "di-intake": ["customer", "contact"],
+  "di-calendar": ["customer", "document", "payment"],
+  "di-expenses": ["expense_claim"],
+  "di-fde": ["expense_claim"],
+  "di-procurement": [],
+};
+
 // The read-only company tools every agent gets. The calendar and the expense clerk need none of the CRM ones.
 const ALL = Object.keys(AGENTS).filter((id) => !["di-calendar", "di-expenses", "di-procurement", "di-fde"].includes(id));
 const RECORDS = "di-records";
@@ -234,7 +250,7 @@ export const TOOLS = {
   get_company_profile: { agents: ALL, description: "Your own company's details that head every document.", input: {}, run: admin.getCompanyProfile },
   describe_schema: {
     agents: ALL,
-    description: "What each record type means, its standard and custom fields, readiness rules and numbering. Read this before assuming a field exists.",
+    description: "This company's schema bible (its own fields and tables, types, allowed values and when each is required), readiness rules and numbering. Read this before assuming a field exists. Give an entity to also get that table's standard columns.",
     input: { entity: z.string().optional() },
     run: admin.describeSchema,
   },
