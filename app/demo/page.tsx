@@ -27,6 +27,17 @@ const insights: { area: Area; label: string; icon: string }[] = [
   { area: "usage", label: "Usage", icon: "grid" },
   { area: "activity", label: "Activity", icon: "pulse" },
 ];
+// The rail shows one button per group; a group's pages sit behind it as tabs in the top bar.
+type Group = "home" | "operations" | "research" | "company" | "insights";
+const groups: { id: Group; label: string; icon: string; areas: Area[]; links?: { label: string; href: string; agent: string }[] }[] = [
+  { id: "home", label: "Home", icon: "home", areas: ["home"] },
+  { id: "operations", label: "Operations", icon: "briefcase", areas: ["expenses", "procurement", "calendar", "schedules"] },
+  { id: "research", label: "Research", icon: "book", areas: ["research"], links: [{ label: "Media Kit", href: "/media-kit", agent: "media-ai" }] },
+  { id: "company", label: "Company", icon: "building", areas: ["onboarding", "people"] },
+  { id: "insights", label: "Insights", icon: "pulse", areas: ["logs", "usage", "activity"] },
+];
+const tabLabels: Partial<Record<Area, string>> = { onboarding: "Profile", people: "People", calendar: "Calendar", research: "Library" };
+const groupOf = (area: Area) => groups.find(group => group.areas.includes(area)) || groups[0];
 // A section shows only when its agent is assigned to this account (/api/agents lists only assigned agents).
 const areaAgent: Partial<Record<Area, string>> = {
   onboarding: "di-onboarding", calendar: "di-calendar", schedules: "scheduler", expenses: "di-expenses",
@@ -112,6 +123,7 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
     cart: <><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h3l2.6 12.2a1 1 0 0 0 1 .8h9.4a1 1 0 0 0 1-.8L21 8H6"/></>,
     book: <><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v17H6.5A2.5 2.5 0 0 0 4 21.5v-17Z"/><path d="M4 21.5A2.5 2.5 0 0 0 6.5 24H20v-5"/><path d="M9 7h7"/></>,
     pulse: <path d="M3 12h4l3-8 4 16 3-8h4"/>,
+    briefcase: <><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18"/></>,
   };
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
@@ -403,6 +415,18 @@ function DemoWorkspace({ user, initialArea = "home", onLogout }: { user: DemoUse
     url.searchParams.set("area", area);
     window.history.replaceState(null, "", url);
   }, [area]);
+  // A group button reopens the page last used in that group.
+  const lastUsedKey = `di-demo-last-page-${user.id}`;
+  const [lastUsed, setLastUsed] = useState<Partial<Record<Group, Area>>>(() => {
+    try { return JSON.parse(window.localStorage.getItem(lastUsedKey) || "{}"); } catch { return {}; }
+  });
+  useEffect(() => {
+    setLastUsed((old) => {
+      const next = { ...old, [groupOf(area).id]: area };
+      window.localStorage.setItem(lastUsedKey, JSON.stringify(next));
+      return next;
+    });
+  }, [area, lastUsedKey]);
   const [profile, setProfile] = useState<Profile>(initialProfile);
   const [companyMembers, setCompanyMembers] = useState<CompanyMember[]>([]);
   const [memberDraft, setMemberDraft] = useState<MemberDraft>(emptyMember);
@@ -520,7 +544,22 @@ function DemoWorkspace({ user, initialArea = "home", onLogout }: { user: DemoUse
     try { await onLogout(); }
     catch (error) { setNotice(error instanceof Error ? error.message : "Could not sign out"); setLoggingOut(false); }
   };
-  const navButton = ({ area: target, label, icon }: { area: Area; label: string; icon: string }) => <button key={target} className={area === target ? "active" : ""} aria-current={area === target ? "page" : undefined} aria-label={label} title={label} onClick={() => setArea(target)}><Icon name={icon}/><span>{label}</span></button>;
+  const currentGroup = groupOf(area);
+  const groupAreas = (group: typeof groups[number]) => group.areas.filter(target => areaOffered(target, studio.agents));
+  const groupLinks = (group: typeof groups[number]) => (group.links || []).filter(link => hasAgent(studio.agents, link.agent));
+  const openGroup = (group: typeof groups[number]) => {
+    const offered = groupAreas(group);
+    const remembered = lastUsed[group.id];
+    if (remembered && offered.includes(remembered)) setArea(remembered);
+    else if (offered.length) setArea(offered[0]);
+    else if (groupLinks(group).length) window.location.assign(groupLinks(group)[0].href);
+  };
+  const groupButton = (group: typeof groups[number]) => {
+    const active = currentGroup.id === group.id;
+    return <button key={group.id} className={active ? "active" : ""} aria-current={active ? "page" : undefined} aria-label={group.label} title={group.label} onClick={() => openGroup(group)}><Icon name={group.icon}/><span>{group.label}</span></button>;
+  };
+  const pageTabs = [...groupAreas(currentGroup).map(target => ({ key: target, label: tabLabels[target] || [...navigation, ...insights].find(item => item.area === target)!.label, active: area === target, open: () => setArea(target) })),
+    ...groupLinks(currentGroup).map(link => ({ key: link.href, label: link.label, active: false, open: () => window.location.assign(link.href) }))];
 
   return <div className={`di-demo${area === "home" ? " demo-home" : ""}`}>
     <aside className="demo-rail">
@@ -528,16 +567,14 @@ function DemoWorkspace({ user, initialArea = "home", onLogout }: { user: DemoUse
       <RailClock/>
       <label className="demo-sidebar-search"><Icon name="search" size={15}/><input aria-label="Search chats" value={chatSearch} onChange={event => setChatSearch(event.target.value)} placeholder="Search chats"/></label>
       <div className="demo-navigation">
-        <nav aria-label="Workspace sections">{navigation.filter(item => areaOffered(item.area, studio.agents)).map(navButton)}{hasAgent(studio.agents, "media-ai") && <button aria-label="Media Kit" title="Media Kit" onClick={() => window.location.assign("/media-kit")}><Icon name="spark"/><span>Media Kit</span></button>}</nav>
-        <div className="demo-rail-label demo-insights-label">INSIGHTS</div>
-        <nav className="demo-insights-nav" aria-label="Workspace insights">{insights.map(navButton)}</nav>
+        <nav aria-label="Workspace sections">{groups.filter(group => groupAreas(group).length || groupLinks(group).length).map(groupButton)}</nav>
       </div>
       <div className="demo-recent-chats"><div className="demo-rail-label">RECENT CHATS</div>{recentChats.map(session => <button key={session.id} className={studio.sessionId === session.id ? "active" : ""} disabled={studio.loading} onClick={() => { setArea("home"); studio.openSession(session.id); }}>{session.title || "Chat session"}</button>)}{!recentChats.length && <p>{chatSearch ? "No matching chats" : "Your conversations will appear here."}</p>}</div>
       <div className="demo-rail-bottom"><span className="demo-profile-avatar">{displayName.slice(0, 1).toUpperCase()}</span><div title={`${displayName} · ${user.role}`}><strong>{displayName}</strong><small>{user.role} · Your workspace</small></div><button aria-label="Sign out" title="Sign out" disabled={loggingOut} onClick={() => void logout()}><Icon name="logout" size={15}/></button></div>
     </aside>
 
     <main className="demo-main">
-      <header className="demo-topbar"><div className="demo-breadcrumb">{area === "home" ? <span className="demo-assistant-pill"><Icon name="spark" size={18}/><strong>e Assistant</strong><span className={`demo-connection${studio.loading ? " working" : ""}`} role="status">{studio.loading ? "Working…" : ready && studio.agents.length ? "Connected" : "Connecting…"}</span></span> : <><span className="demo-workspace-name">Your workspace</span><span>/</span><strong>{sectionTitle}</strong></>}</div><div className="demo-top-actions"><button className="demo-new-chat" disabled={studio.loading || !studio.agents.length} onClick={() => void newChat()}><Icon name="plus" size={14}/> New chat</button><span className="demo-top-avatar" title={displayName}>{displayName.slice(0, 1).toUpperCase()}</span><button className="demo-mobile-logout" aria-label="Sign out" disabled={loggingOut} onClick={() => void logout()}><Icon name="logout" size={16}/></button></div></header>
+      <header className="demo-topbar">{pageTabs.length > 1 ? <nav className="demo-group-tabs" aria-label={`${currentGroup.label} pages`}>{pageTabs.map(tab => <button key={tab.key} className={tab.active ? "active" : ""} aria-current={tab.active ? "page" : undefined} onClick={tab.open}>{tab.label}</button>)}</nav> : <div className="demo-breadcrumb">{area === "home" ? <span className="demo-assistant-pill"><Icon name="spark" size={18}/><strong>e Assistant</strong><span className={`demo-connection${studio.loading ? " working" : ""}`} role="status">{studio.loading ? "Working…" : ready && studio.agents.length ? "Connected" : "Connecting…"}</span></span> : <><span className="demo-workspace-name">Your workspace</span><span>/</span><strong>{sectionTitle}</strong></>}</div>}<div className="demo-top-actions"><button className="demo-new-chat" disabled={studio.loading || !studio.agents.length} onClick={() => void newChat()}><Icon name="plus" size={14}/> New chat</button><span className="demo-top-avatar" title={displayName}>{displayName.slice(0, 1).toUpperCase()}</span><button className="demo-mobile-logout" aria-label="Sign out" disabled={loggingOut} onClick={() => void logout()}><Icon name="logout" size={16}/></button></div></header>
       <div className="demo-content">
         {area !== "home" && <div className="demo-heading"><div><div className="demo-eyebrow">{area === "schedules" ? "SCHEDULED WORK" : logArea ? "WORKSPACE INSIGHTS" : area === "onboarding" ? "STEP 01 · GETTING STARTED" : area === "people" ? "STEP 02 · KNOW YOUR TEAM" : area === "calendar" ? "LIVE COMPANY SIGNALS" : area === "expenses" ? "RECEIPTS TO REPORT" : area === "procurement" ? "BUY WITH CONFIDENCE" : area === "research" ? "COMPANY INTELLIGENCE" : "STEP 03 · EXPLORE CAPABILITIES"}</div><h1>{area === "schedules" ? "Scheduled work" : logArea ? logHeadings[logArea].title : area === "onboarding" ? "Set up your workspace" : area === "people" ? "Meet your company people" : area === "calendar" ? "One calendar for every date" : area === "expenses" ? "Claims, grouped by cut-off" : area === "procurement" ? "Quotes, orders, deliveries, bills" : area === "research" ? "Company research library" : "Make work happen"}</h1><p>{area === "schedules" ? "Manage AI jobs, reminders, and cron schedules. Check next runs and execution history." : logArea ? logHeadings[logArea].description : area === "onboarding" ? "Tell the assistant about your business and watch your profile take shape." : area === "people" ? "Share a key contact, their position and department, so future work reaches the right person." : area === "calendar" ? "The Calendar AI reads your company records and keeps the important dates together." : area === "expenses" ? "File a receipt, and the Expenses Clerk groups every claim into the month’s submission and prepares the report." : area === "procurement" ? "Record what suppliers send, draft purchase orders, log deliveries, and check every invoice against the order before paying." : area === "research" ? "Evidence-backed company dossiers, web verification, and published intelligence reports." : "Create records and see the invoice database update instantly."}</p></div></div>}
         {logArea ? <ObservabilityPanel area={logArea} isAdmin={user.role === "admin"}/> : area === "schedules" ? <SchedulesPanel user={user}/> : area === "calendar" ? <CalendarPanel/> : area === "expenses" ? <ExpensesPanel user={user} onNotice={setNotice}/> : area === "procurement" ? <ProcurementPanel user={user} onNotice={setNotice}/> : area === "research" ? <ResearchPanel user={user} onNotice={setNotice}/> : <div className={`demo-layout${area === "home" ? " demo-home-layout" : ""}`}>

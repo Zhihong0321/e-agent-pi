@@ -308,3 +308,13 @@
 .demo-composer-note { margin-top: 6px; }
 .demo-home .demo-composer-wrap::before { inset: -12px; }
 @media (prefers-reduced-motion: reduce) { .di-demo button { transition: none; } .demo-card-head.is-working .demo-agent-identity { animation: none; } }
+/* Pages inside the active rail group, shown as tabs in the top bar. */
+.demo-group-tabs { display: flex; gap: 3px; min-width: 0; overflow-x: auto; padding: 3px; border: 1px solid #eeedf3; border-radius: 11px; background: #fff; box-shadow: 0 3px 8px #30263f06; scrollbar-width: none; }
+.demo-group-tabs button { flex: none; padding: 7px 13px; border: 0; border-radius: 8px; background: transparent; color: #797985; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.demo-group-tabs button:hover { color: #5349a7; background: #f0edf9; }
+.demo-group-tabs button.active { color: #6553d5; background: #eeebfb; font-weight: 600; }
+@media (max-width: 820px) {
+  .demo-topbar:has(.demo-group-tabs) { flex-wrap: wrap; }
+  .demo-topbar .demo-group-tabs { order: 2; flex-basis: 100%; }
+  .demo-topbar:has(.demo-group-tabs) .demo-top-actions { margin-left: auto; }
+}
