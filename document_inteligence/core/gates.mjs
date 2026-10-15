@@ -36,9 +36,18 @@ function walk(node, facts) {
   const keys = Object.keys(node);
   if (keys.length !== 1) throw new DiError(`A condition holds exactly one operator, got ${keys.length}: ${JSON.stringify(node)}`);
   const [op] = keys;
-  if (!OPS.includes(op)) throw new DiError(`Operator "${op}" is not allowed. Use only: ${OPS.join(", ")}`);
+  if (!OPS.includes(op)) {
+    const lost = op === "" ? ". A < or > was lost on the way: write them as \\u003c and \\u003e inside the JSON text" : "";
+    throw new DiError(`Operator "${op}" is not allowed. Use only: ${OPS.join(", ")}${lost}`);
+  }
   const arg = node[op];
-  if (op !== "var") return walk(arg, facts);
+  if (op !== "var") {
+    // A list is only ever the values "in" looks through; anywhere else it would read as a condition that is always true.
+    return (Array.isArray(arg) ? arg : [arg]).forEach((a) => {
+      if (!Array.isArray(a)) return walk(a, facts);
+      if (op !== "in" || a.some((x) => x !== null && typeof x === "object")) throw new DiError(`A list is not a condition: ${JSON.stringify(a)}`);
+    });
+  }
   const path = Array.isArray(arg) ? arg[0] : arg;
   if (typeof path !== "string" || !Object.hasOwn(facts, path)) {
     throw new DiError(`Unknown fact "${path}". Use only: ${Object.keys(facts).join(", ")}`);
