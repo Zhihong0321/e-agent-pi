@@ -1,4 +1,5 @@
 import { requestUser, loginUser, logoutUser, sessionCookie as userSessionCookie, procurementIdentityPrompt, fdeIdentityPrompt } from './users.mjs';
+import { USER_FROM, USER_SELECT } from './user-service.mjs';
 import { authenticateExpenseSession, withExpenseSession } from './expense-session.mjs';
 import { createHash, randomBytes } from "node:crypto";
 import { createReadStream } from "node:fs";
