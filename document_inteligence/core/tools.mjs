@@ -1032,11 +1032,11 @@ export const TOOLS = {
       rules: z.array(z.object({
         id: z.string().describe("lower-case letters, digits and dashes, e.g. sales-max-8"),
         on: z.boolean().optional().describe("false = skipped; default true"),
-        when: z.any().describe("JSONLogic condition"),
+        when: z.record(z.string(), z.any()).describe("JSONLogic condition as a JSON object, not a string, e.g. {\"and\":[{\"==\":[{\"var\":\"requester.category\"},\"Sales\"]},{\">\":[{\"var\":\"document.discount_pct\"},8]}]}"),
         then: z.enum(["allow", "block"]),
         message: z.string().optional().describe("Required for block, max 200 characters"),
       })),
-      examples: z.array(z.object({ facts: z.any(), expect: z.enum(["allow", "block"]) })),
+      examples: z.array(z.object({ facts: z.record(z.string(), z.any()), expect: z.enum(["allow", "block"]) })),
     },
     run: gates.setGates,
   },
