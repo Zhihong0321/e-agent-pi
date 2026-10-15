@@ -8,6 +8,7 @@ import { matchCustomer, resolveCustomerRef } from "./records.mjs";
 import { evaluate, rulesFromFieldDefs } from "./workflows.mjs";
 import { buildContext, renderTemplate, snapshotCustomer, snapshotIssuer } from "./templates.mjs";
 import { assertSubmissionOpen, markSubmissionProcessed, submissionOrder } from "./forms.mjs";
+import { enforceDocumentGates } from "./gates.mjs";
 
 const DOC_TYPES = ["quotation", "invoice", "credit_note"];
 const num = (v) => (v == null ? v : Number(v));
@@ -43,6 +44,7 @@ async function buildLine(tx, input, sort) {
   } else if (!input.description) {
     throw new DiError("A line needs a product, a package, or a description with a unit_price");
   }
+  if (line.unit_price !== undefined) line.meta.list_price = line.unit_price;
   if (input.unit_price !== undefined) line.unit_price = Number(input.unit_price);
   if (line.unit_price === undefined) throw new DiError(`Line "${line.description}" needs a unit_price`);
   const tax = await taxRate(tx, input.tax_code || line.tax_code || (await defaultTaxCode(tx)));
@@ -88,6 +90,7 @@ async function recalc(tx, documentId) {
       WHERE d.id = $1`,
     [documentId],
   );
+  await enforceDocumentGates(tx, documentId, "save");
 }
 
 // ---------------------------------------------------------------- loading
@@ -475,6 +478,7 @@ export async function cancelDraft(tx, { document }) {
 
 export async function issueDocument(tx, { document }) {
   const doc = await requireDraft(tx, document);
+  await enforceDocumentGates(tx, doc.id, "issue");
   const ctx = await loadContext(tx, doc);
   const readiness = evaluate(await rulesFor(tx, doc.doc_type), ctx);
   if (!readiness.ready) {

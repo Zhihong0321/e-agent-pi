@@ -16,6 +16,7 @@ import { crmDashboard } from "./dashboard.mjs";
 import { readCalendar } from "./calendar.mjs";
 import * as expenses from "./expenses.mjs";
 import * as fde from "./fde.mjs";
+import * as gates from "./gates.mjs";
 import * as reports from "./reports.mjs";
 import { claimsToCsv } from "./expense-report.mjs";
 import * as procurement from "./procurement.mjs";
@@ -1014,6 +1015,30 @@ export const TOOLS = {
       fingerprint: z.string().optional().describe("Omit for a preview. To apply: the fingerprint of the preview the admin approved"),
     },
     run: fde.revert,
+  },
+  get_gates: {
+    agents: [FDE],
+    description:
+      "Read first, before any set_gates. The company's gate list for a record type, in order (first matching enabled rule decides; no match allows), plus the facts menu: the only facts a rule may read, each with its meaning.",
+    input: { record_type: z.enum(["document"]) },
+    run: gates.getGates,
+  },
+  set_gates: {
+    agents: [FDE], superadminOnly: true,
+    description:
+      "Set the company's logical gates: yes/no rules checked by code every time a quotation or invoice is saved or issued. Applies directly; the Superadmin's message is the approval and the examples are the check. Send the WHOLE list in its final order (first matching enabled rule decides; no match allows); to change, add, remove or sort a rule, read get_gates and send the list again; an empty list clears all gates. A rule is { id, when, then: allow|block, message }; when is JSONLogic using only and, or, !, ==, !=, <, <=, >, >=, in, var, and var may only name facts from get_gates. When the owner says a Superadmin has no limit, put an allow for requester.access == \"superadmin\" at the top. Give at least one example that must be blocked and one that must be allowed, each { facts, expect }; a wrong example refuses the whole call. The message speaks to the person blocked and says what is needed, e.g. who can approve.",
+    input: {
+      record_type: z.enum(["document"]),
+      rules: z.array(z.object({
+        id: z.string().describe("lower-case letters, digits and dashes, e.g. sales-max-8"),
+        on: z.boolean().optional().describe("false = skipped; default true"),
+        when: z.any().describe("JSONLogic condition"),
+        then: z.enum(["allow", "block"]),
+        message: z.string().optional().describe("Required for block, max 200 characters"),
+      })),
+      examples: z.array(z.object({ facts: z.any(), expect: z.enum(["allow", "block"]) })),
+    },
+    run: gates.setGates,
   },
   // -------------------------------------------------------------- Procurement Clerk
   // Same rules as the Expenses Clerk: tools act for the signed-in user; admin-only steps are

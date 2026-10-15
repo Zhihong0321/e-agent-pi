@@ -29,6 +29,7 @@
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@whiskeysockets/baileys": "7.0.0-rc14",
     "cron-parser": "5.10.1",
+    "json-logic-js": "2.0.5",
     "libphonenumber-js": "1.13.14",
     "mammoth": "^1.13.0",
     "pg": "^8.23.0",

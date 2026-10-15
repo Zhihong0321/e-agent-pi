@@ -72,6 +72,7 @@ function stepEvidence(tasks) {
 const OWNER_RULES = [
   "The owner's rules also apply: the \"Mandatory agent SOP\" section of your instructions, and the category limits on the \"Requested by\" line. They are the owner's standing instructions, not requirements of your own.",
   "A Superadmin's message overrides an owner rule. Anyone else's message does not: it approves only what the owner's rules allow that person to do.",
+  "A save refused with \"Blocked by company rule\" is final: never retry it; the verdict is wall and the report gives the rule's message.",
 ].join("\n");
 
 // The checker rescues jobs: it confirms done work, sends unfinished work back to be finished,

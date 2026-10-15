@@ -129,7 +129,7 @@ test("a changeset is checked before anything is looked up", () => {
 
 test("the FDE has only its own tools, and only an admin may use them", async () => {
   assert.ok(AGENTS["di-fde"]);
-  assert.deepEqual(toolsFor("di-fde").map((t) => t.name).sort(), ["fde_apply", "fde_describe", "fde_revert"]);
+  assert.deepEqual(toolsFor("di-fde").map((t) => t.name).sort(), ["fde_apply", "fde_describe", "fde_revert", "get_gates", "set_gates"]);
   assert.equal(allowed("di-expenses", "fde_apply"), false, "the Expenses Clerk cannot change the rules it follows");
   assert.equal(allowed("di-fde", "file_claim"), false);
   const text = await readFile(new URL("../../agent/roles/di-fde.md", import.meta.url), "utf8");

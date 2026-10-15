@@ -89,8 +89,8 @@
       "key": "company_rules",
       "owner": "di-fde",
       "title": "Company rules",
-      "routing": "Standing rules the owner sets for how the system works from now on: expense claim checks, and instructions an agent must always follow (its SOP).",
-      "examples": ["From now on, every quotation must show a validity of 14 days."]
+      "routing": "Standing rules the owner sets for how the system works from now on: expense claim checks, yes/no limits on quotations and invoices, such as discount caps per category (logical gates), and instructions an agent must always follow (its SOP).",
+      "examples": ["From now on, every quotation must show a validity of 14 days.", "Sales can give at most 8% discount on quotations."]
     },
     {
       "key": "schedules",

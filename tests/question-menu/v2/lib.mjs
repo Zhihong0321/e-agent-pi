@@ -39,7 +39,8 @@ export function makeClient(who, log = () => {}) {
     who,
     get: (p) => call('GET', p),
     post: (p, b, o) => call('POST', p, b ?? {}, o),
-    login: (u, p) => call('POST', '/api/demo/login', { username: u, password: p }),
+    // Sign-in names the company by its code (since dde74bc).
+    login: (u, p, company) => call('POST', '/api/demo/login', { company, username: u, password: p }),
     cookie: () => cookie,
     setCookie: (c) => { cookie = c; },
   };
