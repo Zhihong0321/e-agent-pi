@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkerPrompt, cleanupCutoff, compileJobTasks, jobAnswer, parseCheckVerdict, parseJobReply, validateJobTasks } from "./job-policy.mjs";
+import { checkerPrompt, cleanupCutoff, compileJobTasks, fixPrompt, jobAnswer, parseCheckVerdict, parseJobReply, validateJobTasks } from "./job-policy.mjs";
 
 const task = (id, dependsOn = []) => ({ id, agent: "worker", prompt: "Do the work", dependsOn });
 
@@ -30,13 +30,29 @@ test("the checker's verdict is read from its reply, and anything else is no verd
   assert.equal(parseCheckVerdict("Looks fine to me"), null);
 });
 
-test("the checker judges by the user's message only, and is told to help, not to criticize", () => {
+test("the checker judges by the user's message and the owner's rules, and is told to help, not to criticize", () => {
   const prompt = checkerPrompt("Save our address from the website", [{ kind: "worker", title: "Onboarding", status: "done", result: "Saved 3 of 4 fields." }]);
   assert.match(prompt, /"""\nSave our address from the website\n"""/);
   assert.match(prompt, /- Onboarding: Saved 3 of 4 fields\./);
   assert.match(prompt, /help this request get done, not to criticize it/);
-  assert.match(prompt, /Do not add requirements of your own/);
+  assert.match(prompt, /Add no requirements beyond the message and the owner's rules/);
   assert.match(prompt, /nothing shows it is missing, the verdict is done/);
+  // The owner's rules are part of the standard: the agent's SOP and the requester's category limits.
+  assert.match(prompt, /"Mandatory agent SOP" section of your instructions/);
+  assert.match(prompt, /category limits on the "Requested by" line/);
+  // Only a Superadmin's word overrides them; anyone else's message is not approval past them.
+  assert.match(prompt, /A Superadmin's message overrides an owner rule\. Anyone else's message does not/);
+  assert.match(prompt, /Say wall when .*breaks an owner rule the requester cannot override/);
+  assert.match(prompt, /name the rule, the record that breaks it, and what is needed/);
+  assert.doesNotMatch(prompt, /only standard|it is their approval for what it asks/);
+});
+
+test("a fix run works within the owner's rules; the user's message is not approval past them", () => {
+  const prompt = fixPrompt("Give Acme 15% off", "The 15% discount is not applied yet.", [{ kind: "worker", title: "Quote", status: "done", result: "Drafted QT-2026-001." }]);
+  assert.match(prompt, /"Mandatory agent SOP" section of your instructions/);
+  assert.match(prompt, /Finish what the user asked for, within the owner's rules/);
+  assert.match(prompt, /gives it only for what the owner's rules allow them/);
+  assert.doesNotMatch(prompt, /they have given it/);
 });
 
 test("the chat answer is the agents' own words plus the checker's verdict, never a status label", () => {

@@ -36,7 +36,7 @@ export function compileJobTasks(tasks) {
 // ---------------------------------------------------------------- the job check
 //
 // Workers never grade their own work. Every planned job ends with a checker run that compares
-// the records with the user's own message, and only its verdict says whether the job is done.
+// the records with the job's standard (below), and only its verdict says whether the job is done.
 
 /** Fix rounds after the first check; then the last verdict stands. */
 export const MAX_FIX_ROUNDS = 3;
@@ -65,22 +65,31 @@ function stepEvidence(tasks) {
     .map(t => `- ${t.title}: ${clip(stepAnswer(t), 1500)}`).join("\n");
 }
 
-// The checker rescues jobs: it confirms done work and sends unfinished work back to be
-// finished. It never blocks a job and never judges by anything but the user's message.
-// Its report is the job's final answer in the chat; the agents' own answers are progress.
+// The job's standard has three parts: the user's message (what was asked), the owner's rules
+// (the agent's SOP, already in its instructions, and the requester's category limits on the
+// "Requested by" line), and who asked (a Superadmin's word overrides an owner rule; anyone
+// else's does not). The checker and a fix run both work to this standard.
+const OWNER_RULES = [
+  "The owner's rules also apply: the \"Mandatory agent SOP\" section of your instructions, and the category limits on the \"Requested by\" line. They are the owner's standing instructions, not requirements of your own.",
+  "A Superadmin's message overrides an owner rule. Anyone else's message does not: it approves only what the owner's rules allow that person to do.",
+].join("\n");
+
+// The checker rescues jobs: it confirms done work, sends unfinished work back to be finished,
+// and stops at work that breaks an owner rule. Its report is the job's final answer in the
+// chat; the agents' own answers are progress.
 export function checkerPrompt(request, tasks) {
   return [
     "A job just finished. Your write tools are off. Use your read tools to look at the actual records.",
-    `The user's message. This is the only standard:\n"""\n${clip(request, 4000)}\n"""`,
+    `The user's message (what was asked):\n"""\n${clip(request, 4000)}\n"""`,
+    OWNER_RULES,
     `What the agents said they did (claims, not proof):\n${stepEvidence(tasks)}`,
     [
       "Your job is to help this request get done, not to criticize it.",
-      "Look only at what the user's message asked for. Ignore wording, format, extra detail, and anything the user did not ask for. Do not add requirements of your own.",
-      "If the records show what the user asked for, or nothing shows it is missing, the verdict is done.",
-      "Say fix only when something the user clearly asked for is missing or wrong in the records and an agent can still do it.",
-      "Say wall only when it cannot be finished without something only the user can give (a file, a fact, a login).",
-      "The user sent this message, so it is their approval for what it asks.",
-      "Then write the report. It is the only answer the user sees for this job. Write it to the user, in plain words, from the records you read: for a question, the answer; for a change, what is now saved, with record numbers, amounts and links copied exactly; for fix, exactly what is still missing; for wall, what is needed from the user. Do not mention checking, agents or steps.",
+      "Judge what the user's message asked for, against the owner's rules. Ignore wording, format, extra detail, and anything the user did not ask for. Add no requirements beyond the message and the owner's rules.",
+      "If the records show what the user asked for within the owner's rules, or nothing shows it is missing, the verdict is done.",
+      "Say fix only when something the user clearly asked for is missing or wrong in the records and an agent can still do it within the owner's rules.",
+      "Say wall when it cannot be finished without something only the user can give (a file, a fact, a login), or when what was asked or saved breaks an owner rule the requester cannot override.",
+      "Then write the report. It is the only answer the user sees for this job. Write it to the user, in plain words, from the records you read: for a question, the answer; for a change, what is now saved, with record numbers, amounts and links copied exactly; for fix, exactly what is still missing; for wall, what is needed from the user. For a broken owner rule, name the rule, the record that breaks it, and what is needed: a Superadmin's approval, or a request within the rule. Do not mention checking, agents or steps.",
       'Reply with only JSON: {"verdict":"done|fix|wall","report":"the report for the user"}',
     ].join("\n"),
   ].join("\n\n");
@@ -89,9 +98,10 @@ export function checkerPrompt(request, tasks) {
 export function fixPrompt(request, missing, tasks) {
   return [
     `The user's message:\n"""\n${clip(request, 4000)}\n"""`,
+    OWNER_RULES,
     `A checker compared the records with this message and found this is not done yet:\n${clip(missing, 2000)}`,
     `What was done before (claims, not proof):\n${stepEvidence(tasks)}`,
-    "Finish what the user asked for. Look at what already exists first and do not create anything twice. The user sent this message, so where a tool asks for the user's approval, they have given it.",
+    "Finish what the user asked for, within the owner's rules. Look at what already exists first and do not create anything twice. Where a tool asks for the user's approval, their message gives it only for what the owner's rules allow them.",
     "When you finish, say in plain words what you did.",
   ].join("\n\n");
 }
