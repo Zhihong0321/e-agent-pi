@@ -342,7 +342,7 @@ registerOperation({
 
 registerOperation({
   id: 'submit_plan',
-  description: 'Validate and atomically queue a complete specialist plan. The host runs ready specialists, passes each step\'s answer to the next, and checks a job that changed data against the user\'s message; do not poll between tasks (task_status shows progress).',
+  description: 'Validate and atomically queue a complete specialist plan. The host runs ready specialists, passes each step\'s answer to the next, and ends every job with a check against the user\'s message; do not poll between tasks (task_status shows progress).',
   effect: 'control',
   timeoutMs: 60_000,
   inputSchema: z.object({

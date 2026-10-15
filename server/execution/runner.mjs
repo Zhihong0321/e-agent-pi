@@ -3,11 +3,11 @@
 // never model behavior. Public surface:
 //   acceptChatRun / runAgent / dispatchTool(bridge) / finalizeRun
 //   cancelRun, stopTaskHandler, submitPlanHandler, tick, drainExecution
-// A run never grades itself: its result is its own answer. When a job changed data, a
-// checker run compares the records with the user's message (nextJobStep).
+// A run never grades itself: its result is its own answer. Every planned job ends with a
+// checker run that compares the records with the user's message (nextJobStep).
 import { createHash, randomBytes } from 'node:crypto';
 import { getPool } from '../db.mjs';
-import { changesData, execError, newId, stableStringify } from './contracts.mjs';
+import { execError, newId, stableStringify } from './contracts.mjs';
 import * as store from './store.mjs';
 import * as dispatch from './dispatch.mjs';
 import { DEFAULT_LIMITS, EXECUTOR_VERSION } from './profiles.mjs';
@@ -16,7 +16,6 @@ import { recordApiUsage } from '../usage.mjs';
 import { agentWorkspace } from '../paths.mjs';
 import { userAssignedAgent } from '../agent-access.mjs';
 import { piGate, resetPiGateForTests } from '../queue/pi-gate.mjs';
-import { getOperation } from './registry.mjs';
 import { checkerPrompt, fixPrompt, MAX_FIX_ROUNDS, parseCheckVerdict } from '../job-policy.mjs';
 
 const config = {
@@ -253,7 +252,7 @@ export async function runAgent({ kind, runRef, profile, user, ctx, input, images
     parentRunId: ctx.parentRunId, generation, expectedGeneration: generation,
     manifestRevision, manifestToolIds: manifest.manifest.toolIds, deadlineAt,
   });
-  // A checker only inspects: its business writes are refused by the dispatcher.
+  // A checker only inspects: the dispatcher lets it call plain reads and nothing else.
   if (runKindOpts.taskKind === 'checker') dispatch.disableAttemptWrites(attemptId);
 
   const state = {
@@ -342,7 +341,6 @@ export async function runAgent({ kind, runRef, profile, user, ctx, input, images
       outcome = { status: 'done', summary: answer?.text || '', outputs: {} };
       if (runKindOpts.taskKind === 'checker') outcome.check = parseCheckVerdict(answer?.text);
     }
-    if (kind === 'task') outcome.wrote = await attemptChangedData(attemptId, ctx.profileId);
     await finalizeRun(runRef, kind, outcome, { attemptId, generation, sessionId: ctx.sessionId });
     return outcome;
   } catch (error) {
@@ -355,7 +353,6 @@ export async function runAgent({ kind, runRef, profile, user, ctx, input, images
       const failed = status === 'cancelled'
         ? { status, summary: 'Cancelled; committed effects are retained', outputs: {} }
         : { status, error: execErr };
-      if (kind === 'task') failed.wrote = await attemptChangedData(attemptId, ctx.profileId).catch(() => false);
       await finalizeRun(runRef, kind, failed, { attemptId, generation, sessionId: ctx.sessionId });
     } catch (finalizeError) {
       config.services.logEvent?.('error', `finalize ${runRef} failed: ${finalizeError?.message || finalizeError}`);
@@ -393,14 +390,6 @@ async function isStopRequested(runRef, kind) {
   }
 }
 
-// ---------------------------------------------------------------- did the run change data
-
-/** True when the attempt called a tool that changes data, whether or not the call succeeded. */
-async function attemptChangedData(attemptId, profileId) {
-  const calls = await store.listToolCalls(attemptId);
-  return calls.some((call) => changesData(getOperation(call.operationId, profileId), call.operationId));
-}
-
 // ---------------------------------------------------------------- finalization
 
 /**
@@ -415,7 +404,7 @@ export async function finalizeRun(runRef, kind, outcome, { attemptId, generation
     status,
     outcome: summary || outcome.outputs
       ? { summary, outputs: outcome.outputs || {}, reasonCode: error?.code || null,
-        ...(kind === 'task' ? { wrote: Boolean(outcome.wrote), check: outcome.check ?? null } : {}) }
+        ...(kind === 'task' ? { check: outcome.check ?? null } : {}) }
       : null,
     error,
   };
@@ -478,29 +467,29 @@ export async function finalizeRun(runRef, kind, outcome, { attemptId, generation
 
 /**
  * Runs when a step finishes, in the same transaction. Once nothing in the job is pending or
- * running: a job that changed data gets one checker run against the user's own message; a
- * "fix" verdict queues one fix run and then a fresh check, up to MAX_FIX_ROUNDS. A read-only
- * job, a "done" or "wall" verdict, or a cancelled step ends the job.
+ * running, the last step is always a check: a checker run compares the records with the
+ * user's own message. A "fix" verdict queues one fix run and then a fresh check, up to
+ * MAX_FIX_ROUNDS. A "done" or "wall" verdict, or a cancelled step, ends the job.
  */
 async function nextJobStep(client, planId) {
+  // Two steps of one job can finish at the same moment. Each waits here for the other to
+  // commit, so the second one sees the first as finished and the check is added once.
+  await client.query(`SELECT id FROM orchestrator_plans WHERE id=$1 FOR UPDATE`, [planId]);
   const { rows: tasks } = await client.query(
     `SELECT id, agent_id, title, kind, status, result, result_data, error, sort_order, profile_snapshot
      FROM orchestrator_tasks WHERE plan_id=$1 ORDER BY sort_order`, [planId]);
   if (!tasks.length || tasks.some((t) => ['pending', 'running'].includes(t.status) || t.status === 'cancelled')) return;
   const checks = tasks.filter((t) => t.kind === 'checker');
-  const writers = tasks.filter((t) => t.kind !== 'checker' && t.result_data?.wrote);
   const last = tasks.at(-1);
+  // Checks and fixes run as the agent of the job's last working step: it owns the records.
+  const from = tasks.findLast((t) => t.kind !== 'checker');
   let next;
   if (last.kind === 'checker') {
     const check = last.result_data?.check;
     if (check?.verdict !== 'fix' || checks.length > MAX_FIX_ROUNDS) return;
-    next = { kind: 'fix', title: 'Fix', from: writers.at(-1) || tasks.findLast((t) => t.kind !== 'checker'),
-      prompt: (request) => fixPrompt(request, check.findings, tasks) };
+    next = { kind: 'fix', title: 'Fix', from, prompt: (request) => fixPrompt(request, check.findings, tasks) };
   } else {
-    // The first check needs a write; after a fix run there is always a fresh check.
-    if (!checks.length && !writers.length) return;
-    next = { kind: 'checker', title: 'Check', from: writers.at(-1) || last,
-      prompt: (request) => checkerPrompt(request, tasks) };
+    next = { kind: 'checker', title: 'Check', from, prompt: (request) => checkerPrompt(request, tasks) };
   }
   const plan = (await client.query(`SELECT title, manifest FROM orchestrator_plans WHERE id=$1`, [planId])).rows[0];
   const request = plan?.manifest?.request || plan?.title || '';
@@ -508,7 +497,7 @@ async function nextJobStep(client, planId) {
   await client.query(
     `INSERT INTO orchestrator_tasks
      (id, plan_id, agent_id, title, prompt, depends_on, status, sort_order, kind, acceptance_criteria, executor_version, profile_snapshot, output_contract)
-     VALUES ($1,$2,$3,$4,$5,'{}','pending',$6,$7,'[]'::jsonb,'v2',$8::jsonb,'generic')`,
+     VALUES ($1,$2,$3,$4,$5,'{}','pending',$6,$7,'[]'::jsonb,'v2',$8::jsonb,'generic') ON CONFLICT (id) DO NOTHING`,
     [`${planId}-${next.kind}-${round}`, planId, next.from.agent_id, `${next.title}: ${plan?.title || 'job'}`, next.prompt(request),
       Number(last.sort_order) + 1, next.kind, JSON.stringify(next.from.profile_snapshot || {})]);
   // The new step gets its own running time inside the job's budget.

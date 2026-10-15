@@ -6,7 +6,7 @@
 import { createHash } from 'node:crypto';
 import { getPool } from '../db.mjs';
 import {
-  BridgeCallSchema, changesData, digestArgs, execError, newId, redactArgs,
+  BridgeCallSchema, digestArgs, execError, newId, readsOnly, redactArgs,
 } from './contracts.mjs';
 import { getOperation } from './registry.mjs';
 import * as store from './store.mjs';
@@ -108,8 +108,8 @@ export async function dispatchTool(binding, rawBody, services = {}) {
     if (binding.manifestToolIds && !binding.manifestToolIds.includes(toolId)) {
       return toolError(callId, execError('PERMISSION_DENIED', `${toolId} is not available to this profile`));
     }
-    if (binding.writesDisabled && changesData(op, toolId)) {
-      return toolError(callId, execError('PERMISSION_DENIED', 'Business writes are disabled for this attempt (a checker only looks)'));
+    if (binding.writesDisabled && !readsOnly(op, toolId)) {
+      return toolError(callId, execError('PERMISSION_DENIED', 'A checker only looks: this tool is not a plain read'));
     }
 
     // Fresh authorization inputs for every call (spec §7.4), including

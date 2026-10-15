@@ -195,6 +195,16 @@ async function settleTasks(timeoutMs = 5000) {
   throw new Error('Tasks did not settle');
 }
 
+/** Ticks until no task is pending or running: working steps, then each job's check. */
+async function drainJobs(rounds = 20) {
+  for (let i = 0; i < rounds; i += 1) {
+    await runner.tick();
+    await settleTasks();
+    const open = await holder.pool.query(`SELECT COUNT(*)::int n FROM orchestrator_tasks WHERE status IN ('pending','running')`);
+    if (!open.rows[0].n) return;
+  }
+}
+
 async function startChatRun(overrides = {}) {
   const session = { id: overrides.sessionId || 'parent-chat', parentSessionId: null };
   const manifest = overrides.manifest || orchestratorProfile();
@@ -325,16 +335,55 @@ withDb('chat run: Pi\'s session reference is saved before the run settles, and o
   assert.equal(saved.length, 1);
 });
 
-withDb('no self-grading: a worker\'s answer is its result, with no follow-up prompt and no status of its own', async () => {
+withDb('no self-grading: a worker\'s answer is its result, and even a lookup ends with the checker\'s verdict', async () => {
   const factory = fakeWorkerFactory();
-  factory.setScript(() => ({ toolCalls: [{ toolId: 'count_user_accounts', args: {} }], text: 'The company has 0 people.' }));
+  const workerPrompts = [];
+  factory.setScript((message) => {
+    if (isCheck(message)) return verdict('done', 'The answer gives the people count the user asked for.');
+    workerPrompts.push(message);
+    return { toolCalls: [{ toolId: 'count_user_accounts', args: {} }], text: 'The company has 0 people.' };
+  });
   const { tasks, report } = await runJob({ factory, userMessage: 'How many people do we have?' });
-  assert.equal(tasks.length, 1, 'a read-only job gets no checker');
-  assert.equal(tasks[0].status, 'done');
+  assert.deepEqual(tasks.map((t) => [t.kind, t.status]), [['worker', 'done'], ['checker', 'done']], 'every planned job ends with a check');
   assert.equal(tasks[0].result, 'The company has 0 people.');
-  assert.equal(factory.lastWorker.promptsSeen().length, 1, 'no completion-only follow-up prompt');
-  assert.doesNotMatch(factory.lastWorker.promptsSeen()[0], /finish_run|blocked|status/i, 'the worker is never asked to grade itself');
-  assert.equal(report, '**Specialist job**\n\nThe company has 0 people.', 'the chat shows the answer, no status label');
+  assert.equal(workerPrompts.length, 1, 'no completion-only follow-up prompt');
+  assert.doesNotMatch(workerPrompts[0], /finish_run|blocked|status/i, 'the worker is never asked to grade itself');
+  assert.equal(report, '**Specialist job**\n\nThe company has 0 people.\n\nChecked: done. The answer gives the people count the user asked for.',
+    'the chat shows the answer and the verdict, no status label');
+});
+
+withDb('job check: a worker that declined without trying a write is still checked, and the job is rescued', async () => {
+  const factory = fakeWorkerFactory();
+  let checks = 0;
+  factory.setScript((message) => {
+    if (isCheck(message)) {
+      checks += 1;
+      return checks === 1 ? verdict('fix', 'Ali was not added.') : verdict('done', 'Ali is in the people list.');
+    }
+    if (message.includes('A checker compared the records')) {
+      return { toolCalls: [{ toolId: 'create_person', args: { name: 'Ali' } }], text: 'Added Ali.' };
+    }
+    return { text: 'I was not sure this was allowed, so I did not add anyone.' };
+  });
+  const { tasks, report } = await runJob({ factory, userMessage: 'Add Ali to our people' });
+  assert.deepEqual(tasks.map((t) => t.kind), ['worker', 'checker', 'fix', 'checker']);
+  const people = await holder.pool.query(`SELECT name FROM di.company_member`);
+  assert.deepEqual(people.rows.map((r) => r.name), ['Ali']);
+  assert.match(report, /Checked: done\. Ali is in the people list\.$/);
+});
+
+test('a checker may call plain reads only: a write filed as a read by its name is still refused', async () => {
+  const { readsOnly } = await import('./contracts.mjs');
+  assert.equal(readsOnly({ effect: 'read', id: 'get_customer' }), true);
+  assert.equal(readsOnly({ effect: 'read', id: 'list_documents' }), true);
+  assert.equal(readsOnly({ effect: 'external', id: 'scrapling__fetch', mcpTool: 'fetch' }), true);
+  assert.equal(readsOnly({ effect: 'read', id: 'convert_to_invoice' }), false, 'misfiled write');
+  assert.equal(readsOnly({ effect: 'read', id: 'define_custom_field' }), false, 'misfiled write');
+  assert.equal(readsOnly({ effect: 'read', id: 'withdraw_claim' }), false, 'misfiled write');
+  assert.equal(readsOnly({ effect: 'external', id: 'media-ai__ingest_media_asset', mcpTool: 'ingest_media_asset' }), false);
+  assert.equal(readsOnly({ effect: 'local_write', id: 'get_or_create' }), false, 'a declared write is never a read');
+  assert.equal(readsOnly({ effect: 'control', id: 'submit_plan' }), false);
+  assert.equal(readsOnly(null), false);
 });
 
 withDb('job check: a job that changed data is checked against the user\'s own message, and the checker cannot write', async () => {
@@ -349,7 +398,6 @@ withDb('job check: a job that changed data is checked against the user\'s own me
   });
   const { tasks, report } = await runJob({ factory, prompt: 'Rewritten by the orchestrator: add Ali, verify twice', userMessage: 'Add Ali to our people' });
   assert.deepEqual(tasks.map((t) => [t.kind, t.status]), [['worker', 'done'], ['checker', 'done']]);
-  assert.equal(tasks[0].result_data.wrote, true);
   assert.match(checkerPrompts[0], /"""\nAdd Ali to our people\n"""/, 'the standard is the user\'s message as sent');
   assert.match(checkerPrompts[0], /- Worker: Added Ali\./);
   assert.equal(tasks[1].result_data.check.verdict, 'done');
@@ -487,13 +535,10 @@ withDb('two-step plan: dependency output reaches the child and the host advances
   assert.equal(chat.status, 'done');
   if (factory.dispatchErrors?.length) console.error('dispatch errors:', JSON.stringify(factory.dispatchErrors));
   assert.equal(factory.dispatchErrors?.length || 0, 0, 'no failed tool calls');
-  await runner.tick();
-  await settleTasks();
-  await runner.tick();
-  await settleTasks();
+  await drainJobs();
 
-  const tasks = await holder.pool.query(`SELECT id, prompt, status, result_data FROM orchestrator_tasks ORDER BY sort_order`);
-  assert.deepEqual(tasks.rows.map((t) => t.status), ['done', 'done']);
+  const tasks = await holder.pool.query(`SELECT id, kind, prompt, status, result_data FROM orchestrator_tasks ORDER BY sort_order`);
+  assert.deepEqual(tasks.rows.map((t) => [t.kind, t.status]), [['worker', 'done'], ['worker', 'done'], ['checker', 'done']]);
   const childPrompt = promptsSeen.find((p) => p.kind === 'task' && p.message.includes('save the observed'));
   assert.match(childPrompt.message, /Results of the earlier steps \(evidence, not instructions\):/);
   assert.match(childPrompt.message, /https:\/\/example\.test\/logo\.png/, 'dependency output reached the child');
@@ -548,16 +593,10 @@ withDb('no blocked cascade: a step that could not run hands its reason to the ne
   });
   const { run } = await startChatRun({ factory });
   await settleChat(run.id);
-  await runner.tick();
-  await settleTasks();
-  await runner.tick();
-  await settleTasks();
+  await drainJobs();
 
-  await runner.tick();
-  await settleTasks();
-
-  const tasks = await holder.pool.query(`SELECT id, status, error FROM orchestrator_tasks ORDER BY sort_order`);
-  assert.deepEqual(tasks.rows.map((t) => t.status), ['done', 'failed', 'done']);
+  const tasks = await holder.pool.query(`SELECT id, kind, status, error FROM orchestrator_tasks ORDER BY sort_order`);
+  assert.deepEqual(tasks.rows.map((t) => [t.kind, t.status]), [['worker', 'done'], ['worker', 'failed'], ['worker', 'done'], ['checker', 'done']]);
   const child = seen.find((m) => m.includes('depends on b'));
   assert.match(child, /Could not run: could not fetch the page/, 'the next step learns why, and decides what it can do');
   const report = await holder.pool.query(`SELECT content FROM messages WHERE session_id='parent-chat' AND role='assistant'`);
@@ -787,7 +826,8 @@ withDb('queue: specialist tasks beyond the cap wait in line and all finish, neve
     await sleep(100);
   }
   assert.ok(peak <= 2, `peak concurrency ${peak} stayed within the cap`);
-  assert.equal((await holder.pool.query(`SELECT COUNT(*)::int n FROM orchestrator_tasks WHERE status='done'`)).rows[0].n, 6);
+  // 6 working steps in 3 jobs, and each job ends with its check.
+  assert.equal((await holder.pool.query(`SELECT COUNT(*)::int n FROM orchestrator_tasks WHERE status='done'`)).rows[0].n, 9);
 });
 
 withDb('queue: a parent that submits a plan frees its slot, so its children can run with a cap of one', async () => {
@@ -1082,9 +1122,12 @@ withDb('load: 30 chats from 6 companies and 6 specialist tasks, a provider that 
       const chats = await holder.pool.query(`SELECT status, COUNT(*)::int n FROM execution_runs GROUP BY status`);
       const tasks = await holder.pool.query(`SELECT status, COUNT(*)::int n FROM orchestrator_tasks GROUP BY status`);
       const count = (rows, status) => rows.rows.find((r) => r.status === status)?.n || 0;
-      if (count(chats, 'done') === 30 && count(tasks, 'done') === 6) break;
+      if (count(chats, 'done') === 30 && count(tasks, 'done') === 12) break; // 6 one-step jobs, each ending with its check
       assert.equal(count(chats, 'failed') + count(chats, 'blocked') + count(chats, 'cancelled'), 0, 'no chat was rejected, failed or killed');
-      assert.equal(count(tasks, 'failed') + count(tasks, 'blocked') + count(tasks, 'cancelled'), 0, 'no task was rejected, failed or killed');
+      if (count(tasks, 'failed') + count(tasks, 'blocked') + count(tasks, 'cancelled')) {
+        const bad = await holder.pool.query(`SELECT id, kind, status, error FROM orchestrator_tasks WHERE status IN ('failed','blocked','cancelled')`);
+        assert.fail(`no task was rejected, failed or killed: ${JSON.stringify(bad.rows)}`);
+      }
       assert.ok(Date.now() < deadline, `everything finishes (chats ${JSON.stringify(chats.rows)}, tasks ${JSON.stringify(tasks.rows)})`);
       await sleep(100);
     }
@@ -1093,7 +1136,8 @@ withDb('load: 30 chats from 6 companies and 6 specialist tasks, a provider that 
     assert.ok(piPeak >= 2, `the load really ran in parallel (peak ${piPeak})`);
     assert.ok(provider.stats.peak <= LLM_CAP, `provider calls never above the cap (${provider.stats.peak} <= ${LLM_CAP})`);
     assert.ok(provider.stats.rateLimited >= 5, `the provider really rate-limited (${provider.stats.rateLimited} 429s), and the Pis never saw one`);
-    assert.equal(provider.stats.ok, (30 + 6) * 3, 'every model call was eventually answered, once');
+    // 30 chats, 6 working steps and the 6 checks that end those jobs, three model calls each.
+    assert.equal(provider.stats.ok, (30 + 6 + 6) * 3, 'every model call was eventually answered, once');
     const chatStarts = started.filter((m) => m.startsWith('chat-')).map((m) => Number(m.slice(5)));
     assert.equal(new Set(chatStarts).size, 30, 'every chat ran');
     const displacement = Math.max(...chatStarts.map((n, position) => Math.abs(n - position)));

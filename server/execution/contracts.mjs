@@ -9,15 +9,14 @@ export const RUN_STATUSES = ['queued', 'running', 'done', 'blocked', 'failed', '
 export const ERROR_KINDS = ['input', 'permission', 'availability', 'execution', 'uncertain'];
 export const EFFECT_STATES = ['none', 'committed', 'partial', 'unknown'];
 
-// External (MCP) tool names that change something outside. Everything else an MCP server
-// offers (fetch, search, list, get, status, navigate) only reads.
-const EXTERNAL_WRITE = /(save|create|update|delete|remove|send|post|publish|upload|ingest|start|submit|issue|record|set_|add_|cancel|approve|reject|import|write|edit)/i;
+// Tools a checker may call: only names that plainly read. Everything else is refused while a
+// checker runs, including a write the registry files as a read because of its name.
+const READ_NAME = /^(get|list|find|describe|search|count|read|preview|match|lookup|show|explain|compare|check|fetch|bulk_get|stealthy_fetch|calendar_events|procurement_overview|crm_dashboard|form_field_types|template_variables|fde_describe|schedule_(list|history|preview)|browser_(navigate|snapshot|tabs|take_screenshot|auth_status))/;
 
-/** Does calling this operation change data? Decides whether a job gets checked and what a checker may not call. */
-export function changesData(op, operationId = op?.id) {
-  if (!op) return false;
-  if (op.effect === 'local_write') return true;
-  return op.effect === 'external' && EXTERNAL_WRITE.test(op.mcpTool || operationId || '');
+/** May a checker call this operation? A plain read by kind and by name, or nothing. */
+export function readsOnly(op, operationId = op?.id) {
+  if (!op || !['read', 'external'].includes(op.effect)) return false;
+  return READ_NAME.test(op.mcpTool || operationId || '');
 }
 export const RUN_KINDS = ['chat', 'task'];
 

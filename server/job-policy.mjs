@@ -35,8 +35,8 @@ export function compileJobTasks(tasks) {
 
 // ---------------------------------------------------------------- the job check
 //
-// Workers never grade their own work. When a job changed data, one checker run compares the
-// records with the user's own message, and only its verdict says whether the job is done.
+// Workers never grade their own work. Every planned job ends with a checker run that compares
+// the records with the user's own message, and only its verdict says whether the job is done.
 
 /** Fix rounds after the first check; then the last verdict stands. */
 export const MAX_FIX_ROUNDS = 3;
@@ -116,7 +116,7 @@ function checkLine(check, checks) {
   return "";
 }
 
-/** The job's answer in chat: each step's own words, then the checker's verdict if the job was checked. */
+/** The job's answer in chat: each step's own words, then the checker's verdict. */
 export function jobAnswer(tasks) {
   const steps = tasks.filter(t => t.kind !== "checker");
   const checks = tasks.filter(t => t.kind === "checker" && t.status !== "cancelled");
