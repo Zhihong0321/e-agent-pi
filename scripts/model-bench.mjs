@@ -7,7 +7,7 @@
  * exactly needs tuning?" Every test case mirrors what the whatsapp-assistant agent
  * actually sends in production (server/reply-style.mjs + server/agent-profiles.mjs
  * NON_CODING_SYSTEM_PROMPT + agent/roles/whatsapp.md, and the 7 MCP tool schemas
- * from sidecar/tools.go), and reuses Pi's own strict-mode tool-schema convention
+ * from server/whatsapp-tools.mjs), and reuses Pi's own strict-mode tool-schema convention
  * (node_modules/@earendil-works/.../pi-ai/dist/api/openai-completions.js).
  *
  * Swapping models: everything after "CONFIG" is model-agnostic. To test another
@@ -72,7 +72,7 @@ async function buildSystemPrompt() {
   return `${role}\n\n${extras}`.trim() + "\n";
 }
 
-// ---------- TOOL SCHEMAS (mirrors sidecar/tools.go registerTools + args structs) ----------
+// ---------- TOOL SCHEMAS (mirrors server/whatsapp-tools.mjs) ----------
 
 function strictify(properties, required) {
   const props = {};
@@ -123,7 +123,7 @@ function buildTools(strict) {
   ];
 }
 
-// ---------- MOCK TOOL RESULTS (shapes mirror sidecar/db.go ChatRow/MessageRow) ----------
+// ---------- MOCK TOOL RESULTS (shapes mirror server/whatsapp-store.mjs chat/message rows) ----------
 
 const MOCK = {
   findJohn: { matches: [{ jid: "60123456789@s.whatsapp.net", name: "John Tan", is_group: false, last_message_at: 1788700000 }] },

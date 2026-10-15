@@ -1166,3 +1166,58 @@ withDb('queue (60 s): every slot held for a minute - waiters are not rejected, a
   hold.resolve();
   for (const w of waiting) assert.equal((await settleChat(w.run.id, 20_000)).status, 'done');
 });
+
+withDb('routing: the orchestrator only picks a key; the owner gets the message as typed and its answer is the chat reply', async () => {
+  const routing = await import('../routing.mjs');
+  routing.resetRoutingForTests();
+  const testRegistry = routing.validateRegistry({
+    intents: [{ key: 'customers_products', owner: 'worker', title: 'Customers and products', routing: 'customers' }],
+    special: routing.SPECIAL_KEYS.map((key) => ({ key, routing: key })),
+  });
+  const routeDeps = {
+    registry: testRegistry,
+    getAgent: async (ref) => CATALOG[ref] || null,
+    isAssigned: async () => true,
+    companySetup: async () => ({ minimum_ready: true }),
+    submitPlan: (ctx, args) => runner.submitPlanHandler(ctx, args),
+    recentContext: async () => '',
+    latestPlan: async () => ({ plan: null }),
+    kick: () => { void runner.tick(); },
+    recordEvent: (event) => store.recordEvent(event),
+    planTasks: async (planId) => (await holder.pool.query(`SELECT title, kind, status, result, result_data, error FROM orchestrator_tasks WHERE plan_id=$1 ORDER BY sort_order`, [planId])).rows,
+    claimReport: async (planId) => (await holder.pool.query(
+      `UPDATE orchestrator_plans SET report_sent=true WHERE id=$1 AND NOT report_sent RETURNING id`, [planId])).rowCount > 0,
+    refreshPlanStatus: (planId) => orchestrator.refreshPlanStatus(planId),
+  };
+  registry.registerControlHandlers({ routeRequest: (ctx, args) => routing.routeRequest(ctx, args, routeDeps) });
+  const factory = fakeWorkerFactory();
+  const seen = [];
+  factory.setScript((message, ctx) => {
+    seen.push({ message, kind: ctx.runKind });
+    if (ctx.runKind === 'task') return { text: 'No product has SKU X.' };
+    // As the chat handler does right after accepting the run: this turn waits for the answer.
+    routing.expectRoutedAnswer(dispatch.getBindingByToken(ctx.token).runRef);
+    return { toolCalls: [{ toolId: 'route_request', args: { intent: 'customers_products' } }], text: 'Asking Worker.' };
+  });
+  const message = 'Do we already have a product with SKU X?';
+  const manifest = profiles.manifestForAgent(CATALOG.orchestrator);
+  assert.deepEqual(manifest.manifest.toolIds, ['route_request']);
+  const { run } = await startChatRun({ factory, prompt: message, manifest });
+  assert.equal((await settleChat(run.id)).status, 'done');
+  assert.equal(factory.dispatchErrors?.length || 0, 0, JSON.stringify(factory.dispatchErrors));
+
+  // The claim loop runs the job's check while this turn waits for the answer.
+  const ticker = setInterval(() => { void runner.tick(); }, 20);
+  const finished = await routing.finishRoutedTurn(run.id, routeDeps, { waitMs: 5000, pollMs: 10 }).finally(() => clearInterval(ticker));
+  assert.equal(finished.text, 'No product has SKU X.');
+  assert.equal(finished.answered, true);
+  const task = seen.find((s) => s.kind === 'task');
+  assert.ok(task.message.startsWith(message), "the owner reads the user's message unchanged");
+  const tasks = await holder.pool.query(`SELECT agent_id, kind, status FROM orchestrator_tasks ORDER BY sort_order`);
+  assert.deepEqual(tasks.rows, [{ agent_id: 'worker', kind: 'worker', status: 'done' }, { agent_id: 'worker', kind: 'checker', status: 'done' }]);
+  const reports = await holder.pool.query(`SELECT COUNT(*)::int n FROM messages WHERE session_id='parent-chat'`);
+  assert.equal(reports.rows[0].n, 0, 'the answer is this turn\'s reply, not a second report message');
+  const events = await holder.pool.query(`SELECT data FROM execution_events WHERE kind='route.decided'`);
+  assert.equal(events.rows[0].data.intent, 'customers_products');
+  assert.equal(events.rows[0].data.owner, 'worker');
+});

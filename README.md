@@ -34,7 +34,7 @@ See [execution release evidence](docs/execution-release-evidence.md) for recorde
 | Advertising research | Research jobs with reports, screenshots, and structured artifacts. |
 | Media Kit | Company assets, file uploads, manifests, and share-link creation/revocation. |
 | Website and repository work | Dedicated editing workspaces, host-managed website publishing, and configured repository workflows. |
-| Business integrations | Sales/stock, package data, NEWPAGES merchant automation, Google Ads, electricity/solar tools, email, Composio, and a Go WhatsApp sidecar. |
+| Business integrations | Sales/stock, package data, NEWPAGES merchant automation, Google Ads, electricity/solar tools, email, Composio, and WhatsApp. |
 
 Availability depends on the agent, attached capabilities, credentials, signed-in identity, company setup, and external-service readiness. A catalog entry alone does not establish that an integration is operational.
 
@@ -46,7 +46,7 @@ An agent is a **named role + assigned skills + assigned tools**, with its own wo
 - **Host:** authenticates requests, selects trusted user/company context, resolves profiles/models, owns execution, and invokes business handlers.
 - **Pi runtime:** executes turns using materialized roles, context packs, selected skills, and permitted tools. The host manages pooled processes rather than one global process.
 - **Persistence:** PostgreSQL stores settings, catalog attachments, chats, business records, and execution state. Persistent storage holds workspaces, runtime files, browser profiles, and generated artifacts.
-- **Integrations:** browser automation, external APIs, MCP services, and the WhatsApp sidecar extend the configured system.
+- **Integrations:** browser automation, external APIs, MCP services, and WhatsApp extend the configured system.
 
 Context packs under `agent/context/<slug>/` supply host, project, code-map, playbook, and state information. Runtime journals support continuity, and child-process environment filtering limits which host variables reach agents.
 
@@ -83,7 +83,7 @@ Website publishing packages the workspace for the configured HTML host. Proposal
 
 ## Local development
 
-Use **Node.js >= 22.22.3**, npm, and PostgreSQL for persistent functionality. The Docker image supplies additional integration dependencies: Python/Scrapling, browser tooling, Poppler, AGY, and the compiled Go WhatsApp sidecar. A Node-only local installation does not supply all of these.
+Use **Node.js >= 22.22.3**, npm, and PostgreSQL for persistent functionality. The Docker image supplies additional integration dependencies: Python/Scrapling, browser tooling, Poppler, and AGY. A Node-only local installation does not supply all of these.
 
 Install dependencies:
 
@@ -151,7 +151,7 @@ The [release evidence](docs/execution-release-evidence.md) records a passing pro
 
 ## Deployment
 
-The checked-in target is Railway using `Dockerfile` and `railway.toml`. The image builds the frontend and WhatsApp sidecar, installs integration dependencies, and starts `node server/index.mjs`. Railway checks `/api/health` and allows a 330-second drain period.
+The checked-in target is Railway using `Dockerfile` and `railway.toml`. The image builds the frontend, installs integration dependencies, and starts `node server/index.mjs`. Railway checks `/api/health` and allows a 330-second drain period.
 
 Provision PostgreSQL and persistent storage. The existing volume-based deployment uses a single replica. Credentials, company configuration, and integration setup must be completed for the relevant agents.
 
@@ -170,10 +170,10 @@ This README does not certify the active deployment, its revision, models, creden
 | `server/context-pack.mjs`, `server/agent-env.mjs` | Context construction and environment filtering. |
 | `server/company-research/`, `server/ads-research/` | Research pipelines, persistence, and reports. |
 | `server/media-ai/` | Media assets and sharing backend. |
+| `server/whatsapp-worker.mjs` | WhatsApp connection (Baileys) child process, MCP tools at `127.0.0.1:8765/mcp`, and the pairing control surface. Store and tools in `whatsapp-store.mjs` and `whatsapp-tools.mjs`. |
 | `document_inteligence/` | Business handlers, migrations, rendering, and domain tests. Links retain the existing directory spelling. |
 | `agent/roles/`, `agent/skills/`, `agent/context/` | Roles, bundled skills, and context packs. |
 | `agent/extensions/host-tools.ts` | Native host-tool bridge for migrated workers. |
-| `sidecar/` | Go WhatsApp service. |
 | `docs/` | Architecture, research, jobs, and release evidence. |
 | `report/` | The latest report (`post-mortem-question-menu-run.md`) and the question menu (`question-menu.md`). Only the latest report is kept here. |
 | `archive/` | Retired plans, reports, old test evidence and the legacy Cloudflare code. Local only (git-ignored); `archive/housekeeping-2026-10-11/MANIFEST.md` lists where each file came from. |

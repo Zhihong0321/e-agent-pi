@@ -10,6 +10,7 @@ import { getAgent, listAgents } from "./catalog.mjs";
 import { ORCHESTRATOR_AGENT_ID } from "./paths.mjs";
 import { logEvent } from "./debug.mjs";
 import { compileJobTasks, parseJobReply, cleanupCutoff, jobAnswer } from "./job-policy.mjs";
+import { isPlanAwaited } from "./routing.mjs";
 
 export const RESULT_CHARS = 8000;
 
@@ -437,15 +438,17 @@ export async function refreshPlanStatus(planId) {
   await getPool().query(`UPDATE orchestrator_plans SET status = $1, updated_at = NOW(),
     completed_at = CASE WHEN $1 = 'done' THEN COALESCE(completed_at, NOW()) ELSE NULL END WHERE id = $2`, [status, planId]);
   if (!tasks.some(task => task.status === "running" || task.status === "pending")) {
+    // The chat turn that routed this plan is waiting and delivers the answer itself.
+    if (isPlanAwaited(planId)) return;
     const client = await getPool().connect();
     try {
       await client.query("BEGIN");
       const claimed = await client.query(`UPDATE orchestrator_plans SET report_sent=true
-        WHERE id=$1 AND auto_run AND NOT report_sent RETURNING parent_session_id,title`, [planId]);
+        WHERE id=$1 AND auto_run AND NOT report_sent RETURNING parent_session_id,title,manifest`, [planId]);
       if (claimed.rowCount) {
         const plan = claimed.rows[0];
         // The agents' own answers, then the checker's verdict if the job was checked. No status label.
-        const report = `**${plan.title}**\n\n${jobAnswer(tasks)}`;
+        const report = plan.manifest?.route ? jobAnswer(tasks) : `**${plan.title}**\n\n${jobAnswer(tasks)}`;
         await client.query(`INSERT INTO messages (session_id,role,content)
           SELECT id,'assistant',$2 FROM sessions WHERE id=$1`, [plan.parent_session_id, report]);
         await client.query(`UPDATE sessions SET updated_at=NOW() WHERE id=$1`, [plan.parent_session_id]);

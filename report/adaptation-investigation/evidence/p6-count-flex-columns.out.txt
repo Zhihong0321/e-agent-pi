@@ -1,0 +1,1 @@
+{"base_tables":39,"tables_with_custom_jsonb":27,"gin_indexes":1,"expression_indexes_on_custom":0}

@@ -91,14 +91,14 @@ async function assertMemberEmail(tx, tenantId, email, memberId, phone, name) {
   if (duplicate) throw new Error(`Company member already exists: ${duplicate.name} (${duplicate.id}). Update that record instead.`);
 }
 
-async function findUser(tx, ref) {
+async function findUser(tx, ref, tenantId) {
   if (!ref) return null;
-  return (await tx.query('SELECT * FROM users WHERE id=$1 OR username=$1 FOR UPDATE', [String(ref)])).rows[0] || null;
+  return (await tx.query('SELECT * FROM users WHERE id=$1 OR (username=$1 AND company_tenant_id=$2::text) FOR UPDATE', [String(ref), tenantId])).rows[0] || null;
 }
 
-async function userForPerson(tx, input, member) {
+async function userForPerson(tx, input, member, tenantId) {
   const ref = input.user_id ?? input.user ?? member?.user_id;
-  return ref ? findUser(tx, ref) : null;
+  return ref ? findUser(tx, ref, tenantId) : null;
 }
 
 function validateAccount(input, current) {
@@ -208,7 +208,7 @@ export async function managePeopleCore(tx, action, input = {}, context = {}) {
   const memberId = input.person_id ?? input.member_id ?? input.id;
   let member = memberId ? (await tx.query('SELECT * FROM di.company_member WHERE id=$1::uuid AND tenant_id=$2::uuid AND deleted_at IS NULL FOR UPDATE', [memberId, tenantId])).rows[0] : null;
   if (memberId && !member) throw new Error('Company person not found');
-  let user = await userForPerson(tx, input, member);
+  let user = await userForPerson(tx, input, member, tenantId);
   if (user?.company_tenant_id && user.company_tenant_id !== tenantId) throw new Error('That login belongs to another company');
   if (accountRequested(input) && !isSuperadmin(actor)) throw new Error('Logins and roles can only be managed by a Superadmin');
   if (input.user !== undefined || input.user_id !== undefined) {

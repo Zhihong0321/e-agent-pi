@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { NON_CODING_SYSTEM_PROMPT } from './agent-profiles.mjs';
 import { replyStyleSystemPrompt } from './reply-style.mjs';
 import { listOperations } from './execution/registry.mjs';
+import { manifestForAgent } from './execution/profiles.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -50,10 +51,10 @@ test('no prompt or tool description brings back a rule the code dropped', async 
   assert.deepEqual(problems, []);
 });
 
-test('the orchestrator is told who it acts for and how to change SOPs', async () => {
+test('the orchestrator only routes: one tool, and a role that plans nothing and does no work', async () => {
   const role = await readFile(path.join(ROOT, 'agent', 'roles', 'orchestrator.md'), 'utf8');
-  assert.match(role, /## Who you act for/);
-  assert.match(role, /Never refuse on your own judgment/);
-  assert.match(role, /`save_agent_sop`/);
-  assert.match(role, /`ee-mail__send_email`/);
+  assert.match(role, /`route_request`/);
+  // The planning and worker instructions that made routing random must not come back (AI-Orchestration-and-agent-design.md F-4, F-5).
+  assert.doesNotMatch(role, /submit_plan|list_specialists|save_agent_sop|ee-mail__send_email|create_person|checker|pipeline|Never refuse/i);
+  assert.deepEqual(manifestForAgent({ id: 'orchestrator', slug: 'orchestrator' }).manifest.toolIds, ['route_request']);
 });

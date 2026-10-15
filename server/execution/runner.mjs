@@ -251,6 +251,8 @@ export async function runAgent({ kind, runRef, profile, user, ctx, input, images
     userId: ctx.userId, companyId: ctx.companyId, profileId: ctx.profileId,
     parentRunId: ctx.parentRunId, generation, expectedGeneration: generation,
     manifestRevision, manifestToolIds: manifest.manifest.toolIds, deadlineAt,
+    // A chat's own message, as typed: route_request hands it to the owner unchanged.
+    input: kind === 'chat' ? String(input ?? '') : undefined,
   });
   // A checker only inspects: the dispatcher lets it call plain reads and nothing else.
   if (runKindOpts.taskKind === 'checker') dispatch.disableAttemptWrites(attemptId);
@@ -602,7 +604,7 @@ export async function submitPlanHandler(ctx, args) {
   const request = (await pool.query(
     `SELECT content FROM messages WHERE session_id=$1 AND role='user' ORDER BY id DESC LIMIT 1`, [ctx.sessionId])).rows[0]?.content || '';
   const manifest = { schemaVersion: 2, executor: EXECUTOR_VERSION, planUid: planId, title, summary: String(args.summary || ''), tasks: args.tasks,
-    request };
+    request, ...(args.route ? { route: args.route } : {}) };
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

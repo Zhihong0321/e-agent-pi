@@ -1,0 +1,130 @@
+{
+  "about": "Intent registry: every request type the product supports and the ONE agent that owns it. Code routes by this file; the orchestrator model only picks a key. Change owners here, never in a prompt. See AI-Orchestration-and-agent-design.md.",
+  "intents": [
+    {
+      "key": "customers_products",
+      "owner": "di-records",
+      "title": "Customers and products",
+      "routing": "Customers (companies or people we sell to), their contacts and name cards; products, SKUs, prices, packages and the product catalogue: add, update, look up, check for duplicates, archive or delete one, turn a form submission into a customer. Not our own staff (company_team). Not stock levels.",
+      "examples": ["Add a new customer, Maya Tan from Greenleaf Sdn Bhd", "Add this name card.", "Do we already have a product with SKU X?"]
+    },
+    {
+      "key": "quotes_invoices",
+      "owner": "di-documents",
+      "title": "Quotations, invoices and payments",
+      "routing": "Quotations and invoices: draft, issue, change status, convert a quote to an invoice, void, send or show the PDF; record a payment a customer made; what a customer owes, unpaid invoices, what we sold. Not supplier bills (suppliers_purchasing).",
+      "examples": ["Draft an invoice for ACME: 1 unit of 3 kW panel, RM 1,250.", "Which quotations are still open?"]
+    },
+    {
+      "key": "send_email",
+      "owner": "di-documents",
+      "title": "Send an email",
+      "routing": "Send an email now, with or without a document attached. Not a repeating or later email (schedules).",
+      "examples": ["Email the ACME invoice to ali@acme.my"]
+    },
+    {
+      "key": "document_templates",
+      "owner": "di-templates",
+      "title": "Document design",
+      "routing": "How quotations and invoices look: templates, header, colours, logo position, footer text, template versions and history, previews.",
+      "examples": ["Change the invoice header colour to dark green."]
+    },
+    {
+      "key": "company_profile",
+      "owner": "di-onboarding",
+      "title": "Company profile",
+      "routing": "Our own company's details: name, address, country, business type and activity, currency, email, phone, website, bank and payment details, logo; whether the profile is complete; first-time setup; resetting demo data.",
+      "examples": ["Change the company address to 12 Jalan Test, 47400 Petaling Jaya.", "Is our company profile complete?"]
+    },
+    {
+      "key": "company_team",
+      "owner": "di-onboarding",
+      "title": "Company team",
+      "routing": "Our own staff: who is in the team, adding or changing a team member, their position, department and contact details, workspace logins and roles. Not customer contacts (customers_products).",
+      "examples": ["Who is in the company team?", "Add Nina Lee as a team member with a login."]
+    },
+    {
+      "key": "document_rules",
+      "owner": "di-db",
+      "title": "Document rules and audit log",
+      "routing": "Custom fields on records, what a quotation or invoice must have before it can be issued, document numbering, tax codes, restoring archived records, and the audit log of who changed what.",
+      "examples": ["Add a custom field 'Site type' to customers.", "Show me the audit log for last Tuesday."]
+    },
+    {
+      "key": "forms_design",
+      "owner": "di-forms",
+      "title": "Forms",
+      "routing": "Company forms (job reports, applications, surveys, order forms): create, change, preview, publish, close or archive a form. Not what people submitted (form_submissions).",
+      "examples": ["Create a job report form with name, site, date, photo."]
+    },
+    {
+      "key": "form_submissions",
+      "owner": "di-intake",
+      "title": "Form submissions",
+      "routing": "What people submitted through our forms: count, list, review, mark as spam, link a job report to a customer or invoice, summarise survey results, export to CSV.",
+      "examples": ["How many job-report forms came in this week?"]
+    },
+    {
+      "key": "calendar",
+      "owner": "di-calendar",
+      "title": "Calendar",
+      "routing": "What is due or coming up: quotation expiries, customer invoices falling due, payments received, form deadlines, date reminders and calendar tasks; refreshing the calendar. Read only. Not supplier bills to pay (suppliers_purchasing).",
+      "examples": ["What is due in the next 7 days?"]
+    },
+    {
+      "key": "suppliers_purchasing",
+      "owner": "di-procurement",
+      "title": "Suppliers and purchasing",
+      "routing": "Suppliers, the quotes and bills suppliers send us, purchase orders, goods received, checking a supplier invoice against the order, supplier bills due, and recording that we paid a supplier.",
+      "examples": ["What bills are due this week?", "Create a purchase order for 10 panels from Supplier X."]
+    },
+    {
+      "key": "expense_claims",
+      "owner": "di-expenses",
+      "title": "Expense claims",
+      "routing": "Staff expense claims and receipts: file a claim, check status or totals, withdraw, submit the month's claims, review or approve claims, claim reports.",
+      "examples": ["File a claim from this receipt.", "What is the status of my claims?"]
+    },
+    {
+      "key": "company_rules",
+      "owner": "di-fde",
+      "title": "Company rules",
+      "routing": "Standing rules the owner sets for how the system works from now on: expense claim checks, and instructions an agent must always follow (its SOP).",
+      "examples": ["From now on, every quotation must show a validity of 14 days."]
+    },
+    {
+      "key": "schedules",
+      "owner": "scheduler",
+      "title": "Reminders and schedules",
+      "routing": "Reminders and scheduled or repeating jobs ('remind me on Friday', 'every Monday email ...'): create, list, pause, resume, cancel, and what ran and when.",
+      "examples": ["Remind me on Friday at 9am to call ACME."]
+    },
+    {
+      "key": "company_research",
+      "owner": "company-deep-research",
+      "title": "Company research",
+      "routing": "Research an outside company from public sources: build or show a dossier, its sources, people and projects.",
+      "examples": ["Research Greenleaf Sdn Bhd, greenleaf.my, Petaling Jaya."]
+    },
+    {
+      "key": "ads_research",
+      "owner": "ads-research",
+      "title": "Ads research",
+      "routing": "Who advertises a product or keyword in a country, from the Meta and Google ad libraries. Not running our own Google Ads account.",
+      "examples": ["Who advertises 'solar panel' in Malaysia?"]
+    },
+    {
+      "key": "media_kit",
+      "owner": "media-ai",
+      "title": "Media kit",
+      "routing": "Company logos, event photos, news, certifications, qualifications, awards and the shareable media kit: add, list, approve, publish or archive.",
+      "examples": ["Which logos are approved for sharing?"]
+    }
+  ],
+  "special": [
+    { "key": "help", "routing": "A greeting, thanks, or a question about what you can do." },
+    { "key": "request_status", "routing": "The user asks how a request they made earlier in this chat is going." },
+    { "key": "unclear", "routing": "Two or three keys fit and the message does not say which. Put those keys in options." },
+    { "key": "none", "routing": "No key fits: for example WhatsApp, Google Sheets or Docs, the website, solar plants, TNB bills, Google Ads, stock levels, sales reports, prototypes or mock-ups of pages and apps, or anything outside the business." }
+  ]
+}

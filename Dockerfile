@@ -1,10 +1,3 @@
-FROM golang:1.27-bookworm AS sidecar-build
-WORKDIR /sidecar
-COPY sidecar/go.mod sidecar/go.sum ./
-RUN go mod download
-COPY sidecar/*.go ./
-RUN CGO_ENABLED=0 go build -o /whatsapp-sidecar .
-
 FROM node:22-bookworm-slim
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -53,8 +46,6 @@ RUN PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci
 
 COPY . .
 RUN cd server/ads-research/portable && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci --omit=dev
-COPY --from=sidecar-build /whatsapp-sidecar ./sidecar/whatsapp-sidecar
-RUN chmod +x ./sidecar/whatsapp-sidecar
 RUN npm run build
 
 ENV NODE_ENV=production

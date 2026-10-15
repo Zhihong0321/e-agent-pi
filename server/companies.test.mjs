@@ -9,7 +9,7 @@ const poolHolder = { current: null };
 mock.module('./db.mjs', {
   namedExports: { getPool: () => { if (!poolHolder.current) throw new Error('Test pool is not ready'); return poolHolder.current; } },
 });
-const { ensureUsers } = await import('./users.mjs');
+const { ensureUsers, loginUser } = await import('./users.mjs');
 const { createCompany, listCompanies, companiesWithoutSuperadmin } = await import('./companies.mjs');
 const { managePeopleCore } = await import('./people-service.mjs');
 
@@ -76,14 +76,41 @@ test('a new company comes with its Superadmin and the company agents only', asyn
 
 test('a failed creation leaves no company behind', async () => {
   const pool = await makeDb();
-  await createCompany({ name: 'Alpha', username: 'taken', password: 'correct horse' }, pool);
+  await createCompany({ name: 'Alpha', code: 'alpha', username: 'taken', password: 'correct horse' }, pool);
   const before = (await pool.query('SELECT COUNT(*)::int AS n FROM di.tenant')).rows[0].n;
-  await assert.rejects(() => createCompany({ name: 'Beta', username: 'taken', password: 'correct horse' }, pool), /Username already exists/);
+  await assert.rejects(() => createCompany({ name: 'Beta', code: 'alpha', username: 'taken', password: 'correct horse' }, pool), /Company code is already taken/);
   assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM di.tenant')).rows[0].n, before);
-  for (const bad of [{ name: '', username: 'x', password: 'correct horse' }, { name: 'C', username: 'Bad Name!', password: 'correct horse' }, { name: 'C', username: 'ok', password: 'short' }]) {
+  for (const bad of [{ name: '', username: 'x', password: 'correct horse' }, { name: 'C', username: 'Bad Name!', password: 'correct horse' }, { name: 'C', username: 'ok', password: 'short' }, { name: 'C', code: 'Bad Code!', username: 'ok', password: 'correct horse' }]) {
     await assert.rejects(() => createCompany(bad, pool));
   }
   assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM di.tenant')).rows[0].n, before);
+});
+
+test('two companies can both have the login admin / 1234, and each signs in to its own company', async () => {
+  const pool = await makeDb();
+  const a = await createCompany({ name: 'Alpha Sdn Bhd', username: 'admin', password: '12345678' }, pool);
+  const b = await createCompany({ name: 'Beta Sdn Bhd', username: 'admin', password: '12345678' }, pool);
+  assert.deepEqual([a.code, b.code], ['alpha-sdn-bhd', 'beta-sdn-bhd']);
+  const req = { headers: {}, socket: { remoteAddress: 'x' } };
+  assert.equal((await loginUser(req, { company: a.code, username: 'admin', password: '12345678' })).user.company_tenant_id, a.tenantId);
+  assert.equal((await loginUser(req, { company: 'BETA-SDN-BHD', username: 'Admin', password: '12345678' })).user.company_tenant_id, b.tenantId);
+  assert.equal((await loginUser(req, { username: `${b.code}/admin`, password: '12345678' })).user.company_tenant_id, b.tenantId, 'company/username in one field');
+  await assert.rejects(() => loginUser(req, { username: 'admin', password: '12345678' }), /Invalid company code, username or password/);
+  await assert.rejects(() => loginUser(req, { company: 'nope', username: 'admin', password: '12345678' }), /Invalid company code/);
+  await assert.rejects(() => loginUser(req, { company: a.code, username: 'admin', password: 'wrong password' }), /Invalid company code/);
+  // Inside one company a username is still unique.
+  await assert.rejects(() => inTx(pool, a.tenantId, 'create_person', { name: 'Second', username: 'admin', password: '12345678' }, { tenantId: a.tenantId, actorUser: platformActor }), /23505|duplicate|unique/i);
+  // Another company's login is not reachable by username from this company.
+  const person = await inTx(pool, b.tenantId, 'create_person', { name: 'Bee', username: 'bee', password: '12345678' }, { tenantId: b.tenantId, actorUser: platformActor });
+  assert.equal((await inTx(pool, a.tenantId, 'create_person', { name: 'Bee A', username: 'bee', password: '12345678' }, { tenantId: a.tenantId, actorUser: platformActor })).person.username, 'bee');
+  assert.equal(person.person.username, 'bee');
+});
+
+test('existing companies get a unique code from their name when migrated', async () => {
+  const pool = await makeDb();
+  const codes = [];
+  for (const name of ['Same Name', 'Same Name', '   ', 'Café & Co.']) codes.push((await pool.query('INSERT INTO di.tenant(name) VALUES($1) RETURNING code', [name])).rows[0].code);
+  assert.deepEqual(codes, ['same-name', 'same-name-2', 'company', 'caf-co']);
 });
 
 test('a company that loses its Superadmin is reported', async () => {

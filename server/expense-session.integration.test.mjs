@@ -61,9 +61,10 @@ test('delegated expense tools inherit the authenticated owner and refuse imperso
       ('alice','alice',$1,'Alice'),('bob','bob',$1,'Bob')`, [users.hashPassword('fixture-password')]);
     // Every login belongs to a company; the fixtures' users are this company's.
     await pool.query('UPDATE users SET company_tenant_id=$1 WHERE company_tenant_id IS NULL', [tenantId]);
+    const company = (await pool.query('SELECT code FROM di.tenant WHERE id=$1', [tenantId])).rows[0].code;
     const request = { headers: {}, socket: { remoteAddress: 'test' } };
     const login = async username => {
-      const signedIn = await users.loginUser(request, { username, password: username === 'admin' ? '1234' : 'fixture-password' });
+      const signedIn = await users.loginUser(request, { company, username, password: username === 'admin' ? '1234' : 'fixture-password' });
       return { ...signedIn, req: { ...request, headers: { cookie: `demo_session=${signedIn.token}` } } };
     };
     const admin = await login('admin'), alice = await login('alice'), bob = await login('bob');

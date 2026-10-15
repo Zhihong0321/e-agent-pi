@@ -1,0 +1,8 @@
+PASS P2.1 JavaScript inside a tenant template RUNS in the host's renderer configuration  ::  #out=JS-RAN
+PASS P2.2 an <img> in the template makes the server-side browser issue a request to an internal address  ::  GET /cors (cookie:no) | GET /nocors (cookie:no) | GET /img-beacon (cookie:no)
+PASS P2.3 script can READ a same-host JSON endpoint that sends Access-Control-Allow-Origin:* (as server/index.mjs json() does)  ::  r1=LOOPBACK-JSON-READABLE
+PASS P2.4 script CANNOT read a response without a CORS header  ::  r2=BLOCKED Failed to fetch
+PASS P2.5 file:// iframe content is not readable from the template page (empty body)  ::  iframeBody=""
+NOTE P2.6 page.pdf() printed the live DOM after the script ran (pdf bytes=25809); PDF text was NOT extracted here, so "script text lands in the published PDF" is inferred from how page.pdf works, not read back.
+
+NOTE: no authentication cookie is sent from the about:blank page, so authenticated /api routes still refuse; the exposure is internal/unauthenticated HTTP reachable from the app container.

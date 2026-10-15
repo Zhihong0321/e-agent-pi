@@ -1,0 +1,37 @@
+
+> whatsapp-ui-pi@0.1.0 test:orchestration
+> node --test server/routing.test.mjs server/prompt-budget.test.mjs server/agent-prompts.test.mjs server/roles.test.mjs
+
+✔ no prompt or tool description brings back a rule the code dropped (409.3181ms)
+✔ the orchestrator only routes: one tool, and a role that plans nothing and does no work (8.7782ms)
+✔ every role prompt has a budget and stays within it (35.9474ms)
+✔ the orchestrator runs on its role file alone: no host notes, SOP or context pack appended (1.9911ms)
+✔ role names from the UI, agents and old data map onto three stored keys (1.5088ms)
+✔ a department head acts only for their own department, and only once one is set (0.4308ms)
+✔ the signed-in line names the person and role, carries no code, and says who owns the system (0.6543ms)
+✔ SOP tools: only the Forward Deploy Engineer has them (the orchestrator only routes) (9.9829ms)
+✔ SOP tools refuse anyone but a Superadmin before touching anything (1.3975ms)
+✔ company profile writes refuse anyone but a Superadmin, on the generic and the Onboarding paths (1.2166ms)
+✔ a full SOP rewrite keeps the Forward Deploy Engineer's managed block (0.4194ms)
+✔ the shipped intent registry is valid: one company agent per key, never a platform agent or the orchestrator (26.0752ms)
+✔ the registry refuses duplicate keys, a missing owner and missing special keys (2.7492ms)
+✔ the router can only pick a known key (18.7026ms)
+✔ a routed message becomes ONE task for the owner carrying the user's own words, once (6.8523ms)
+✔ no owner, a missing agent or an unassigned owner gets fixed text and no plan (3.9067ms)
+✔ operational work waits for the minimum company profile; setup agents do not (2.4818ms)
+✔ help lists only what this login can reach; unclear asks once; status reads the last request (2.3578ms)
+✔ a failed hand-off is reported as fixed text, not improvised (0.814ms)
+✔ the routed answer arrives in the same turn, and the plan report stays quiet while the turn waits (11.1599ms)
+✔ a report that got there first is not repeated; a slow owner leaves a waiting note and the report posts later (11.9778ms)
+✔ a waiting chat holds the plan from the moment it is routed; a failed turn or an unwatched run lets the report post (1.5128ms)
+✔ fixed answers: the owner's own summary, or why it could not finish (0.898ms)
+✔ the final answer replaces the streamed text and keeps the tool trail (5.8357ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3430.4122
+exit 0

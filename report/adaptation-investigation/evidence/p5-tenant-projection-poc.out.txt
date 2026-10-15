@@ -1,0 +1,14 @@
+PASS A1 each company gets a view whose columns are ITS fields, typed  ::  A: roof_kwp:numeric, segment:text | B: first_visit:date, insured:boolean, patient_id:text
+PASS A2 company A queries its own view with real column names and numeric types  ::  [{"name":"Acme Roofing","segment":"C&I","roof_kwp":"120.5"},{"name":"Home Owner","segment":"Residential","roof_kwp":"6"}]
+PASS A3 ...and can aggregate on a custom number without any JSON syntax  ::  [{"segment":"C&I","kwp":"120.5"},{"segment":"Residential","kwp":"6"}]
+PASS A4a RLS alone: company A reading B's view sees only A's own rows, none of B's data (B's columns are NULL)  ::  [{"name":"Acme Roofing","patient_id":null},{"name":"Home Owner","patient_id":null}]
+PASS A4b with the view also filtered to its own company (recommended), A reading B's view gets 0 rows  ::  rows=0
+PASS A5 company B sees its different shape: patient_id, insured, first_visit  ::  [{"name":"Patient One","patient_id":"P-001","insured":true,"first_visit":"2026-01-05T00:00:00.000Z"}]
+PASS A6 one corrupt stored value yields NULL in the view instead of failing the query  ::  [{"name":"Acme Roofing","roof_kwp":"120.5"},{"name":"Home Owner","roof_kwp":null}]
+PASS A7 adding a field and regenerating the view exposes the new column; nothing else is touched  ::  id,code,name,email,phone,roof_kwp,segment,site_visit,created_at
+PASS A8 base tables were not altered by any of this  ::  no new columns on di.customer
+PASS B1 today: the context has no 'custom', so the same template prints an empty value  ::  "<p>PO: </p>"
+PASS B2 the template engine ALREADY prints it once the context carries it (the gap is the context, not the engine)  ::  <p>PO: PO-7781</p>
+PASS B3 ...and the value stays HTML-escaped  ::  <p>PO: &lt;img src=x onerror=alert(1)&gt;</p>
+
+SUMMARY 12 pass, 0 fail

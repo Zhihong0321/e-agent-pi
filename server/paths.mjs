@@ -270,11 +270,7 @@ export const WHATSAPP_MCP_SLUG = "whatsapp";
 export const WHATSAPP_DATA_DIR = path.join(DATA_DIR, "whatsapp");
 export const WHATSAPP_MEMORY_FILE = path.join(WHATSAPP_DATA_DIR, "memory.md");
 export const WHATSAPP_CONTACTS_FILE = path.join(WHATSAPP_DATA_DIR, "contacts.md");
-export const WHATSAPP_SIDECAR_BIN = path.join(
-  ROOT,
-  "sidecar",
-  process.platform === "win32" ? "whatsapp-sidecar.exe" : "whatsapp-sidecar",
-);
+export const WHATSAPP_WORKER_FILE = path.join(ROOT, "server", "whatsapp-worker.mjs");
 export const WHATSAPP_MCP_ADDR = "127.0.0.1:8765";
 export const IMAGEN_SKILL_DIR = path.join(ROOT, "agent", "imagen");
 export const SUBAGENTS_EXTENSION = path.join(ROOT, "agent", "extensions", "subagents.ts");

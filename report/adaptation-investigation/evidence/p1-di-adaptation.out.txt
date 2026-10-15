@@ -1,0 +1,64 @@
+
+== S1 one codebase, two companies, different rules ==
+PASS S1.1 tenant A (defaults): missing customer billing address BLOCKS issue  ::  customer_has_billing_address
+PASS S1.2 tenant B (relaxed rule): same data does NOT block on billing address, it only warns  ::  blockers=custom_field(document.po_number) warns=customer_has_billing_address,customer_has_reg_no,customer_has_tin
+PASS S1.3 tenant B: custom field po_number is a blocking rule on its own invoices  ::  custom_field(document.po_number)
+PASS S1.4 tenant B cannot issue until the PO number is filled  ::  Not ready to issue. Still needed:
+- Customer PO no. (document) is required before issuing.
+PASS S1.5 tenant B issues with ITS numbering format (BC/000001), tenant A keeps INV-yyyy-nnnn  ::  B=BC/000001
+PASS S1.6 tenant A issues once its address exists, with the default numbering  ::  INV-2026-0001
+PASS S1.7 tax codes are per tenant: B has GST9, A does not
+
+== S2 do company-specific values reach the printed PDF? ==
+PASS S2.1 issued B invoice rendered with the default template contains the invoice number  ::  html chars=8826
+FAIL S2.2 custom field value (PO-7781) appears on the default PDF  ::  NO: required by the rule, but not printed
+PASS S2.3 Template Designer is warned that doc.custom.* is unknown (prints empty)  ::  ["doc.custom.po_number"]
+PASS S2.4 template_variables lists NO custom-field variable for documents  ::  ["type","type_label","number","is_draft","status","status_label","status_tone","is_overdue","is_paid","watermark","summary_label","summary_amount","issue_date","valid_until","due_date","reference","no
+
+== S3 isolation ==
+PASS S3.1 tenant A's describe_schema does not show B's po_number field  ::  A fields=
+PASS S3.2 as tenant A (role di_app), SELECT of B's field_def rows returns 0  ::  n=0
+PASS S3.3 as tenant A, INSERT of a row owned by B is refused by row-level security  ::  new row violates row-level security policy for table "field_def"
+PASS S3.4 as an agent, DDL (ALTER TABLE) is refused  ::  must be owner of table customer
+PASS S3.5 as an agent, DELETE is refused  ::  Refused by the database: permission denied for table field_def. This action is not allowed for agents.
+
+== S4 what a company can do to itself (and only itself) ==
+PASS S4.1 unknown check name in a rule is rejected  ::  Unknown check "does_not_exist". Known: customer_selected, customer_has_billing_address, customer_has_email, customer_has_phone, customer_has_reg_no, customer_has_tin, has_lines, lines_priced, lines_have_tax_code, date_set, template_available, issuer_profile_complete, issuer_has_tin, custom_field, attachment_kind, amount_at_most
+PASS S4.2 dropping the blocking has_lines rule is rejected (platform invariant)  ::  has_lines must stay a blocking rule; documents break without it
+PASS S4.3 a custom field cannot shadow a standard column  ::  customer.name is already a standard column; no custom field needed
+PASS S4.4 changing a custom field's type later is rejected  ::  customer.tier exists as text; changing type would break stored values. Pick a new key.
+PASS S4.5 a company cannot invent a new document type (delivery_order) with data alone  ::  Invalid input: doc_type: Invalid option: expected one of "quotation"|"invoice"|"credit_note"
+PASS S4.6 a blocking rule that names an UNDEFINED custom field is accepted  ::  accepted without checking the field exists
+PASS S4.7 ...which makes every invoice of that company unissuable until a human fixes the rule  ::  Not ready to issue. Still needed:
+- Ghost field required
+PASS S4.8 ...and the agent cannot even fill it (field is not defined)  ::  Unknown custom field document.ghost_field (defined: none). Ask the DB Manager agent to define it first.
+PASS S4.9 company C recovers by resubmitting the full rule list (blast radius = company C only)  ::  INV-2026-0001
+PASS S4.10 a requirement added later immediately blocks drafts that were already in flight  ::  custom_field(document.job_ref)
+PASS S4.11 ...and tenant A is untouched by C's rule changes
+
+== S5 how platform changes reach companies that already exist ==
+PASS S5.1 a tenant that lacks a newer default sequence fails with 'No numbering sequence' (nothing creates it lazily)  ::  No numbering sequence for "supplier". The DB Manager agent can create it.
+PASS S5.2 re-running the seed keeps B's customised rules (customisation is safe from the seed)
+NOTE S5.3 ILLUSTRATION (not a test): a changed default cannot reach rows that already exist, because the seed is ON CONFLICT DO NOTHING and runs only at company creation/reset  ::  A's stored invoice rules: 10 vs improved default 11 (not applied; code evidence: graft callers seedTenantTx = createCompany, resetCompany)
+
+== S6 audit and undo ==
+PASS S6.1 DB Manager changes are in the audit log with actor/agent and the field-level from/to  ::  {"agent":"di-db","action":"update","changedKeys":["rules"]}
+PASS S6.2 DB Manager has no revert/undo tool for rule, field, numbering or tax changes (restore_record only restores archived records); fde_revert exists only for the FDE  ::  di-db tools: list_users, create_user, update_user, list_people, create_person, update_person, get_onboarding_status, list_company_members, save_company_member, update_onboarding_progress, find_customers, get_customer, find_catalog, list_tax_codes, get_company_profile, describe_schema, get_package, get_document, crm_dashboard, list_documents, list_templates, update_company_profile, define_custom_fi
+
+== S7 a later template change does not alter an issued document ==
+PASS S7.1 after B publishes a new default template, the already-issued invoice still renders with the old one  ::  same=true
+PASS S7.2 ...while the next invoice uses the new template  ::  BC/000002
+
+== S8 what a template may contain ==
+PASS S8.1 a template containing <script>, an external <img> and an <iframe file:> is ACCEPTED by save_template  ::  saved as Active content v1
+PASS S8.2 a 3 MB template is accepted (no size cap)  ::  accepted
+PASS S8.3 data values (customer name, line text) are HTML-escaped by the renderer  ::  customer=C-0002
+
+== S9 authority ==
+PASS S9.1 domain layer: a NON-admin user can define a custom field through DB Manager (no role check; only agent assignment gates it)  ::  accepted
+PASS S9.2 domain layer: a NON-admin user can replace issue rules through DB Manager  ::  accepted
+PASS S9.3 domain layer: a NON-admin user can change numbering through DB Manager  ::  accepted
+PASS S9.4 FDE cannot target the Document Agent: fde_apply accepts di-expenses only  ::  Invalid input: changeset.target_agent: Invalid input: expected "di-expenses"
+
+SUMMARY 39 pass, 1 fail, 1 note
+evil template stored at C:\Users\ETERNA~1\AppData\Local\Temp\adapt-probe-JlPk0k\evil-template.html

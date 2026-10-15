@@ -198,7 +198,8 @@ import {
   registerControlHandlers,
   registerExternalMcpTools,
 } from "./execution/registry.mjs";
-import { manifestForAgent, setDiToolIdProvider, RETIRED_INTERNAL_MCP_SLUGS } from "./execution/profiles.mjs";
+import { manifestForAgent, setDiToolIdProvider, RETIRED_INTERNAL_MCP_SLUGS, HOST_PEOPLE_TOOL_IDS, LEGACY_USER_TOOL_IDS } from "./execution/profiles.mjs";
+import { loadIntentRegistry, routeRequest, finishRoutedTurn, setTurnAnswer, expectRoutedAnswer, releaseRoutedTurn } from "./routing.mjs";
 import {
   initExecution,
   startClaimLoop,
@@ -208,6 +209,7 @@ import {
   submitPlanHandler,
   stopTaskHandler,
   waitForChatRun,
+  tick as executionTick,
   isInitialized as isExecutionReady,
 } from "./execution/runner.mjs";
 import { handleExecutionToolRoute, handleExecutionStatusRoute, executionHealth } from "./execution/routes.mjs";
@@ -219,11 +221,11 @@ import { isWaitingAtLlmGate, llmStats, registerProviderBase } from "./queue/llm-
 import { enableLlmProxy, handleLlmProxy, isLlmProxyPath } from "./queue/llm-proxy.mjs";
 import { QUEUE_SETTING, applyQueueLimits, parseSavedLimits, queueReport, validateQueueLimits } from "./queue/limits.mjs";
 import { closeAllConnections as closeExecutionMcpConnections, connectBinding } from "./execution/mcp-adapter.mjs";
-import { ensureExecutionSchema, findChatRunBySubmission, withRecordedAnswers } from "./execution/store.mjs";
+import { ensureExecutionSchema, findChatRunBySubmission, withRecordedAnswers, recordEvent as recordExecutionEvent } from "./execution/store.mjs";
 import {
   ensureWhatsappMcp,
-  startWhatsappSidecar,
-  stopWhatsappSidecar,
+  startWhatsappWorker,
+  stopWhatsappWorker,
   whatsappStatus,
   whatsappQr,
   whatsappRequestQr,
@@ -611,6 +613,49 @@ async function listSpecialistsPublic(ctx) {
   return scoped
     ? { specialists, company_setup, note: 'Only the specialists assigned to this account are listed. If the capability the user needs is missing, tell them it is not assigned to their account and an admin can assign it; do not say it is not deployed.' }
     : { specialists, company_setup };
+}
+
+// ---- routing (server/routing.mjs): the orchestrator picks a key, these do the rest
+let intentRegistry = null;
+const clipText = (text, max) => (String(text || '').length > max ? `${String(text).slice(0, max - 1)}…` : String(text || ''));
+
+/** The last exchange before this chat message, read from the stored chat (never from the model). */
+async function routedContext(ctx) {
+  const run = await getPool().query(`SELECT created_at FROM execution_runs WHERE id=$1`, [ctx.runRef]);
+  const before = run.rows[0]?.created_at;
+  if (!before) return '';
+  const rows = (await getPool().query(
+    `SELECT role, content FROM messages WHERE session_id=$1 AND created_at <= $2 ORDER BY id DESC LIMIT 3`,
+    [ctx.sessionId, before])).rows;
+  if (rows[0]?.role === 'user') rows.shift(); // the message being routed
+  return rows.reverse()
+    .map((row) => `${row.role === 'user' ? 'User' : 'Assistant'}: ${clipText(row.role === 'user' ? row.content : extractReply(row.content), 600)}`)
+    .join('\n');
+}
+
+async function planTasksForRouting(planId) {
+  const rows = await getPool().query(`SELECT title, kind, status, result, result_data, error FROM orchestrator_tasks WHERE plan_id=$1 ORDER BY sort_order`, [planId]);
+  return rows.rows;
+}
+
+function routingDeps() {
+  intentRegistry ||= loadIntentRegistry();
+  return {
+    registry: intentRegistry,
+    getAgent: (id) => getAgent(id),
+    // Same rule as submit_plan: a signed-in chat may only reach agents assigned to that login.
+    isAssigned: async (ctx, agentId) => (!ctx.userId || ctx.sessionId?.startsWith('schedule:') ? true : userAssignedAgent(ctx.userId, agentId)),
+    companySetup: (ctx) => companyOnboardingStatus(tenantFromRun(ctx)),
+    submitPlan: (ctx, args) => submitPlanHandler(ctx, args),
+    recentContext: (ctx) => routedContext(ctx),
+    latestPlan: (sessionId) => taskStatus({ parentSessionId: sessionId }),
+    kick: () => { void executionTick().catch(() => {}); },
+    recordEvent: (event) => recordExecutionEvent(event),
+    planTasks: (planId) => planTasksForRouting(planId),
+    claimReport: async (planId) => (await getPool().query(
+      `UPDATE orchestrator_plans SET report_sent=true WHERE id=$1 AND NOT report_sent RETURNING id`, [planId])).rowCount > 0,
+    refreshPlanStatus: (planId) => refreshPlanStatus(planId),
+  };
 }
 
 async function resolveAgentProfile(agentId) {
@@ -2076,6 +2121,8 @@ async function bootServices() {
       // handlers the /demo routes and public forms use).
       for (const [agentId] of Object.entries(DI_AGENTS)) {
         for (const tool of diToolsFor(agentId)) {
+          // People tools resolve to the host's native operations; the DI twins only work on the retired MCP path.
+          if (HOST_PEOPLE_TOOL_IDS.has(tool.name) || LEGACY_USER_TOOL_IDS.has(tool.name)) continue;
           const needsUser = Boolean(tool.identity);
           registerDiTool(tool.name, tool, agentId, needsUser);
         }
@@ -2088,6 +2135,7 @@ async function bootServices() {
         taskStatus: (input) => taskStatus(input),
         stopTask: (input) => stopTaskHandler(input),
         submitPlan: (ctx, args) => submitPlanHandler(ctx, args),
+        routeRequest: (ctx, args) => routeRequest(ctx, args, routingDeps()),
       });
 
       setModelsJsonProvider(buildPiModelsJson);
@@ -2205,17 +2253,6 @@ async function bootServices() {
     logEvent("error", `ee-mail mcp failed: ${sanitizeError(error)}`);
   }
 
-  boot.step = "whatsapp-sidecar";
-  try {
-    await startWhatsappSidecar();
-    if (dbReady()) {
-      await ensureWhatsappMcp();
-      logEvent("info", "whatsapp mcp registered and attached to whatsapp-assistant agent");
-    }
-  } catch (error) {
-    logEvent("error", `whatsapp sidecar failed: ${sanitizeError(error)}`);
-  }
-
   boot.step = "sites";
   try {
     if (dbReady()) {
@@ -2236,6 +2273,17 @@ async function bootServices() {
     }
   } catch (error) {
     logEvent("error", `browser mcp failed: ${sanitizeError(error)}`);
+  }
+
+  boot.step = "whatsapp-worker";
+  try {
+    await startWhatsappWorker();
+    if (dbReady()) {
+      await ensureWhatsappMcp();
+      logEvent("info", "whatsapp mcp registered and attached to whatsapp-assistant agent");
+    }
+  } catch (error) {
+    logEvent("error", `whatsapp worker failed: ${sanitizeError(error)}`);
   }
 
   boot.step = "whatsapp-tool-cleanup";
@@ -3583,7 +3631,7 @@ const server = createServer(async (req, res) => {
             shared.push(await publishFile({ root: path.join(DATA_DIR, "files"),
               companyId: chatTenantId, workspace: agentWorkspace(profile, chatTenantId), source: file.rel }));
           }
-          packed.prompt += `\nUploaded document references for delegation (include the URL in the specialist task):\n${JSON.stringify(shared)}\n`;
+          packed.prompt += `\nUploaded files:\n${JSON.stringify(shared)}\n`;
           packed.sharedFiles = shared;
         }
       } catch (error) {
@@ -3705,10 +3753,22 @@ const server = createServer(async (req, res) => {
             } else {
               // The run settles and its transcript is saved before the terminal response goes out;
               // a retry arriving meanwhile waits on the same promise.
+              expectRoutedAnswer(run.id);
               const turnSaved = (async () => {
-                const result = await waitForChatRun(run.id);
-                await persister.finish(lastTurn, false);
-                return result;
+                let routed = null;
+                try {
+                  const result = await waitForChatRun(run.id);
+                  // A routed message is answered in this turn: wait (Pi slot already free) for the owner's own answer.
+                  routed = await finishRoutedTurn(run.id, routingDeps(), {
+                    onWaiting: (owner) => { if (!res.writableEnded) writeSse(res, { type: "status", status: `${owner} is working…` }); },
+                  }).catch((error) => { logEvent("warn", `routed answer for run ${run.id}: ${sanitizeError(error)}`); return null; });
+                  if (routed) setTurnAnswer(lastTurn, routed.text);
+                  await persister.finish(lastTurn, false);
+                  return result;
+                } finally {
+                  // Not answered here: the plan report posts the owner's answer to this chat instead.
+                  if (!routed) await releaseRoutedTurn(run.id, routingDeps()).catch(() => {});
+                }
               })();
               chatTurnsInFlight.set(run.id, turnSaved);
               const settled = await turnSaved.finally(() => chatTurnsInFlight.delete(run.id));
@@ -3917,7 +3977,7 @@ async function shutdown() {
   await stopAdsResearch().catch(() => {});
   await closeExecutionMcpConnections().catch(() => {});
   await Promise.allSettled([...piPool.values()].map((slot) => stopSlot(slot)));
-  await stopWhatsappSidecar().catch(() => {});
+  await stopWhatsappWorker().catch(() => {});
   await closeAllSessions().catch(() => {});
   await closeBrowsers().catch(() => {});
   await closeDb().catch(() => {});

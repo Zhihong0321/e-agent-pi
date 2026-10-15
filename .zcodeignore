@@ -56,14 +56,6 @@ new-template/
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/
 
-# WhatsApp sidecar: local runtime state and build output. whatsapp.db holds
-# live whatsmeow session keys — never commit it, this repo is public.
-/sidecar/data/
-/sidecar/*.log
-/sidecar/*.pid
-/sidecar/*.exe
-/sidecar/*.exe~
-
 # Generated slide decks, previews, and source artifacts are kept locally only.
 /slide/
 /document_inteligence/slides/

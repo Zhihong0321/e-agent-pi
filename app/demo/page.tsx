@@ -10,6 +10,7 @@ import { ObservabilityPanel } from "./observability";
 import { SchedulesPanel } from './schedules';
 import { AgentAccessPanel } from "./agent-access";
 import "./theme.css";
+import { LoginChecking, LoginScreen, type Credentials } from "./login";
 
 type Area = "home" | "onboarding" | "people" | "calendar" | "schedules" | "expenses" | "procurement" | "research" | "logs" | "usage" | "activity";
 const navigation: { area: Area; label: string; icon: string }[] = [
@@ -380,29 +381,20 @@ export default function DemoPage({ initialArea = "home" }: { initialArea?: Area 
   const resolvedArea = requestedArea && validAreas.has(requestedArea) ? requestedArea : initialArea;
   const [user, setUser] = useState<DemoUser | null>(null);
   const [checking, setChecking] = useState(true);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
   useEffect(() => { void demoJson<{ user: DemoUser }>("/api/demo/me").then(data => setUser(data.user)).catch(() => {}).finally(() => setChecking(false)); }, []);
-  const login = async (event: FormEvent) => {
-    event.preventDefault(); setBusy(true); setError("");
-    try {
-      const data = await demoJson<{ user: DemoUser }>("/api/demo/login", { username, password });
-      setPassword(""); setUser(data.user);
-      const returnTo = new URLSearchParams(window.location.search).get("returnTo");
-      if (returnTo) {
-        const destination = new URL(returnTo, window.location.origin);
-        if (destination.origin === window.location.origin && ["/", "/mobile", "/mobile/"].includes(destination.pathname)) {
-          window.location.assign(destination.href);
-        }
+  const login = async (credentials: Credentials) => {
+    const data = await demoJson<{ user: DemoUser }>("/api/demo/login", credentials);
+    setUser(data.user);
+    const returnTo = new URLSearchParams(window.location.search).get("returnTo");
+    if (returnTo) {
+      const destination = new URL(returnTo, window.location.origin);
+      if (destination.origin === window.location.origin && ["/", "/mobile", "/mobile/"].includes(destination.pathname)) {
+        window.location.assign(destination.href);
       }
     }
-    catch (error) { setError(error instanceof Error ? error.message : "Sign in failed"); }
-    finally { setBusy(false); }
   };
-  if (checking) return <div className="demo-login"><p role="status">Checking login…</p></div>;
-  if (!user) return <div className="demo-login"><form onSubmit={login}><img src="/branding/e-logo.png" alt="e"/><h1>Sign in</h1><p>Open your AI workspace.</p><label>Username<input autoComplete="username" required value={username} onChange={event => setUsername(event.target.value)}/></label><label>Password<input type="password" autoComplete="current-password" required value={password} onChange={event => setPassword(event.target.value)}/></label>{error && <p role="alert">{error}</p>}<button className="demo-primary" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button></form></div>;
+  if (checking) return <LoginChecking />;
+  if (!user) return <LoginScreen onSignIn={login} />;
   return <DemoWorkspace key={user.id} user={user} initialArea={resolvedArea} onLogout={async () => { await demoJson("/api/demo/logout", {}); window.sessionStorage.removeItem(`di-demo-session-${user.id}`); window.location.assign("/demo"); }}/ >;
 }
 
@@ -584,7 +576,7 @@ function DemoWorkspace({ user, initialArea = "home", onLogout }: { user: DemoUse
     </aside>
 
     <main className="demo-main">
-      <header className="demo-topbar">{pageTabs.length > 1 ? <nav className="demo-group-tabs" aria-label={`${currentGroup.label} pages`}>{pageTabs.map(tab => <button key={tab.key} className={tab.active ? "active" : ""} aria-current={tab.active ? "page" : undefined} onClick={tab.open}>{tab.label}</button>)}</nav> : <div className="demo-breadcrumb">{area === "home" ? <span className="demo-assistant-pill"><Icon name="spark" size={18}/><strong>e Assistant</strong><span className={`demo-connection${studio.loading ? " working" : ""}`} role="status">{studio.loading ? "Working…" : ready && studio.agents.length ? "Connected" : "Connecting…"}</span></span> : <><span className="demo-workspace-name">Your workspace</span><span>/</span><strong>{sectionTitle}</strong></>}</div>}<div className="demo-top-actions"><button className="demo-new-chat" disabled={studio.loading || !studio.agents.length} onClick={() => void newChat()}><Icon name="plus" size={14}/> New chat</button><span className="demo-top-avatar" title={displayName}>{displayName.slice(0, 1).toUpperCase()}</span><button className="demo-mobile-logout" aria-label="Sign out" disabled={loggingOut} onClick={() => void logout()}><Icon name="logout" size={16}/></button></div></header>
+      <header className="demo-topbar">{pageTabs.length > 1 ? <nav className="demo-group-tabs" aria-label={`${currentGroup.label} pages`}>{pageTabs.map(tab => <button key={tab.key} className={tab.active ? "active" : ""} aria-current={tab.active ? "page" : undefined} onClick={tab.open}>{tab.label}</button>)}</nav> : <div className="demo-breadcrumb">{area === "home" ? <span className="demo-assistant-pill"><Icon name="spark" size={18}/><strong>e Assistant</strong><span className={`demo-connection${studio.loading ? " working" : ""}`} role="status">{studio.loading ? "Working…" : ready && studio.agents.length ? "Connected" : "Connecting…"}</span></span> : <><span className="demo-workspace-name">Your workspace</span><span>/</span><strong>{sectionTitle}</strong></>}</div>}<div className="demo-top-actions"><button className="demo-new-chat" disabled={studio.loading || !studio.agents.length} onClick={() => void newChat()}><Icon name="plus" size={14}/> New chat</button><button className="demo-mobile-logout" aria-label="Sign out" disabled={loggingOut} onClick={() => void logout()}><Icon name="logout" size={16}/></button></div></header>
       <div className="demo-content">
         {area !== "home" && <div className="demo-heading"><div><div className="demo-eyebrow">{area === "schedules" ? "SCHEDULED WORK" : logArea ? "WORKSPACE INSIGHTS" : area === "onboarding" ? "STEP 01 · GETTING STARTED" : area === "people" ? "STEP 02 · KNOW YOUR TEAM" : area === "calendar" ? "LIVE COMPANY SIGNALS" : area === "expenses" ? "RECEIPTS TO REPORT" : area === "procurement" ? "BUY WITH CONFIDENCE" : area === "research" ? "COMPANY INTELLIGENCE" : "STEP 03 · EXPLORE CAPABILITIES"}</div><h1>{area === "schedules" ? "Scheduled work" : logArea ? logHeadings[logArea].title : area === "onboarding" ? "Set up your workspace" : area === "people" ? "Meet your company people" : area === "calendar" ? "One calendar for every date" : area === "expenses" ? "Claims, grouped by cut-off" : area === "procurement" ? "Quotes, orders, deliveries, bills" : area === "research" ? "Company research library" : "Make work happen"}</h1><p>{area === "schedules" ? "Manage AI jobs, reminders, and cron schedules. Check next runs and execution history." : logArea ? logHeadings[logArea].description : area === "onboarding" ? "Tell the assistant about your business and watch your profile take shape." : area === "people" ? "Share a key contact, their position and department, so future work reaches the right person." : area === "calendar" ? "The Calendar AI reads your company records and keeps the important dates together." : area === "expenses" ? "File a receipt, and the Expenses Clerk groups every claim into the month’s submission and prepares the report." : area === "procurement" ? "Record what suppliers send, draft purchase orders, log deliveries, and check every invoice against the order before paying." : area === "research" ? "Evidence-backed company dossiers, web verification, and published intelligence reports." : "Create records and see the invoice database update instantly."}</p></div></div>}
         {logArea ? <ObservabilityPanel area={logArea} isAdmin={user.role === "admin"}/> : area === "schedules" ? <SchedulesPanel user={user}/> : area === "calendar" ? <CalendarPanel/> : area === "expenses" ? <ExpensesPanel user={user} onNotice={setNotice}/> : area === "procurement" ? <ProcurementPanel user={user} onNotice={setNotice}/> : area === "research" ? <ResearchPanel user={user} onNotice={setNotice}/> : <div className={`demo-layout${area === "home" ? " demo-home-layout" : ""}`}>

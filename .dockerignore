@@ -17,8 +17,3 @@ my-vault/*.secret
 *.md
 !README.md
 !agent/**/*.md
-sidecar/data
-sidecar/*.log
-sidecar/*.pid
-sidecar/*.exe
-sidecar/*.exe~

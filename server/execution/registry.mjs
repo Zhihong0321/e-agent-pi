@@ -23,6 +23,7 @@ import { clearAgentSop, getAgentSop, saveAgentSop } from '../sops.mjs';
 import { tenantFromRun } from '../tenancy.mjs';
 import { isSuperadmin, normalizeRole } from '../roles.mjs';
 import { ToolManifestEntrySchema } from './contracts.mjs';
+import { loadIntentRegistry, routeInputSchema } from '../routing.mjs';
 
 const operations = new Map();
 const operationVariants = new Map(); // operation id -> Map(profile id, definition)
@@ -209,7 +210,7 @@ registerOperation({
 
 // The SOP is the agent-specific procedure injected into that agent's prompt on every run
 // (runtime.mjs). The Superadmin changes it in chat; the Settings page edits the same row.
-const SOP_PROFILES = ['orchestrator', 'di-fde'];
+const SOP_PROFILES = ['di-fde'];
 const FDE_BLOCK = /<!-- fde:start -->[\s\S]*?<!-- fde:end -->/;
 
 async function sopAgent(ref) {
@@ -298,7 +299,7 @@ registerOperation({
 // ---------------------------------------------------------------- control operations
 
 let controlHandlers = {
-  listSpecialists: null, companySetup: null, taskStatus: null, stopTask: null, submitPlan: null,
+  listSpecialists: null, companySetup: null, taskStatus: null, stopTask: null, submitPlan: null, routeRequest: null,
 };
 export function registerControlHandlers(next = {}) {
   controlHandlers = { ...controlHandlers, ...next };
@@ -372,6 +373,19 @@ registerOperation({
   async execute(ctx, args) {
     if (!controlHandlers.stopTask) throw new Error('Task cancellation is not wired');
     return controlHandlers.stopTask({ taskId: args.taskId, requestingSessionId: ctx.sessionId });
+  },
+});
+
+// The orchestrator's only tool: it picks the intent key, code does the rest (server/routing.mjs).
+registerOperation({
+  id: 'route_request',
+  description: 'Route this chat message to the one agent that owns it. Call once per message, then reply with the returned reply text word for word.',
+  effect: 'control',
+  timeoutMs: 30_000,
+  inputSchema: routeInputSchema(loadIntentRegistry()),
+  async execute(ctx, args) {
+    if (!controlHandlers.routeRequest) throw new Error('Routing is not wired');
+    return controlHandlers.routeRequest(ctx, args);
   },
 });
 

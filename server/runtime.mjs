@@ -20,6 +20,7 @@ import {
 import {
   IMAGEN_SKILL_DIR,
   MCP_ADAPTER_EXTENSION,
+  ORCHESTRATOR_AGENT_ID,
   RUNTIME_DIR,
   ROOT,
   SPAWN_SUBAGENTS_SLUG,
@@ -149,6 +150,8 @@ async function companySchemaBible(agent, companyId) {
  */
 export async function buildRoleText(agent, { modelId, companyId = null } = {}) {
   const role = String(agent.rolePrompt || "").trim();
+  // The router reads its role and nothing else: no host notes, no SOP (an SOP must never change routing).
+  if (agent.id === ORCHESTRATOR_AGENT_ID || agent.slug === "orchestrator") return `${role}\n`;
   const research = agent.id === "company-deep-research" || agent.slug === "company-deep-research";
   const extras = research ? [replyStyleSystemPrompt()] : [replyStyleSystemPrompt(), FILE_SHARING_PROMPT, imagenSystemPrompt()];
   if (agent.id === "website" || agent.slug === "website") extras.push(hostSystemPrompt());
@@ -229,6 +232,9 @@ export async function materializeAgentRuntime(agent, mcpServers, modelsJson, { m
  *   thinkingLevel?: string | null;
  * }} opts
  */
+/** The orchestrator's base prompt: it routes, and its role file is the whole procedure. */
+export const ROUTER_SYSTEM_PROMPT = "You route each chat message to the agent that owns it, using your one tool. Follow your role text exactly.";
+
 export function buildPiArgs(opts) {
   const args = [
     "--append-system-prompt",
@@ -249,7 +255,9 @@ export function buildPiArgs(opts) {
   const adsResearch = opts.agent.id === "ads-research" || opts.agent.slug === "ads-research";
   const restricted = research || adsResearch;
   const profile = restricted ? TOOL_PROFILES.assistant : TOOL_PROFILES[normalizeToolProfile(opts.toolProfile)] || TOOL_PROFILES[DEFAULT_TOOL_PROFILE];
-  if (profile.systemPrompt) args.push("--system-prompt", profile.systemPrompt);
+  const router = opts.agent.id === ORCHESTRATOR_AGENT_ID || opts.agent.slug === "orchestrator";
+  const systemPrompt = router ? ROUTER_SYSTEM_PROMPT : profile.systemPrompt;
+  if (systemPrompt) args.push("--system-prompt", systemPrompt);
   // --tools is an allowlist that hides extension tools (host tools, share_file, MCP).
   // Drop the builtins the profile does not allow instead, so host tools stay visible.
   if (profile.tools) {

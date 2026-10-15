@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Document Intelligence</title>
+<meta name="description" content="Document Intelligence turns plain-language requests into quotations, invoices, purchase orders and expense reports. Specialised assistants do the steps; the database enforces the rules.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --navy: #12396E;
+    --navy-ink: #0E1B2E;
+    --gold: #B98A3E;
+    --gold-soft: #F7EEDB;
+    --bg: #F5F7FA;
+    --surface: #FFFFFF;
+    --tint: #EFF3F9;
+    --line: #E1E6EE;
+    --muted: #5A667A;
+    --serif: "Newsreader", Georgia, "Times New Roman", serif;
+    --sans: "Inter Tight", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--navy-ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+  img, svg { max-width: 100%; display: block; }
+  a { color: var(--navy); }
+  h1, h2, h3 { margin: 0; font-weight: 500; line-height: 1.15; }
+  p { margin: 0; }
+  .wrap { width: 100%; max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+
+  /* ---------- header ---------- */
+  .top {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(245, 247, 250, 0.92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+  }
+  .top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 60px; }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--navy-ink); font-weight: 600; letter-spacing: .01em; }
+  .brand-mark {
+    width: 30px; height: 30px; border-radius: 8px; background: var(--navy);
+    display: grid; place-items: center; color: #fff; font-family: var(--serif); font-size: 17px; font-weight: 600;
+    position: relative;
+  }
+  .brand-mark::after { content: ""; position: absolute; right: -3px; top: -3px; width: 9px; height: 9px; border-radius: 50%; background: var(--gold); border: 2px solid var(--bg); }
+  .nav { display: none; gap: 24px; }
+  .nav a { color: var(--muted); text-decoration: none; font-size: 15px; }
+  .nav a:hover { color: var(--navy); }
+  .btn-small {
+    text-decoration: none; font-size: 14px; font-weight: 600; color: var(--navy);
+    padding: 8px 14px; border: 1px solid var(--navy); border-radius: 999px; white-space: nowrap;
+  }
+
+  /* ---------- buttons ---------- */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    text-decoration: none; font-weight: 600; font-size: 16px;
+    padding: 13px 22px; border-radius: 999px; border: 1px solid transparent;
+    min-height: 48px;
+  }
+  .btn-primary { background: var(--navy); color: #fff; }
+  .btn-primary:hover { background: #0E2F5C; }
+  .btn-ghost { color: var(--navy); border-color: var(--line); background: var(--surface); }
+  .btn-ghost:hover { border-color: var(--navy); }
+
+  /* ---------- hero ---------- */
+  .hero { padding: 56px 0 48px; }
+  .hero-grid { display: grid; gap: 40px; align-items: center; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--gold);
+  }
+  .eyebrow::before { content: ""; width: 22px; height: 2px; background: var(--gold); }
+  .hero h1 { font-family: var(--serif); font-size: clamp(38px, 6vw, 60px); color: var(--navy-ink); margin-top: 16px; letter-spacing: -.01em; }
+  .lede { font-size: 18px; color: var(--muted); margin-top: 20px; max-width: 34em; }
+  .cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+  .facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--line); }
+  .facts div { font-size: 14px; color: var(--muted); display: flex; gap: 8px; align-items: flex-start; }
+  .facts svg { flex: 0 0 auto; margin-top: 3px; color: var(--navy); }
+
+  /* hero illustration */
+  .stage { position: relative; padding: 8px 0 28px 0; }
+  .doc-card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+    box-shadow: 0 1px 2px rgba(14, 27, 46, .05), 0 18px 40px -20px rgba(18, 57, 110, .25);
+    padding: 22px; position: relative; z-index: 1;
+  }
+  .doc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .doc-brand { font-size: 13px; color: var(--muted); }
+  .doc-brand strong { display: block; color: var(--navy-ink); font-size: 15px; font-weight: 600; }
+  .doc-title { font-family: var(--serif); font-size: 26px; color: var(--navy); margin-top: 18px; }
+  .chip {
+    font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px;
+    background: #E7F1EA; color: #1F6B3A; white-space: nowrap;
+  }
+  .doc-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 18px; padding-bottom: 16px; border-bottom: 1px dashed var(--line); }
+  .doc-meta span { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .doc-meta strong { display: block; font-size: 14px; font-weight: 600; word-break: break-word; }
+  .doc-lines { margin: 0; padding: 0; list-style: none; }
+  .doc-lines li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .doc-lines li span:last-child { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .doc-total { display: flex; justify-content: space-between; align-items: baseline; margin-top: 12px; }
+  .doc-total span { color: var(--muted); font-size: 14px; }
+  .doc-total strong { font-family: var(--serif); font-size: 24px; color: var(--navy); font-weight: 500; }
+  .doc-foot { margin-top: 16px; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .doc-foot svg { color: var(--gold); flex: 0 0 auto; }
+
+  .bubble {
+    position: relative; z-index: 2; margin: -10px 0 0 auto; width: min(290px, 88%);
+    background: var(--navy); color: #fff; border-radius: 14px 14px 4px 14px;
+    padding: 12px 14px; font-size: 14px; box-shadow: 0 12px 28px -14px rgba(18, 57, 110, .6);
+  }
+  .bubble small { display: block; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; opacity: .7; margin-bottom: 2px; }
+  .caption { font-size: 12px; color: var(--muted); margin-top: 10px; text-align: center; }
+
+  /* ---------- sections ---------- */
+  section { padding: 64px 0; }
+  section.alt { background: var(--surface); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .kicker { font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--gold); }
+  .h2 { font-family: var(--serif); font-size: clamp(30px, 4.2vw, 42px); color: var(--navy-ink); margin-top: 12px; letter-spacing: -.01em; }
+  .intro { color: var(--muted); font-size: 17px; margin-top: 14px; max-width: 40em; }
+
+  .cards { display: grid; gap: 16px; margin-top: 36px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 24px;
+    min-width: 0;
+  }
+  .card h3 { font-size: 20px; color: var(--navy); font-family: var(--serif); font-weight: 500; }
+  .card p { color: var(--muted); font-size: 15px; margin-top: 10px; }
+  .card ul { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+  .card li { font-size: 14px; color: var(--navy-ink); padding-left: 22px; position: relative; }
+  .card li::before { content: ""; position: absolute; left: 0; top: 9px; width: 10px; height: 2px; background: var(--gold); }
+  .icon {
+    width: 40px; height: 40px; border-radius: 10px; background: var(--tint); color: var(--navy);
+    display: grid; place-items: center; margin-bottom: 16px;
+  }
+
+  /* how a quotation happens */
+  .how-grid { display: grid; gap: 36px; margin-top: 36px; align-items: start; }
+  .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; counter-reset: step; }
+  .steps li {
+    position: relative; padding: 0 0 26px 52px; counter-increment: step;
+  }
+  .steps li:last-child { padding-bottom: 0; }
+  .steps li::before {
+    content: counter(step); position: absolute; left: 0; top: 0;
+    width: 36px; height: 36px; border-radius: 50%; background: var(--navy); color: #fff;
+    display: grid; place-items: center; font-weight: 600; font-size: 15px;
+  }
+  .steps li::after {
+    content: ""; position: absolute; left: 17px; top: 42px; bottom: 0; width: 2px; background: var(--line);
+  }
+  .steps li:last-child::after { display: none; }
+  .steps h3 { font-size: 18px; font-weight: 600; color: var(--navy-ink); font-family: var(--sans); }
+  .steps p { color: var(--muted); font-size: 15px; margin-top: 6px; }
+
+  .chat {
+    background: var(--tint); border: 1px solid var(--line); border-radius: 16px; padding: 22px;
+    display: grid; gap: 12px;
+  }
+  .chat-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .msg { max-width: 92%; padding: 11px 14px; border-radius: 14px; font-size: 15px; line-height: 1.5; }
+  .msg.you { justify-self: end; background: var(--navy); color: #fff; border-bottom-right-radius: 4px; }
+  .msg.them { justify-self: start; background: var(--surface); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+  .msg b { font-weight: 600; }
+  .msg .tag { display: block; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--gold); margin-bottom: 4px; }
+  .chat-note { font-size: 12px; color: var(--muted); }
+
+  /* safety */
+  .safety { display: grid; gap: 16px; margin-top: 36px; }
+  .safe-item { display: grid; grid-template-columns: 1fr; gap: 6px; padding: 22px 0; border-top: 1px solid var(--line); }
+  .safe-item h3 { font-family: var(--serif); font-size: 21px; font-weight: 500; color: var(--navy); }
+  .safe-item p { color: var(--muted); font-size: 15px; }
+  .safe-item .who { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--gold); }
+  .pull {
+    margin-top: 28px; padding: 22px 24px; border-left: 3px solid var(--gold); background: var(--gold-soft);
+    border-radius: 0 12px 12px 0; font-family: var(--serif); font-size: 21px; line-height: 1.4; color: var(--navy-ink);
+  }
+
+  /* malaysia */
+  .my-grid { display: grid; gap: 16px; margin-top: 36px; }
+  .my-item { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px; min-width: 0; }
+  .my-item h3 { font-size: 17px; font-weight: 600; color: var(--navy-ink); }
+  .my-item p { color: var(--muted); font-size: 15px; margin-top: 8px; }
+  .tax-codes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .tax-codes span {
+    font-size: 13px; font-weight: 600; color: var(--navy); background: var(--tint);
+    border: 1px solid var(--line); padding: 4px 10px; border-radius: 8px; font-variant-numeric: tabular-nums;
+  }
+  .example-phone { font-family: ui-monospace, Consolas, monospace; font-size: 14px; color: var(--navy-ink); background: var(--tint); padding: 2px 6px; border-radius: 6px; word-break: break-all; }
+  .pill-later {
+    display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
+    color: #7A5518; background: var(--gold-soft); border-radius: 999px; padding: 3px 9px; margin-left: 6px; vertical-align: 2px;
+  }
+
+  /* roadmap / honesty */
+  .status-cols { display: grid; gap: 16px; margin-top: 36px; }
+  .status-col { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 24px; min-width: 0; }
+  .status-col h3 { font-family: var(--serif); font-size: 22px; font-weight: 500; color: var(--navy); }
+  .status-col .sub { font-size: 14px; color: var(--muted); margin-top: 4px; }
+  .status-col ul { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 12px; }
+  .status-col li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; font-size: 15px; color: var(--navy-ink); }
+  .status-col li svg { margin-top: 4px; }
+  .status-col li .why { display: block; font-size: 13px; color: var(--muted); }
+  .ok { color: #1F6B3A; }
+  .todo { color: #9A6E26; }
+
+  /* start */
+  .start-grid { display: grid; gap: 16px; margin-top: 36px; }
+  .start-card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 24px; min-width: 0; }
+  .start-card .num { font-family: var(--serif); font-size: 34px; color: var(--gold); line-height: 1; }
+  .start-card h3 { font-size: 18px; font-weight: 600; color: var(--navy-ink); margin-top: 12px; font-family: var(--sans); }
+  .start-card p { color: var(--muted); font-size: 15px; margin-top: 8px; }
+  .closing {
+    margin-top: 40px; background: var(--navy); color: #fff; border-radius: 18px; padding: 36px 28px;
+    display: grid; gap: 20px;
+  }
+  .closing h2 { font-family: var(--serif); font-size: clamp(26px, 3.6vw, 34px); font-weight: 500; }
+  .closing p { color: rgba(255, 255, 255, .8); margin-top: 10px; max-width: 36em; }
+  .closing .btn-ghost { background: transparent; color: #fff; border-color: rgba(255, 255, 255, .4); }
+  .closing .btn-ghost:hover { border-color: #fff; }
+  .closing .btn-primary { background: var(--gold); color: var(--navy-ink); }
+  .closing .btn-primary:hover { background: #C99A4D; }
+
+  footer { padding: 32px 0 40px; color: var(--muted); font-size: 14px; }
+  footer .wrap { display: grid; gap: 10px; border-top: 1px solid var(--line); padding-top: 24px; }
+  footer p + p { font-size: 13px; }
+
+  /* ---------- responsive ---------- */
+  @media (min-width: 640px) {
+    .wrap { padding: 0 24px; }
+    .cards.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .my-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .start-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .status-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .doc-meta { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .safe-item { grid-template-columns: 220px 1fr; gap: 24px; align-items: baseline; }
+    .safety .safe-item > .safe-head { grid-column: 1; }
+    .safety .safe-item > p { grid-column: 2; }
+    .closing { grid-template-columns: 1fr auto; align-items: center; padding: 44px 40px; }
+    .closing .cta-row { margin-top: 0; }
+    .footer-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .footer-row p:first-child { font-weight: 600; color: var(--navy-ink); }
+  }
+  @media (min-width: 860px) {
+    .nav { display: flex; }
+    .hero { padding: 88px 0 72px; }
+    .hero-grid { grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: 56px; }
+    .cards.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .cards.five { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    .cards.five > .card { grid-column: span 2; }
+    .cards.five > .card:nth-child(4) { grid-column: 2 / span 2; }
+    .cards.five > .card:nth-child(5) { grid-column: 4 / span 2; }
+    .how-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 56px; }
+    .my-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .safety { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 48px; }
+    .safety .safe-item { grid-template-columns: 1fr; gap: 6px; }
+    .safety .safe-item > .safe-head,
+    .safety .safe-item > p { grid-column: auto; }
+    section { padding: 88px 0; }
+  }
+  @media (max-width: 420px) {
+    .btn { width: 100%; }
+    .facts { grid-template-columns: 1fr; }
+    .doc-meta { grid-template-columns: 1fr 1fr; }
+    .doc-meta div:last-child { grid-column: 1 / -1; }
+    .btn-small { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Document Intelligence home">
+      <span class="brand-mark" aria-hidden="true">D</span>
+      <span>Document Intelligence</span>
+    </a>
+    <nav class="nav" aria-label="Page sections">
+      <a href="#what">What it handles</a>
+      <a href="#how">How it works</a>
+      <a href="#safety">Safety</a>
+      <a href="#malaysia">Malaysia</a>
+      <a href="#status">Status</a>
+    </nav>
+    <a class="btn-small" href="#how">See an example</a>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="eyebrow">For Malaysian businesses</span>
+        <h1>A back office that checks its own work.</h1>
+        <p class="lede">Document Intelligence turns plain-language requests into quotations, invoices, purchase orders and expense reports. Specialised assistants do each step. The database enforces the rules they cannot talk their way around.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#how">See a quotation step by step</a>
+          <a class="btn btn-ghost" href="#status">What it does not do yet</a>
+        </div>
+        <div class="facts">
+          <div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            Document numbers with no gaps
+          </div>
+          <div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            Nothing is hard-deleted
+          </div>
+          <div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            Each company's data kept apart
+          </div>
+          <div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+            Every change attributed in a log
+          </div>
+        </div>
+      </div>
+
+      <div class="stage" aria-hidden="true">
+        <div class="doc-card">
+          <div class="doc-head">
+            <div class="doc-brand">From
+              <strong>Your Company Sdn Bhd</strong>
+            </div>
+            <span class="chip">Issued</span>
+          </div>
+          <div class="doc-title">Quotation</div>
+          <div class="doc-meta">
+            <div><span>Number</span><strong>QT-2026-0001</strong></div>
+            <div><span>Customer</span><strong>Acme Sdn Bhd</strong></div>
+            <div><span>Valid until</span><strong>8 Nov 2026</strong></div>
+          </div>
+          <ul class="doc-lines">
+            <li><span>10 kWp solar package</span><span>RM 28,000.00</span></li>
+            <li><span>Installation and commissioning</span><span>RM 2,500.00</span></li>
+          </ul>
+          <div class="doc-total"><span>Total</span><strong>RM 30,500.00</strong></div>
+          <div class="doc-foot">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+            Frozen at issue. Customer and company details are kept as they were.
+          </div>
+        </div>
+        <div class="bubble">
+          <small>You, in chat</small>
+          Acme accepted QT-2026-0001. Make the invoice.
+        </div>
+        <p class="caption">Illustrative example, not real customer data.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- WHAT IT HANDLES -->
+  <section id="what" class="alt">
+    <div class="wrap">
+      <span class="kicker">What it handles</span>
+      <h2 class="h2">Five workflows, one database.</h2>
+      <p class="intro">Each workflow has its own assistant, and every assistant uses the same customers, products and company rules. Nothing is copied from one place to another by hand.</p>
+
+      <div class="cards five">
+        <article class="card">
+          <div class="icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M17 4.5a3.5 3.5 0 0 1 0 7M21.5 20a6.5 6.5 0 0 0-3-5.5"/></svg>
+          </div>
+          <h3>Customers and contacts</h3>
+          <p>Paste a name card or lead form. Existing customers are found before a duplicate is made.</p>
+          <ul>
+            <li>Matches SSM, TIN, email, phone and name</li>
+            <li>Fills blank fields only, never overwrites</li>
+          </ul>
+        </article>
+
+        <article class="card">
+          <div class="icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>
+          </div>
+          <h3>Quotations, invoices and payments</h3>
+          <p>Draft from plain words, check the readiness rules, issue, convert and record payment.</p>
+          <ul>
+            <li>Asks every missing question in one message</li>
+            <li>PDF generated when a document is issued</li>
+            <li>Unpaid invoices can be voided; paid ones cannot</li>
+          </ul>
+        </article>
+
+        <article class="card">
+          <div class="icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+          </div>
+          <h3>Public forms</h3>
+          <p>Design a form from a fixed set of field types and publish a link. Answers become customers or documents only when you say so.</p>
+          <ul>
+            <li>Server-side validation on every submission</li>
+            <li>Passwords, card numbers and OTPs are never collected</li>
+          </ul>
+        </article>
+
+        <article class="card">
+          <div class="icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M3 10h18M8 6V4h8v2"/></svg>
+          </div>
+          <h3>Expense claims</h3>
+          <p>Staff send a receipt in chat. Each receipt becomes a claim, grouped into the monthly submission by the company's cut-off day.</p>
+          <ul>
+            <li>Admins approve, reject or close the month</li>
+            <li>Closed months are frozen and get a report PDF</li>
+          </ul>
+        </article>
+
+        <article class="card">
+          <div class="icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18l-2 12H5z"/><path d="M8 7V5a4 4 0 0 1 8 0v2"/></svg>
+          </div>
+          <h3>Procurement</h3>
+          <p>Suppliers, their quotations and invoices, and purchase orders from draft to received.</p>
+          <ul>
+            <li>Invoice checked against its purchase order</li>
+            <li>Only an admin issues, cancels or marks paid</li>
+          </ul>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section id="how">
+    <div class="wrap">
+      <span class="kicker">How it works</span>
+      <h2 class="h2">From a sentence to an issued quotation.</h2>
+      <p class="intro">The assistant thinks before it writes. It looks up the customer and the catalogue, tests the company's rules against a draft, and only then asks you for what is missing.</p>
+
+      <div class="how-grid">
+        <ol class="steps">
+          <li>
+            <h3>You describe it in plain words</h3>
+            <p>"Quotation for Acme, the 10 kWp package and installation." No forms to fill in first.</p>
+          </li>
+          <li>
+            <h3>It checks before anything is saved</h3>
+            <p>It finds the customer by SSM, TIN, email, phone or name, looks up the products, and runs the readiness rules on a draft. Nothing is written yet.</p>
+          </li>
+          <li>
+            <h3>It asks everything at once</h3>
+            <p>One message with every open question and a sensible suggestion, such as a valid-until date 30 days from today.</p>
+          </li>
+          <li>
+            <h3>You issue it</h3>
+            <p>The number is assigned now, inside the same transaction, so it cannot leave a gap. The PDF is rendered, and the customer and company details are frozen on the document.</p>
+          </li>
+          <li>
+            <h3>Later steps are logged too</h3>
+            <p>An accepted quotation converts to an invoice. Payments are recorded against it. Each change is attributed to a person or an assistant.</p>
+          </li>
+        </ol>
+
+        <div class="chat" role="group" aria-label="Example conversation">
+          <div class="chat-label">Illustrative conversation</div>
+          <div class="msg you"><span class="tag">You</span>Quotation for Acme, the 10 kWp package and installation.</div>
+          <div class="msg them"><span class="tag">Document Agent</span>I matched Acme Sdn Bhd by name and email. Two things before I draft: which valid-until date should I use (I suggest 30 days from today), and should installation be a separate line?</div>
+          <div class="msg you"><span class="tag">You</span>30 days is fine. Yes, separate line.</div>
+          <div class="msg them"><span class="tag">Document Agent</span>The draft is ready for Acme. Shall I issue it? That is when the number and the PDF are created.</div>
+          <p class="chat-note">Wording and layout are illustrative. The real replies depend on your data and the rules you set.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SAFETY -->
+  <section id="safety" class="alt">
+    <div class="wrap">
+      <span class="kicker">Safety</span>
+      <h2 class="h2">The rules live in the database, not in the prompt.</h2>
+      <p class="intro">A prompt can be talked around. Database grants, triggers and row-level security cannot. These are the guarantees, and each one is enforced where the data is stored.</p>
+
+      <div class="safety">
+        <div class="safe-item">
+          <div class="safe-head"><div class="who">Deletion</div><h3>Nothing is hard-deleted</h3></div>
+          <p>Removing a record is a soft delete you can restore. The database refuses DELETE and TRUNCATE for every role, including the owner.</p>
+        </div>
+        <div class="safe-item">
+          <div class="safe-head"><div class="who">Issued documents</div><h3>Issued documents are frozen</h3></div>
+          <p>After issue, the content cannot change. Only status, payment, void and PDF fields can still move. Line items are locked.</p>
+        </div>
+        <div class="safe-item">
+          <div class="safe-head"><div class="who">Numbering</div><h3>Numbers have no gaps</h3></div>
+          <p>A number is assigned only when a document is issued, inside the same transaction, with a row lock on the sequence.</p>
+        </div>
+        <div class="safe-item">
+          <div class="safe-head"><div class="who">Isolation</div><h3>Companies cannot see each other</h3></div>
+          <p>Every table has a row-level security policy on its tenant. The check runs on writes as well as reads.</p>
+        </div>
+        <div class="safe-item">
+          <div class="safe-head"><div class="who">Audit</div><h3>Every change is attributed</h3></div>
+          <p>Before and after values, who acted and which assistant acted are written to a log. The application role cannot edit or delete that log.</p>
+        </div>
+        <div class="safe-item">
+          <div class="safe-head"><div class="who">Assistants</div><h3>Assistants cannot change the structure</h3></div>
+          <p>No schema changes, no shell, no SQL, no file editing. Each assistant sees only its own tools, and no assistant holds database credentials.</p>
+        </div>
+      </div>
+
+      <p class="pull">Custom fields, readiness rules and tax codes are data. A company can change how its documents work without anyone editing the code.</p>
+    </div>
+  </section>
+
+  <!-- MALAYSIA -->
+  <section id="malaysia">
+    <div class="wrap">
+      <span class="kicker">Built around Malaysian paperwork</span>
+      <h2 class="h2">SST, SSM and phone numbers, handled the Malaysian way.</h2>
+      <p class="intro">The matching and the tax setup are written for how Malaysian companies record their details, not for a generic template.</p>
+
+      <div class="my-grid">
+        <div class="my-item">
+          <h3>SST tax codes</h3>
+          <p>Each company gets its own tax codes. The default is NT, with the others ready to use.</p>
+          <div class="tax-codes" aria-label="Tax codes">
+            <span>NT</span><span>SV8</span><span>SV6</span><span>ST10</span><span>ST5</span><span>EX</span>
+          </div>
+        </div>
+        <div class="my-item">
+          <h3>Duplicate matching</h3>
+          <p>Phone numbers are normalised, so <span class="example-phone">012-345 6789</span> and <span class="example-phone">+60 12-345 6789</span> are recognised as the same number.</p>
+        </div>
+        <div class="my-item">
+          <h3>Company names</h3>
+          <p>"Sdn Bhd", "Enterprise" and similar words are ignored when names are compared. Free email domains are never treated as a company's domain.</p>
+        </div>
+        <div class="my-item">
+          <h3>MyInvois-ready fields <span class="pill-later">Submission later</span></h3>
+          <p>TIN, MSIC, SST number and e-invoice status are stored, and missing TINs are flagged. Sending to LHDN is not connected yet.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATUS -->
+  <section id="status" class="alt">
+    <div class="wrap">
+      <span class="kicker">Status</span>
+      <h2 class="h2">What works today, and what does not yet.</h2>
+      <p class="intro">This is a working MVP run by one operator. We would rather you know the limits now than find them after you have relied on the tool.</p>
+
+      <div class="status-cols">
+        <div class="status-col">
+          <h3>Working today</h3>
+          <p class="sub">Built, with tests in the repository.</p>
+          <ul>
+            <li>
+              <svg class="ok" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+              <span>Customers, products, packages and catalogue lookup</span>
+            </li>
+            <li>
+              <svg class="ok" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+              <span>Quotations, invoices, issue, conversion, payments and void</span>
+            </li>
+            <li>
+              <svg class="ok" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+              <span>Public forms with submissions, review and CSV export</span>
+            </li>
+            <li>
+              <svg class="ok" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+              <span>Expense claims, monthly submissions and claim reports</span>
+            </li>
+            <li>
+              <svg class="ok" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+              <span>Suppliers, purchase orders, goods received and the invoice-to-PO check</span>
+            </li>
+            <li>
+              <svg class="ok" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+              <span>Company setup, reset with a snapshot, and the safety guarantees above</span>
+            </li>
+          </ul>
+        </div>
+
+        <div class="status-col">
+          <h3>Not yet</h3>
+          <p class="sub">On the list, not built. No dates promised here.</p>
+          <ul>
+            <li>
+              <svg class="todo" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+              <span>Named user accounts and roles<span class="why">Today the app runs as a single operator.</span></span>
+            </li>
+            <li>
+              <svg class="todo" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+              <span>Sending documents by email<span class="why">Documents are rendered as PDFs. They are not sent for you.</span></span>
+            </li>
+            <li>
+              <svg class="todo" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+              <span>MyInvois submission to LHDN<span class="why">Only the fields are ready.</span></span>
+            </li>
+            <li>
+              <svg class="todo" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+              <span>Credit notes as a full workflow<span class="why">The type and numbering exist. The workflow does not.</span></span>
+            </li>
+            <li>
+              <svg class="todo" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+              <span>Business reports such as ageing and sales by customer or product</span>
+            </li>
+            <li>
+              <svg class="todo" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+              <span>Partial payments on purchase orders, and foreign-currency documents</span>
+            </li>
+            <li>
+              <svg class="todo" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+              <span>Second-check review in the live chat<span class="why">Built and tested in the stress harness. Not yet in the live chat.</span></span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- GETTING STARTED -->
+  <section id="start">
+    <div class="wrap">
+      <span class="kicker">Getting started</span>
+      <h2 class="h2">Three steps before the first document.</h2>
+      <p class="intro">Documents cannot be issued until the company details are complete. The readiness rules say what is still missing, so nothing has to be guessed.</p>
+
+      <div class="start-grid">
+        <div class="start-card">
+          <div class="num">1</div>
+          <h3>Set up the company</h3>
+          <p>Name, country, business type and activity, currency, and an email or phone. Add the legal name, SSM, address and bank details before you issue.</p>
+        </div>
+        <div class="start-card">
+          <div class="num">2</div>
+          <h3>Add products or packages</h3>
+          <p>Name, price and SST code for each item. Changes to a product never alter a document that was already issued.</p>
+        </div>
+        <div class="start-card">
+          <div class="num">3</div>
+          <h3>Describe your first quotation</h3>
+          <p>Say it in plain words, answer the questions, then issue. The PDF link appears in the chat.</p>
+        </div>
+      </div>
+
+      <div class="closing">
+        <div>
+          <h2>See the first quotation for yourself.</h2>
+          <p>Walk through the example above, then check the status list for what is still on the way.</p>
+        </div>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="#how">Back to the example</a>
+          <a class="btn btn-ghost" href="#status">Read the status list</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap footer-row">
+    <p>Document Intelligence</p>
+    <p>Part of UIv2. Runs on Postgres with row-level security, in the <code>di</code> schema.</p>
+  </div>
+</footer>
+
+</body>
+</html>

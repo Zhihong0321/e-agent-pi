@@ -1,6 +1,6 @@
-// Boots the Go WhatsApp sidecar (whatsmeow) as a long-lived child process,
-// restarting it if it exits, and registers its MCP server in the catalog
-// attached to the WhatsApp Assistant agent. See archive/housekeeping-2026-10-11/plans/whatsapp-auto-plan.md.
+// Keeps the WhatsApp worker (server/whatsapp-worker.mjs, Baileys) running as a child
+// process, restarting it if it exits, and registers its MCP server in the catalog
+// attached to the WhatsApp Assistant agent.
 import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import {
@@ -10,7 +10,7 @@ import {
   WHATSAPP_MCP_ADDR,
   WHATSAPP_MCP_SLUG,
   WHATSAPP_MEMORY_FILE,
-  WHATSAPP_SIDECAR_BIN,
+  WHATSAPP_WORKER_FILE,
 } from "./paths.mjs";
 import { createMcpServer, getMcpServer, updateMcpServer, attachAgentResources } from "./catalog.mjs";
 import { logEvent } from "./debug.mjs";
@@ -39,8 +39,8 @@ export async function ensureWhatsappMcp() {
   return server;
 }
 
-function spawnSidecar() {
-  child = spawn(WHATSAPP_SIDECAR_BIN, [], {
+function spawnWorker() {
+  child = spawn(process.execPath, [WHATSAPP_WORKER_FILE], {
     env: {
       ...process.env,
       WA_DATA_DIR: WHATSAPP_DATA_DIR,
@@ -49,37 +49,37 @@ function spawnSidecar() {
     stdio: ["ignore", "pipe", "pipe"],
   });
   const pid = child.pid;
-  logEvent("info", `whatsapp sidecar started pid=${pid || "?"}`);
+  logEvent("info", `whatsapp worker started pid=${pid || "?"}`);
   child.stdout?.on("data", (buf) => logEvent("info", `[whatsapp] ${buf.toString().trim()}`));
   child.stderr?.on("data", (buf) => logEvent("warn", `[whatsapp] ${buf.toString().trim()}`));
   child.on("error", (error) => {
-    logEvent("error", `whatsapp sidecar failed to start: ${error?.message || error}`);
+    logEvent("error", `whatsapp worker failed to start: ${error?.message || error}`);
   });
   child.once("exit", (code, signal) => {
     child = null;
     if (shuttingDown) return;
-    logEvent("warn", `whatsapp sidecar exited pid=${pid || "?"} code=${code ?? "?"} signal=${signal ?? "-"}`);
+    logEvent("warn", `whatsapp worker exited pid=${pid || "?"} code=${code ?? "?"} signal=${signal ?? "-"}`);
     const now = Date.now();
     exitTimestamps = exitTimestamps.filter((ts) => now - ts < REWARM_WINDOW_MS);
     exitTimestamps.push(now);
     if (exitTimestamps.length > REWARM_MAX) {
-      logEvent("error", `whatsapp sidecar exited ${exitTimestamps.length}x in 10 min; not restarting automatically`);
+      logEvent("error", `whatsapp worker exited ${exitTimestamps.length}x in 10 min; not restarting automatically`);
       return;
     }
     const timer = setTimeout(() => {
-      if (!shuttingDown) spawnSidecar();
+      if (!shuttingDown) spawnWorker();
     }, REWARM_DELAY_MS);
     timer.unref?.();
   });
 }
 
-export async function startWhatsappSidecar() {
+export async function startWhatsappWorker() {
   await mkdir(WHATSAPP_DATA_DIR, { recursive: true });
   shuttingDown = false;
-  spawnSidecar();
+  spawnWorker();
 }
 
-export async function stopWhatsappSidecar() {
+export async function stopWhatsappWorker() {
   shuttingDown = true;
   if (child?.pid) await killTree(child.pid);
   child = null;
@@ -90,11 +90,11 @@ const CONTROL_BASE = `http://${WHATSAPP_MCP_ADDR}`;
 export async function whatsappStatus() {
   try {
     const res = await fetch(`${CONTROL_BASE}/status`, { signal: AbortSignal.timeout(5000) });
-    if (!res.ok) return { linked: false, sidecarUp: false };
+    if (!res.ok) return { linked: false, workerUp: false };
     const body = await res.json();
-    return { ...body, sidecarUp: true };
+    return { ...body, workerUp: true };
   } catch {
-    return { linked: false, sidecarUp: false };
+    return { linked: false, workerUp: false };
   }
 }
 
@@ -111,7 +111,7 @@ export async function whatsappQr() {
 
 export async function whatsappRequestQr() {
   try {
-    const res = await fetch(`${CONTROL_BASE}/qr/refresh`, { method: "POST", signal: AbortSignal.timeout(10000) });
+    const res = await fetch(`${CONTROL_BASE}/qr/refresh`, { method: "POST", signal: AbortSignal.timeout(15000) });
     if (!res.ok) return { ok: false, error: await res.text().catch(() => "request failed") };
     return { ok: true };
   } catch (error) {
@@ -121,7 +121,7 @@ export async function whatsappRequestQr() {
 
 export async function whatsappUnlink() {
   try {
-    const res = await fetch(`${CONTROL_BASE}/unlink`, { method: "POST", signal: AbortSignal.timeout(10000) });
+    const res = await fetch(`${CONTROL_BASE}/unlink`, { method: "POST", signal: AbortSignal.timeout(15000) });
     return { ok: res.ok };
   } catch (error) {
     return { ok: false, error: String(error?.message || error) };
@@ -141,8 +141,8 @@ async function writeTextFile(file, text) {
   await writeFile(file, String(text ?? ""), "utf8");
 }
 
-// memory.md and contacts.md: the same two files the `remember`/`save_contact`
-// MCP tools write to (see sidecar/notes.go), also editable here in Settings.
+// memory.md and contacts.md: the same files the `remember`/`save_contact` MCP tools
+// write (server/whatsapp-store.mjs), also editable here in Settings.
 export async function whatsappReadMemory() {
   return { text: await readTextFile(WHATSAPP_MEMORY_FILE) };
 }

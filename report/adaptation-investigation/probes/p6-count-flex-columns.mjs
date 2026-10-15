@@ -1,0 +1,12 @@
+import { createRequire } from "node:module"; import { pathToFileURL } from "node:url"; import path from "node:path";
+const req = createRequire("E:/000/UIv2/document_inteligence/package.json");
+const { PGlite } = await import(pathToFileURL(path.join(path.dirname(req.resolve("@electric-sql/pglite")), "index.js")).href);
+const { migrate, pgliteAdapter } = await import("file:///E:/000/UIv2/document_inteligence/core/db.mjs");
+const db = pgliteAdapter(new PGlite()); await migrate(db);
+const r = await db.query("select count(*)::int n, count(*) filter (where table_name in (select table_name from information_schema.columns where table_schema='di' and column_name='custom'))::int from information_schema.tables where table_schema='di' and table_type='BASE TABLE'");
+const c = await db.query("select count(distinct table_name)::int n from information_schema.columns where table_schema='di' and column_name='custom'");
+const t = await db.query("select count(*)::int n from information_schema.tables where table_schema='di' and table_type='BASE TABLE'");
+const g = await db.query("select count(*)::int n from pg_indexes where schemaname='di' and indexdef ilike '%gin%'");
+const e = await db.query("select count(*)::int n from pg_indexes where schemaname='di' and indexdef ilike '%->>%'");
+console.log(JSON.stringify({ base_tables: t.rows[0].n, tables_with_custom_jsonb: c.rows[0].n, gin_indexes: g.rows[0].n, expression_indexes_on_custom: e.rows[0].n }));
+process.exit(0);

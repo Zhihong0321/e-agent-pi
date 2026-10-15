@@ -36,10 +36,10 @@ test('the signed-in line names the person and role, carries no code, and says wh
   assert.doesNotMatch(line, /identity=|capability|code/i);
 });
 
-test('SOP tools: the orchestrator and the Forward Deploy Engineer have them, nobody else', () => {
+test('SOP tools: only the Forward Deploy Engineer has them (the orchestrator only routes)', () => {
   const ids = (agent) => manifestForAgent(agent).manifest.toolIds;
   for (const id of SOP_TOOL_IDS) {
-    assert.ok(ids({ id: 'orchestrator', slug: 'orchestrator' }).includes(id));
+    assert.ok(!ids({ id: 'orchestrator', slug: 'orchestrator' }).includes(id));
     assert.ok(ids({ id: 'di-fde', slug: 'di-fde' }).includes(id));
     assert.ok(!ids({ id: 'di-expenses', slug: 'di-expenses' }).includes(id));
     assert.ok(!ids({ id: 'website', slug: 'website' }).includes(id));
@@ -48,7 +48,7 @@ test('SOP tools: the orchestrator and the Forward Deploy Engineer have them, nob
 
 test('SOP tools refuse anyone but a Superadmin before touching anything', async () => {
   for (const id of SOP_TOOL_IDS) {
-    const op = getOperation(id, 'orchestrator');
+    const op = getOperation(id, 'di-fde');
     const args = { agent: 'orchestrator', content: 'x' };
     await assert.rejects(op.execute({ userId: null }, args), (error) => error.execCode === 'SIGN_IN_REQUIRED');
     await assert.rejects(op.execute({ userId: 'u2', user: { role: 'department_head', department: 'Sales' } }, args), (error) => error.execCode === 'PERMISSION_DENIED');

@@ -2100,7 +2100,6 @@ a.file-row { color: inherit; text-decoration: none; }
   min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 8px;
@@ -2413,3 +2412,13 @@ a.file-row { color: inherit; text-decoration: none; }
 }
 @keyframes bootFade { from { opacity: 0; } }
 .shared-file-attachments { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 12px; }
+/* Never the browser's default scrollbar, on any page: a thin pale thumb with no arrows and no track.
+   Not hover-only: Chrome repaints the thumb only when the bar itself is hovered, not its scroll area.
+   Chrome ignores these pseudo-elements on any element that sets scrollbar-width or scrollbar-color,
+   so set those only for Firefox (below) or with none to hide a bar. */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-button { display: none; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background: #dcd8e8; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #bfb8d6; }
+@supports (-moz-appearance: none) { * { scrollbar-width: thin; scrollbar-color: #dcd8e8 transparent; } }

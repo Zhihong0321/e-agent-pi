@@ -1,0 +1,248 @@
+[
+  {
+    "id": "S1.1",
+    "claim": "tenant A (defaults): missing customer billing address BLOCKS issue",
+    "ok": true,
+    "detail": "customer_has_billing_address"
+  },
+  {
+    "id": "S1.2",
+    "claim": "tenant B (relaxed rule): same data does NOT block on billing address, it only warns",
+    "ok": true,
+    "detail": "blockers=custom_field(document.po_number) warns=customer_has_billing_address,customer_has_reg_no,customer_has_tin"
+  },
+  {
+    "id": "S1.3",
+    "claim": "tenant B: custom field po_number is a blocking rule on its own invoices",
+    "ok": true,
+    "detail": "custom_field(document.po_number)"
+  },
+  {
+    "id": "S1.4",
+    "claim": "tenant B cannot issue until the PO number is filled",
+    "ok": true,
+    "detail": "Not ready to issue. Still needed:\n- Customer PO no. (document) is required before issuing."
+  },
+  {
+    "id": "S1.5",
+    "claim": "tenant B issues with ITS numbering format (BC/000001), tenant A keeps INV-yyyy-nnnn",
+    "ok": true,
+    "detail": "B=BC/000001"
+  },
+  {
+    "id": "S1.6",
+    "claim": "tenant A issues once its address exists, with the default numbering",
+    "ok": true,
+    "detail": "INV-2026-0001"
+  },
+  {
+    "id": "S1.7",
+    "claim": "tax codes are per tenant: B has GST9, A does not",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "S2.1",
+    "claim": "issued B invoice rendered with the default template contains the invoice number",
+    "ok": true,
+    "detail": "html chars=8826"
+  },
+  {
+    "id": "S2.2",
+    "claim": "custom field value (PO-7781) appears on the default PDF",
+    "ok": false,
+    "detail": "NO: required by the rule, but not printed"
+  },
+  {
+    "id": "S2.3",
+    "claim": "Template Designer is warned that doc.custom.* is unknown (prints empty)",
+    "ok": true,
+    "detail": "[\"doc.custom.po_number\"]"
+  },
+  {
+    "id": "S2.4",
+    "claim": "template_variables lists NO custom-field variable for documents",
+    "ok": true,
+    "detail": "[\"type\",\"type_label\",\"number\",\"is_draft\",\"status\",\"status_label\",\"status_tone\",\"is_overdue\",\"is_paid\",\"watermark\",\"summary_label\",\"summary_amount\",\"issue_date\",\"valid_until\",\"due_date\",\"reference\",\"no"
+  },
+  {
+    "id": "S3.1",
+    "claim": "tenant A's describe_schema does not show B's po_number field",
+    "ok": true,
+    "detail": "A fields="
+  },
+  {
+    "id": "S3.2",
+    "claim": "as tenant A (role di_app), SELECT of B's field_def rows returns 0",
+    "ok": true,
+    "detail": "n=0"
+  },
+  {
+    "id": "S3.3",
+    "claim": "as tenant A, INSERT of a row owned by B is refused by row-level security",
+    "ok": true,
+    "detail": "new row violates row-level security policy for table \"field_def\""
+  },
+  {
+    "id": "S3.4",
+    "claim": "as an agent, DDL (ALTER TABLE) is refused",
+    "ok": true,
+    "detail": "must be owner of table customer"
+  },
+  {
+    "id": "S3.5",
+    "claim": "as an agent, DELETE is refused",
+    "ok": true,
+    "detail": "Refused by the database: permission denied for table field_def. This action is not allowed for agents."
+  },
+  {
+    "id": "S4.1",
+    "claim": "unknown check name in a rule is rejected",
+    "ok": true,
+    "detail": "Unknown check \"does_not_exist\". Known: customer_selected, customer_has_billing_address, customer_has_email, customer_has_phone, customer_has_reg_no, customer_has_tin, has_lines, lines_priced, lines_have_tax_code, date_set, template_available, issuer_profile_complete, issuer_has_tin, custom_field, attachment_kind, amount_at_most"
+  },
+  {
+    "id": "S4.2",
+    "claim": "dropping the blocking has_lines rule is rejected (platform invariant)",
+    "ok": true,
+    "detail": "has_lines must stay a blocking rule; documents break without it"
+  },
+  {
+    "id": "S4.3",
+    "claim": "a custom field cannot shadow a standard column",
+    "ok": true,
+    "detail": "customer.name is already a standard column; no custom field needed"
+  },
+  {
+    "id": "S4.4",
+    "claim": "changing a custom field's type later is rejected",
+    "ok": true,
+    "detail": "customer.tier exists as text; changing type would break stored values. Pick a new key."
+  },
+  {
+    "id": "S4.5",
+    "claim": "a company cannot invent a new document type (delivery_order) with data alone",
+    "ok": true,
+    "detail": "Invalid input: doc_type: Invalid option: expected one of \"quotation\"|\"invoice\"|\"credit_note\""
+  },
+  {
+    "id": "S4.6",
+    "claim": "a blocking rule that names an UNDEFINED custom field is accepted",
+    "ok": true,
+    "detail": "accepted without checking the field exists"
+  },
+  {
+    "id": "S4.7",
+    "claim": "...which makes every invoice of that company unissuable until a human fixes the rule",
+    "ok": true,
+    "detail": "Not ready to issue. Still needed:\n- Ghost field required"
+  },
+  {
+    "id": "S4.8",
+    "claim": "...and the agent cannot even fill it (field is not defined)",
+    "ok": true,
+    "detail": "Unknown custom field document.ghost_field (defined: none). Ask the DB Manager agent to define it first."
+  },
+  {
+    "id": "S4.9",
+    "claim": "company C recovers by resubmitting the full rule list (blast radius = company C only)",
+    "ok": true,
+    "detail": "INV-2026-0001"
+  },
+  {
+    "id": "S4.10",
+    "claim": "a requirement added later immediately blocks drafts that were already in flight",
+    "ok": true,
+    "detail": "custom_field(document.job_ref)"
+  },
+  {
+    "id": "S4.11",
+    "claim": "...and tenant A is untouched by C's rule changes",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "S5.1",
+    "claim": "a tenant that lacks a newer default sequence fails with 'No numbering sequence' (nothing creates it lazily)",
+    "ok": true,
+    "detail": "No numbering sequence for \"supplier\". The DB Manager agent can create it."
+  },
+  {
+    "id": "S5.2",
+    "claim": "re-running the seed keeps B's customised rules (customisation is safe from the seed)",
+    "ok": true,
+    "detail": ""
+  },
+  {
+    "id": "S5.3",
+    "claim": "ILLUSTRATION (not a test): a changed default cannot reach rows that already exist, because the seed is ON CONFLICT DO NOTHING and runs only at company creation/reset",
+    "ok": null,
+    "detail": "A's stored invoice rules: 10 vs improved default 11 (not applied; code evidence: graft callers seedTenantTx = createCompany, resetCompany)"
+  },
+  {
+    "id": "S6.1",
+    "claim": "DB Manager changes are in the audit log with actor/agent and the field-level from/to",
+    "ok": true,
+    "detail": "{\"agent\":\"di-db\",\"action\":\"update\",\"changedKeys\":[\"rules\"]}"
+  },
+  {
+    "id": "S6.2",
+    "claim": "DB Manager has no revert/undo tool for rule, field, numbering or tax changes (restore_record only restores archived records); fde_revert exists only for the FDE",
+    "ok": true,
+    "detail": "di-db tools: list_users, create_user, update_user, list_people, create_person, update_person, get_onboarding_status, list_company_members, save_company_member, update_onboarding_progress, find_customers, get_customer, find_catalog, list_tax_codes, get_company_profile, describe_schema, get_package, get_document, crm_dashboard, list_documents, list_templates, update_company_profile, define_custom_field, set_workflow_rules, set_numbering, save_tax_code, read_audit_log, archive_any, restore_record, list_forms"
+  },
+  {
+    "id": "S7.1",
+    "claim": "after B publishes a new default template, the already-issued invoice still renders with the old one",
+    "ok": true,
+    "detail": "same=true"
+  },
+  {
+    "id": "S7.2",
+    "claim": "...while the next invoice uses the new template",
+    "ok": true,
+    "detail": "BC/000002"
+  },
+  {
+    "id": "S8.1",
+    "claim": "a template containing <script>, an external <img> and an <iframe file:> is ACCEPTED by save_template",
+    "ok": true,
+    "detail": "saved as Active content v1"
+  },
+  {
+    "id": "S8.2",
+    "claim": "a 3 MB template is accepted (no size cap)",
+    "ok": true,
+    "detail": "accepted"
+  },
+  {
+    "id": "S8.3",
+    "claim": "data values (customer name, line text) are HTML-escaped by the renderer",
+    "ok": true,
+    "detail": "customer=C-0002"
+  },
+  {
+    "id": "S9.1",
+    "claim": "domain layer: a NON-admin user can define a custom field through DB Manager (no role check; only agent assignment gates it)",
+    "ok": true,
+    "detail": "accepted"
+  },
+  {
+    "id": "S9.2",
+    "claim": "domain layer: a NON-admin user can replace issue rules through DB Manager",
+    "ok": true,
+    "detail": "accepted"
+  },
+  {
+    "id": "S9.3",
+    "claim": "domain layer: a NON-admin user can change numbering through DB Manager",
+    "ok": true,
+    "detail": "accepted"
+  },
+  {
+    "id": "S9.4",
+    "claim": "FDE cannot target the Document Agent: fde_apply accepts di-expenses only",
+    "ok": true,
+    "detail": "Invalid input: changeset.target_agent: Invalid input: expected \"di-expenses\""
+  }
+]

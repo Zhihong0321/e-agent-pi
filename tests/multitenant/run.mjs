@@ -357,7 +357,8 @@ async function llm2() {
   const r3 = await c.user2A.post('/api/chat', { message: 'MT1009-A-T5-3 Which specialist agents can you delegate to right now? Name them.', sessionId: f.sessions.U2 });
   check('T5.3-http', 'user2 roster chat accepted', r3.status === 200, `${r3.status}`);
   const events = sql('SELECT kind, data::text d FROM execution_events WHERE session_id = $1 ORDER BY id', [f.sessions.U2]);
-  const rosterText = events.filter((e) => /list_specialists/.test(e.d)).map((e) => e.d).join('\n');
+  // The router answers "which agents" from code (help lists only assigned areas); older builds used list_specialists.
+  const rosterText = events.filter((e) => e.kind === 'route.decided' || /list_specialists/.test(e.d)).map((e) => e.d).join('\n');
   const leakedAgents = unassigned.filter((id) => rosterText.includes(id));
   check('T5.3', "user2's list_specialists result names no unassigned agent", rosterText.length > 0 && leakedAgents.length === 0,
     rosterText.length ? `roster event bytes ${rosterText.length}, unassigned ids in it ${leakedAgents.length}` : 'no list_specialists event recorded');

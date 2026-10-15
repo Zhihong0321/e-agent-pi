@@ -1,0 +1,26 @@
+describe_schema (whole)       chars: 17647 ~tokens: 4412
+  of which standard_columns   chars: 9631
+  of which workflows          chars: 2620
+describe_schema(entity=doc)   chars: 1593
+template_variables            chars: 1169
+list_templates                chars: 425
+role di-db          chars: 2824
+role di-documents   chars: 4248
+role di-templates   chars: 2095
+role di-onboarding  chars: 5117
+role di-fde         chars: 3347
+role di-forms       chars: 3990
+role orchestrator   chars: 975
+tools per agent: {
+  'di-onboarding': 23,
+  'di-db': 30,
+  'di-records': 20,
+  'di-documents': 26,
+  'di-templates': 19,
+  'di-forms': 19,
+  'di-intake': 17,
+  'di-expenses': 14,
+  'di-calendar': 1,
+  'di-fde': 3,
+  'di-procurement': 17
+}

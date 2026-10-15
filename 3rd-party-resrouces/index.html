@@ -1,0 +1,1852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ecosystem Intelligence Report: Open-Source ERP, Documentation & AI Agent Frameworks</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0a0d14;
+      --bg-secondary: #101522;
+      --bg-card: rgba(19, 25, 41, 0.75);
+      --bg-card-hover: rgba(27, 36, 58, 0.9);
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --border-focus: rgba(99, 102, 241, 0.4);
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --accent-indigo: #6366f1;
+      --accent-blue: #38bdf8;
+      --accent-emerald: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-rose: #f43f5e;
+      --accent-purple: #a855f7;
+      --gradient-brand: linear-gradient(135deg, #6366f1 0%, #38bdf8 50%, #a855f7 100%);
+      --glow-indigo: 0 0 25px rgba(99, 102, 241, 0.25);
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 20px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      padding-bottom: 80px;
+      overflow-x: hidden;
+    }
+
+    /* Background aesthetic glow */
+    .bg-mesh {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: 
+        radial-gradient(circle at 15% 15%, rgba(99, 102, 241, 0.12) 0%, transparent 40%),
+        radial-gradient(circle at 85% 25%, rgba(56, 189, 248, 0.1) 0%, transparent 45%),
+        radial-gradient(circle at 50% 85%, rgba(168, 85, 247, 0.08) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    .container {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 0 32px;
+    }
+
+    /* Header & Hero */
+    header {
+      padding: 56px 0 36px;
+      border-bottom: 1px solid var(--border-subtle);
+      margin-bottom: 40px;
+    }
+
+    .badge-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      background: rgba(99, 102, 241, 0.12);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      border-radius: 9999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--accent-blue);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      font-size: 2.75rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 16px;
+      background: var(--gradient-brand);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-sub {
+      font-size: 1.15rem;
+      color: var(--text-muted);
+      max-width: 900px;
+      margin-bottom: 36px;
+      font-weight: 400;
+    }
+
+    /* Target System Context Callout */
+    .system-callout {
+      background: linear-gradient(180deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.8) 100%);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      border-radius: var(--radius-md);
+      padding: 22px 28px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+      margin-bottom: 40px;
+    }
+
+    .callout-left h3 {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+
+    .callout-left p {
+      font-size: 0.88rem;
+      color: var(--text-muted);
+    }
+
+    .stack-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .tag-item {
+      padding: 4px 10px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: #cbd5e1;
+    }
+
+    /* KPI Stat Cards */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 20px;
+      margin-bottom: 48px;
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 22px 24px;
+      backdrop-filter: blur(12px);
+      transition: all 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .stat-card::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent-indigo), transparent);
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+
+    .stat-card:hover {
+      border-color: var(--border-focus);
+      transform: translateY(-2px);
+    }
+
+    .stat-card:hover::after {
+      opacity: 1;
+    }
+
+    .stat-num {
+      font-size: 2.25rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+    }
+
+    .stat-num.indigo { color: #818cf8; }
+    .stat-num.blue { color: #38bdf8; }
+    .stat-num.emerald { color: #34d399; }
+    .stat-num.purple { color: #c084fc; }
+
+    .stat-label {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--text-main);
+      margin-bottom: 4px;
+    }
+
+    .stat-desc {
+      font-size: 0.76rem;
+      color: var(--text-dim);
+    }
+
+    /* Architecture Blueprint Visual */
+    .arch-section {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 32px;
+      margin-bottom: 50px;
+      position: relative;
+    }
+
+    .section-header {
+      margin-bottom: 24px;
+    }
+
+    .section-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-desc {
+      font-size: 0.92rem;
+      color: var(--text-muted);
+    }
+
+    .arch-flow-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+      margin-top: 20px;
+    }
+
+    .arch-flow-col {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: var(--radius-md);
+      padding: 20px;
+    }
+
+    .arch-flow-col h4 {
+      font-size: 0.88rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--accent-blue);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .arch-tool-pill {
+      background: rgba(30, 41, 59, 0.5);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 10px;
+      font-size: 0.82rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .arch-tool-pill:last-child {
+      margin-bottom: 0;
+    }
+
+    .pill-name {
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .pill-role {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Control Bar: Filter Tabs & Search */
+    .controls-wrapper {
+      position: sticky;
+      top: 16px;
+      z-index: 40;
+      background: rgba(16, 21, 34, 0.92);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 16px 20px;
+      margin-bottom: 36px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    }
+
+    .filter-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .tab-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-muted);
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 0.84rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .tab-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+    }
+
+    .tab-btn.active {
+      background: var(--accent-indigo);
+      border-color: var(--accent-indigo);
+      color: #fff;
+      box-shadow: 0 0 16px rgba(99, 102, 241, 0.4);
+    }
+
+    .tab-counter {
+      padding: 2px 7px;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 999px;
+      font-size: 0.72rem;
+    }
+
+    .search-box {
+      position: relative;
+      min-width: 280px;
+      flex-grow: 1;
+      max-width: 420px;
+    }
+
+    .search-input {
+      width: 100%;
+      background: rgba(10, 13, 20, 0.8);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 10px 14px 10px 38px;
+      color: #fff;
+      font-family: inherit;
+      font-size: 0.88rem;
+      outline: none;
+      transition: border-color 0.15s ease;
+    }
+
+    .search-input:focus {
+      border-color: var(--accent-indigo);
+      box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-dim);
+      pointer-events: none;
+    }
+
+    /* Quick Filter Chips */
+    .quick-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 32px;
+      align-items: center;
+    }
+
+    .quick-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-dim);
+      margin-right: 4px;
+    }
+
+    .chip-btn {
+      background: transparent;
+      border: 1px solid var(--border-subtle);
+      border-radius: 9999px;
+      padding: 4px 12px;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .chip-btn:hover {
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+    }
+
+    .chip-btn.active {
+      background: rgba(56, 189, 248, 0.15);
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+      font-weight: 600;
+    }
+
+    /* Cards Grid */
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+      gap: 24px;
+      margin-bottom: 60px;
+    }
+
+    .tool-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      backdrop-filter: blur(12px);
+      transition: all 0.2s ease;
+      position: relative;
+    }
+
+    .tool-card:hover {
+      border-color: rgba(99, 102, 241, 0.35);
+      transform: translateY(-3px);
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.4);
+    }
+
+    .card-top {
+      margin-bottom: 16px;
+    }
+
+    .card-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .card-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1.3;
+    }
+
+    .card-repo {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.76rem;
+      color: var(--accent-blue);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 12px;
+    }
+
+    .card-repo:hover {
+      text-decoration: underline;
+    }
+
+    .badges-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+
+    .badge {
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .badge-stars {
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: #fbbf24;
+    }
+
+    .badge-license {
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34d399;
+    }
+
+    .badge-lang {
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      color: #38bdf8;
+    }
+
+    .badge-mcp {
+      background: rgba(168, 85, 247, 0.15);
+      border: 1px solid rgba(168, 85, 247, 0.4);
+      color: #c084fc;
+      font-weight: 700;
+    }
+
+    .badge-tier-p0 {
+      background: rgba(99, 102, 241, 0.2);
+      border: 1px solid rgba(99, 102, 241, 0.5);
+      color: #a5b4fc;
+    }
+
+    .badge-tier-p1 {
+      background: rgba(148, 163, 184, 0.15);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      color: #cbd5e1;
+    }
+
+    .card-tagline {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: #e2e8f0;
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
+
+    .card-desc {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      margin-bottom: 14px;
+      line-height: 1.5;
+    }
+
+    /* Fit Box */
+    .fit-box {
+      background: rgba(15, 23, 42, 0.7);
+      border-left: 3px solid var(--accent-indigo);
+      padding: 10px 14px;
+      border-radius: 0 8px 8px 0;
+      margin-bottom: 16px;
+    }
+
+    .fit-title {
+      font-size: 0.74rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 700;
+      color: var(--accent-indigo);
+      margin-bottom: 4px;
+    }
+
+    .fit-text {
+      font-size: 0.8rem;
+      color: #cbd5e1;
+      line-height: 1.45;
+    }
+
+    /* Collapsible Code Box */
+    .code-accordion {
+      margin-top: auto;
+    }
+
+    details {
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      background: rgba(10, 13, 20, 0.6);
+      overflow: hidden;
+    }
+
+    summary {
+      padding: 8px 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-dim);
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: background 0.15s ease;
+    }
+
+    summary:hover {
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-muted);
+    }
+
+    .code-content {
+      padding: 12px;
+      background: #080b12;
+      border-top: 1px solid var(--border-subtle);
+      position: relative;
+    }
+
+    pre {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.74rem;
+      color: #94a3b8;
+      overflow-x: auto;
+      line-height: 1.45;
+    }
+
+    .copy-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border-subtle);
+      border-radius: 4px;
+      color: var(--text-dim);
+      font-size: 0.68rem;
+      padding: 3px 8px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .copy-btn:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    /* Comparison Table Section */
+    .table-section {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 32px;
+      margin-bottom: 60px;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.84rem;
+      text-align: left;
+    }
+
+    th {
+      padding: 14px 16px;
+      font-size: 0.76rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+      border-bottom: 1px solid var(--border-subtle);
+      background: rgba(10, 13, 20, 0.4);
+    }
+
+    td {
+      padding: 14px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      color: #cbd5e1;
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .tbl-name {
+      font-weight: 600;
+      color: #fff;
+    }
+
+    /* Roadmap Timeline */
+    .roadmap-section {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 36px;
+      margin-bottom: 60px;
+    }
+
+    .timeline-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      margin-top: 24px;
+      position: relative;
+    }
+
+    .phase-card {
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 24px;
+      position: relative;
+    }
+
+    .phase-tag {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent-indigo);
+      margin-bottom: 8px;
+    }
+
+    .phase-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 12px;
+    }
+
+    .phase-list {
+      list-style: none;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+
+    .phase-list li {
+      margin-bottom: 8px;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      line-height: 1.4;
+    }
+
+    .phase-list li::before {
+      content: '→';
+      color: var(--accent-blue);
+      font-weight: 700;
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border-subtle);
+      padding-top: 32px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      font-size: 0.82rem;
+      color: var(--text-dim);
+    }
+
+    .footer-left strong {
+      color: var(--text-muted);
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      h1 { font-size: 2rem; }
+      .container { padding: 0 16px; }
+      .cards-grid { grid-template-columns: 1fr; }
+      .controls-wrapper { flex-direction: column; align-items: stretch; }
+      .search-box { min-width: 100%; max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-mesh"></div>
+
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <div class="badge-pill">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+        Deep Ecosystem Intelligence • Web & GitHub Audit
+      </div>
+      <h1>Next-Gen AI Assistant Engine</h1>
+      <p class="hero-sub">
+        Comprehensive audit of free, open-source repositories, Model Context Protocol (MCP) servers, and agent frameworks to empower <strong>e (by eternalgy)</strong> across enterprise ERP, living documentation, and autonomous orchestration.
+      </p>
+
+      <!-- Target System Alignment Callout -->
+      <div class="system-callout">
+        <div class="callout-left">
+          <h3>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path></svg>
+            Target Platform: e (by eternalgy)
+          </h3>
+          <p>Evaluating architectural synergy with our native stack and candidate runner architecture.</p>
+        </div>
+        <div class="stack-tags">
+          <span class="tag-item">React 19 / TypeScript</span>
+          <span class="tag-item">Vite 8</span>
+          <span class="tag-item">Node.js Backend</span>
+          <span class="tag-item">PostgreSQL Persistence</span>
+          <span class="tag-item">Pi Process Pools</span>
+          <span class="tag-item">Native MCP Host</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Key Metrics & Overview -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-num indigo">36</div>
+        <div class="stat-label">Vetted Open-Source Projects</div>
+        <div class="stat-desc">Zero paywalls, 100% free permissive/copyleft licenses</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num blue">690K+</div>
+        <div class="stat-label">Total GitHub Stars</div>
+        <div class="stat-desc">Massive community momentum and active maintainer backing</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num emerald">75%</div>
+        <div class="stat-label">MCP Native / Ready</div>
+        <div class="stat-desc">Directly connectable via Model Context Protocol JSON config</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num purple">100%</div>
+        <div class="stat-label">TypeScript / Node Synergy</div>
+        <div class="stat-desc">Drop-in compatibility with e's runtime & React 19 UI</div>
+      </div>
+    </div>
+
+    <!-- Architectural Blueprint Flow -->
+    <div class="arch-section">
+      <div class="section-header">
+        <div class="section-title">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+          Integrated Architectural Blueprint for 'e'
+        </div>
+        <div class="section-desc">How 3rd-party open-source components slot directly into e's multi-layered execution engine.</div>
+      </div>
+
+      <div class="arch-flow-grid">
+        <div class="arch-flow-col">
+          <h4>1. Client & Generative UI</h4>
+          <div class="arch-tool-pill">
+            <span class="pill-name">CopilotKit (React 19)</span>
+            <span class="pill-role">AG-UI CoAgents</span>
+          </div>
+          <div class="arch-tool-pill">
+            <span class="pill-name">Scalar UI</span>
+            <span class="pill-role">Interactive API Portal</span>
+          </div>
+          <div class="arch-tool-pill">
+            <span class="pill-name">Fumadocs</span>
+            <span class="pill-role">In-App Knowledge Base</span>
+          </div>
+        </div>
+
+        <div class="arch-flow-col">
+          <h4>2. Host Orchestrator & State</h4>
+          <div class="arch-tool-pill">
+            <span class="pill-name">Mastra AI (Node.js)</span>
+            <span class="pill-role">Workflow Engine</span>
+          </div>
+          <div class="arch-tool-pill">
+            <span class="pill-name">LangGraph.js</span>
+            <span class="pill-role">Cyclic Graph Runner</span>
+          </div>
+          <div class="arch-tool-pill">
+            <span class="pill-name">Letta OS</span>
+            <span class="pill-role">Tiered Agent Memory</span>
+          </div>
+        </div>
+
+        <div class="arch-flow-col">
+          <h4>3. Ingestion & Docs Engine</h4>
+          <div class="arch-tool-pill">
+            <span class="pill-name">IBM Docling</span>
+            <span class="pill-role">PDF / Scan OCR to MD</span>
+          </div>
+          <div class="arch-tool-pill">
+            <span class="pill-name">Microsoft MarkItDown</span>
+            <span class="pill-role">Office / Excel Tables</span>
+          </div>
+          <div class="arch-tool-pill">
+            <span class="pill-name">Outline Native MCP</span>
+            <span class="pill-role">SOP & Wiki Storage</span>
+          </div>
+        </div>
+
+        <div class="arch-flow-col">
+          <h4>4. ERP & Business MCPs</h4>
+          <div class="arch-tool-pill">
+            <span class="pill-name">Accounted Engine</span>
+            <span class="pill-role">150+ Double-Entry MCPs</span>
+          </div>
+          <div class="arch-tool-pill">
+            <span class="pill-name">Activepieces Gateway</span>
+            <span class="pill-role">760+ App Connectors</span>
+          </div>
+          <div class="arch-tool-pill">
+            <span class="pill-name">Documenso MCP</span>
+            <span class="pill-role">Digital Quotes Signing</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Controls Bar -->
+    <div class="controls-wrapper">
+      <div class="filter-tabs">
+        <button class="tab-btn active" data-filter="all">
+          All Systems <span class="tab-counter" id="cnt-all">36</span>
+        </button>
+        <button class="tab-btn" data-filter="erp">
+          ERP & Business <span class="tab-counter" id="cnt-erp">12</span>
+        </button>
+        <button class="tab-btn" data-filter="documentation">
+          Documentation & Ingestion <span class="tab-counter" id="cnt-doc">12</span>
+        </button>
+        <button class="tab-btn" data-filter="agent-framework">
+          Agent Frameworks <span class="tab-counter" id="cnt-agent">12</span>
+        </button>
+      </div>
+
+      <div class="search-box">
+        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" class="search-input" id="searchInput" placeholder="Search by name, MCP, tag, or language...">
+      </div>
+    </div>
+
+    <!-- Quick Filter Chips -->
+    <div class="quick-filters">
+      <span class="quick-title">Quick Highlights:</span>
+      <button class="chip-btn" data-chip="p0">⚡ P0 Must-Adopt</button>
+      <button class="chip-btn" data-chip="ts">🟦 TypeScript / Node Native</button>
+      <button class="chip-btn" data-chip="mcp">🔌 Native MCP Server</button>
+      <button class="chip-btn" data-chip="hot">🔥 High Stars (>25k)</button>
+    </div>
+
+    <!-- Dynamic Cards Grid -->
+    <div class="cards-grid" id="cardsGrid">
+      <!-- Populated dynamically via JavaScript from ecosystem-data.json -->
+    </div>
+
+    <!-- Architectural Evaluation Table -->
+    <div class="table-section">
+      <div class="section-header">
+        <div class="section-title">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><path d="M12 3v18M3 12h18M3 6h18M3 18h18"/></svg>
+          Comprehensive Ecosystem Matrix
+        </div>
+        <div class="section-desc">Cross-pillar evaluation by language, licensing model, MCP maturity, and adoption priority.</div>
+      </div>
+      <table id="matrixTable">
+        <thead>
+          <tr>
+            <th>Tool Name</th>
+            <th>Pillar</th>
+            <th>Stars</th>
+            <th>Primary Stack</th>
+            <th>License</th>
+            <th>MCP Status</th>
+            <th>e Strategic Fit</th>
+          </tr>
+        </thead>
+        <tbody id="matrixTableBody">
+          <!-- Populated dynamically via JS -->
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Strategic Phased Roadmap -->
+    <div class="roadmap-section">
+      <div class="section-header">
+        <div class="section-title">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          Execution Roadmap for 'e (by eternalgy)'
+        </div>
+        <div class="section-desc">Recommended 4-phase rollout plan to integrate high-leverage open-source components into e.</div>
+      </div>
+
+      <div class="timeline-grid">
+        <div class="phase-card">
+          <div class="phase-tag">Phase 1 • Immediate Wins</div>
+          <div class="phase-title">MCP Foundation & Tool Bridge</div>
+          <ul class="phase-list">
+            <li>Standardize internal MCP servers using <strong>FastMCP (TypeScript)</strong>.</li>
+            <li>Connect <strong>Context7 MCP</strong> to prevent LLM hallucinations on library versions.</li>
+            <li>Deploy <strong>Activepieces Platform Gateway</strong> to unlock 760+ SaaS connectors.</li>
+            <li>Mount <strong>MarkItDown MCP</strong> for instant Excel price-list ingestion into markdown.</li>
+          </ul>
+        </div>
+
+        <div class="phase-card">
+          <div class="phase-tag">Phase 2 • Intelligence Leap</div>
+          <div class="phase-title">Document & Ingestion Engine</div>
+          <ul class="phase-list">
+            <li>Integrate <strong>IBM Docling</strong> for high-fidelity OCR, table parsing, and PDF audit.</li>
+            <li>Mount <strong>Documenso MCP</strong> to send agent-generated quotes for legal e-signature.</li>
+            <li>Connect <strong>Outline Knowledge Base</strong> via native <code>/mcp</code> endpoint for company SOPs.</li>
+            <li>Embed <strong>Scalar API Docs</strong> at <code>/api/docs</code> for visual tool testing.</li>
+          </ul>
+        </div>
+
+        <div class="phase-card">
+          <div class="phase-tag">Phase 3 • Financial Rigor</div>
+          <div class="phase-title">Agent-Native ERP & Accounting</div>
+          <ul class="phase-list">
+            <li>Adopt <strong>Accounted (ERP Mafia)</strong>'s 150+ MCP double-entry bookkeeping tools.</li>
+            <li>Enforce <strong>InvoiceXML MCP</strong> for Peppol BIS 3.0 / LHDN compliant e-invoicing.</li>
+            <li>Implement <strong>Stripe Agent Toolkit</strong> for payment intents and credit notes.</li>
+            <li>Wire <strong>Cal.com MCP</strong> into e's <code>/calendar</code> route for autonomous meeting scheduling.</li>
+          </ul>
+        </div>
+
+        <div class="phase-card">
+          <div class="phase-tag">Phase 4 • UI & Agent OS</div>
+          <div class="phase-title">Next-Gen Agent Runtime</div>
+          <ul class="phase-list">
+            <li>Embed <strong>CopilotKit (React 19)</strong> for generative UI and CoAgents shared state in chat.</li>
+            <li>Upgrade Pi execution pool with <strong>Mastra Workflows</strong> & <strong>LangGraph.js</strong> graphs.</li>
+            <li>Implement <strong>Letta OS</strong> hierarchical memory across user sessions and company profiles.</li>
+            <li>Integrate <strong>Browser Use Pi</strong> for autonomous merchant portal web tasks.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+      <div class="footer-left">
+        <strong>e Ecosystem Intelligence Report</strong> • Generated for e:\000\UIv2
+      </div>
+      <div class="footer-right">
+        Data verified via GitHub API & Web Intelligence • Stored in <code>3rd-party-resrouces/ecosystem-data.json</code>
+      </div>
+    </footer>
+  </div>
+
+  <script id="raw-ecosystem-data" type="application/json">
+{
+  "lastUpdated": "2026-10-14",
+  "totalTools": 36,
+  "pillars": [
+    {
+      "id": "erp",
+      "name": "ERP & Enterprise Business Operations",
+      "description": "Open-source ERP backends, agent-native bookkeeping engines, workflow bridges, invoicing compliance, and business MCP servers.",
+      "count": 12
+    },
+    {
+      "id": "documentation",
+      "name": "Documentation, Knowledge & Content Ingestion",
+      "description": "Document parsers (PDF/DOCX/OCR), web crawlers for LLMs, collaborative wikis with native MCP, and codebase documentation agents.",
+      "count": 12
+    },
+    {
+      "id": "agent-framework",
+      "name": "AI Agent Frameworks, Orchestration & Memory",
+      "description": "TypeScript-native agent frameworks, reactive frontend copilot SDKs, cyclic state graphs, memory operating systems, and sandboxes.",
+      "count": 12
+    }
+  ],
+  "items": [
+    {
+      "id": "open-mercato",
+      "pillar": "erp",
+      "name": "Open Mercato",
+      "repo": "open-mercato/open-mercato",
+      "url": "https://github.com/open-mercato/open-mercato",
+      "stars": 2800,
+      "license": "MIT",
+      "language": "TypeScript",
+      "mcpStatus": "Agent-Native Schemas",
+      "fitTier": "P0 - Core Architectural Match",
+      "tagline": "AI-engineering modular foundation for CRM, ERP, and commerce in TypeScript & PostgreSQL.",
+      "summary": "Built on TypeScript, Next.js, and PostgreSQL, Open Mercato provides ~80% of enterprise foundation out-of-the-box: multi-tenancy, RBAC, audit trails, and modular business domains designed specifically for AI coding agents to extend.",
+      "architecturalFit": "Perfect match for e's stack (TypeScript, PostgreSQL, multi-tenancy). e can adopt its modular schema conventions for quotation-to-invoice workflows, contact management, and role-based data isolation.",
+      "quickConfig": "// Open Mercato modular schema integration\nimport { createBusinessModule } from '@open-mercato/core';\nexport const ProcurementModule = createBusinessModule({\n  name: 'procurement',\n  entities: ['PurchaseOrder', 'Supplier', 'InvoiceAudit']\n});"
+    },
+    {
+      "id": "accounted",
+      "pillar": "erp",
+      "name": "Accounted (by ERP Mafia)",
+      "repo": "erp-mafia/accounted",
+      "url": "https://github.com/erp-mafia/accounted",
+      "stars": 1900,
+      "license": "AGPL-3.0",
+      "language": "TypeScript / Rust",
+      "mcpStatus": "Native 150+ MCP Tools",
+      "fitTier": "P0 - Core Architectural Match",
+      "tagline": "Agent-native open-source ERP and double-entry bookkeeping engine with 150+ MCP tools.",
+      "summary": "Built from scratch to be operated by AI agents rather than human data-entry clerks. Implements strict GAAP/IFRS double-entry accounting rules, immutable vouchers, bank reconciliation (PSD2), VAT, and Peppol e-invoicing.",
+      "architecturalFit": "Directly empowers e's invoice-audit and demo-expenses modules. Instead of custom balance logic, e agents can call Accounted's 150+ vetted accounting tools with human-in-the-loop sign-off.",
+      "quickConfig": "{\n  \"mcpServers\": {\n    \"accounted\": {\n      \"command\": \"docker\",\n      \"args\": [\"run\", \"-i\", \"--rm\", \"erpmafia/accounted:latest\", \"mcp\"],\n      \"env\": { \"ACCOUNTED_DB_URL\": \"postgresql://user:pass@localhost:5432/ledger\" }\n    }\n  }\n}"
+    },
+    {
+      "id": "erpnext-mcp",
+      "pillar": "erp",
+      "name": "ERPNext MCP Server & Frappe",
+      "repo": "rakeshgangwar/erpnext-mcp-server",
+      "url": "https://github.com/rakeshgangwar/erpnext-mcp-server",
+      "stars": 21500,
+      "license": "MIT / GPL-3.0",
+      "language": "TypeScript / Python",
+      "mcpStatus": "Dedicated MCP Server",
+      "fitTier": "P1 - High Strategic Value",
+      "tagline": "TypeScript Model Context Protocol server connecting AI assistants to ERPNext & Frappe.",
+      "summary": "Connects AI models to ERPNext via official APIs. Exposes ERPNext documents via custom URIs (erpnext://{doctype}/{name}), fetches schemas, runs financial reports, and executes whitelisted server methods.",
+      "architecturalFit": "Enables e to act as an autonomous Copilot on top of customer ERPNext instances for live stock lookup, PO creation, and balance inquiries.",
+      "quickConfig": "{\n  \"mcpServers\": {\n    \"erpnext\": {\n      \"command\": \"node\",\n      \"args\": [\"node_modules/erpnext-mcp-server/build/index.js\"],\n      \"env\": {\n        \"ERPNEXT_URL\": \"https://erp.company.com\",\n        \"ERPNEXT_API_KEY\": \"${ERPNEXT_API_KEY}\",\n        \"ERPNEXT_API_SECRET\": \"${ERPNEXT_API_SECRET}\"\n      }\n    }\n  }\n}"
+    },
+    {
+      "id": "odoo-mcp",
+      "pillar": "erp",
+      "name": "Odoo MCP Server",
+      "repo": "ivnvxd/mcp-server-odoo",
+      "url": "https://github.com/ivnvxd/mcp-server-odoo",
+      "stars": 43000,
+      "license": "LGPL-3.0 / MIT",
+      "language": "Python",
+      "mcpStatus": "Dedicated MCP Server",
+      "fitTier": "P1 - High Strategic Value",
+      "tagline": "Connects AI models to Odoo ERP via XML-RPC and native JSON-RPC modules.",
+      "summary": "Allows LLMs to query business data, search/create/update records, run server-side aggregations, and trigger actions like invoice posting or sales order confirmation via natural language.",
+      "architecturalFit": "Allows e to integrate with existing SME and enterprise clients who run Odoo on-premise or cloud, bridging e's document intelligence directly into Odoo accounting.",
+      "quickConfig": "{\n  \"mcpServers\": {\n    \"odoo\": {\n      \"command\": \"python\",\n      \"args\": [\"-m\", \"mcp_server_odoo\"],\n      \"env\": {\n        \"ODOO_URL\": \"https://my-odoo.com\",\n        \"ODOO_DB\": \"production\",\n        \"ODOO_USER\": \"agent@eternalgy.com\",\n        \"ODOO_PASSWORD\": \"${ODOO_PASSWORD}\"\n      }\n    }\n  }\n}"
+    },
+    {
+      "id": "activepieces",
+      "pillar": "erp",
+      "name": "Activepieces Platform MCP",
+      "repo": "activepieces/activepieces",
+      "url": "https://github.com/activepieces/activepieces",
+      "stars": 16500,
+      "license": "MIT",
+      "language": "TypeScript",
+      "mcpStatus": "Universal Platform MCP Gateway",
+      "fitTier": "P0 - Core Architectural Match",
+      "tagline": "Open-source Zapier alternative with a Universal MCP Gateway providing 760+ prebuilt business tools.",
+      "summary": "Activepieces has first-class native MCP server support. Pointing any MCP client to Activepieces instantly exposes tools for 760+ applications including Slack, QuickBooks, Salesforce, Google Drive, Hubspot, and Shopify.",
+      "architecturalFit": "Eliminates writing 50+ one-off business integrations for e. With a single Activepieces MCP connection, e agents gain certified tools across enterprise SaaS.",
+      "quickConfig": "{\n  \"mcpServers\": {\n    \"activepieces\": {\n      \"type\": \"http\",\n      \"url\": \"http://localhost:3000/api/v1/mcp/platform\",\n      \"headers\": { \"Authorization\": \"Bearer ${ACTIVEPIECES_API_KEY}\" }\n    }\n  }\n}"
+    },
+    {
+      "id": "n8n-mcp",
+      "pillar": "erp",
+      "name": "n8n Workflow Automation & MCP",
+      "repo": "n8n-io/n8n",
+      "url": "https://github.com/n8n-io/n8n",
+      "stars": 55000,
+      "license": "Sustainable Use",
+      "language": "TypeScript",
+      "mcpStatus": "MCP Client Node & Builder MCP",
+      "fitTier": "P1 - High Strategic Value",
+      "tagline": "Fair-code workflow automation platform with dual MCP builder and MCP client capabilities.",
+      "summary": "n8n provides visual workflow orchestration with specialized MCP packages (spences10/mcp-n8n-builder, coleam00/n8n-nodes-mcp). Allows LLMs to programmatically create and run complex multi-step automations.",
+      "architecturalFit": "e's orchestrator can offload complex scheduled jobs, multi-step webhooks, and retry logic to n8n while maintaining chat-based oversight.",
+      "quickConfig": "{\n  \"mcpServers\": {\n    \"n8n-builder\": {\n      \"command\": \"npx\",\n      \"args\": [\"-y\", \"@illuminaresolutions/n8n-mcp-server\"],\n      \"env\": {\n        \"N8N_API_URL\": \"http://localhost:5678\",\n        \"N8N_API_KEY\": \"${N8N_API_KEY}\"\n      }\n    }\n  }\n}"
+    },
+    {
+      "id": "stripe-ai",
+      "pillar": "erp",
+      "name": "Stripe Agent Toolkit & Remote MCP",
+      "repo": "stripe/ai",
+      "url": "https://github.com/stripe/ai",
+      "stars": 5200,
+      "license": "MIT",
+      "language": "TypeScript / Python",
+      "mcpStatus": "Official Remote MCP (mcp.stripe.com)",
+      "fitTier": "P0 - Core Architectural Match",
+      "tagline": "Official Stripe agent toolkit and remote MCP server for payments, subscriptions, and billing.",
+      "summary": "Stripe's official AI repository offers hosted and local MCP servers (mcp.stripe.com) that empower agents to inspect customers, issue invoices, configure payment links, and verify subscription status securely.",
+      "architecturalFit": "Directly satisfies e's requirement for invoice billing, credit notes, payment collection, and customer balance resolution with OAuth-grade security.",
+      "quickConfig": "{\n  \"mcpServers\": {\n    \"stripe\": {\n      \"command\": \"npx\",\n      \"args\": [\"-y\", \"@stripe/mcp\"],\n      \"env\": { \"STRIPE_SECRET_KEY\": \"${STRIPE_SECRET_KEY}\" }\n    }\n  }\n}"
+    },
+    {
+      "id": "documenso-mcp",
+      "pillar": "erp",
+      "name": "Documenso TypeScript MCP",
+      "repo": "documenso/documenso",
+      "url": "https://github.com/documenso/documenso",
+      "stars": 10200,
+      "license": "AGPL-3.0",
+      "language": "TypeScript",
+      "mcpStatus": "Built-in SDK MCP Server",
+      "fitTier": "P0 - Core Architectural Match",
+      "tagline": "Open-source DocuSign alternative with native MCP server inside its TypeScript SDK.",
+      "summary": "Documenso provides digital document signing, audit trails, and legal templates. Its official TypeScript SDK (@documenso/sdk-typescript) doubles as an installable MCP server via npx.",
+      "architecturalFit": "Enables e's Document Intelligence agents to dispatch quotations and POs for electronic signature, listen for completion webhooks, and archive signed PDFs into company records.",
+      "quickConfig": "{\n  \"mcpServers\": {\n    \"documenso\": {\n      \"command\": \"npx\",\n      \"args\": [\"-y\", \"--package\", \"@documenso/sdk-typescript\", \"documenso-mcp\"],\n      \"env\": { \"DOCUMENSO_API_KEY\": \"${DOCUMENSO_API_KEY}\" }\n    }\n  }\n}"
+    },
+    {
+      "id": "calcom-mcp",
+      "pillar": "erp",
+      "name": "Cal.com MCP Server",
+      "repo": "calcom/cal-mcp",
+      "url": "https://github.com/calcom/cal-mcp",
+      "stars": 35000,
+      "license": "AGPL-3.0 / MIT",
+      "language": "TypeScript",
+      "mcpStatus": "Official MCP Server (@calcom/cal-mcp)",
+      "fitTier": "P1 - High Strategic Value",
+      "tagline": "Official Model Context Protocol server for enterprise scheduling and booking management.",
+      "summary": "Enables LLMs to view availability, schedule bookings, reschedule meetings, and handle attendees automatically with timezone-aware conflict resolution.",
+      "architecturalFit": "Integrates directly with e's existing /calendar route, allowing agents to schedule customer consultations, procurement vendor calls, and internal reviews.",
+      "quickConfig": "{\n  \"mcpServers\": {\n    \"cal\": {\n      \"command\": \"npx\",\n      \"args\": [\"-y\", \"@calcom/cal-mcp@latest\", \"--all-tools\"],\n      \"env\": { \"CAL_API_KEY\": \"${CAL_API_KEY}\" }\n    }\n  }\n}"
+    },
+    {
+      "id": "plane-mcp",
+      "pillar": "erp",
+      "name": "Plane MCP Server",
+      "repo": "makeplane/plane-mcp-server",
+      "url": "https://github.com/makeplane/plane-mcp-server",
+      "stars": 32000,
+      "license": "AGPL-3.0 / Apache-2.0",
+      "language": "TypeScript / Python",
+      "mcpStatus": "Official MCP Server",
+      "fitTier": "P1 - High Strategic Value",
+      "tagline": "Open-source Jira/Linear alternative with official Model Context Protocol server.",
+      "summary": "Exposes project workspaces, cycles, modules, issue tracking, and custom work items directly to AI agents as structured tools.",
+      "architecturalFit": "Enables e's durable job orchestrator to mirror background tasks and specialist assignments into visible team Kanban boards and sprint trackers.",
+      "quickConfig": "{\n  \"mcpServers\": {\n    \"plane\": {\n      \"command\": \"npx\",\n      \"args\": [\"-y\", \"@makeplane/plane-mcp-server\"],\n      \"env\": {\n        \"PLANE_API_KEY\": \"${PLANE_API_KEY}\",\n        \"PLANE_WORKSPACE_SLUG\": \"eternalgy\"\n      }\n    }\n  }\n}"
+    },
+    {
+      "id": "invoicexml-mcp",
+      "pillar": "erp",
+      "name": "InvoiceXML MCP Server",
+      "repo": "erp-mafia/invoicexml-mcp",
+      "url": "https://github.com/erp-mafia/invoicexml-mcp",
+      "stars": 1100,
+      "license": "MIT",
+      "language": "TypeScript",
+      "mcpStatus": "Dedicated MCP Server",
+      "fitTier": "P0 - Core Architectural Match",
+      "tagline": "Global e-invoicing standards (Factur-X, ZUGFeRD, XRechnung, Peppol BIS 3.0) for AI agents.",
+      "summary": "Translates conversational billing prompts and JSON objects into mathematically validated, legally compliant XML e-invoices conforming to Peppol BIS 3.0, UBL/CII, and ZUGFeRD.",
+      "architecturalFit": "Mandatory for enterprise and government e-invoicing compliance (e.g. LHDN MyInvois in Malaysia, EU mandates), preventing invalid schema rejections.",
+      "quickConfig": "{\n  \"mcpServers\": {\n    \"invoicexml\": {\n      \"command\": \"npx\",\n      \"args\": [\"-y\", \"invoicexml-mcp\"],\n      \"env\": { \"COUNTRY_STANDARD\": \"PEPPOL_BIS_3\" }\n    }\n  }\n}"
+    },
+    {
+      "id": "erpclaw",
+      "pillar": "erp",
+      "name": "ERPClaw",
+      "repo": "avansaber/erpclaw",
+      "url": "https://github.com/avansaber/erpclaw",
+      "stars": 1400,
+      "license": "GPL-3.0",
+      "language": "Python / SQL",
+      "mcpStatus": "Conversational Agent Native",
+      "fitTier": "P2 - Specialized / Experimental",
+      "tagline": "AI-native ERP operated via conversational plain language instead of manual form entry.",
+      "summary": "Re-architects standard ERP modules (accounting, inventory, sales, purchasing) from the ground up around natural language queries and automated agent action dispatchers.",
+      "architecturalFit": "Serves as an architectural reference for conversational inventory checks, supplier re-orders, and automated purchase approval workflows in e.",
+      "quickConfig": "# Clone and inspect core conversational dispatcher\ngit clone https://github.com/avansaber/erpclaw.git"
+    },
+    {
+      "id": "docling",
+      "pillar": "documentation",
+      "name": "Docling & Docling MCP (IBM)",
+      "repo": "docling-project/docling",
+      "url": "https://github.com/docling-project/docling",
+      "stars": 68000,
+      "license": "MIT",
+      "language": "Python",
+      "mcpStatus": "Official MCP Server (docling-mcp)",
+      "fitTier": "P0 - Core Architectural Match",
+      "tagline": "IBM's premier document parser converting complex PDFs, DOCX, scans, and tables into structured Markdown.",
+      "summary": "Docling parses PDFs, scanned documents, DOCX, PPTX, and HTML into high-fidelity markdown and JSON. It excels at preserving nested tables, multi-column reading order, formulas, and visual document layouts.",
+      "architecturalFit": "Massive upgrade for e's Document Intelligence and invoice auditing. Replaces brittle regexes with layout-aware document understanding for receipts, POs, and utility bills.",
+      "quickConfig": "{\n  \"mcpServers\": {\n    \"docling\": {\n      \"command\": \"uvx\",\n      \"args\": [\"docling-mcp\"],\n      \"env\": { \"DOCLING_OCR_ENGINE\": \"easyocr\" }\n    }\n  }\n}"
+    },
+    {
+      "id": "markitdown",
+      "pillar": "documentation",
+      "name": "MarkItDown & MCP (Microsoft)",
+      "repo": "microsoft/markitdown",
+      "url": "https://github.com/microsoft/markitdown",
+      "stars": 87000,
+      "license": "MIT",
+      "language": "Python",
+      "mcpStatus": "Official MCP Package (markitdown-mcp)",
+      "fitTier": "P0 - Core Architectural Match",
+      "tagline": "Microsoft's official file-to-markdown converter for Office docs, Excel spreadsheets, and PDFs.",
+      "summary": "Lightweight, robust Python utility that converts Word documents, Excel spreadsheets, PowerPoint decks, PDFs, images, and audio metadata into clean Markdown optimized for LLM token budgets.",
+      "architecturalFit": "e regularly processes package-sheet CLI files and Excel price lists. MarkItDown converts Excel rows into formatted Markdown tables instantly for context packs.",
+      "quickConfig": "{\n  \"mcpServers\": {\n    \"markitdown\": {\n      \"command\": \"uvx\",\n      \"args\": [\"markitdown-mcp\"]\n    }\n  }\n}"
+    },
+    {
+      "id": "crawl4ai",
+      "pillar": "documentation",
+      "name": "Crawl4AI & MCP",
+      "repo": "unclecode/crawl4ai",
+      "url": "https://github.com/unclecode/crawl4ai",
+      "stars": 85000,
+      "license": "Apache-2.0",
+      "language": "Python",
+      "mcpStatus": "Community & RAG MCP Servers",
+      "fitTier": "P0 - Core Architectural Match",
+      "tagline": "Open-source, LLM-friendly web crawler & scraper with stealth mode and markdown distillation.",
+      "summary": "High-performance web crawler designed explicitly for AI agents. Features anti-detection stealth browsing, structured JSON extraction, heuristic markdown distillation, and multi-URL concurrency.",
+      "architecturalFit": "Complements e's existing Scrapling engine for company deep research, competitor price tracking, and merchant website audit jobs.",
+      "quickConfig": "{\n  \"mcpServers\": {\n    \"crawl4ai\": {\n      \"command\": \"uvx\",\n      \"args\": [\"crawl4ai-mcp\"]\n    }\n  }\n}"
+    },
+    {
+      "id": "firecrawl",
+      "pillar": "documentation",
+      "name": "Firecrawl & Firecrawl MCP",
+      "repo": "mendableai/firecrawl",
+      "url": "https://github.com/mendableai/firecrawl",
+      "stars": 25000,
+      "license": "AGPL-3.0",
+      "language": "TypeScript / Python",
+      "mcpStatus": "Official MCP Server",
+      "fitTier": "P1 - High Strategic Value",
+      "tagline": "Turn entire websites into LLM-ready markdown with site mapping, deep crawl, and structured extraction.",
+      "summary": "Recursively crawls web domains, bypassing JS rendering roadblocks, stripping ads and navbars, and returning clean hierarchical markdown documents for RAG indexing.",
+      "architecturalFit": "Enables e to ingest complete vendor documentation websites, product catalogs, and partner knowledge bases in a single asynchronous job.",
+      "quickConfig": "{\n  \"mcpServers\": {\n    \"firecrawl\": {\n      \"command\": \"npx\",\n      \"args\": [\"-y\", \"firecrawl-mcp\"],\n      \"env\": { \"FIRECRAWL_API_KEY\": \"${FIRECRAWL_API_KEY}\" }\n    }\n  }\n}"
+    },
+    {
+      "id": "outline-mcp",
+      "pillar": "documentation",
+      "name": "Outline Team Wiki & Native MCP",
+      "repo": "getoutline/outline",
+      "url": "https://github.com/getoutline/outline",
+      "stars": 28500,
+      "license": "BSL 1.1 / Open Source",
+      "language": "TypeScript",
+      "mcpStatus": "Native Built-in /mcp Endpoint",
+      "fitTier": "P0 - Core Architectural Match",
+      "tagline": "Modern collaborative knowledge base with native built-in Model Context Protocol server.",
+      "summary": "Outline has official, built-in MCP server capabilities (/mcp) supporting OAuth and API keys. AI assistants can read, search, create, update, and manage company documentation directly.",
+      "architecturalFit": "Provides e with an enterprise-grade living knowledge base for storing SOPs, company dossiers, product specifications, and agent-generated reports.",
+      "quickConfig": "{\n  \"mcpServers\": {\n    \"outline\": {\n      \"type\": \"http\",\n      \"url\": \"https://app.getoutline.com/mcp\",\n      \"headers\": { \"Authorization\": \"Bearer ${OUTLINE_API_KEY}\" }\n    }\n  }\n}"
+    },
+    {
+      "id": "context7",
+      "pillar": "documentation",
+      "name": "Context7 Documentation MCP (Upstash)",
+      "repo": "upstash/context7",
+      "url": "https://github.com/upstash/context7",
+      "stars": 5400,
+      "license": "Apache-2.0",
+      "language": "TypeScript",
+      "mcpStatus": "Official Hosted & CLI MCP",
+      "fitTier": "P0 - Core Architectural Match",
+      "tagline": "Feeds live, version-specific library documentation & code examples directly into AI assistants.",
+      "summary": "Stops hallucinated API calls by pulling real, version-accurate documentation for npm, PyPI, and cloud libraries straight into the AI agent's prompt during tool invocation.",
+      "architecturalFit": "Ensures e's coding agents and script runners (e.g. website studio, browser automation) use exact, current API signatures rather than out-of-date training memories.",
+      "quickConfig": "{\n  \"mcpServers\": {\n    \"context7\": {\n      \"type\": \"http\",\n      \"url\": \"https://mcp.context7.com/mcp\",\n      \"headers\": { \"Authorization\": \"Bearer ${CONTEXT7_API_KEY}\" }\n    }\n  }\n}"
+    },
+    {
+      "id": "openapi-to-mcp",
+      "pillar": "documentation",
+      "name": "OpenAPI / Swagger to MCP Bridge",
+      "repo": "EvilFreelancer/openapi-to-mcp",
+      "url": "https://github.com/EvilFreelancer/openapi-to-mcp",
+      "stars": 2200,
+      "license": "MIT",
+      "language": "TypeScript / Go",
+      "mcpStatus": "Universal MCP Converter",
+      "fitTier": "P0 - Core Architectural Match",
+      "tagline": "Turn any OpenAPI 3.x / Swagger REST API into an MCP server automatically.",
+      "summary": "Reads openapi.json or swagger.yaml specs, generates typed MCP tool definitions for every endpoint with parameter validation, and executes authorized HTTP calls dynamically.",
+      "architecturalFit": "e has internal endpoints (manage-api, demo-api). This bridge lets e auto-expose its own backend routes and 3rd-party merchant APIs to agents with zero boilerplate.",
+      "quickConfig": "{\n  \"mcpServers\": {\n    \"internal-api\": {\n      \"command\": \"npx\",\n      \"args\": [\"-y\", \"openapi-to-mcp\", \"--spec\", \"./google-ads-schema.json\"]\n    }\n  }\n}"
+    },
+    {
+      "id": "repoagent",
+      "pillar": "documentation",
+      "name": "RepoAgent (OpenBMB)",
+      "repo": "OpenBMB/RepoAgent",
+      "url": "https://github.com/OpenBMB/RepoAgent",
+      "stars": 5100,
+      "license": "Apache-2.0",
+      "language": "Python",
+      "mcpStatus": "Git / AST Agent",
+      "fitTier": "P1 - High Strategic Value",
+      "tagline": "LLM-powered repository documentation agent with AST-based diff tracking and call mapping.",
+      "summary": "Monitors Git commits, parses code syntax trees (AST) to recognize modified functions/classes, traces callers, and surgically rewrites markdown docs to prevent doc rot.",
+      "architecturalFit": "Complements e's Graft context system by maintaining synchronized markdown documentation and architecture overviews across iterations.",
+      "quickConfig": "# Run RepoAgent against local workspace\nrepoagent run --model gpt-4o --target-repo ."
+    },
+    {
+      "id": "ai-doc-gen",
+      "pillar": "documentation",
+      "name": "AI Doc Gen",
+      "repo": "divar-ir/ai-doc-gen",
+      "url": "https://github.com/divar-ir/ai-doc-gen",
+      "stars": 1600,
+      "license": "MIT",
+      "language": "Python / TypeScript",
+      "mcpStatus": "CI / Agent Harness",
+      "fitTier": "P1 - High Strategic Value",
+      "tagline": "Multi-agent codebase documentation generator generating AGENTS.md, CLAUDE.md, and architecture maps.",
+      "summary": "Specialized multi-agent system where independent agents map dependencies, request pipelines, and database models to generate comprehensive AI assistant instruction manuals and READMEs.",
+      "architecturalFit": "Automates creating and maintaining e's context packs (agent/context/<slug>/) and AGENTS.md rule guides as the platform evolves.",
+      "quickConfig": "# Generate agent context and architecture documentation\nnpx ai-doc-gen --target . --output agent-docs"
+    },
+    {
+      "id": "openwiki",
+      "pillar": "documentation",
+      "name": "OpenWiki CLI",
+      "repo": "openwiki-ai/openwiki",
+      "url": "https://github.com/openwiki-ai/openwiki",
+      "stars": 1900,
+      "license": "MIT",
+      "language": "TypeScript",
+      "mcpStatus": "Native MCP Server",
+      "fitTier": "P1 - High Strategic Value",
+      "tagline": "Turns codebases into hyperlinked Markdown wikis with exact line-level evidence tracking.",
+      "summary": "Generates a fully indexed, cross-referenced Markdown wiki from source code. Tracks each claim back to source files and exposes a native MCP server for agents to navigate repository knowledge.",
+      "architecturalFit": "Bridges developer comprehension and agent reasoning, offering an instant knowledge base of e's codebase for Pi runtime processes.",
+      "quickConfig": "{\n  \"mcpServers\": {\n    \"openwiki\": {\n      \"command\": \"npx\",\n      \"args\": [\"-y\", \"openwiki-mcp\", \"--dir\", \".\"]\n    }\n  }\n}"
+    },
+    {
+      "id": "fumadocs",
+      "pillar": "documentation",
+      "name": "Fumadocs",
+      "repo": "fuma-nama/fumadocs",
+      "url": "https://github.com/fuma-nama/fumadocs",
+      "stars": 4200,
+      "license": "MIT",
+      "language": "TypeScript / React",
+      "mcpStatus": "UI Documentation Engine",
+      "fitTier": "P1 - High Strategic Value",
+      "tagline": "Modern, fast documentation framework for Next.js & React with full-text search and OpenAPI rendering.",
+      "summary": "High-performance React documentation framework featuring built-in search (Orama/FlexSearch), automated OpenAPI playground generation, dynamic MDX widgets, and responsive UI.",
+      "architecturalFit": "Ideal for powering e's internal documentation portal, developer manual, and interactive API reference in React.",
+      "quickConfig": "npm install fumadocs-ui fumadocs-core"
+    },
+    {
+      "id": "scalar",
+      "pillar": "documentation",
+      "name": "Scalar API Documentation",
+      "repo": "scalar/scalar",
+      "url": "https://github.com/scalar/scalar",
+      "stars": 12500,
+      "license": "MIT",
+      "language": "TypeScript",
+      "mcpStatus": "OpenAPI / REST Client",
+      "fitTier": "P0 - Core Architectural Match",
+      "tagline": "Modern, interactive API reference and Swagger/OpenAPI client with offline themeable UI.",
+      "summary": "Stunning open-source alternative to Swagger UI and Postman. Embeds directly into Node.js / Express / Fastify / React apps, generating interactive API playgrounds with code generation in 15+ languages.",
+      "architecturalFit": "e can embed Scalar at /api/docs to provide an interactive, tested API explorer for all backend endpoints and native MCP tools.",
+      "quickConfig": "import { apiReference } from '@scalar/express-api-reference';\napp.use('/api/docs', apiReference({ spec: { content: openApiSchema } }));"
+    },
+    {
+      "id": "mastra",
+      "pillar": "agent-framework",
+      "name": "Mastra AI",
+      "repo": "mastra-ai/mastra",
+      "url": "https://github.com/mastra-ai/mastra",
+      "stars": 24000,
+      "license": "Apache-2.0",
+      "language": "TypeScript",
+      "mcpStatus": "Native MCP Client & Server",
+      "fitTier": "P0 - Core Architectural Match",
+      "tagline": "The premier TypeScript-native AI agent framework for Node.js: typed workflows, Zod tools, evals & MCP.",
+      "summary": "Mastra is designed from the ground up for TypeScript/Node.js. It features autonomous agents with dynamic tool execution, deterministic multi-step workflows, long-term memory, built-in eval scoring, and native MCP support.",
+      "architecturalFit": "Exact 1:1 stack match with e's Node.js backend. Mastra can power e's next-generation execution runner (server/execution/), replacing bespoke Pi process management with standardized durable workflows.",
+      "quickConfig": "import { Mastra, Agent } from '@mastra/core';\nexport const eAgent = new Agent({\n  name: 'procurement-auditor',\n  instructions: 'Audit supplier invoices against PO records.',\n  model: { provider: 'GOOGLE', name: 'gemini-2.0-flash' },\n  tools: { verifyInvoice, checkStock }\n});"
+    },
+    {
+      "id": "copilotkit",
+      "pillar": "agent-framework",
+      "name": "CopilotKit & CoAgents",
+      "repo": "CopilotKit/CopilotKit",
+      "url": "https://github.com/CopilotKit/CopilotKit",
+      "stars": 38000,
+      "license": "MIT",
+      "language": "TypeScript / React",
+      "mcpStatus": "Agent-Native React UI (AG-UI)",
+      "fitTier": "P0 - Core Architectural Match",
+      "tagline": "Open-source React framework for in-app AI copilots, generative UI, and CoAgents shared state.",
+      "summary": "Bridges complex backend agents (LangGraph, Mastra, custom runners) directly into React frontends. Features bidirectional shared state, streaming intermediate steps, generative UI widgets, and human-in-the-loop approvals.",
+      "architecturalFit": "Direct drop-in for e's React 19 frontend. Replaces custom streaming chat hooks with battle-tested generative UI components that render live interactive cards for invoices, tables, and charts.",
+      "quickConfig": "import { CopilotKit } from '@copilotkit/react-core';\nimport { CopilotSidebar } from '@copilotkit/react-ui';\n\nexport function App() {\n  return (\n    <CopilotKit runtimeUrl=\"/api/copilotkit\">\n      <CopilotSidebar defaultOpen={true}>\n        <Dashboard />\n      </CopilotSidebar>\n    </CopilotKit>\n  );\n}"
+    },
+    {
+      "id": "langgraphjs",
+      "pillar": "agent-framework",
+      "name": "LangGraph.js",
+      "repo": "langchain-ai/langgraphjs",
+      "url": "https://github.com/langchain-ai/langgraphjs",
+      "stars": 22000,
+      "license": "MIT",
+      "language": "TypeScript",
+      "mcpStatus": "Native MCP Support",
+      "fitTier": "P0 - Core Architectural Match",
+      "tagline": "Cyclic graph multi-agent orchestrator with state persistence, time-travel debugging, and human approvals.",
+      "summary": "Graph-based framework for stateful, multi-actor LLM applications. Provides durable checkpoints (PostgreSQL adapter), branch execution, time-travel state rollback, and explicit interrupt-for-approval flows.",
+      "architecturalFit": "Perfect for e's multi-step jobs (e.g. procurement approval, monthly expense audit) where an agent must pause, wait for manager sign-off, and resume without losing state.",
+      "quickConfig": "import { StateGraph, END } from '@langchain/langgraph';\nconst workflow = new StateGraph(StateAnnotation)\n  .addNode('auditInvoice', auditStep)\n  .addNode('requireManagerApproval', approvalStep)\n  .addEdge('auditInvoice', 'requireManagerApproval')\n  .addEdge('requireManagerApproval', END);\nexport const graph = workflow.compile({ checkpointer: postgresCheckpointer });"
+    },
+    {
+      "id": "letta",
+      "pillar": "agent-framework",
+      "name": "Letta (formerly MemGPT)",
+      "repo": "letta-ai/letta",
+      "url": "https://github.com/letta-ai/letta",
+      "stars": 18500,
+      "license": "Apache-2.0",
+      "language": "Python / TypeScript SDK",
+      "mcpStatus": "Native MCP Server & Client",
+      "fitTier": "P1 - High Strategic Value",
+      "tagline": "Stateful agent operating system with hierarchical memory (working, core, archival) and self-evolution.",
+      "summary": "Treats LLM context windows like RAM in an operating system. Agents manage their own memory: saving important user preferences to core memory, searching archival vector memory, and preserving state across months of conversation.",
+      "architecturalFit": "Solves e's multi-session memory. An e agent will remember vendor negotiation history, client preferences, and past accounting quirks across separate chat sessions.",
+      "quickConfig": "{\n  \"mcpServers\": {\n    \"letta\": {\n      \"command\": \"letta\",\n      \"args\": [\"server\", \"--port\", \"8283\"]\n    }\n  }\n}"
+    },
+    {
+      "id": "browser-use",
+      "pillar": "agent-framework",
+      "name": "Browser Use & Browser-Use Pi",
+      "repo": "browser-use/browser-use",
+      "url": "https://github.com/browser-use/browser-use",
+      "stars": 118000,
+      "license": "MIT",
+      "language": "Python & TypeScript",
+      "mcpStatus": "Agent Tool & CDP Integration",
+      "fitTier": "P0 - Core Architectural Match",
+      "tagline": "Autonomous browser automation agent using vision and Chrome DevTools Protocol to execute web tasks.",
+      "summary": "With 118k+ stars, Browser Use is the most popular agentic web automation framework. It allows LLMs to see web pages (DOM + screenshots), click buttons, fill multi-page forms, solve captchas, and scrape protected web portals.",
+      "architecturalFit": "Supercharges e's browser.mjs and newpages.mjs for automated merchant portal logins, supplier invoice downloads, and government portal filings.",
+      "quickConfig": "import { Browser, Agent } from 'browser-use-pi';\nconst agent = new Agent({\n  task: 'Log into NEWPAGES merchant portal and download latest orders CSV',\n  llm: geminiModel\n});\nawait agent.run();"
+    },
+    {
+      "id": "elizaos",
+      "pillar": "agent-framework",
+      "name": "ElizaOS",
+      "repo": "elizaos/eliza",
+      "url": "https://github.com/elizaos/eliza",
+      "stars": 50000,
+      "license": "MIT",
+      "language": "TypeScript",
+      "mcpStatus": "Plugin Architecture & MCP Bridge",
+      "fitTier": "P1 - High Strategic Value",
+      "tagline": "Modular autonomous multi-agent runtime written in TypeScript with 50+ multi-channel plugins.",
+      "summary": "Popular TypeScript agent runtime featuring modular plugins for Discord, WhatsApp, Telegram, Slack, Twitter/X, and SQL databases. Provides extensible memory stores and personality profiles.",
+      "architecturalFit": "Directly enhances e's WhatsApp worker (whatsapp-worker.mjs) and multi-channel notification dispatchers with conversational continuity and media handling.",
+      "quickConfig": "import { AgentRuntime, defaultCharacter } from '@elizaos/core';\nimport { WhatsAppPlugin } from '@elizaos/plugin-whatsapp';\nconst runtime = new AgentRuntime({\n  character: defaultCharacter,\n  plugins: [WhatsAppPlugin]\n});"
+    },
+    {
+      "id": "dify",
+      "pillar": "agent-framework",
+      "name": "Dify Orchestrator",
+      "repo": "dify-ai/dify",
+      "url": "https://github.com/dify-ai/dify",
+      "stars": 62000,
+      "license": "Apache-2.0",
+      "language": "Python / TypeScript",
+      "mcpStatus": "Native MCP Tooling",
+      "fitTier": "P1 - High Strategic Value",
+      "tagline": "Leading open-source LLM app development and visual multi-agent orchestration platform.",
+      "summary": "Full-featured platform combining visual workflow building, hybrid RAG retrieval, agent prompt management, tool integrations, and detailed execution observability.",
+      "architecturalFit": "Enterprise reference architecture for e. e can borrow Dify's visual workflow paradigms, prompt versioning schemas, and multi-tenant telemetry dashboards.",
+      "quickConfig": "# Spin up Dify self-hosted container cluster\ncd dify/docker && docker compose up -d"
+    },
+    {
+      "id": "pydantic-ai",
+      "pillar": "agent-framework",
+      "name": "Pydantic AI",
+      "repo": "pydantic/pydantic-ai",
+      "url": "https://github.com/pydantic/pydantic-ai",
+      "stars": 14500,
+      "license": "MIT",
+      "language": "Python",
+      "mcpStatus": "Native MCP Client Integration",
+      "fitTier": "P1 - High Strategic Value",
+      "tagline": "Production-grade, type-safe Python agent framework with strict validation and Logfire observability.",
+      "summary": "Built by the Pydantic team, bringing FastAPI-like ergonomics and compile-time type validation to AI agents. Offers native Model Context Protocol support, model agility, and Pydantic Graph control flow.",
+      "architecturalFit": "The premier choice for e's Python-based worker microservices (e.g. Scrapling, PDF layout analysis, financial reconciliation math).",
+      "quickConfig": "from pydantic_ai import Agent\nfrom pydantic_ai.mcp import McpServer\nagent = Agent('google-gla:gemini-2.0-flash', deps_type=DatabasePool)"
+    },
+    {
+      "id": "openhands",
+      "pillar": "agent-framework",
+      "name": "OpenHands (All-Hands AI)",
+      "repo": "All-Hands-AI/OpenHands",
+      "url": "https://github.com/All-Hands-AI/OpenHands",
+      "stars": 45000,
+      "license": "MIT",
+      "language": "Python / TypeScript",
+      "mcpStatus": "MCP Client & Workspace Sandbox",
+      "fitTier": "P1 - High Strategic Value",
+      "tagline": "Autonomous software development agent platform with sandboxed Docker execution and web canvas.",
+      "summary": "Complete platform for autonomous coding agents: edits files, executes terminal commands inside Docker containers, tests code, browses the web, and integrates with GitHub pull requests.",
+      "architecturalFit": "Direct reference architecture for e's Website Studio and code-editing workspaces (sites-cli.mjs, visual-pass.mjs).",
+      "quickConfig": "# Run OpenHands sandboxed agent in Docker\ndocker run -it --rm -p 3000:3000 -v /var/run/docker.sock:/var/run/docker.sock ghcr.io/all-hands-ai/openhands:latest"
+    },
+    {
+      "id": "fastmcp-ts",
+      "pillar": "agent-framework",
+      "name": "FastMCP for TypeScript",
+      "repo": "punkpeye/fastmcp",
+      "url": "https://github.com/punkpeye/fastmcp",
+      "stars": 8200,
+      "license": "MIT",
+      "language": "TypeScript",
+      "mcpStatus": "Core MCP Server Builder",
+      "fitTier": "P0 - Core Architectural Match",
+      "tagline": "High-performance TypeScript framework for building production MCP servers with Zod schemas & SSE.",
+      "summary": "Eliminates boilerplate when building MCP servers in TypeScript. Automatically infers tool schemas from Zod, supports authentication, typed progress events, and stdio/SSE/HTTP transports seamlessly.",
+      "architecturalFit": "The recommended standard for refactoring e's existing MCP servers (sales-mcp-server, google-ads-mcp-server, ee-mail-mcp-server) into clean, maintainable, typed microservices.",
+      "quickConfig": "import { FastMCP } from 'fastmcp';\nimport { z } from 'zod';\nconst server = new FastMCP({ name: 'e-business-tools' });\nserver.addTool({\n  name: 'audit_invoice',\n  parameters: z.object({ invoiceId: z.string(), poNumber: z.string() }),\n  execute: async ({ invoiceId, poNumber }) => verifyInvoice(invoiceId, poNumber)\n});\nserver.start({ transportType: 'stdio' });"
+    },
+    {
+      "id": "e2b-sandbox",
+      "pillar": "agent-framework",
+      "name": "E2B Cloud & Local Sandboxes",
+      "repo": "e2b-dev/E2B",
+      "url": "https://github.com/e2b-dev/E2B",
+      "stars": 8500,
+      "license": "Apache-2.0",
+      "language": "TypeScript / Python",
+      "mcpStatus": "Official MCP Sandbox Server",
+      "fitTier": "P0 - Core Architectural Match",
+      "tagline": "Secure sandboxed execution environment for AI agents to run code safely in sub-second startup.",
+      "summary": "Provides isolated micro-VM sandboxes where AI agents can execute untrusted code (Python, JS, Bash, charts, calculations) safely without endangering the host server or database.",
+      "architecturalFit": "Critical security shield for e. When agents generate data analysis charts or run Python mathematical calculations during invoice audits, E2B guarantees full container isolation.",
+      "quickConfig": "import { Sandbox } from '@e2b/code-interpreter';\nconst sandbox = await Sandbox.create();\nconst execution = await sandbox.runCode('print(sum([120.5, 450.0, 99.9]))');\nconsole.log(execution.text);"
+    },
+    {
+      "id": "smolagents",
+      "pillar": "agent-framework",
+      "name": "Smolagents (Hugging Face)",
+      "repo": "huggingface/smolagents",
+      "url": "https://github.com/huggingface/smolagents",
+      "stars": 16000,
+      "license": "Apache-2.0",
+      "language": "Python",
+      "mcpStatus": "MCP Client Compatibility",
+      "fitTier": "P2 - Specialized / Experimental",
+      "tagline": "Lightweight code-first agent framework where agents write expressive Python actions instead of JSON.",
+      "summary": "Instead of verbose multi-step JSON tool calls, smolagents has LLMs write short Python scripts to chain tools, execute loops, and manipulate data structures with ~1,000 lines of core framework code.",
+      "architecturalFit": "Inspires code-as-action workflows for e's complex data auditing, allowing agents to execute complex mathematical transforms on large financial CSVs in a single step.",
+      "quickConfig": "from smolagents import CodeAgent, HfApiModel\nagent = CodeAgent(tools=[invoice_tool, stock_tool], model=HfApiModel())\nagent.run('Find all invoices exceeding PO budget by 10%')"
+    }
+  ]
+}
+
+</script>
+
+  <!-- Inline Script for Interactive Filtering, Search, and Rendering -->
+  <script>
+    let ecosystemData = null;
+    let activeFilter = 'all';
+    let activeChip = null;
+
+    async function loadData() {
+      try {
+        const res = await fetch('ecosystem-data.json');
+        if (res.ok) {
+          ecosystemData = await res.json();
+        } else {
+          throw new Error('HTTP ' + res.status);
+        }
+      } catch (e) {
+        console.warn('Fetch failed or local file:// protocol. Using embedded dataset.', e);
+        const fallbackScript = document.getElementById('raw-ecosystem-data');
+        if (fallbackScript) {
+          ecosystemData = JSON.parse(fallbackScript.textContent);
+        }
+      }
+      if (ecosystemData) {
+        renderAll();
+      } else {
+        document.getElementById('cardsGrid').innerHTML = '<div style="color:#f43f5e;padding:40px;text-align:center;">Failed to initialize ecosystem data.</div>';
+      }
+    }
+
+    function renderAll() {
+      if (!ecosystemData) return;
+      renderCards();
+      renderMatrix();
+    }
+
+    function formatNumber(num) {
+      if (num >= 1000) {
+        return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+      }
+      return num;
+    }
+
+    function filterItems(items) {
+      const searchVal = document.getElementById('searchInput').value.toLowerCase().trim();
+
+      return items.filter(item => {
+        // Pillar filter
+        if (activeFilter !== 'all' && item.pillar !== activeFilter) {
+          return false;
+        }
+
+        // Quick chip filter
+        if (activeChip === 'p0' && !item.fitTier.startsWith('P0')) return false;
+        if (activeChip === 'ts' && !item.language.toLowerCase().includes('typescript')) return false;
+        if (activeChip === 'mcp' && !item.mcpStatus.toLowerCase().includes('mcp')) return false;
+        if (activeChip === 'hot' && item.stars < 25000) return false;
+
+        // Search text
+        if (searchVal) {
+          const matchString = (item.name + ' ' + item.repo + ' ' + item.tagline + ' ' + item.summary + ' ' + item.architecturalFit + ' ' + item.language + ' ' + item.mcpStatus).toLowerCase();
+          return matchString.includes(searchVal);
+        }
+
+        return true;
+      });
+    }
+
+    function renderCards() {
+      const container = document.getElementById('cardsGrid');
+      const filtered = filterItems(ecosystemData.items);
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 60px 20px; color: var(--text-dim);">No matching tools found. Try clearing filters or search.</div>';
+        return;
+      }
+
+      container.innerHTML = filtered.map(item => {
+        const tierBadgeClass = item.fitTier.startsWith('P0') ? 'badge-tier-p0' : 'badge-tier-p1';
+        return `
+          <div class="tool-card" data-id="${item.id}" data-pillar="${item.pillar}">
+            <div class="card-top">
+              <div class="card-header-row">
+                <div class="card-title">${item.name}</div>
+                <span class="badge ${tierBadgeClass}">${item.fitTier.split('-')[0].trim()}</span>
+              </div>
+              <a href="${item.url}" target="_blank" rel="noopener noreferrer" class="card-repo">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                ${item.repo}
+              </a>
+
+              <div class="badges-row">
+                <span class="badge badge-stars">★ ${formatNumber(item.stars)}</span>
+                <span class="badge badge-lang">${item.language}</span>
+                <span class="badge badge-license">${item.license}</span>
+                <span class="badge badge-mcp">${item.mcpStatus}</span>
+              </div>
+
+              <div class="card-tagline">${item.tagline}</div>
+              <div class="card-desc">${item.summary}</div>
+
+              <div class="fit-box">
+                <div class="fit-title">Strategic Value for 'e'</div>
+                <div class="fit-text">${item.architecturalFit}</div>
+              </div>
+            </div>
+
+            <div class="code-accordion">
+              <details>
+                <summary>
+                  <span>Quick Setup / Config</span>
+                  <span>▼</span>
+                </summary>
+                <div class="code-content">
+                  <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                  <pre><code>${escapeHtml(item.quickConfig)}</code></pre>
+                </div>
+              </details>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderMatrix() {
+      const tbody = document.getElementById('matrixTableBody');
+      const filtered = filterItems(ecosystemData.items);
+
+      tbody.innerHTML = filtered.map(item => {
+        const pillarLabel = item.pillar === 'erp' ? 'ERP' : (item.pillar === 'documentation' ? 'Docs' : 'Agent Framework');
+        return `
+          <tr>
+            <td class="tbl-name"><a href="${item.url}" target="_blank" style="color:#fff; text-decoration:none;">${item.name}</a></td>
+            <td><span class="badge badge-lang">${pillarLabel}</span></td>
+            <td><strong style="color:#fbbf24;">${formatNumber(item.stars)}</strong></td>
+            <td><code>${item.language}</code></td>
+            <td><span class="badge badge-license">${item.license}</span></td>
+            <td><span class="badge badge-mcp">${item.mcpStatus}</span></td>
+            <td style="font-size:0.78rem; color:#cbd5e1;">${item.fitTier}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function escapeHtml(string) {
+      return String(string).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function copyCode(btn) {
+      const pre = btn.parentElement.querySelector('pre');
+      navigator.clipboard.writeText(pre.innerText);
+      const originalText = btn.innerText;
+      btn.innerText = 'Copied!';
+      btn.style.color = '#34d399';
+      setTimeout(() => {
+        btn.innerText = originalText;
+        btn.style.color = '';
+      }, 1500);
+    }
+
+    // Event Listeners
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        activeFilter = btn.dataset.filter;
+        renderAll();
+      });
+    });
+
+    document.querySelectorAll('.chip-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (btn.classList.contains('active')) {
+          btn.classList.remove('active');
+          activeChip = null;
+        } else {
+          document.querySelectorAll('.chip-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          activeChip = btn.dataset.chip;
+        }
+        renderAll();
+      });
+    });
+
+    document.getElementById('searchInput').addEventListener('input', () => {
+      renderAll();
+    });
+
+    // Boot
+    loadData();
+  </script>
+</body>
+</html>

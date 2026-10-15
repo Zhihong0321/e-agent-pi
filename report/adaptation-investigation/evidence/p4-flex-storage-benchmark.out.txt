@@ -1,0 +1,16 @@
+server: PostgreSQL 18.3 (PGlite 0.5.8) on wasm32
+sizes before extra indexes: bag 28 MB | slot 17 MB
+sizes after indexes: bag 30 MB | slot 25 MB
+
+=== results (median of 5, tenant 2 = 50,000 rows of 200,000) ===
+{"stage":"A: no extra index (only tenant_id,id)","query":"Q1 equality  (segment = 'C&I')","bag":"21.47 ms  Aggregate (bag_t)","bagGIN":"29.57 ms  Aggregate (bag_t)","slot":"14.65 ms  Aggregate (slot_t)"}
+{"stage":"A: no extra index (only tenant_id,id)","query":"Q2 range     (score 990..999)","bag":"27.66 ms  Aggregate (bag_t)","slot":"12.87 ms  Aggregate (slot_t)"}
+{"stage":"A: no extra index (only tenant_id,id)","query":"Q3 aggregate (sum score by segment)","bag":"86.39 ms  Aggregate (bag_t)","slot":"42.66 ms  Aggregate (slot_t)"}
+{"stage":"B: + GIN(custom) on the bag","query":"Q1 equality  (segment = 'C&I')","bag":"30.33 ms  Aggregate (bag_t)","bagGIN":"37.37 ms  Aggregate (bag_gin)","slot":"19.08 ms  Aggregate (slot_t)"}
+{"stage":"B: + GIN(custom) on the bag","query":"Q2 range     (score 990..999)","bag":"36.05 ms  Aggregate (bag_t)","slot":"15.37 ms  Aggregate (slot_t)"}
+{"stage":"B: + GIN(custom) on the bag","query":"Q3 aggregate (sum score by segment)","bag":"75.56 ms  Aggregate (bag_t)","slot":"59.85 ms  Aggregate (slot_t)"}
+{"stage":"C: bag + partial expression indexes for tenant 2 | slot + btree on its columns","query":"Q1 equality  (segment = 'C&I')","bag":"9.11 ms  Aggregate (bag_seg_t2)","bagGIN":"24.10 ms  Aggregate (bag_seg_t2)","slot":"5.88 ms  Aggregate (slot_t1_idx)"}
+{"stage":"C: bag + partial expression indexes for tenant 2 | slot + btree on its columns","query":"Q2 range     (score 990..999)","bag":"1.73 ms  Aggregate (bag_score_t2)","slot":"1.01 ms  Aggregate (slot_n1_idx)"}
+{"stage":"C: bag + partial expression indexes for tenant 2 | slot + btree on its columns","query":"Q3 aggregate (sum score by segment)","bag":"68.25 ms  Aggregate (bag_seg_t2)","slot":"40.92 ms  Aggregate (slot_t1_idx)"}
+
+slot-table width if each company may need 20 text + 20 number + 10 date + 10 bool flex columns: 60 columns per row, mostly NULL for every company that uses 5.

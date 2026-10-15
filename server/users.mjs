@@ -41,6 +41,9 @@ export async function ensureUsers(pool) {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS notes TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS company_tenant_id TEXT;
     CREATE INDEX IF NOT EXISTS users_email_idx ON users (lower(email)) WHERE email IS NOT NULL;
+    -- A username is unique inside its company, not across the platform: sign-in is company code + username.
+    ALTER TABLE users DROP CONSTRAINT IF EXISTS users_username_key;
+    CREATE UNIQUE INDEX IF NOT EXISTS users_company_username_key ON users (COALESCE(company_tenant_id, ''), username);
     CREATE TABLE IF NOT EXISTS user_sessions (
       token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
@@ -89,6 +92,13 @@ export function sessionCookie(req, token, maxAge = 604800) {
   return `demo_session=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}${secure ? '; Secure' : ''}`;
 }
 const attempts = new Map();
+// Sign-in names a company: `company` + `username`, or the one-field form `company/username`.
+function loginParts(input) {
+  let company = String(input.company ?? '').trim().toLowerCase();
+  let username = String(input.username ?? '').trim().toLowerCase();
+  if (!company && username.includes('/')) [company, username] = [username.slice(0, username.indexOf('/')).trim(), username.slice(username.indexOf('/') + 1).trim()];
+  return { company, username };
+}
 export async function loginUser(req, input) {
   const key = req.socket.remoteAddress || 'local';
   const now = Date.now();
@@ -96,9 +106,12 @@ export async function loginUser(req, input) {
   const attempt = attempts.get(key) || { count: 0, until: now + 900000 };
   if (attempt.count >= 10) throw new Error('Too many login attempts. Try again in 15 minutes.');
   attempt.count++; attempts.set(key, attempt);
-  const row = (await getPool().query('SELECT * FROM users WHERE username=$1', [String(input.username || '').trim().toLowerCase()])).rows[0];
+  const { company, username } = loginParts(input);
+  const row = company && username ? (await getPool().query(
+    `SELECT u.* FROM users u JOIN di.tenant t ON t.id::text=u.company_tenant_id
+      WHERE t.code=$1 AND t.deleted_at IS NULL AND u.username=$2`, [company, username])).rows[0] : null;
   const valid = verifyPassword(input.password, row?.password_hash || dummyHash);
-  if (!row?.active || !valid) throw new Error('Invalid username or password');
+  if (!row?.active || !valid) throw new Error('Invalid company code, username or password');
   if (!row.company_tenant_id) throw new Error('This login has no company. Ask the platform operator to assign one.');
   attempts.delete(key);
   const token = randomBytes(32).toString('hex');
@@ -161,7 +174,7 @@ export async function manageUsers(action, input = {}, context = {}) {
       result = await tx.query(`INSERT INTO users(id,username,display_name,password_hash,role,tier) VALUES($1,$2,$3,$4,$5,$6) RETURNING ${fields}`,
         [randomUUID(),username,input.display_name || username,hashPassword(input.password),normalizeRole(input.role) || 'user',input.tier || 'standard']);
     } else if (action === 'update_user') {
-      const current = (await tx.query('SELECT * FROM users WHERE id=$1 OR username=$1 FOR UPDATE', [input.user])).rows[0];
+      const current = (await tx.query('SELECT * FROM users WHERE id=$1 OR (username=$1 AND company_tenant_id IS NOT DISTINCT FROM $2) FOR UPDATE', [input.user, actor.company_tenant_id])).rows[0];
       if (!current) throw new Error('User not found');
       const role = normalizeRole(input.role) ?? current.role, active = input.active ?? current.active;
       if (current.role === 'admin' && current.active && (role !== 'admin' || !active)) {
@@ -174,7 +187,7 @@ export async function manageUsers(action, input = {}, context = {}) {
     } else throw new Error('Unknown user action');
     await tx.query('COMMIT');
     return { user: result.rows[0] };
-  } catch (error) { await tx.query('ROLLBACK'); if (error.code === '23505') throw new Error('Username already exists'); throw error; }
+  } catch (error) { await tx.query('ROLLBACK'); if (error.code === '23505') throw new Error('Username already exists in this company'); throw error; }
   finally { tx.release(); }
 }
 
@@ -206,7 +219,7 @@ export async function managePeople(action, input = {}, context = {}) {
     return { person: result.person };
   } catch (error) {
     await tx.query('ROLLBACK');
-    if (error.code === '23505') throw new Error(error.constraint?.includes('username') ? 'Username already exists' : 'Company person already exists');
+    if (error.code === '23505') throw new Error(error.constraint?.includes('username') ? 'Username already exists in this company' : 'Company person already exists');
     throw error;
   } finally { tx.release(); }
 }

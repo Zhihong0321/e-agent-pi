@@ -1,0 +1,103 @@
+(node:20824) ExperimentalWarning: Module mocking is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:20824) DeprecationWarning: mock.module(): options.namedExports is deprecated. Use options.exports instead.
+✔ a new company comes with its Superadmin and the company agents only (1683.6994ms)
+✔ a failed creation leaves no company behind (1425.2726ms)
+✔ two companies can both have the login admin / 1234, and each signs in to its own company (1629.3391ms)
+✔ existing companies get a unique code from their name when migrated (1366.6151ms)
+✔ a company that loses its Superadmin is reported (1441.5783ms)
+✔ each company keeps its own last Superadmin: another company's admin does not count (1594.0609ms)
+(node:6312) ExperimentalWarning: Module mocking is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:6312) DeprecationWarning: mock.module(): options.namedExports is deprecated. Use options.exports instead.
+✔ financial agent actor comes from the authenticated session and rejects foreign or revoked owners (2.1726ms)
+✔ buildPiArgs: coding profile keeps Pi's default prompt and built-in tools (0.8533ms)
+✔ buildPiArgs: ops profile swaps the system prompt and limits tools to read+bash (0.191ms)
+✔ buildPiArgs: assistant profile swaps the system prompt and disables built-in tools (0.1168ms)
+✔ buildPiArgs: an unknown profile falls back to coding (0.1209ms)
+✔ buildPiArgs: a valid thinking level is passed through (0.1134ms)
+✔ buildPiArgs: an invalid or missing thinking level omits the flag (0.0939ms)
+✔ MiniMax always gets a supported reasoning level (0.1843ms)
+✔ skillsNeedBash / resolveToolProfile: assistant falls back to ops when a skill shells out (10.9831ms)
+(node:12636) ExperimentalWarning: Module mocking is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:12636) DeprecationWarning: mock.module(): options.defaultExport is deprecated. Use options.exports.default instead.
+(node:12636) DeprecationWarning: mock.module(): options.namedExports is deprecated. Use options.exports instead.
+✔ user session lists filter by owner in SQL and hide child sessions (1.3893ms)
+✔ agent filters retain the user scope with independent query parameters (0.1917ms)
+✔ session lookup checks both id and owner and never claims unowned chats (0.252ms)
+✔ operator reads remain available without a user scope (0.19ms)
+✔ chat ownership is inserted atomically, including parent ownership inheritance (0.424ms)
+✔ published snapshots survive source replacement/removal and retain stable links (32.0215ms)
+✔ publishing is confined to the caller workspace and downloads to the company (14.4865ms)
+✔ share_file authenticates the agent; download authenticates owner and company (160.2202ms)
+✔ attachments cross MCP and Orchestrator envelopes and persist outside clipped tool text (11.4294ms)
+✖ every Pi tool profile receives share_file and the shared-file rules (1.5763ms)
+(node:27812) ExperimentalWarning: Module mocking is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:27812) DeprecationWarning: mock.module(): options.namedExports is deprecated. Use options.exports instead.
+✔ the migration keeps existing SOPs as the platform default and is safe to run twice (1737.0706ms)
+✔ after the migration each company has its own version and the default is untouched (1308.6119ms)
+✔ two platform defaults for one agent are refused by the database (1214.3779ms)
+(node:444) ExperimentalWarning: Module mocking is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:444) DeprecationWarning: mock.module(): options.namedExports is deprecated. Use options.exports instead.
+✔ SOP schema keeps one row per agent and scope, not one per agent (2.4337ms)
+✔ saving the platform default upserts one row (1.4727ms)
+✔ a company's SOP is its own: other companies and the default never see it (7.863ms)
+✔ a company editing its SOP never changes the default or another company (3.2741ms)
+✔ clearing a company SOP falls back to the default and leaves other companies alone (2.4107ms)
+✔ fingerprint changes on every save so a warm runtime is replaced (0.4044ms)
+✔ clearing the default removes the row and reports whether one existed (0.8775ms)
+✔ approved lookup is the same current SOP lookup (0.2424ms)
+✔ the kernel exports no process-wide default company (0.8742ms)
+✔ an operator request with no company is refused, never served from a default (0.4817ms)
+✔ a signed-in user is always scoped to their own company, whatever header they send (0.1845ms)
+✔ a row with no owner and no stored company has no tenant (0.1667ms)
+✔ a fresh database has no company (1903.2343ms)
+✔ a route nobody listed is operator-only (0.7866ms)
+✔ user routes are the ones company users need (0.1801ms)
+✔ public routes are login, health, form links and token-checked worker bridges (0.103ms)
+✔ a company agent has no workspace without a company, and one per company with it (0.8769ms)
+✔ a platform agent keeps one workspace whatever company asks (0.1793ms)
+✔ no code, test, doc or graft node names a default company (2985.875ms)
+✔ every API call the company-facing screens make is open to a signed-in company user (10.302ms)
+✔ a shared file is readable only by its own company (18.2994ms)
+✔ a run can publish only into the company its token was issued for (9.8187ms)
+✔ media helper tokens are bound to one company (0.948ms)
+✔ tenant resolution never falls back for a signed-in user (0.4769ms)
+✔ platform agents are never granted to a company login, whatever the table says (0.4556ms)
+✔ passwords use unique salts and reject incorrect or oversized input (141.0418ms)
+✔ bootstrap creates tables and seeds admin only when the user table is empty (72.601ms)
+✔ bootstrap rolls back and releases on failure (36.7682ms)
+✔ cookies are HttpOnly, SameSite strict, and secure over HTTPS (0.2805ms)
+✔ AI management refuses missing or fabricated admin authorization (1.2331ms)
+✔ user bootstrap schema includes unified person profile fields without exposing password columns (37.2038ms)
+✔ expense identity codes are random per turn, and only honoured while fresh (1.1176ms)
+ℹ tests 60
+ℹ suites 0
+ℹ pass 59
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 32070.3129
+
+✖ failing tests:
+
+test at server\shared-files.test.mjs:123:1
+✖ every Pi tool profile receives share_file and the shared-file rules (1.5763ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Old file:\/\//. Input:
+  
+  'Test\n'
+  
+      at TestContext.<anonymous> (file:///E:/000/UIv2/server/shared-files.test.mjs:129:10)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'Test\n',
+    expected: /Old file:\/\//,
+    operator: 'match',
+    diff: 'simple'
+  }

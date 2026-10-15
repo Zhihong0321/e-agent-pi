@@ -90,6 +90,7 @@ export async function dispatchTool(binding, rawBody, services = {}) {
     companyId: binding.companyId,
     profileId: binding.profileId,
     leaseGeneration: binding.generation,
+    input: binding.input,
   };
 
   try {

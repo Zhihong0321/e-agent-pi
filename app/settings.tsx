@@ -85,7 +85,7 @@ type SiteItem = {
 };
 type WhatsappStatus = {
   linked: boolean;
-  sidecarUp: boolean;
+  workerUp: boolean;
   phone?: string;
   pushName?: string;
   connectedSince?: number;
@@ -577,6 +577,36 @@ export default function SettingsPage() {
     void load();
   }, [authed, tab, blueprintFilter]);
 
+  const requestWhatsappQr = async () => {
+    setWhatsappBusy(true);
+    setError("");
+    try {
+      await authedJson("/api/whatsapp/qr/refresh", { method: "POST" });
+      // Give the worker a moment to open the new pairing attempt before the next poll fetches the QR.
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      setWhatsappQrTick((t) => t + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not request a new QR code");
+    } finally {
+      setWhatsappBusy(false);
+    }
+  };
+
+  const unlinkWhatsapp = async () => {
+    if (!window.confirm("Unlink WhatsApp? You'll need to scan a new QR code to reconnect.")) return;
+    setWhatsappBusy(true);
+    setError("");
+    try {
+      await authedJson("/api/whatsapp/unlink", { method: "POST" });
+      setWhatsapp(null);
+      setWhatsappQrTick((t) => t + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unlink failed");
+    } finally {
+      setWhatsappBusy(false);
+    }
+  };
+
   const saveWhatsappMemory = async () => {
     setWhatsappNotesBusy("memory");
     setWhatsappNotesSaved("");
@@ -602,37 +632,6 @@ export default function SettingsPage() {
       setError(err instanceof Error ? err.message : "Could not save contact notes");
     } finally {
       setWhatsappNotesBusy("");
-    }
-  };
-
-  const requestWhatsappQr = async () => {
-    setWhatsappBusy(true);
-    setError("");
-    try {
-      await authedJson("/api/whatsapp/qr/refresh", { method: "POST" });
-      // The sidecar restarts to open a fresh pairing attempt; give it a
-      // moment to come back up before the next status poll fetches it.
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      setWhatsappQrTick((t) => t + 1);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not request a new QR code");
-    } finally {
-      setWhatsappBusy(false);
-    }
-  };
-
-  const unlinkWhatsapp = async () => {
-    if (!window.confirm("Unlink WhatsApp? You'll need to scan a new QR code to reconnect.")) return;
-    setWhatsappBusy(true);
-    setError("");
-    try {
-      await authedJson("/api/whatsapp/unlink", { method: "POST" });
-      setWhatsapp(null);
-      setWhatsappQrTick((t) => t + 1);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unlink failed");
-    } finally {
-      setWhatsappBusy(false);
     }
   };
 
@@ -2341,9 +2340,9 @@ export default function SettingsPage() {
                 Links the owner&rsquo;s real WhatsApp to the WhatsApp Assistant agent: it can read chat history and
                 draft replies, but only sends a message after you say yes in that chat.
               </p>
-              {!whatsapp?.sidecarUp ? (
+              {!whatsapp?.workerUp ? (
                 <p>
-                  <em>Starting up… the WhatsApp sidecar isn&rsquo;t reachable yet.</em>
+                  <em>Starting up… the WhatsApp worker isn&rsquo;t reachable yet.</em>
                 </p>
               ) : whatsapp.linked ? (
                 <div className="whatsapp-linked">

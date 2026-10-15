@@ -64,7 +64,8 @@ test('invoice creation and editing through authenticated HTTP produce exact DB L
     });
     await new Promise(resolve => host.listen(0, '127.0.0.1', resolve));
     const base = `http://127.0.0.1:${host.address().port}`;
-    const login = async username => users.loginUser({ headers: {}, socket: { remoteAddress: 'audit-fixture' } }, { username, password: 'isolated-fixture-password' });
+    const company = (await pool.query('SELECT code FROM di.tenant WHERE id=$1', [tenantId])).rows[0].code;
+    const login = async username => users.loginUser({ headers: {}, socket: { remoteAddress: 'audit-fixture' } }, { company, username, password: 'isolated-fixture-password' });
     const alice = await login('audit_alice');
     const carol = await login('audit_carol');
     const aliceSession = await db.createSession({ agentId: 'di-documents', userId: alice.user.id });
