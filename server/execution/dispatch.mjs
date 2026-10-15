@@ -6,7 +6,7 @@
 import { createHash } from 'node:crypto';
 import { getPool } from '../db.mjs';
 import {
-  BridgeCallSchema, digestArgs, execError, newId, redactArgs,
+  BridgeCallSchema, changesData, digestArgs, execError, newId, redactArgs,
 } from './contracts.mjs';
 import { getOperation } from './registry.mjs';
 import * as store from './store.mjs';
@@ -99,11 +99,6 @@ export async function dispatchTool(binding, rawBody, services = {}) {
     if (binding.revoked || binding.generation !== binding.expectedGeneration) {
       return toolError(callId, execError('STALE_ATTEMPT', 'A newer attempt owns this work'));
     }
-    if (toolId === 'finish_run') {
-      // Checked before stopRequested so a repeated identical proposal still gets its ack.
-      if (!services.onFinishRun) return toolError(callId, execError('EXECUTION_FAILED', 'Completion protocol is not wired'));
-      return services.onFinishRun(binding, callId, args ?? {});
-    }
     if (binding.stopRequested) {
       return toolError(callId, execError('CANCELLED', 'Cancellation was requested for this run; no new calls are accepted'));
     }
@@ -113,8 +108,8 @@ export async function dispatchTool(binding, rawBody, services = {}) {
     if (binding.manifestToolIds && !binding.manifestToolIds.includes(toolId)) {
       return toolError(callId, execError('PERMISSION_DENIED', `${toolId} is not available to this profile`));
     }
-    if (op.effect !== 'read' && op.effect !== 'control' && binding.writesDisabled) {
-      return toolError(callId, execError('PERMISSION_DENIED', 'Business writes are disabled for this attempt (completion-only repair)'));
+    if (binding.writesDisabled && changesData(op, toolId)) {
+      return toolError(callId, execError('PERMISSION_DENIED', 'Business writes are disabled for this attempt (a checker only looks)'));
     }
 
     // Fresh authorization inputs for every call (spec §7.4), including

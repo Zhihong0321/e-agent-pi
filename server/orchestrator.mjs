@@ -9,7 +9,7 @@ import { createSession, getPool, getSession } from "./db.mjs";
 import { getAgent, listAgents } from "./catalog.mjs";
 import { ORCHESTRATOR_AGENT_ID } from "./paths.mjs";
 import { logEvent } from "./debug.mjs";
-import { compileJobTasks, parseJobReply, cleanupCutoff } from "./job-policy.mjs";
+import { compileJobTasks, parseJobReply, cleanupCutoff, jobAnswer } from "./job-policy.mjs";
 
 export const RESULT_CHARS = 8000;
 
@@ -429,13 +429,11 @@ async function setTask(id, patch, expectedStatus) {
 export async function refreshPlanStatus(planId) {
   const tasks = await listTasks(planId);
   if (!tasks.length) return;
+  // Queue state only. Whether the work is right is the checker's word, inside the job's answer.
   let status = "done";
   if (tasks.some((row) => row.status === "running")) status = "running";
-  else if (tasks.some((row) => row.status === "failed" || row.status === "error")) status = "failed";
-  else if (tasks.some((row) => row.status === "blocked")) status = "blocked";
   else if (tasks.some((row) => row.status === "pending")) status = "queued";
   else if (tasks.every((row) => row.status === "cancelled")) status = "cancelled";
-  else if (tasks.some((row) => row.status === "cancelled")) status = "cancelled";
   await getPool().query(`UPDATE orchestrator_plans SET status = $1, updated_at = NOW(),
     completed_at = CASE WHEN $1 = 'done' THEN COALESCE(completed_at, NOW()) ELSE NULL END WHERE id = $2`, [status, planId]);
   if (!tasks.some(task => task.status === "running" || task.status === "pending")) {
@@ -446,8 +444,8 @@ export async function refreshPlanStatus(planId) {
         WHERE id=$1 AND auto_run AND NOT report_sent RETURNING parent_session_id,title`, [planId]);
       if (claimed.rowCount) {
         const plan = claimed.rows[0];
-        const report = [`Job ${plan.title}: ${status}.`, `Plan: ${planId}`,
-          ...tasks.map(task => `${task.title} (${task.status}): ${clipResult(task.error || task.result || "No output", 1200)}`)].join("\n\n");
+        // The agents' own answers, then the checker's verdict if the job was checked. No status label.
+        const report = `**${plan.title}**\n\n${jobAnswer(tasks)}`;
         await client.query(`INSERT INTO messages (session_id,role,content)
           SELECT id,'assistant',$2 FROM sessions WHERE id=$1`, [plan.parent_session_id, report]);
         await client.query(`UPDATE sessions SET updated_at=NOW() WHERE id=$1`, [plan.parent_session_id]);
@@ -700,7 +698,7 @@ export async function runJobTick() {
 }
 
 const COMPLETED_JOBS = `p.status='done' AND p.completed_at < $1::timestamptz
-  AND NOT EXISTS (SELECT 1 FROM orchestrator_tasks t WHERE t.plan_id=p.id AND t.status <> 'done')`;
+  AND NOT EXISTS (SELECT 1 FROM orchestrator_tasks t WHERE t.plan_id=p.id AND t.status IN ('pending','running'))`;
 
 export async function listJobs() {
   await ensureOrchestratorSchema();

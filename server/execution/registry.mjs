@@ -342,7 +342,7 @@ registerOperation({
 
 registerOperation({
   id: 'submit_plan',
-  description: 'Validate and atomically queue a complete specialist plan. The host runs ready specialists, passes dependency evidence and records outcomes; do not poll between tasks (task_status shows progress).',
+  description: 'Validate and atomically queue a complete specialist plan. The host runs ready specialists, passes each step\'s answer to the next, and checks a job that changed data against the user\'s message; do not poll between tasks (task_status shows progress).',
   effect: 'control',
   timeoutMs: 60_000,
   inputSchema: z.object({
@@ -355,7 +355,6 @@ registerOperation({
       prompt: z.string().min(1).describe('Self-contained instructions for the specialist'),
       dependsOn: z.array(z.string()).max(50).optional(),
       acceptanceCriteria: z.array(z.string()).max(20).optional(),
-      checker: z.object({ agent: z.string(), checks: z.array(z.string()).min(1) }).nullable().optional(),
     })).min(1).max(100).describe('The full task graph; stored atomically'),
   }),
   async execute(ctx, args) {

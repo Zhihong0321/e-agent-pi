@@ -53,7 +53,7 @@ export default function JobsSettings() {
   };
   return <section className="settings-card">
     <h2>Completed job cleanup</h2>
-    <p>Clear jobs completed before the selected date, using Kuala Lumpur time. Running, queued, blocked, failed and cancelled jobs are preserved. Chat history and generated files are kept.</p>
+    <p>Clear jobs completed before the selected date, using Kuala Lumpur time. Running, queued and cancelled jobs are preserved. Chat history and generated files are kept.</p>
     <label>Completed before<input type="date" value={before} disabled={busy} onChange={event => { setBefore(event.target.value); setPreview(null); }} /></label>
     <button type="button" disabled={busy || !before} onClick={() => void cleanup(false)}>Preview cleanup</button>
     {preview && <div role="status">

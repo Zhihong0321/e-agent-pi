@@ -53,25 +53,11 @@ test('a successful SDK retry clears an earlier provider error', async () => {
   await worker.dispose();
 });
 
-test('the intentional abort after accepted completion is not a user-visible error', async () => {
-  batches = [[
-    { type: 'tool_execution_end', toolName: 'finish_run', toolCallId: 'finish', result: { details: { ok: true, data: { accepted: true } } } },
-    assistant('Request aborted'), settled,
-  ]];
-  const events = [];
-  const worker = piWorkerFactory({ profile: { id: 'test' }, manifest: { manifest: {} }, attemptId: 'completed', onEvent: event => events.push(event) });
-  await worker.start();
-  await worker.prompt('hi');
-  assert.ok(!events.some(event => event.type === 'error'));
-  await worker.dispose();
-});
-
-const finishAccepted = { type: 'tool_execution_end', toolName: 'finish_run', toolCallId: 'finish', result: { details: { ok: true, data: { accepted: true } } } };
 const textDelta = delta => ({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta } });
 
-test('a chat turn returns the answer Pi wrote and is never aborted by a finish_run call', async () => {
+test('a chat turn returns the answer Pi wrote and is never aborted', async () => {
   aborts = 0;
-  batches = [[{ type: 'agent_start' }, finishAccepted, textDelta('Done, '), textDelta('the login is enabled.'), assistant(), settled]];
+  batches = [[{ type: 'agent_start' }, textDelta('Done, '), textDelta('the login is enabled.'), assistant(), settled]];
   const worker = piWorkerFactory({ profile: { id: 'test' }, manifest: { manifest: {} }, attemptId: 'chat-answer', runKind: 'chat' });
   await worker.start();
   const answer = await worker.prompt('enable it');
@@ -80,13 +66,14 @@ test('a chat turn returns the answer Pi wrote and is never aborted by a finish_r
   await worker.dispose();
 });
 
-test('a task still stops at its accepted completion', async () => {
+test('a task, like a chat turn, ends with the answer Pi wrote: no completion call, nothing aborts it', async () => {
   aborts = 0;
-  batches = [[finishAccepted, assistant('Request aborted'), settled]];
-  const worker = piWorkerFactory({ profile: { id: 'test' }, manifest: { manifest: {} }, attemptId: 'task-stop', runKind: 'task' });
+  batches = [[{ type: 'agent_start' }, textDelta('Saved the address.'), assistant(), settled]];
+  const worker = piWorkerFactory({ profile: { id: 'test' }, manifest: { manifest: {} }, attemptId: 'task-answer', runKind: 'task' });
   await worker.start();
-  await worker.prompt('go');
-  assert.equal(aborts, 1);
+  const answer = await worker.prompt('go');
+  assert.equal(answer.text, 'Saved the address.');
+  assert.equal(aborts, 0);
   await worker.dispose();
 });
 

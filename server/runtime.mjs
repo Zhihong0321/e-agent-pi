@@ -250,7 +250,7 @@ export function buildPiArgs(opts) {
   const restricted = research || adsResearch;
   const profile = restricted ? TOOL_PROFILES.assistant : TOOL_PROFILES[normalizeToolProfile(opts.toolProfile)] || TOOL_PROFILES[DEFAULT_TOOL_PROFILE];
   if (profile.systemPrompt) args.push("--system-prompt", profile.systemPrompt);
-  // --tools is an allowlist that hides extension tools (finish_run, share_file, MCP).
+  // --tools is an allowlist that hides extension tools (host tools, share_file, MCP).
   // Drop the builtins the profile does not allow instead, so host tools stay visible.
   if (profile.tools) {
     const excluded = DEFAULT_BUILTIN_TOOLS.filter((name) => !profile.tools.includes(name));

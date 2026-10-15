@@ -60,13 +60,13 @@ function binding(overrides = {}) {
     generation: 0,
     expectedGeneration: 0,
     manifestRevision: 'rev-test00000000',
-    manifestToolIds: ['update_company_profile', 'get_company_setup', 'finish_run'],
+    manifestToolIds: ['update_company_profile', 'get_company_setup'],
     ...overrides,
   };
 }
 
 function services() {
-  return { userLookup: async () => admin, onFinishRun: null };
+  return { userLookup: async () => admin };
 }
 
 test('company profile update commits write + journal + receipt in one transaction', async () => {

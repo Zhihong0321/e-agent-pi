@@ -1,4 +1,4 @@
-// Registers the host-issued manifest as native named tools, plus finish_run.
+// Registers the host-issued manifest as native named tools.
 // The manifest (and only the manifest) decides which tools exist; business
 // calls go to the host bridge with the attempt-scoped worker token, and the
 // host resolves identity, company and authorization — never this process.
@@ -36,19 +36,6 @@ function loadManifest(): Manifest {
   }
 }
 
-const FINISH_RUN_SCHEMA = Type.Object({
-  status: Type.Union([Type.Literal("done"), Type.Literal("blocked"), Type.Literal("failed")], {
-    description: "done when the requested outcome is confirmed; blocked when input or permission is missing; failed when execution went wrong",
-  }),
-  summary: Type.String({ description: "What happened, for the user: outcome, evidence and exact artifact links" }),
-  outputs: Type.Optional(Type.Record(Type.String(), Type.Unknown(), { description: "Structured result fields for dependent tasks" })),
-  sourceCallIds: Type.Optional(Type.Array(Type.String(), { description: "Ids of your successful host tool calls that back this completion" })),
-  receiptIds: Type.Optional(Type.Array(Type.String(), { description: "Host-issued receipt ids backing this completion" })),
-  artifactIds: Type.Optional(Type.Array(Type.String(), { description: "Published artifact ids" })),
-  reasonCode: Type.Optional(Type.String({ description: "For blocked/failed: a short stable reason code such as MISSING_INPUT" })),
-  missing: Type.Optional(Type.String({ description: "For blocked: the concrete missing input or next action" })),
-});
-
 async function callBridge(toolId: string, callId: string, args: unknown, signal?: AbortSignal): Promise<unknown> {
   const res = await fetch(`${WORKER_URL}/api/internal/execution/tool`, {
     method: "POST",
@@ -85,30 +72,4 @@ export default function hostToolsExtension(pi: import("@earendil-works/pi-coding
       },
     });
   }
-
-  // Chat turns end with Pi's ordinary answer; only background tasks submit a typed completion.
-  if (process.env.EXECUTION_RUN_KIND === "chat") return;
-
-  pi.registerTool({
-    name: "finish_run",
-    label: "Finish run",
-    description:
-      "Submit the typed completion for this run. Ordinary assistant text is presentation only — this call is what records the outcome, releases dependent work and reports to the user. Call it exactly once, when the requested outcome is confirmed (done), missing input or permission (blocked), or execution failed (failed).",
-    parameters: FINISH_RUN_SCHEMA,
-    async execute(toolCallId: string, args: unknown, signal?: AbortSignal) {
-      const result = await callBridge("finish_run", toolCallId, args, signal);
-      const accepted = (result as { ok?: boolean; data?: { accepted?: boolean } })?.ok
-        && (result as { data?: { accepted?: boolean } }).data?.accepted;
-      return {
-        content: [{
-          type: "text" as const,
-          text: accepted
-            ? "Completion accepted. Stop now: do not call more tools and do not repeat work."
-            : JSON.stringify(result),
-        }],
-        details: result,
-        ...(accepted ? {} : { isError: true }),
-      };
-    },
-  });
 }

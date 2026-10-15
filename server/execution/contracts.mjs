@@ -8,6 +8,17 @@ import { z } from 'zod';
 export const RUN_STATUSES = ['queued', 'running', 'done', 'blocked', 'failed', 'cancelled'];
 export const ERROR_KINDS = ['input', 'permission', 'availability', 'execution', 'uncertain'];
 export const EFFECT_STATES = ['none', 'committed', 'partial', 'unknown'];
+
+// External (MCP) tool names that change something outside. Everything else an MCP server
+// offers (fetch, search, list, get, status, navigate) only reads.
+const EXTERNAL_WRITE = /(save|create|update|delete|remove|send|post|publish|upload|ingest|start|submit|issue|record|set_|add_|cancel|approve|reject|import|write|edit)/i;
+
+/** Does calling this operation change data? Decides whether a job gets checked and what a checker may not call. */
+export function changesData(op, operationId = op?.id) {
+  if (!op) return false;
+  if (op.effect === 'local_write') return true;
+  return op.effect === 'external' && EXTERNAL_WRITE.test(op.mcpTool || operationId || '');
+}
 export const RUN_KINDS = ['chat', 'task'];
 
 export const ERROR_CODES = {
@@ -42,17 +53,6 @@ export function execError(code, message, overrides = {}) {
     effectState: overrides.effectState || base.effectState,
   };
 }
-
-export const FinishRunSchema = z.object({
-  status: z.enum(['done', 'blocked', 'failed']),
-  summary: z.string().trim().min(1).max(4000),
-  outputs: z.record(z.string(), z.unknown()).optional(),
-  sourceCallIds: z.array(z.string()).max(200).optional(),
-  receiptIds: z.array(z.string()).max(200).optional(),
-  artifactIds: z.array(z.string()).max(200).optional(),
-  reasonCode: z.string().trim().max(80).optional(),
-  missing: z.string().trim().max(1000).optional(),
-});
 
 export const BridgeCallSchema = z.object({
   callId: z.string().min(1).max(200),

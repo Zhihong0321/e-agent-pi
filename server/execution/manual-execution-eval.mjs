@@ -58,7 +58,7 @@ try {
   const profile = manifestForAgent(agent);
   const accepted = await acceptChatRun({
     session, profile, user: null,
-    prompt: 'Use count_user_accounts once, then finish_run with a read-only summary.',
+    prompt: 'Use count_user_accounts once, then reply with a read-only summary.',
     images: [], modelId, submissionKey: `live-smoke-${randomUUID()}`,
     manifest: profile, chatContext: { companyId: di.tenantId }, sessionFile: null,
   });

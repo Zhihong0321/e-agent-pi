@@ -28,7 +28,7 @@ function envInt(name, fallback) {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
-/** Built-in control tools every migrated profile gets (finish_run is added by the worker bridge). */
+/** Built-in control tools every migrated profile gets. */
 const BASE_CONTROL_TOOLS = ['list_specialists', 'get_company_setup', 'task_status', 'submit_plan', 'stop_task'];
 
 /**
@@ -83,8 +83,7 @@ export const SOP_TOOL_IDS = ['get_agent_sop', 'save_agent_sop'];
 /**
  * Manifest rules per agent: the orchestrator gets people + control (planning)
  * + SOP operations; Document Intelligence agents get their native DI tools (the
- * Forward Deploy Engineer also the SOP tools); every migrated profile gets
- * finish_run through the worker bridge.
+ * Forward Deploy Engineer also the SOP tools).
  */
 export function manifestForAgent(agent) {
   const id = String(agent?.id || '');

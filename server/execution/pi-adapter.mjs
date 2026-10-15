@@ -31,17 +31,16 @@ export function setBeforeSpawn(fn) {
 /**
  * The worker factory the runner calls. Opts (from runAgent):
  *   profile, manifest, token, attemptId, runRef, runKind, sessionFile, modelId,
- *   signal, images, onEvent, onToolEvent, onFinishRun
+ *   signal, images, onEvent, onToolEvent
  */
 export function piWorkerFactory(opts) {
   const { profile, manifest, token, attemptId, sessionFile, signal } = opts;
   const workerUrl = opts.workerUrl || `http://127.0.0.1:${process.env.PORT || 8080}`;
-  // Chat turns are ordinary Pi conversations: no finish_run, the final answer is Pi's own text.
+  // Every run is an ordinary Pi conversation: the final answer is Pi's own text.
   const isChat = opts.runKind === 'chat';
   let pi = null;
   let pid = null;
   let piSession = null;
-  let completionAccepted = false;
   let lastError = '';
   let modelTurns = 0;
   const runtimeDir = path.join(RUNTIME_DIR, 'execution', attemptId);
@@ -138,17 +137,9 @@ export function piWorkerFactory(opts) {
           modelTurns += 1;
           lastError = event.message.errorMessage ? String(event.message.errorMessage) : null;
         }
-        if (!isChat && event?.type === 'tool_execution_end' && String(event.toolName || '') === 'finish_run') {
-          if (finishRunAccepted(event.result)) completionAccepted = true;
-          if (completionAccepted) {
-            // Acknowledged completion boundary: stop further model turns with
-            // the runtime's own API rather than assuming the model will stop.
-            void pi.abort().catch(() => {});
-          }
-        }
         const mapped = applyPiEvent(currentTurn, event);
         onEvent?.(event, currentTurn);
-        if (mapped && !(completionAccepted && mapped.type === 'error')) opts.onEvent?.(mapped, currentTurn);
+        if (mapped) opts.onEvent?.(mapped, currentTurn);
       } catch {
         /* event mapping must never kill the run */
       }
@@ -159,7 +150,7 @@ export function piWorkerFactory(opts) {
       if (opts.images?.length) await pi.prompt(message, opts.images);
       else await pi.prompt(message);
       await settled;
-      if (lastError && !completionAccepted) throw new Error(lastError);
+      if (lastError) throw new Error(lastError);
       return { text: currentTurn.text };
     } catch (error) {
       if (signal?.aborted) throw Object.assign(new Error('Run was aborted'), { execCode: 'CANCELLED' });
@@ -182,7 +173,6 @@ export function piWorkerFactory(opts) {
     settledWithoutError: () => !lastError,
     /** Pi's own session identity, once its file exists on disk (a never-written session has nothing to resume). */
     sessionRef: () => (piSession && existsSync(piSession.sessionFile) ? piSession : null),
-    markCompletionAccepted: () => { completionAccepted = true; },
     async dispose() {
       signal?.removeEventListener('abort', onAbort);
       const client = pi;
@@ -197,8 +187,3 @@ export function computeManifestRevision(manifest) {
   return manifestRevisionOf(manifest);
 }
 
-/** Host bridge payload, not free text. A rejection body can contain the word "accepted". */
-export function finishRunAccepted(result) {
-  const details = result && typeof result === 'object' ? (result.details && typeof result.details === 'object' ? result.details : result) : null;
-  return Boolean(details && details.ok === true && details.data && details.data.accepted === true);
-}
