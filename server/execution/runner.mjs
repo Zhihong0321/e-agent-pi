@@ -489,7 +489,7 @@ async function nextJobStep(client, planId) {
   if (last.kind === 'checker') {
     const check = last.result_data?.check;
     if (check?.verdict !== 'fix' || checks.length > MAX_FIX_ROUNDS) return;
-    next = { kind: 'fix', title: 'Fix', from, prompt: (request) => fixPrompt(request, check.findings, tasks) };
+    next = { kind: 'fix', title: 'Fix', from, prompt: (request) => fixPrompt(request, check.report || check.findings, tasks) };
   } else {
     next = { kind: 'checker', title: 'Check', from, prompt: (request) => checkerPrompt(request, tasks) };
   }

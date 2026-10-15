@@ -22,8 +22,10 @@ test("a plan cannot order its own checker: every submitted task is a worker", ()
 });
 
 test("the checker's verdict is read from its reply, and anything else is no verdict", () => {
-  assert.deepEqual(parseCheckVerdict('{"verdict":"done","findings":"Saved."}'), { verdict: "done", findings: "Saved." });
-  assert.deepEqual(parseCheckVerdict('Here you go:\n```json\n{"verdict":"fix","findings":"Phone missing."}\n```'), { verdict: "fix", findings: "Phone missing." });
+  assert.deepEqual(parseCheckVerdict('{"verdict":"done","report":"Saved."}'), { verdict: "done", report: "Saved." });
+  assert.deepEqual(parseCheckVerdict('Here you go:\n```json\n{"verdict":"fix","report":"Phone missing."}\n```'), { verdict: "fix", report: "Phone missing." });
+  assert.deepEqual(parseCheckVerdict('{"verdict":"done","report":"Line one\nLine two"}'), { verdict: "done", report: "Line one\nLine two" },
+    "raw line breaks inside the report still parse");
   assert.equal(parseCheckVerdict('{"verdict":"blocked","findings":"x"}'), null, "blocked is not a verdict");
   assert.equal(parseCheckVerdict("Looks fine to me"), null);
 });
@@ -40,9 +42,14 @@ test("the checker judges by the user's message only, and is told to help, not to
 test("the chat answer is the agents' own words plus the checker's verdict, never a status label", () => {
   const worker = { kind: "worker", title: "Save address", status: "done", result: "Saved the address." };
   assert.equal(jobAnswer([worker]), "Saved the address.");
-  const check = (verdict, findings) => ({ kind: "checker", status: "done", result_data: { check: { verdict, findings } } });
-  assert.equal(jobAnswer([worker, check("done", "The address is on file.")]), "Saved the address.\n\nChecked: done. The address is on file.");
-  assert.match(jobAnswer([worker, check("wall", "Need the SST number.")]), /To finish this I need from you: Need the SST number\.$/);
+  const check = (verdict, report) => ({ kind: "checker", status: "done", result_data: { check: { verdict, report } } });
+  assert.equal(jobAnswer([worker, check("done", "The address is on file.")]), "The address is on file.", "the checker's report is the final report");
+  assert.equal(jobAnswer([worker, check("wall", "Send the SST number.")]), "Send the SST number.");
+  const fix = { kind: "fix", title: "Fix", status: "done", result: "Saved it properly." };
+  assert.equal(jobAnswer([worker, check("fix", "x"), fix, { kind: "checker", status: "failed" }]), "Saved it properly.",
+    "no verdict: the latest fix answer stands, not the superseded first answer");
+  assert.equal(jobAnswer([worker, { kind: "checker", status: "done", result_data: { check: { verdict: "done", findings: "Older check." } } }]), "Older check.",
+    "checks written before the report field still show");
   assert.equal(jobAnswer([worker, { kind: "checker", status: "failed", error: '{"message":"model down"}' }]), "Saved the address.",
     "a checker that could not run adds nothing");
   const failed = { kind: "worker", title: "Fetch", status: "failed", result: "x", error: '{"code":"REQUEST_DEADLINE","message":"The run exceeded its deadline"}' };

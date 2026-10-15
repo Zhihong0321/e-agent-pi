@@ -67,6 +67,7 @@ function stepEvidence(tasks) {
 
 // The checker rescues jobs: it confirms done work and sends unfinished work back to be
 // finished. It never blocks a job and never judges by anything but the user's message.
+// Its report is the job's final answer in the chat; the agents' own answers are progress.
 export function checkerPrompt(request, tasks) {
   return [
     "A job just finished. Your write tools are off. Use your read tools to look at the actual records.",
@@ -76,53 +77,60 @@ export function checkerPrompt(request, tasks) {
       "Your job is to help this request get done, not to criticize it.",
       "Look only at what the user's message asked for. Ignore wording, format, extra detail, and anything the user did not ask for. Do not add requirements of your own.",
       "If the records show what the user asked for, or nothing shows it is missing, the verdict is done.",
-      "Say fix only when something the user clearly asked for is missing or wrong in the records and an agent can still do it. Then say exactly what to finish.",
-      "Say wall only when it cannot be finished without something only the user can give (a file, a fact, a login). Then say what is needed.",
+      "Say fix only when something the user clearly asked for is missing or wrong in the records and an agent can still do it.",
+      "Say wall only when it cannot be finished without something only the user can give (a file, a fact, a login).",
       "The user sent this message, so it is their approval for what it asks.",
-      'Reply with only JSON: {"verdict":"done|fix|wall","findings":"one or two plain sentences"}',
+      "Then write the report. It is the only answer the user sees for this job. Write it to the user, in plain words, from the records you read: for a question, the answer; for a change, what is now saved, with record numbers, amounts and links copied exactly; for fix, exactly what is still missing; for wall, what is needed from the user. Do not mention checking, agents or steps.",
+      'Reply with only JSON: {"verdict":"done|fix|wall","report":"the report for the user"}',
     ].join("\n"),
   ].join("\n\n");
 }
 
-export function fixPrompt(request, findings, tasks) {
+export function fixPrompt(request, missing, tasks) {
   return [
     `The user's message:\n"""\n${clip(request, 4000)}\n"""`,
-    `A checker compared the records with this message and found this is not done yet:\n${clip(findings, 2000)}`,
+    `A checker compared the records with this message and found this is not done yet:\n${clip(missing, 2000)}`,
     `What was done before (claims, not proof):\n${stepEvidence(tasks)}`,
     "Finish what the user asked for. Look at what already exists first and do not create anything twice. The user sent this message, so where a tool asks for the user's approval, they have given it.",
     "When you finish, say in plain words what you did.",
   ].join("\n\n");
 }
 
-/** The checker's reply: {verdict, findings}, or null when it is not a verdict. */
+/** The checker's reply: {verdict, report}, or null when it is not a verdict. */
 export function parseCheckVerdict(text) {
   const json = String(text || "").match(/\{[\s\S]*\}/)?.[0];
   if (!json) return null;
-  try {
-    const parsed = JSON.parse(json);
-    if (!["done", "fix", "wall"].includes(parsed?.verdict)) return null;
-    return { verdict: parsed.verdict, findings: String(parsed.findings || "").trim() };
-  } catch { return null; }
+  let parsed = null;
+  // A model often puts raw line breaks inside the report string; read those as \n.
+  for (const candidate of [json, json.replace(/\r?\n/g, "\\n")]) {
+    try { parsed = JSON.parse(candidate); break; } catch { /* try the next reading */ }
+  }
+  if (!["done", "fix", "wall"].includes(parsed?.verdict)) return null;
+  return { verdict: parsed.verdict, report: String(parsed.report || parsed.findings || "").trim() };
 }
 
-// The checker's verdict in the user's words. No verdict (it could not run) adds nothing:
-// the job's own answer stands.
-function checkLine(check, checks) {
-  const verdict = check?.result_data?.check ?? check?.resultData?.check ?? null;
-  const findings = verdict?.findings ? ` ${verdict.findings}` : "";
-  if (verdict?.verdict === "done") return `Checked: done.${findings}`;
-  if (verdict?.verdict === "wall") return `To finish this I need from you:${findings || " more information."}`;
-  if (verdict?.verdict === "fix") return `Not finished yet after ${checks} tries:${findings || " part of the request is still missing."}`;
-  return "";
+/** What the last check said, from a task row or a mapped task. Older checks wrote findings. */
+export function checkOf(task) {
+  const check = task?.result_data?.check ?? task?.resultData?.check ?? null;
+  if (!check?.verdict) return null;
+  return { verdict: check.verdict, report: String(check.report || check.findings || "").trim() };
 }
 
-/** The job's answer in chat: each step's own words, then the checker's verdict. */
+/**
+ * The job's answer in chat. The checker's report is the final report. Without one (the checker
+ * could not run, or gave no verdict) the latest answers stand: the last fix run if there was
+ * one, else every working step. No status label either way.
+ */
 export function jobAnswer(tasks) {
-  const steps = tasks.filter(t => t.kind !== "checker");
   const checks = tasks.filter(t => t.kind === "checker" && t.status !== "cancelled");
-  const parts = steps.map(t => steps.length > 1 ? `**${t.title}**\n${clip(stepAnswer(t), 3000)}` : clip(stepAnswer(t), 3000));
-  if (checks.length) parts.push(checkLine(checks.at(-1), checks.length));
-  return parts.filter(Boolean).join("\n\n");
+  const check = checkOf(checks.at(-1));
+  if (check?.report) {
+    return check.verdict === "fix" ? `Not finished yet after ${checks.length} tries.\n\n${check.report}` : check.report;
+  }
+  const steps = tasks.filter(t => t.kind !== "checker");
+  const fixes = steps.filter(t => t.kind === "fix");
+  const shown = fixes.length ? [fixes.at(-1)] : steps;
+  return shown.map(t => shown.length > 1 ? `**${t.title}**\n${clip(stepAnswer(t), 3000)}` : clip(stepAnswer(t), 3000)).join("\n\n");
 }
 
 export function parseJobReply(reply, kind = "worker") {

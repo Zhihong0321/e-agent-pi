@@ -257,7 +257,7 @@ async function runJob({ factory, prompt = 'Do the thing', userMessage = 'Please 
 }
 
 const isCheck = (message) => String(message).startsWith('A job just finished.');
-const verdict = (v, findings) => ({ text: JSON.stringify({ verdict: v, findings }) });
+const verdict = (v, report) => ({ text: JSON.stringify({ verdict: v, report }) });
 
 /** Each test gets a fresh embedded database and clean execution state. */
 function withDb(name, fn) {
@@ -348,8 +348,8 @@ withDb('no self-grading: a worker\'s answer is its result, and even a lookup end
   assert.equal(tasks[0].result, 'The company has 0 people.');
   assert.equal(workerPrompts.length, 1, 'no completion-only follow-up prompt');
   assert.doesNotMatch(workerPrompts[0], /finish_run|blocked|status/i, 'the worker is never asked to grade itself');
-  assert.equal(report, '**Specialist job**\n\nThe company has 0 people.\n\nChecked: done. The answer gives the people count the user asked for.',
-    'the chat shows the answer and the verdict, no status label');
+  assert.equal(report, '**Specialist job**\n\nThe answer gives the people count the user asked for.',
+    'the checker\'s report is the final report; the worker\'s answer is progress');
 });
 
 withDb('job check: a worker that declined without trying a write is still checked, and the job is rescued', async () => {
@@ -369,7 +369,7 @@ withDb('job check: a worker that declined without trying a write is still checke
   assert.deepEqual(tasks.map((t) => t.kind), ['worker', 'checker', 'fix', 'checker']);
   const people = await holder.pool.query(`SELECT name FROM di.company_member`);
   assert.deepEqual(people.rows.map((r) => r.name), ['Ali']);
-  assert.match(report, /Checked: done\. Ali is in the people list\.$/);
+  assert.equal(report, '**Specialist job**\n\nAli is in the people list.');
 });
 
 test('a checker may call plain reads only: a write filed as a read by its name is still refused', async () => {
@@ -403,7 +403,7 @@ withDb('job check: a job that changed data is checked against the user\'s own me
   assert.equal(tasks[1].result_data.check.verdict, 'done');
   const people = await holder.pool.query(`SELECT name FROM di.company_member ORDER BY name`);
   assert.deepEqual(people.rows.map((r) => r.name), ['Ali'], 'the checker\'s write was refused');
-  assert.equal(report, '**Specialist job**\n\nAdded Ali.\n\nChecked: done. Ali is in the people list.');
+  assert.equal(report, '**Specialist job**\n\nAli is in the people list.', 'only the checker\'s report reaches the chat');
 });
 
 withDb('job check: a "fix" verdict sends the job back to be finished, then a fresh check confirms it', async () => {
@@ -427,8 +427,7 @@ withDb('job check: a "fix" verdict sends the job back to be finished, then a fre
   assert.ok(tasks.every((t) => t.status === 'done'));
   assert.match(fixPrompts[0], /Ali is missing from the people list\./, 'the fix run gets the checker\'s findings');
   assert.match(fixPrompts[0], /do not create anything twice/);
-  assert.match(report, /Added Ali this time\./);
-  assert.match(report, /Checked: done\. Ali is there now\.$/);
+  assert.equal(report, '**Specialist job**\n\nAli is there now.', 'the wrong first answer and the fix run never reach the chat');
   assert.doesNotMatch(report, /blocked/i);
 });
 
@@ -441,7 +440,7 @@ withDb('job check: the loop stops after the last fix round and says what is stil
   const { MAX_FIX_ROUNDS } = await import('../job-policy.mjs');
   assert.equal(tasks.filter((t) => t.kind === 'fix').length, MAX_FIX_ROUNDS);
   assert.equal(tasks.filter((t) => t.kind === 'checker').length, MAX_FIX_ROUNDS + 1);
-  assert.match(report, new RegExp(`Not finished yet after ${MAX_FIX_ROUNDS + 1} tries: The phone number is still not saved\\.$`));
+  assert.equal(report, `**Specialist job**\n\nNot finished yet after ${MAX_FIX_ROUNDS + 1} tries.\n\nThe phone number is still not saved.`);
 });
 
 withDb('job check: a "wall" verdict ends the job and says what is needed from the user', async () => {
@@ -451,7 +450,7 @@ withDb('job check: a "wall" verdict ends the job and says what is needed from th
     : { toolCalls: [{ toolId: 'create_person', args: { name: 'Claimant' } }], text: 'Could not file the claim without a receipt.' }));
   const { tasks, report } = await runJob({ factory });
   assert.deepEqual(tasks.map((t) => t.kind), ['worker', 'checker']);
-  assert.match(report, /To finish this I need from you: The receipt photo is needed to file this claim\.$/);
+  assert.equal(report, '**Specialist job**\n\nThe receipt photo is needed to file this claim.');
 });
 
 withDb('job check: a checker that gives no verdict adds nothing, and the job\'s own answer stands', async () => {
@@ -476,7 +475,7 @@ withDb('job check: a worker that crashed after a write is still checked, so the 
   });
   const { tasks, report } = await runJob({ factory, userMessage: 'Save Ali' });
   assert.deepEqual(tasks.map((t) => [t.kind, t.status]), [['worker', 'failed'], ['checker', 'done'], ['fix', 'done'], ['checker', 'done']]);
-  assert.match(report, /Checked: done\. Ali is saved\.$/);
+  assert.equal(report, '**Specialist job**\n\nAli is saved.');
 });
 
 withDb('duplicate suppression: transport replay returns the stored result and never repeats the write', async () => {
