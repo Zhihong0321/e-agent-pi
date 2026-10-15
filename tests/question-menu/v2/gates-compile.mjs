@@ -49,6 +49,9 @@ const owner = makeClient(f.users.admin, log);
 if ((await owner.login(f.users.admin, f.logins.admin, f.companyCode)).status !== 200) throw new Error('owner login failed');
 const textOf = (c) => { try { const j = JSON.parse(c); return j.text || c; } catch { return c; } };
 
+// Effort, from records: set_gates calls (execution_tool_calls), fix rounds (fix tasks), changes to di.gate in the job (di.audit_log).
+const effort = (t) => ({ setGatesCalls: t.setGatesCalls?.total ?? 0, setGatesOk: t.setGatesCalls?.ok ?? 0, fixRounds: t.tasks.filter((x) => x.kind === 'fix').length, gateChanges: t.gateChanges ?? 0 });
+
 function judge(c, t) {
   const rules = t.gate?.rules || [];
   const checks = c.expect.map(([facts, want]) => { const got = decide(rules, facts); return { facts, want, got: got.decision, rule: got.rule?.id || null, ok: got.decision === want }; });
@@ -59,6 +62,7 @@ function judge(c, t) {
   for (const x of checks) if (!x.ok) fails.push(`${JSON.stringify(x.facts)} -> ${x.got}, want ${x.want}`);
   if (c.noGates && rules.length) fails.push(`expected no gate, found ${rules.length}`);
   if (c.textSop && !c.textSop.test(sop)) fails.push(`di-documents SOP does not hold ${c.textSop}`);
+  if (effort(t).fixRounds > 0) fails.push(`needed fix rounds (${effort(t).fixRounds})`);
   return { verdict: fails.length ? 'FAILED' : 'CORRECT', why: fails.join('; ') || 'all fact checks pass', checks,
     observed: c.observe ? c.observe.test(textOf(t.reply)) : undefined };
 }
@@ -73,9 +77,10 @@ for (let n = 1; n <= reps; n++) {
     const t = { case: c.id, n, msg: c.msg, ...turn, ...records({ op: 'read', tenantId: f.tenantId, sid: turn.sid }) };
     const j = judge(c, t);
     writeFileSync(path.join(dir, `trace-${c.id}-${n}.json`), JSON.stringify({ ...t, judged: j }, null, 1));
-    results.push({ case: c.id, n, verdict: j.verdict, why: j.why, observed: j.observed, gates: (t.gate?.rules || []).map((r) => `${r.id}:${r.then}`),
+    results.push({ case: c.id, n, verdict: j.verdict, why: j.why, ...effort(t), observed: j.observed, gates: (t.gate?.rules || []).map((r) => `${r.id}:${r.then}`),
       tasks: t.tasks.map((x) => `${x.kind}/${x.agent_id}/${x.status}${x.check ? '/' + x.check.verdict : ''}`) });
-    console.log(`${c.id} run ${n}: ${j.verdict}  ${j.why}`);
+    const e = effort(t);
+    console.log(`${c.id} run ${n}: ${j.verdict}  set_gates calls ${e.setGatesCalls} (ok ${e.setGatesOk}), fix rounds ${e.fixRounds}, di.gate changes ${e.gateChanges}  ${j.why}`);
     writeFileSync(path.join(dir, 'results.json'), JSON.stringify(results, null, 1));
   }
 }

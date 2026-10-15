@@ -126,9 +126,17 @@ export async function getGates(tx, { record_type }) {
   return { record_type, rules: await readRules(tx, record_type), facts: FACTS[record_type] };
 }
 
+/** `when` may arrive as JSON text (what a model writes most reliably); it is stored as parsed JSON. */
+function parseWhen(rule) {
+  if (typeof rule?.when !== "string") return rule;
+  try { return { ...rule, when: JSON.parse(rule.when) }; } catch (e) {
+    throw new DiError(`Rule "${rule.id}": when is not valid JSON (${e.message})`);
+  }
+}
+
 /** Replaces the whole ordered list. Sorting a list means sending it again in the new order. */
 export async function setGates(tx, { record_type, rules, examples }) {
-  const clean = validateGates(record_type, rules);
+  const clean = validateGates(record_type, (rules ?? []).map(parseWhen));
   checkExamples(clean, examples);
   await tx.query(
     `INSERT INTO di.gate (record_type, rules) VALUES ($1, $2)

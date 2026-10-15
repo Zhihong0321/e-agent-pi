@@ -18,6 +18,12 @@ try {
     const reply = (await q(`SELECT content FROM messages WHERE session_id = $1 AND role = 'assistant' ORDER BY id DESC LIMIT 1`, [req.sid]))[0]?.content || '';
     const gate = (await q(`SELECT rules, updated_at FROM di.gate WHERE tenant_id = $1 AND record_type = 'document' AND deleted_at IS NULL`, [req.tenantId]))[0] || null;
     const sops = await q(`SELECT agent_id, content, updated_at FROM agent_sops WHERE company_id = $1`, [req.tenantId]);
-    emit({ tasks, reply: reply.slice(0, 6000), gate, sops });
+    // How hard the job worked: set_gates calls (all attempts of the session), and how often di.gate changed during the job.
+    const calls = (await q(`SELECT count(*)::int total, count(*) FILTER (WHERE status = 'ok')::int ok FROM execution_tool_calls
+      WHERE operation_id LIKE '%set_gates' AND attempt_id IN (SELECT attempt_id FROM execution_events WHERE session_id = $1 AND attempt_id IS NOT NULL)`, [req.sid]))[0];
+    const changes = (await q(`SELECT count(*)::int n FROM di.audit_log WHERE tenant_id = $1 AND entity = 'gate'
+      AND at >= (SELECT min(created_at) FROM orchestrator_plans WHERE parent_session_id = $2)
+      AND at <= (SELECT max(created_at) FROM execution_events WHERE session_id = $2)`, [req.tenantId, req.sid]))[0].n;
+    emit({ tasks, reply: reply.slice(0, 6000), gate, sops, setGatesCalls: calls, gateChanges: changes });
   } else throw new Error('unknown op ' + req.op);
 } finally { await pool.end(); }
