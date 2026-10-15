@@ -149,7 +149,7 @@ async function makeDb() {
   return pool;
 }
 
-const admin = { id: 'u-admin', role: 'admin', active: true, username: 'admin' };
+const admin = { id: 'u-admin', access: 'superadmin', category: 'Superadmin', active: true, username: 'admin' };
 
 function setupRunner(workerFactory, { maxConcurrent = 4, planBudgetMs, services: serviceOverrides = {} } = {}) {
   runner.initExecution({
@@ -170,7 +170,7 @@ function setupRunner(workerFactory, { maxConcurrent = 4, planBudgetMs, services:
 }
 
 function orchestratorProfile() {
-  return profiles.resolveProfileManifest(CATALOG.orchestrator, { peopleTools: true, controlTools: true });
+  return profiles.resolveProfileManifest(CATALOG.orchestrator, { controlTools: true, extraToolIds: ['list_users', 'create_user', 'update_user', 'list_user_categories'] });
 }
 
 
@@ -237,7 +237,7 @@ async function runSpecialistTask({ factory, prompt = 'Do the thing' }) {
  * the answer posted to the chat.
  */
 async function runJob({ factory, prompt = 'Do the thing', userMessage = 'Please do the thing' }) {
-  setupRunner(factory, { services: { profileFor: (agent) => profiles.resolveProfileManifest(agent, { peopleTools: true }) } });
+  setupRunner(factory, { services: { profileFor: (agent) => profiles.resolveProfileManifest(agent, { extraToolIds: ['list_users', 'create_user', 'update_user', 'list_user_categories'] }) } });
   await holder.pool.query(`INSERT INTO messages (session_id, role, content) VALUES ('parent-chat','user',$1)`, [userMessage]);
   await runner.submitPlanHandler(
     { sessionId: 'parent-chat', userId: admin.id, companyId: holder.tenantId, profileId: 'orchestrator', runRef: 'plan-run', requestId: randomUUID() },
@@ -274,7 +274,7 @@ function withDb(name, fn) {
 withDb('vertical slice: chat run calls native tools through the bridge and finalizes with Pi\'s own answer', async () => {
   const factory = fakeWorkerFactory();
   factory.setScript(() => ({
-    toolCalls: [{ toolId: 'count_user_accounts', args: {} }, { toolId: 'list_people', args: {} }],
+    toolCalls: [{ toolId: 'list_user_categories', args: {} }, { toolId: 'list_users', args: {} }],
     text: 'Counted the company people',
   }));
   const { run, deduped } = await startChatRun({ factory });
@@ -285,7 +285,7 @@ withDb('vertical slice: chat run calls native tools through the bridge and final
   assert.equal(factory.lastWorker.promptsSeen().length, 1, 'no completion-only follow-up prompt for chat');
 
   const calls = await store.listToolCalls(run.id);
-  assert.deepEqual(calls.map((c) => c.operationId).sort(), ['count_user_accounts', 'list_people']);
+  assert.deepEqual(calls.map((c) => c.operationId).sort(), ['list_user_categories', 'list_users']);
   assert.equal(calls[0].status, 'ok');
   const events = await store.listEvents({ runRef: run.id });
   assert.ok(events.some((e) => e.kind === 'run.queued'));
@@ -298,7 +298,7 @@ withDb('vertical slice: chat run calls native tools through the bridge and final
 withDb('chat run: a Pi error stays a failure and the committed tool effect is kept', async () => {
   const factory = fakeWorkerFactory();
   factory.setScript(() => ({
-    toolCalls: [{ toolId: 'create_person', args: { name: 'Persisted' } }],
+    toolCalls: [{ toolId: 'create_user', args: { name: 'Persisted' } }],
     error: new Error('529: overloaded_error'),
   }));
   const { run } = await startChatRun({ factory });
@@ -307,7 +307,7 @@ withDb('chat run: a Pi error stays a failure and the committed tool effect is ke
   assert.match(settled.error?.message, /overloaded_error/);
   const calls = await store.listToolCalls(run.id);
   assert.equal(calls.length, 1, 'the committed effect stays inspectable');
-  const member = await holder.pool.query(`SELECT name FROM di.company_member`);
+  const member = await holder.pool.query(`SELECT display_name AS name FROM users`);
   assert.equal(member.rows[0]?.name, 'Persisted', 'the committed write remains');
 });
 
@@ -341,7 +341,7 @@ withDb('no self-grading: a worker\'s answer is its result, and even a lookup end
   factory.setScript((message) => {
     if (isCheck(message)) return verdict('done', 'The answer gives the people count the user asked for.');
     workerPrompts.push(message);
-    return { toolCalls: [{ toolId: 'count_user_accounts', args: {} }], text: 'The company has 0 people.' };
+    return { toolCalls: [{ toolId: 'list_user_categories', args: {} }], text: 'The company has 0 people.' };
   });
   const { tasks, report } = await runJob({ factory, userMessage: 'How many people do we have?' });
   assert.deepEqual(tasks.map((t) => [t.kind, t.status]), [['worker', 'done'], ['checker', 'done']], 'every planned job ends with a check');
@@ -361,13 +361,13 @@ withDb('job check: a worker that declined without trying a write is still checke
       return checks === 1 ? verdict('fix', 'Ali was not added.') : verdict('done', 'Ali is in the people list.');
     }
     if (message.includes('A checker compared the records')) {
-      return { toolCalls: [{ toolId: 'create_person', args: { name: 'Ali' } }], text: 'Added Ali.' };
+      return { toolCalls: [{ toolId: 'create_user', args: { name: 'Ali' } }], text: 'Added Ali.' };
     }
     return { text: 'I was not sure this was allowed, so I did not add anyone.' };
   });
   const { tasks, report } = await runJob({ factory, userMessage: 'Add Ali to our people' });
   assert.deepEqual(tasks.map((t) => t.kind), ['worker', 'checker', 'fix', 'checker']);
-  const people = await holder.pool.query(`SELECT name FROM di.company_member`);
+  const people = await holder.pool.query(`SELECT display_name AS name FROM users`);
   assert.deepEqual(people.rows.map((r) => r.name), ['Ali']);
   assert.equal(report, '**Specialist job**\n\nAli is in the people list.');
 });
@@ -392,16 +392,16 @@ withDb('job check: a job that changed data is checked against the user\'s own me
   factory.setScript((message) => {
     if (isCheck(message)) {
       checkerPrompts.push(message);
-      return { toolCalls: [{ toolId: 'create_person', args: { name: 'Checker Write' } }], ...verdict('done', 'Ali is in the people list.') };
+      return { toolCalls: [{ toolId: 'create_user', args: { name: 'Checker Write' } }], ...verdict('done', 'Ali is in the people list.') };
     }
-    return { toolCalls: [{ toolId: 'create_person', args: { name: 'Ali' } }], text: 'Added Ali.' };
+    return { toolCalls: [{ toolId: 'create_user', args: { name: 'Ali' } }], text: 'Added Ali.' };
   });
   const { tasks, report } = await runJob({ factory, prompt: 'Rewritten by the orchestrator: add Ali, verify twice', userMessage: 'Add Ali to our people' });
   assert.deepEqual(tasks.map((t) => [t.kind, t.status]), [['worker', 'done'], ['checker', 'done']]);
   assert.match(checkerPrompts[0], /"""\nAdd Ali to our people\n"""/, 'the standard is the user\'s message as sent');
   assert.match(checkerPrompts[0], /- Worker: Added Ali\./);
   assert.equal(tasks[1].result_data.check.verdict, 'done');
-  const people = await holder.pool.query(`SELECT name FROM di.company_member ORDER BY name`);
+  const people = await holder.pool.query(`SELECT display_name AS name FROM users ORDER BY name`);
   assert.deepEqual(people.rows.map((r) => r.name), ['Ali'], 'the checker\'s write was refused');
   assert.equal(report, '**Specialist job**\n\nAli is in the people list.', 'only the checker\'s report reaches the chat');
 });
@@ -417,10 +417,10 @@ withDb('job check: a "fix" verdict sends the job back to be finished, then a fre
     }
     if (message.includes('A checker compared the records')) {
       fixPrompts.push(message);
-      return { toolCalls: [{ toolId: 'create_person', args: { name: 'Ali' } }], text: 'Added Ali this time.' };
+      return { toolCalls: [{ toolId: 'create_user', args: { name: 'Ali' } }], text: 'Added Ali this time.' };
     }
     // First try: the worker writes something, but not what was asked.
-    return { toolCalls: [{ toolId: 'create_person', args: { name: 'Wrong Name' } }], text: 'Done.' };
+    return { toolCalls: [{ toolId: 'create_user', args: { name: 'Wrong Name' } }], text: 'Done.' };
   });
   const { tasks, report } = await runJob({ factory, userMessage: 'Add Ali to our people' });
   assert.deepEqual(tasks.map((t) => t.kind), ['worker', 'checker', 'fix', 'checker']);
@@ -435,7 +435,7 @@ withDb('job check: the loop stops after the last fix round and says what is stil
   const factory = fakeWorkerFactory();
   factory.setScript((message) => (isCheck(message)
     ? verdict('fix', 'The phone number is still not saved.')
-    : { toolCalls: [{ toolId: 'create_person', args: { name: `P${randomUUID().slice(0, 4)}` } }], text: 'Tried.' }));
+    : { toolCalls: [{ toolId: 'create_user', args: { name: `P${randomUUID().slice(0, 4)}` } }], text: 'Tried.' }));
   const { tasks, report } = await runJob({ factory });
   const { MAX_FIX_ROUNDS } = await import('../job-policy.mjs');
   assert.equal(tasks.filter((t) => t.kind === 'fix').length, MAX_FIX_ROUNDS);
@@ -447,7 +447,7 @@ withDb('job check: a "wall" verdict ends the job and says what is needed from th
   const factory = fakeWorkerFactory();
   factory.setScript((message) => (isCheck(message)
     ? verdict('wall', 'The receipt photo is needed to file this claim.')
-    : { toolCalls: [{ toolId: 'create_person', args: { name: 'Claimant' } }], text: 'Could not file the claim without a receipt.' }));
+    : { toolCalls: [{ toolId: 'create_user', args: { name: 'Claimant' } }], text: 'Could not file the claim without a receipt.' }));
   const { tasks, report } = await runJob({ factory });
   assert.deepEqual(tasks.map((t) => t.kind), ['worker', 'checker']);
   assert.equal(report, '**Specialist job**\n\nThe receipt photo is needed to file this claim.');
@@ -457,7 +457,7 @@ withDb('job check: a checker that gives no verdict adds nothing, and the job\'s 
   const factory = fakeWorkerFactory();
   factory.setScript((message) => (isCheck(message)
     ? { text: 'I looked around and I think it is fine?' }
-    : { toolCalls: [{ toolId: 'create_person', args: { name: 'Ali' } }], text: 'Added Ali.' }));
+    : { toolCalls: [{ toolId: 'create_user', args: { name: 'Ali' } }], text: 'Added Ali.' }));
   const { tasks, report } = await runJob({ factory });
   assert.deepEqual(tasks.map((t) => t.kind), ['worker', 'checker']);
   assert.equal(tasks[1].result_data.check, null);
@@ -470,8 +470,8 @@ withDb('job check: a worker that crashed after a write is still checked, so the 
   factory.setScript((message) => {
     if (isCheck(message)) return worked === 1 ? verdict('fix', 'Ali was not saved.') : verdict('done', 'Ali is saved.');
     worked += 1;
-    if (worked === 1) return { toolCalls: [{ toolId: 'create_person', args: { name: 'Half' } }], error: new Error('529: overloaded_error') };
-    return { toolCalls: [{ toolId: 'create_person', args: { name: 'Ali' } }], text: 'Saved Ali.' };
+    if (worked === 1) return { toolCalls: [{ toolId: 'create_user', args: { name: 'Half' } }], error: new Error('529: overloaded_error') };
+    return { toolCalls: [{ toolId: 'create_user', args: { name: 'Ali' } }], text: 'Saved Ali.' };
   });
   const { tasks, report } = await runJob({ factory, userMessage: 'Save Ali' });
   assert.deepEqual(tasks.map((t) => [t.kind, t.status]), [['worker', 'failed'], ['checker', 'done'], ['fix', 'done'], ['checker', 'done']]);
@@ -482,29 +482,29 @@ withDb('duplicate suppression: transport replay returns the stored result and ne
   const factory = fakeWorkerFactory();
   factory.setScript(() => ({
     toolCalls: [
-      { callId: 'stable-call-1', toolId: 'create_person', args: { name: 'Once Only' } },
-      { callId: 'stable-call-1', toolId: 'create_person', args: { name: 'Once Only' } }, // replay after lost response
+      { callId: 'stable-call-1', toolId: 'create_user', args: { name: 'Once Only' } },
+      { callId: 'stable-call-1', toolId: 'create_user', args: { name: 'Once Only' } }, // replay after lost response
     ],
     text: 'created exactly one person',
   }));
   const { run } = await startChatRun({ factory });
   const settled = await settleChat(run.id);
   assert.equal(settled.status, 'done');
-  const members = await holder.pool.query(`SELECT COUNT(*)::int n FROM di.company_member`);
+  const members = await holder.pool.query(`SELECT COUNT(*)::int n FROM users`);
   assert.equal(members.rows[0].n, 1, 'exactly one business effect');
 
   // Same key, different arguments is a conflict, not a second write.
   const factory2 = fakeWorkerFactory();
   factory2.setScript(() => ({
     toolCalls: [
-      { callId: 'dup-key', toolId: 'create_person', args: { name: 'First' } },
-      { callId: 'dup-key', toolId: 'create_person', args: { name: 'Second' } },
+      { callId: 'dup-key', toolId: 'create_user', args: { name: 'First' } },
+      { callId: 'dup-key', toolId: 'create_user', args: { name: 'Second' } },
     ],
     text: 'unreachable',
   }));
   const second = await startChatRun({ factory: factory2, sessionId: 'chat-2', submissionKey: `k-${randomUUID()}` });
   await settleChat(second.run.id);
-  const names = await holder.pool.query(`SELECT name FROM di.company_member WHERE name='Second'`);
+  const names = await holder.pool.query(`SELECT display_name AS name FROM users WHERE display_name='Second'`);
   assert.equal(names.rows.length, 0, 'conflicting duplicate created no second effect');
   const calls2 = await store.listToolCalls(second.run.id);
   assert.equal(calls2.find((c) => c.id === 'dup-key')?.status, 'ok');
@@ -608,7 +608,7 @@ withDb('unauthorized calls: fabricated identity and cross-profile tools are refu
   const factory = fakeWorkerFactory();
   factory.setScript(() => ({
     toolCalls: [
-      { toolId: 'create_person', args: { name: 'Nope', tenant_id: '00000000-0000-0000-0000-000000000009' } },
+      { toolId: 'create_user', args: { name: 'Nope', tenant_id: '00000000-0000-0000-0000-000000000009' } },
     ],
     text: 'should not reach done',
   }));
@@ -617,7 +617,7 @@ withDb('unauthorized calls: fabricated identity and cross-profile tools are refu
   const settled = await settleChat(run.id);
   assert.equal(settled.status, 'done', 'the completion itself is valid; the refused write is not fatal');
   assert.equal(factory.dispatchErrors?.[0]?.error?.code, 'PERMISSION_DENIED', 'the profile lacking the op is denied by the host');
-  const members = await holder.pool.query(`SELECT COUNT(*)::int n FROM di.company_member`);
+  const members = await holder.pool.query(`SELECT COUNT(*)::int n FROM users`);
   assert.equal(members.rows[0].n, 0, 'no write happened');
 });
 
@@ -628,7 +628,7 @@ withDb('cancellation race: new calls stop, committed effects remain, late comple
   factory.setScript(async (message, ctx) => {
     if (ctx.runKind === 'task') {
       const writeResult = await dispatch.dispatchTool(dispatch.getBindingByToken(ctx.token), {
-        callId: 'write-1', toolId: 'create_person', manifestRevision: dispatch.getBindingByToken(ctx.token).manifestRevision,
+        callId: 'write-1', toolId: 'create_user', manifestRevision: dispatch.getBindingByToken(ctx.token).manifestRevision,
         args: { name: 'Committed Before Cancel' },
       }, runner.dispatchServices());
       if (!writeResult.ok) (factory.dispatchErrors ||= []).push({ toolId: 'write-1', error: writeResult.error });
@@ -641,7 +641,7 @@ withDb('cancellation race: new calls stop, committed effects remain, late comple
     }], text: 'submitted' };
   });
   const { run } = await startChatRun({ factory, services: {
-    profileFor: (agent) => profiles.resolveProfileManifest(agent, agent.id === 'worker' ? { peopleTools: true } : {}),
+    profileFor: (agent) => profiles.resolveProfileManifest(agent, agent.id === 'worker' ? { extraToolIds: ['list_users', 'create_user', 'update_user', 'list_user_categories'] } : {}),
   } });
   const chatSettled = await settleChat(run.id);
   assert.equal(chatSettled.status, 'done', JSON.stringify(chatSettled.error));
@@ -649,7 +649,7 @@ withDb('cancellation race: new calls stop, committed effects remain, late comple
   await runner.tick();
   const deadline = Date.now() + 3000;
   while (Date.now() < deadline) {
-    const committed = await holder.pool.query(`SELECT COUNT(*)::int n FROM di.company_member WHERE name='Committed Before Cancel'`);
+    const committed = await holder.pool.query(`SELECT COUNT(*)::int n FROM users WHERE display_name='Committed Before Cancel'`);
     if (committed.rows[0].n) break; // the write landed; now cancel and prove it survives
     await new Promise((r) => setTimeout(r, 10));
   }
@@ -659,7 +659,7 @@ withDb('cancellation race: new calls stop, committed effects remain, late comple
   await settleTasks();
   const task = await holder.pool.query(`SELECT status, error FROM orchestrator_tasks WHERE id=$1`, [taskId]);
   assert.equal(task.rows[0].status, 'cancelled', JSON.stringify(task.rows[0]));
-  const effect = await holder.pool.query(`SELECT COUNT(*)::int n FROM di.company_member WHERE name='Committed Before Cancel'`);
+  const effect = await holder.pool.query(`SELECT COUNT(*)::int n FROM users WHERE display_name='Committed Before Cancel'`);
   assert.equal(effect.rows[0].n, 1, 'committed effects survive cancellation');
 });
 
@@ -779,7 +779,7 @@ withDb('queue (kill point 4): a plan\'s deadline does not run while its tasks on
     if (ctx.runKind === 'task') return { text: 'task ran after waiting' };
     return { text: 'ok' };
   });
-  setupRunner(factory, { maxConcurrent: 1, planBudgetMs: 1500, services: { profileFor: (agent) => profiles.resolveProfileManifest(agent, { peopleTools: true }) } });
+  setupRunner(factory, { maxConcurrent: 1, planBudgetMs: 1500, services: { profileFor: (agent) => profiles.resolveProfileManifest(agent, { extraToolIds: ['list_users', 'create_user', 'update_user', 'list_user_categories'] }) } });
   await runner.submitPlanHandler(
     { sessionId: 'parent-chat', userId: admin.id, companyId: holder.tenantId, profileId: 'orchestrator', runRef: 'plan-run', requestId: randomUUID() },
     { title: 'Waiting job', tasks: [{ id: 't1', agent: 'worker', prompt: 'work' }] });
@@ -809,7 +809,7 @@ withDb('queue: specialist tasks beyond the cap wait in line and all finish, neve
     running -= 1;
     return { text: `done ${message.slice(0, 6)}` };
   });
-  setupRunner(factory, { maxConcurrent: 2, services: { profileFor: (agent) => profiles.resolveProfileManifest(agent, { peopleTools: true }) } });
+  setupRunner(factory, { maxConcurrent: 2, services: { profileFor: (agent) => profiles.resolveProfileManifest(agent, { extraToolIds: ['list_users', 'create_user', 'update_user', 'list_user_categories'] }) } });
   const agents = ['worker', 'reviewer'];
   for (let plan = 0; plan < 3; plan += 1) {
     await runner.submitPlanHandler(
@@ -838,7 +838,7 @@ withDb('queue: a parent that submits a plan frees its slot, so its children can 
   });
   setupRunner(factory, {
     maxConcurrent: 1,
-    services: { profileFor: (agent) => profiles.resolveProfileManifest(agent, agent.id === 'worker' ? { peopleTools: true } : { peopleTools: true, controlTools: true }) },
+    services: { profileFor: (agent) => profiles.resolveProfileManifest(agent, agent.id === 'worker' ? { extraToolIds: ['list_users', 'create_user', 'update_user', 'list_user_categories'] } : { controlTools: true, extraToolIds: ['list_users', 'create_user', 'update_user', 'list_user_categories'] }) },
   });
   const parent = await submitChat({ sessionId: 'parent-chat', prompt: 'delegate' });
   assert.equal((await settleChat(parent.run.id)).status, 'done');
@@ -985,7 +985,7 @@ withDb('restart: an interrupted step goes back in line, told to check what exist
   // A committed tool call from before the crash stays in the journal.
   await holder.pool.query(
     `INSERT INTO execution_tool_calls (attempt_id, id, run_ref, run_kind, operation_id, argument_digest, status, effect_state, result)
-     VALUES ($1,'old-call',$2,'task','create_person','digest','ok','committed','{"person":{"id":"p1"}}')`,
+     VALUES ($1,'old-call',$2,'task','create_user','digest','ok','committed','{"user":{"id":"p1"}}')`,
     [attemptId, `${planId}-t1`]);
 
   const summary = await runner.reconcileOnStartup();
@@ -999,7 +999,7 @@ withDb('restart: an interrupted step goes back in line, told to check what exist
   const factory = fakeWorkerFactory();
   const seen = [];
   factory.setScript((message) => { seen.push(message); return { text: 'Already there; nothing created twice.' }; });
-  setupRunner(factory, { services: { profileFor: (agent) => profiles.resolveProfileManifest(agent, { peopleTools: true }) } });
+  setupRunner(factory, { services: { profileFor: (agent) => profiles.resolveProfileManifest(agent, { extraToolIds: ['list_users', 'create_user', 'update_user', 'list_user_categories'] }) } });
   await holder.pool.query(`UPDATE orchestrator_plans SET request_deadline_at=NOW() + INTERVAL '1 hour', company_id=$2, owner_user_id=$3 WHERE id=$1`,
     [planId, holder.tenantId, admin.id]);
   await runner.tick();
@@ -1094,7 +1094,7 @@ withDb('load: 30 chats from 6 companies and 6 specialist tasks, a provider that 
       return worker;
     };
     factory.setScript((message, ctx) => (ctx.runKind === 'task' ? { text: 'task done' } : { text: 'answer' }));
-    setupRunner(piWorkerWithModelCalls, { maxConcurrent: PI_CAP, services: { profileFor: (agent) => profiles.resolveProfileManifest(agent, { peopleTools: true }) } });
+    setupRunner(piWorkerWithModelCalls, { maxConcurrent: PI_CAP, services: { profileFor: (agent) => profiles.resolveProfileManifest(agent, { extraToolIds: ['list_users', 'create_user', 'update_user', 'list_user_categories'] }) } });
     resetPiGateForTests({ maxConcurrent: PI_CAP }); // clean line for the measurement
 
     const companies = Array.from({ length: 6 }, () => randomUUID());

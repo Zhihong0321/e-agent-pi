@@ -1,4 +1,5 @@
-import { manageUsers, managePeople, listPeople, resolveIdentity } from '../server/users.mjs';
+import { resolveIdentity } from '../server/users.mjs';
+import { deleteCategory, listCategories, listUsers, manageUser, saveCategory } from '../server/user-service.mjs';
 import { expenseUserForSession } from '../server/expense-session.mjs';
 import { diSessionUser } from '../server/di-session-user.mjs';
 // UIv2 host integration for Document Intelligence: boot (migrate, seed, register the
@@ -173,6 +174,15 @@ async function renderPdf(html, absPath) {
  * @param {any} body
  * @param {{ workspace: (agent: {id: string, slug: string}) => string }} deps
  */
+const USER_TOOL_RUNNERS = {
+  list_users: (_args, { tenantId }) => listUsers(tenantId),
+  list_user_categories: (_args, { tenantId }) => listCategories(tenantId),
+  create_user: (args, context) => manageUser("create_user", args, context),
+  update_user: (args, context) => manageUser("update_user", args, context),
+  save_user_category: (args, context) => saveCategory(args, context),
+  delete_user_category: (args, context) => deleteCategory(args, context),
+};
+
 export async function handleDiRequest(req, body, deps) {
   const agent = agentFromRequest(req, body);
   if (!agent) return { status: 401, body: { ok: false, error: "Unauthorized" } };
@@ -185,19 +195,11 @@ export async function handleDiRequest(req, body, deps) {
       : sessionId ? await diSessionUser(agent, sessionId) : undefined;
     const tenantId = who?.company_tenant_id;
     if (!tenantId) throw new Error('Sign-in required: this tool connection has no company tenant');
-    if (["list_users", "create_user", "update_user", "list_people", "create_person", "update_person", "list_company_members", "save_company_member"].includes(body.tool)) {
-      if (body.tool !== "list_company_members" && !["di-onboarding", "di-db"].includes(agent)) return { status: 403, body: { ok: false, error: "People and user administration is unavailable for this agent" } };
-      const args = body.args || {};
-      let result;
-      if (body.tool === "list_company_members") {
-        const people = await listPeople(tenantId);
-        result = { members: people.people, has_more: people.has_more };
-      } else if (body.tool === "save_company_member") {
-        const saved = await managePeople(args.id ? "update_person" : "create_person", args, { tenantId, trustedAgent: true });
-        result = { member: saved.person, created: !args.id };
-      }
-      else if (["list_people", "create_person", "update_person"].includes(body.tool)) result = await managePeople(body.tool, args, { tenantId });
-      else result = await manageUsers(body.tool, args, { tenantId });
+    // User tools run in the host's user service, acting as the signed-in session owner.
+    if (USER_TOOL_RUNNERS[body.tool]) {
+      const isRead = body.tool.startsWith("list_");
+      if (!isRead && !["di-onboarding", "di-db"].includes(agent)) return { status: 403, body: { ok: false, error: "User administration is unavailable for this agent" } };
+      const result = await USER_TOOL_RUNNERS[body.tool](body.args || {}, { tenantId, actorUser: who });
       return { status: 200, body: { ok: true, result } };
     }
     const result = await runTool(

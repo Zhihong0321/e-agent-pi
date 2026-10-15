@@ -31,7 +31,7 @@ export function summariseSubmission(claims) {
   const live = claims.filter((c) => c.status !== "withdrawn");
   const people = new Map();
   for (const c of live) {
-    const key = c.claimant.user_id || c.claimant.member_id || c.claimant.name.toLowerCase();
+    const key = c.claimant.user_id || c.claimant.name.toLowerCase();
     if (!people.has(key)) people.set(key, { name: c.claimant.name, email: c.claimant.email, claims: [] });
     people.get(key).claims.push(c);
   }

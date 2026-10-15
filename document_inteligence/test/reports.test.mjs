@@ -14,10 +14,10 @@ import { aggregate, normaliseReportSpec, toMarkdown } from "../core/reports.mjs"
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8ffff3f0005fe02fea7d6a4a30000000049454e44ae426082", "hex");
 const USERS = {
-  "tok-admin": { id: "u-admin", username: "admin", display_name: "Admin", role: "admin", email: null },
-  "tok-aisyah": { id: "u-aisyah", username: "aisyah", display_name: "Aisyah Rahman", role: "user", email: "aisyah@acme.test" },
-  "tok-priya": { id: "u-priya", username: "priya", display_name: "Priya Nair", role: "user", email: "priya@acme.test" },
-  "tok-daniel": { id: "u-daniel", username: "daniel", display_name: "Daniel Lee", role: "user", email: "daniel@acme.test" },
+  "tok-admin": { id: "u-admin", username: "admin", display_name: "Admin", access: "superadmin", email: null },
+  "tok-aisyah": { id: "u-aisyah", username: "aisyah", display_name: "Aisyah Rahman", access: "user", email: "aisyah@acme.test" },
+  "tok-priya": { id: "u-priya", username: "priya", display_name: "Priya Nair", access: "user", email: "priya@acme.test" },
+  "tok-daniel": { id: "u-daniel", username: "daniel", display_name: "Daniel Lee", access: "user", email: "daniel@acme.test" },
 };
 
 const rejects = async (promise, pattern) => {
@@ -131,10 +131,8 @@ async function setup() {
   const tenantB = await mk("B");
   await seedTenant(db, tenantA);
   await seedTenant(db, tenantB);
-  await db.query(
-    "INSERT INTO di.company_member (tenant_id, name, email, user_id, department) VALUES ($1, 'Aisyah Rahman', 'aisyah@acme.test', 'u-aisyah', 'Sales'), ($1, 'Priya Nair', 'priya@acme.test', 'u-priya', 'Sales'), ($1, 'Daniel Lee', 'daniel@acme.test', 'u-daniel', 'Ops'), ($1, 'Hana Said', 'hana@acme.test', NULL, 'Sales')",
-    [tenantA],
-  );
+  await db.query("SELECT ensure_user_categories($1)", [tenantA]);
+  await db.query("INSERT INTO users (id, company_tenant_id, category_id, display_name, email, department) SELECT v.id, $1, c.id, v.name, v.email, v.department FROM (VALUES ('u-aisyah', 'Aisyah Rahman', 'aisyah@acme.test', 'Sales'), ('u-priya', 'Priya Nair', 'priya@acme.test', 'Sales'), ('u-daniel', 'Daniel Lee', 'daniel@acme.test', 'Ops'), ('p-hana', 'Hana Said', 'hana@acme.test', 'Sales')) AS v(id, name, email, department) JOIN user_category c ON c.company_tenant_id = $1 AND c.is_default", [tenantA]);
   const dir = await mkdtemp(path.join(os.tmpdir(), "di-rep-"));
   const sops = new Map();
   const sop = { get: async (id) => (sops.has(id) ? { content: sops.get(id) } : null), save: async (id, c) => { sops.set(id, c); }, clear: async (id) => { sops.delete(id); } };

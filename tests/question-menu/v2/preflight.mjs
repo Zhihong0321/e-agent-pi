@@ -31,9 +31,16 @@ if (!f.tenantId) {
   f.tenantId = j?.tenantId; f.adminId = j?.userId; saveFixtures(rep, f);
 }
 
+// The company code is part of every sign-in; read the one the company was given.
+if (f.tenantId && !f.companyCode) {
+  f.companyCode = probe('sql', { q: 'SELECT code FROM di.tenant WHERE id=$1', p: [f.tenantId] })[0]?.code || null;
+  check('company-code', f.companyCode, String(f.companyCode));
+  saveFixtures(rep, f);
+}
+
 if (f.tenantId && !f.headId) {
-  const head = probe('create-user', { tenantId: f.tenantId, username: U.head, displayName: 'QM Head', password: f.logins.head, role: 'department_head', agents: 'all' });
-  const user = probe('create-user', { tenantId: f.tenantId, username: U.user, displayName: 'QM User', password: f.logins.user, role: 'user', agents: 'all' });
+  const head = probe('create-user', { tenantId: f.tenantId, username: U.head, displayName: 'QM Head', password: f.logins.head, access: 'department_head', agents: 'all' });
+  const user = probe('create-user', { tenantId: f.tenantId, username: U.user, displayName: 'QM User', password: f.logins.user, access: 'user', agents: 'all' });
   probe('sql', { q: "UPDATE users SET department='Operations' WHERE id=$1", p: [head.userId] });
   f.headId = head.userId; f.userId = user.userId; saveFixtures(rep, f);
 }
@@ -41,7 +48,7 @@ if (f.tenantId && !f.headId) {
 const clients = {};
 for (const r of Object.keys(U)) {
   const c = makeClient(U[r], log);
-  const res = await c.login(U[r], f.logins[r]);
+  const res = await c.login(U[r], f.logins[r], f.companyCode);
   check(`login-${r}`, res.status === 200, `status ${res.status}`);
   clients[r] = c;
   f.cookies ||= {}; f.cookies[r] = c.cookie();

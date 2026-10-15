@@ -7,6 +7,7 @@ import path from "node:path";
 import { escapeHtml as esc } from "../../server/report-html.mjs";
 import { publishFile, readSharedFile, sharedFileLocation } from "../../server/shared-files.mjs";
 import { addDays, todayMY } from "./common.mjs";
+import { isSuperadmin } from "../../server/roles.mjs";
 import { withContext } from "./db.mjs";
 import { createPoDraft, decideQuotation, issuePo, receiveGoods, recordSupplierDocument, saveSupplier, setInvoiceStatus } from "./procurement.mjs";
 import { publishPoPdf } from "./procurement-report.mjs";
@@ -48,7 +49,7 @@ const total = (lines) => Math.round(lines.reduce((s, l) => s + l.quantity * l.un
  * @param {{ id: string, username: string, role: string, display_name?: string }} who the admin pressing the button
  */
 export async function seedDemoProcurement(deps, who, { now = new Date() } = {}) {
-  if (who?.role !== "admin") throw new Error("Only an admin can load demo procurement data");
+  if (!isSuperadmin(who)) throw new Error("Only an admin can load demo procurement data");
   if (!deps.renderPdf) throw new Error("Demo documents need the PDF renderer, which this host does not have");
   const tenantId = await deps.tenantId();
   const ctx = { tenantId, actor: who.username, agent: "di-procurement", asRole: deps.asRole, who };

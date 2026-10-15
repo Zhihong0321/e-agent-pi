@@ -8,6 +8,8 @@ import path from "node:path";
 import { runTool, describeError } from "../document_inteligence/core/actions.mjs";
 import { withContext } from "../document_inteligence/core/db.mjs";
 import { getReceiptFile } from "../document_inteligence/core/expenses.mjs";
+import { isSuperadmin } from "./roles.mjs";
+import { listUsers } from "./user-service.mjs";
 import { seedDemoClaims } from "../document_inteligence/core/expense-demo.mjs";
 import { loadLayout, resetLayout, resolveLayout, saveLayout } from "../document_inteligence/core/page-layout.mjs";
 import { tenantContext, diRunDeps } from "../document_inteligence/host.mjs";
@@ -47,7 +49,7 @@ async function panelState(opts, who, month) {
   const key = month && MONTH.test(month) ? month : open?.period_key ?? subs.submissions[0]?.period_key ?? settings.current_submission.period_key;
   const selected = subs.submissions.find((s) => s.period_key === key) ?? null;
   const claims = selected ? await call("list_claims", { month: key, limit: 50 }) : { claims: [], totals: null, has_more: false };
-  const people = who.role === "admin" ? (await call("list_company_members")).members : [];
+  const people = isSuperadmin(who) ? (await listUsers(who.company_tenant_id)).users : [];
   return {
     me: settings.me, settings: settings.settings, categories: settings.categories, payment_methods: settings.payment_methods,
     today: settings.today, current_submission: settings.current_submission, submissions: subs.submissions,

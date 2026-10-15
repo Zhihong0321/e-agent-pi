@@ -10,6 +10,7 @@ import { expenseEvidenceModel, prepareExpenseDelegation } from "./delegated-atta
 import { publishFile, readSharedFile, sharedFileLocation } from "./shared-files.mjs";
 import { migrate, pgliteAdapter } from "../document_inteligence/core/db.mjs";
 import { seedTenant } from "../document_inteligence/core/seed.mjs";
+import { createTestUser } from "../document_inteligence/test/company-fixture.mjs";
 import { runTool } from "../document_inteligence/core/actions.mjs";
 
 const poppler = !spawnSync("pdftotext", ["-v"]).error && !spawnSync("pdftoppm", ["-v"]).error;
@@ -135,8 +136,7 @@ test("runManageTurn hands all pages to the model and files page receipts only in
   await migrate(db);
   const tenant = (await db.query("INSERT INTO di.tenant(name) VALUES ('Handoff test') RETURNING id")).rows[0].id;
   await seedTenant(db, tenant);
-  const who = { id: "test-owner", username: "handoff-test", display_name: "Handoff Test", role: "admin" };
-  await db.query("INSERT INTO di.company_member(tenant_id,name,user_id,department) VALUES ($1,'Handoff Test','test-owner','Test')", [tenant]);
+  const who = await createTestUser(db, tenant, { id: "test-owner", username: "handoff-test", name: "Handoff Test", access: "superadmin", department: "Test" });
   // Evaluate the production runner without starting a second HTTP server. Storage,
   // PDF preparation and filing are real; session persistence and the model are seams.
   const source = await readFile(new URL("./index.mjs", import.meta.url), "utf8");

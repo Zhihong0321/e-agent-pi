@@ -1,8 +1,7 @@
 import { tenantContext } from "../document_inteligence/host.mjs";
 import { withContext } from "../document_inteligence/core/db.mjs";
 import { getCompanyProfile, updateCompanyProfile } from "../document_inteligence/core/company.mjs";
-import { listCompanyMembers, saveCompanyMember } from "../document_inteligence/core/members.mjs";
-import { listPeople, managePeople } from "./users.mjs";
+import { deleteCategory, listCategories, listUsers, manageUser, saveCategory } from "./user-service.mjs";
 import { findCustomers, saveCustomer } from "../document_inteligence/core/records.mjs";
 import { createDraft, getDocument, issueDocument, listDocuments } from "../document_inteligence/core/documents.mjs";
 import { readCalendar, validateCalendarRange } from "../document_inteligence/core/calendar.mjs";
@@ -27,7 +26,7 @@ export async function demoCalendar(query = {}, tenantId) {
 
 export async function demoState(tenantId) {
   if (!tenantId) throw new Error("Company tenant is required");
-  const people = await listPeople(tenantId);
+  const [users, categories] = await Promise.all([listUsers(tenantId), listCategories(tenantId)]);
   return scope(tenantId, async (tx) => {
     const [profile, customers, documents] = await Promise.all([
       getCompanyProfile(tx), findCustomers(tx, { limit: 50 }),
@@ -37,17 +36,19 @@ export async function demoState(tenantId) {
       const { document } = await getDocument(tx, { ref: row.id });
       return document;
     }));
-    return { profile, members: people.people, people: people.people, customers: customers.customers, invoices };
+    return { profile, users: users.users, categories: categories.categories, customers: customers.customers, invoices };
   });
 }
 
-export async function demoAction(body, actorUserId, tenantId) {
+/** One page action as the signed-in user (`actorUser`, vouched for by the host). */
+export async function demoAction(body, actorUser, tenantId) {
   const action = String(body?.action || "");
-  if (action === "person") {
-    if (!tenantId) throw new Error("Company tenant is required");
-    const person = body.person || {};
-    return managePeople(body.person_id ? "update_person" : "create_person", { ...person, ...(body.person_id ? { person_id: body.person_id } : {}) }, { tenantId, actorUserId });
+  if (action === "user") {
+    const input = body.user || {};
+    return manageUser(input.id ? "update_user" : "create_user", input, { tenantId, actorUser });
   }
+  if (action === "category") return saveCategory(body.category || {}, { tenantId, actorUser });
+  if (action === "delete_category") return deleteCategory({ id: body.id }, { tenantId, actorUser });
   return scope(tenantId, async (tx) => {
     switch (action) {
       case "profile": {
@@ -57,8 +58,6 @@ export async function demoAction(body, actorUserId, tenantId) {
         if (typeof value !== "string" && !(key === "payment_terms_days" && Number.isInteger(value))) throw new Error("Invalid profile value");
         return updateCompanyProfile(tx, { expected_revision: body.revision, [key]: value });
       }
-      case "member":
-        return saveCompanyMember(tx, body.member || {});
       case "customer":
         return saveCustomer(tx, body.customer || {});
       case "invoice": {

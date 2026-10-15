@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { isSuperadmin } from '../roles.mjs';
 import { validateTimezone, validateTimingRule, computeOccurrences, DEFAULT_TIMEZONE } from './timing.mjs';
 import { validateAction } from './actions.mjs';
 import { insertSchedule, insertScheduleAction, insertScheduleOccurrence, getScheduleById, listSchedules,
@@ -11,7 +12,7 @@ function ensureContext(ctx) {
 }
 function checkAccess(schedule, ctx, write = false) {
   if (!schedule || schedule.company_id !== ctx.companyId) throw fail('Schedule not found', 'NOT_FOUND');
-  const owner = schedule.owner_user_id === ctx.userId, admin = ctx.user.role === 'admin';
+  const owner = schedule.owner_user_id === ctx.userId, admin = isSuperadmin(ctx.user);
   if (schedule.visibility === 'private' && !owner && !admin) throw fail('Schedule not found', 'NOT_FOUND');
   if (write && !owner && !admin) throw fail('Only the owner or an admin can change this schedule', 'PERMISSION_DENIED');
 }
@@ -64,7 +65,7 @@ export async function getSchedule(ctx, id, runner = null) {
 export async function listCompanySchedules(ctx, args = {}, runner = null) {
   ensureContext(ctx);
   return { schedules: await listSchedules(runner, { ...args, companyId: ctx.companyId, userId: ctx.userId,
-    isAdmin: ctx.user.role === 'admin', limit: Math.max(1, Math.min(Number(args.limit) || 100, 200)) }) };
+    isAdmin: isSuperadmin(ctx.user), limit: Math.max(1, Math.min(Number(args.limit) || 100, 200)) }) };
 }
 export async function updateScheduleService(ctx, args, runner = null) {
   ensureContext(ctx);

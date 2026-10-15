@@ -7,6 +7,7 @@ import path from "node:path";
 import { publishFile, readSharedFile, sharedFileLocation } from "../../server/shared-files.mjs";
 import { escapeHtml as esc } from "../../server/report-html.mjs";
 import { addDays, todayMY } from "./common.mjs";
+import { isSuperadmin } from "../../server/roles.mjs";
 import { withContext } from "./db.mjs";
 import { addMonths, batchLabel, closeSubmission, cycleFor, cycleOf, fileClaim, getSettings, reviewClaim } from "./expenses.mjs";
 import { publishExpenseReport } from "./expense-report.mjs";
@@ -67,7 +68,7 @@ const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g
  * @param {{ now?: Date }} [opts]
  */
 export async function seedDemoClaims(deps, who, { now = new Date() } = {}) {
-  if (who?.role !== "admin") throw new Error("Only an admin can load demo claims");
+  if (!isSuperadmin(who)) throw new Error("Only an admin can load demo claims");
   if (!deps.renderPdf) throw new Error("Demo receipts need the PDF renderer, which this host does not have");
   const tenantId = await deps.tenantId();
   const ctx = { tenantId, actor: who.username, agent: "di-expenses", asRole: deps.asRole, who };
@@ -87,8 +88,8 @@ export async function seedDemoClaims(deps, who, { now = new Date() } = {}) {
   let n = 0;
 
   const person = (key) => key === "admin"
-    ? { user_id: who.id, member_id: null, name: who.display_name || who.username, email: who.email ?? null }
-    : { user_id: null, member_id: null, ...PEOPLE[key] };
+    ? { user_id: who.id, name: who.display_name || who.username, email: who.email ?? null }
+    : { user_id: null, ...PEOPLE[key] };
 
   const file = async (c, filedOn) => {
     const date = addDays(filedOn, -(c.when % 2));

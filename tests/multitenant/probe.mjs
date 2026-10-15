@@ -1,5 +1,5 @@
 // Container-side DB probe for the multi-tenant test. Run via ssh.sh; prints one "@@JSON" line.
-// ops: snapshot | marker {m} | sql {q,p} | create-user {tenantId,username,displayName,password,role,agents}
+// ops: snapshot | marker {m} | sql {q,p} | create-user {tenantId,username,displayName,password,access,agents}
 //      | set-agents {userId,agents} | set-active {userId,active}
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
@@ -26,7 +26,7 @@ try {
       diRowsByTenant: await q(`SELECT t.tenant_id, count(*)::int n FROM (
           SELECT tenant_id FROM di.customer UNION ALL SELECT tenant_id FROM di.document UNION ALL
           SELECT tenant_id FROM di.expense_claim UNION ALL SELECT tenant_id FROM di.purchase_order UNION ALL
-          SELECT tenant_id FROM di.supplier UNION ALL SELECT tenant_id FROM di.company_member UNION ALL
+          SELECT tenant_id FROM di.supplier UNION ALL SELECT company_tenant_id::uuid FROM users UNION ALL
           SELECT tenant_id FROM di.supplier_document UNION ALL SELECT tenant_id FROM di.expense_receipt) t GROUP BY 1`),
       rls: await q(`SELECT c.relname, c.relrowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
           WHERE n.nspname = 'di' AND c.relkind = 'r' AND NOT c.relrowsecurity ORDER BY 1`),
@@ -54,8 +54,9 @@ try {
   } else if (req.op === 'create-user') {
     const id = randomUUID();
     await q(
-      "INSERT INTO users(id, username, display_name, password_hash, role, company_tenant_id, active) VALUES ($1,$2,$3,$4,$5,$6,true)",
-      [id, req.username, req.displayName, hashPassword(req.password), req.role || 'user', req.tenantId],
+      `INSERT INTO users(id, company_tenant_id, category_id, display_name, username, password_hash)
+        SELECT $1, $2, c.id, $3, $4, $5 FROM user_category c WHERE c.company_tenant_id = $2 AND c.access = $6 ORDER BY c.created_at LIMIT 1`,
+      [id, req.tenantId, req.displayName, req.username, hashPassword(req.password), req.access || 'user'],
     );
     if (req.agents === 'all') await q('INSERT INTO user_agents SELECT $1, id FROM agents', [id]);
     emit({ userId: id, username: req.username });

@@ -18,10 +18,10 @@ import { demoDocumentHtml, seedDemoProcurement } from "../core/procurement-demo.
 const round = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 const USERS = {
-  "tok-admin": { id: "u-admin", username: "admin", display_name: "Admin", role: "admin", email: null },
-  "tok-aisyah": { id: "u-aisyah", username: "aisyah", display_name: "Aisyah Rahman", role: "user", email: "aisyah@acme.test" },
-  "tok-hana": { id: "u-hana", username: "hana", display_name: "Hana Ops", role: "department_head", department: "Ops", email: "hana@acme.test" },
-  "tok-sam": { id: "u-sam", username: "sam", display_name: "Sam Sales", role: "user", department: "Sales", email: "sam@acme.test" },
+  "tok-admin": { id: "u-admin", username: "admin", display_name: "Admin", access: "superadmin", email: null },
+  "tok-aisyah": { id: "u-aisyah", username: "aisyah", display_name: "Aisyah Rahman", access: "user", email: "aisyah@acme.test" },
+  "tok-hana": { id: "u-hana", username: "hana", display_name: "Hana Ops", access: "department_head", department: "Ops", email: "hana@acme.test" },
+  "tok-sam": { id: "u-sam", username: "sam", display_name: "Sam Sales", access: "user", department: "Sales", email: "sam@acme.test" },
 };
 
 const rejects = async (promise, pattern) => {

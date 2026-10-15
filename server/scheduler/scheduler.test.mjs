@@ -8,7 +8,7 @@ import {computeOccurrences,localToUtc,validateTimingRule} from './timing.mjs';
 import {manifestForAgent,SCHEDULER_TOOL_IDS} from '../execution/profiles.mjs';
 import {getOperation} from '../execution/registry.mjs';
 import {createSchedulerWorker} from './worker.mjs';
-const owner={id:'alice',role:'user',active:true,company_tenant_id:'company-a'};
+const owner={id:'alice',access: 'user',active:true,company_tenant_id:'company-a'};
 const ctx={companyId:'company-a',userId:owner.id,user:owner};
 const agents=[{id:'research',name:'Research AI',engine:'pi'},{id:'scheduler',name:'Scheduler AI'}];
 const future={kind:'timed',date:'2099-10-15',time:'09:00'};
@@ -47,11 +47,11 @@ test('durable scheduler persistence, access controls, dispatch and recovery',asy
  try {
   await t.test('company isolation, private visibility and owner permissions',async()=>{
    const {schedule}=await create({visibility:'private'});
-   const bob={...ctx,userId:'bob',user:{id:'bob',role:'user',active:true}};
+   const bob={...ctx,userId:'bob',user:{id:'bob',access: 'user',active:true}};
    assert.equal((await listCompanySchedules(bob)).schedules.length,0);
    await assert.rejects(getSchedule({...ctx,companyId:'company-b',user:{...owner,company_tenant_id:'company-b'}},schedule.id),e=>e.code==='NOT_FOUND');
    await assert.rejects(updateScheduleService(bob,{schedule_id:schedule.id,title:'No'}),e=>e.code==='NOT_FOUND');
-   assert.equal((await listCompanySchedules({...bob,user:{...bob.user,role:'admin'}})).schedules.length,1);
+   assert.equal((await listCompanySchedules({...bob,user:{...bob.user,access: 'superadmin'}})).schedules.length,1);
   });
   await t.test('Scheduler AI tools expose every scheduling action and persist through the native handler',async()=>{
    const profile=manifestForAgent({id:'scheduler',slug:'scheduler',toolProfile:'assistant'});

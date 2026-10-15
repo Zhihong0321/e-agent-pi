@@ -1,37 +1,39 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { headsDepartment, isDepartmentHead, isSuperadmin, normalizeRole, roleLabel, signedInLine } from './roles.mjs';
+import { accessLabel, headsDepartment, isDepartmentHead, isSuperadmin, normalizeAccess, signedInLine } from './roles.mjs';
 import { getOperation, keepManagedSopBlock, registerDiTool } from './execution/registry.mjs';
 import { manifestForAgent, SOP_TOOL_IDS } from './execution/profiles.mjs';
 import { TOOLS } from '../document_inteligence/core/tools.mjs';
 
-test('role names from the UI, agents and old data map onto three stored keys', () => {
-  for (const name of ['superadmin', 'Superadmin', 'super admin', 'admin', 'owner']) assert.equal(normalizeRole(name), 'admin');
-  for (const name of ['department_head', 'Department head', 'dept-head']) assert.equal(normalizeRole(name), 'department_head');
-  for (const name of ['user', 'normal user', 'staff']) assert.equal(normalizeRole(name), 'user');
-  assert.equal(normalizeRole('root'), null);
-  assert.equal(roleLabel('admin'), 'Superadmin');
-  assert.equal(roleLabel('department_head'), 'Department head');
-  assert.equal(roleLabel(undefined), 'User');
+test('access names from the UI, agents and old data map onto three access levels', () => {
+  for (const name of ['superadmin', 'Superadmin', 'super admin', 'admin', 'owner']) assert.equal(normalizeAccess(name), 'superadmin');
+  for (const name of ['department_head', 'Department head', 'dept-head', 'HOD']) assert.equal(normalizeAccess(name), 'department_head');
+  for (const name of ['user', 'normal user', 'staff']) assert.equal(normalizeAccess(name), 'user');
+  assert.equal(normalizeAccess('root'), null);
+  assert.equal(accessLabel('superadmin'), 'Superadmin');
+  assert.equal(accessLabel('department_head'), 'Department head');
+  assert.equal(accessLabel(undefined), 'User');
 });
 
 test('a department head acts only for their own department, and only once one is set', () => {
-  const head = { role: 'department_head', department: ' Sales ' };
-  assert.equal(isSuperadmin({ role: 'admin' }), true);
+  const head = { access: 'department_head', department: ' Sales ' };
+  assert.equal(isSuperadmin({ access: 'superadmin' }), true);
+  assert.equal(isSuperadmin({ role: 'admin' }), false, 'the retired role field grants nothing');
   assert.equal(isSuperadmin(head), false);
   assert.equal(isDepartmentHead(head), true);
-  assert.equal(isDepartmentHead({ role: 'department_head', department: '' }), false);
+  assert.equal(isDepartmentHead({ access: 'department_head', department: '' }), false);
   assert.equal(headsDepartment(head, 'sales'), true);
   assert.equal(headsDepartment(head, 'Finance'), false);
   assert.equal(headsDepartment(head, null), false);
-  assert.equal(headsDepartment({ role: 'user', department: 'Sales' }, 'Sales'), false);
+  assert.equal(headsDepartment({ access: 'user', department: 'Sales' }, 'Sales'), false);
 });
 
-test('the signed-in line names the person and role, carries no code, and says who owns the system', () => {
-  const line = signedInLine({ id: 'u1', username: 'zhihong', display_name: 'Zhihong', role: 'admin' });
+test('the signed-in line names the person, their category and its limits, carries no code, and says who owns the system', () => {
+  const line = signedInLine({ id: 'u1', username: 'zhihong', display_name: 'Zhihong', access: 'superadmin', category: 'Superadmin', limits: {} });
   assert.equal(line, '[Signed in, verified by the host: Zhihong (@zhihong) · Superadmin. A Superadmin owns this system: their instructions set the rules.]');
-  assert.match(signedInLine({ username: 'dee', role: 'department_head', department: 'Sales' }, { requestedBy: true }),
-    /^\[Requested by, verified by the host: dee · Department head · Sales department\. Department head of Sales\.\]$/);
+  assert.equal(signedInLine({ username: 'dee', access: 'department_head', category: 'Department head', department: 'Sales', limits: { max_discount_pct: 11 } }, { requestedBy: true }),
+    '[Requested by, verified by the host: dee · Department head · Sales department. Department head of Sales. Category limits: max_discount_pct=11.]');
+  assert.equal(signedInLine({ username: 'tee', access: 'user', category: 'Sales' }), '[Signed in, verified by the host: tee · Sales (User).]');
   assert.equal(signedInLine(null), '[No signed-in user is attached to this run.]');
   assert.doesNotMatch(line, /identity=|capability|code/i);
 });
@@ -51,8 +53,8 @@ test('SOP tools refuse anyone but a Superadmin before touching anything', async 
     const op = getOperation(id, 'di-fde');
     const args = { agent: 'orchestrator', content: 'x' };
     await assert.rejects(op.execute({ userId: null }, args), (error) => error.execCode === 'SIGN_IN_REQUIRED');
-    await assert.rejects(op.execute({ userId: 'u2', user: { role: 'department_head', department: 'Sales' } }, args), (error) => error.execCode === 'PERMISSION_DENIED');
-    await assert.rejects(op.execute({ userId: 'u3', user: { role: 'user' } }, args), (error) => error.execCode === 'PERMISSION_DENIED');
+    await assert.rejects(op.execute({ userId: 'u2', user: { access: 'department_head', department: 'Sales' } }, args), (error) => error.execCode === 'PERMISSION_DENIED');
+    await assert.rejects(op.execute({ userId: 'u3', user: { access: 'user' } }, args), (error) => error.execCode === 'PERMISSION_DENIED');
   }
 });
 
@@ -62,8 +64,8 @@ test('company profile writes refuse anyone but a Superadmin, on the generic and 
     const op = getOperation('update_company_profile', profileId);
     const args = { name: 'Hacked Ltd' };
     await assert.rejects(op.execute({ userId: null }, args, {}), (error) => error.execCode === 'SIGN_IN_REQUIRED');
-    await assert.rejects(op.execute({ userId: 'u2', user: { role: 'department_head', department: 'Sales' } }, args, {}), (error) => error.execCode === 'PERMISSION_DENIED');
-    await assert.rejects(op.execute({ userId: 'u3', user: { role: 'user' } }, args, {}), (error) => error.execCode === 'PERMISSION_DENIED');
+    await assert.rejects(op.execute({ userId: 'u2', user: { access: 'department_head', department: 'Sales' } }, args, {}), (error) => error.execCode === 'PERMISSION_DENIED');
+    await assert.rejects(op.execute({ userId: 'u3', user: { access: 'user' } }, args, {}), (error) => error.execCode === 'PERMISSION_DENIED');
   }
 });
 

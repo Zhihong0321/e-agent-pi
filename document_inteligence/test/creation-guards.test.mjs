@@ -106,7 +106,7 @@ test("a Forward Deploy Engineer changeset that adds a field and a rule on it sti
   const sop = { get: async () => null, save: async () => ({}), clear: async () => true };
   const deps = {
     db, tenantId: () => tenant, sop, workspace: (agent) => path.join(dir, agent), now: () => new Date("2026-10-02T04:00:00Z"),
-    resolveIdentity: async () => ({ id: "u-admin", username: "admin", display_name: "Admin", role: "admin", email: null }),
+    resolveIdentity: async () => ({ id: "u-admin", username: "admin", display_name: "Admin", access: "superadmin", email: null }),
   };
   const fde = (tool, args) => runTool(deps, { agent: "di-fde", tool, args: { identity: "tok-admin", ...args } });
   const changeset = (rule) => ({

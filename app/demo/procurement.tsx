@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import "./expenses.css";
 import "./procurement.css";
 
-type User = { id: string; username: string; display_name?: string; role: string };
+type User = { id: string; username: string; display_name?: string; access: string };
 type Tab = "pos" | "invoices" | "quotes" | "suppliers";
 type PoRow = { id: string; number: string; status: string; supplier: string; total: number; currency: string; order_date: string; expected_date: string | null; overdue: boolean; received: string };
 type DocRow = { id: string; number: string; type: string; status: string; supplier: string; supplier_ref: string; doc_date: string; due_date: string | null; valid_until: string | null; total: number; overdue: boolean; expired: boolean; po: string | null };
@@ -12,7 +12,7 @@ type Overview = {
   invoices: { unpaid: { count: number; total: number }; overdue: { count: number; total: number }; due_within_7_days: { count: number; total: number }; disputed: { count: number; total: number }; overdue_list: { number: string; supplier: string; due_date: string }[]; not_matching_po: { number: string; supplier_ref: string; issues: string[] }[] };
   quotations: { open: number; expired_unanswered: number; accepted_not_ordered: number };
 };
-type State = { me: { username: string; role: string }; overview: Overview; pos: PoRow[]; invoices: DocRow[]; quotations: DocRow[]; suppliers: SupplierRow[] };
+type State = { me: { username: string; access: string; category: string }; overview: Overview; pos: PoRow[]; invoices: DocRow[]; quotations: DocRow[]; suppliers: SupplierRow[] };
 type Line = { line_no: number; description: string; unit: string; quantity: number; unit_price: number; tax_rate: number; total: number; received_qty: number; outstanding: number };
 type PoDetail = {
   po: { id: string; number: string; status: string; supplier: { code: string; name: string } | null; order_date: string; expected_date: string | null; overdue: boolean; ship_to: string | null; payment_terms_days: number | null; currency: string; subtotal: number; tax_total: number; total: number; notes: string | null; issued_by: string | null; cancel_reason: string | null; progress: { ordered: number; received: number }; lines: Line[] };
@@ -46,7 +46,7 @@ const fmtDate = (iso: string | null | undefined) => {
 };
 
 export function ProcurementPanel({ user, onNotice }: { user: User; onNotice: (message: string) => void }) {
-  const isAdmin = user.role === "admin";
+  const isAdmin = user.access === "superadmin";
   const [data, setData] = useState<State | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

@@ -150,13 +150,13 @@ async function http() {
     void before;
   }
   {
-    const r = await c.adminA.post('/api/demo/action', { action: 'person', person: { name: 'MT1009-A-T2-2 Person' + R, email: `mt1009-a-t2-2${R.trim()}@example.test`, position: 'Tester' } });
+    const r = await c.adminA.post('/api/demo/action', { action: 'user', user: { name: 'MT1009-A-T2-2 Person' + R, email: `mt1009-a-t2-2${R.trim()}@example.test`, position: 'Tester' } });
     check('T2.2a', 'A creates person MT1009-A-T2-2', r.status === 200, `${r.status} ${JSON.stringify(r.data).slice(0, 200)}`);
-    const bPeople = JSON.stringify((await c.adminB.get('/api/demo/state')).data.people || []);
+    const bPeople = JSON.stringify((await c.adminB.get('/api/demo/state')).data.users || []);
     check('T2.2b', "B's people list excludes A's person", !bPeople.includes('MT1009-A-T2-2'));
-    const personId = sql("SELECT id FROM di.company_member WHERE tenant_id=$1 AND name=$2 AND deleted_at IS NULL", [A.tenantId, 'MT1009-A-T2-2 Person' + R])[0]?.id;
-    const hijack = await c.adminB.post('/api/demo/action', { action: 'person', person_id: personId, person: { name: 'MT1009-B-T2-2 hijack' } });
-    const still = sql("SELECT count(*)::int n FROM di.company_member WHERE tenant_id=$1 AND name=$2", [A.tenantId, 'MT1009-A-T2-2 Person' + R])[0].n;
+    const personId = sql("SELECT id FROM users WHERE company_tenant_id=$1 AND display_name=$2", [A.tenantId, 'MT1009-A-T2-2 Person' + R])[0]?.id;
+    const hijack = await c.adminB.post('/api/demo/action', { action: 'user', user: { id: personId, name: 'MT1009-B-T2-2 hijack' } });
+    const still = sql("SELECT count(*)::int n FROM users WHERE company_tenant_id=$1 AND display_name=$2", [A.tenantId, 'MT1009-A-T2-2 Person' + R])[0].n;
     check('T2.2c', "B cannot update A's person", hijack.status >= 400 && still >= 1, `status ${hijack.status}, A rows ${still}`);
   }
   let invoiceNumber = '';

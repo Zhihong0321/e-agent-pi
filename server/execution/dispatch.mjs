@@ -119,8 +119,8 @@ export async function dispatchTool(binding, rawBody, services = {}) {
     const user = binding.userId && services.userLookup ? await services.userLookup(binding.userId, binding) : null;
     const ctx = { ...ctxBase, user };
     if (op.access?.user && !user) return toolError(callId, execError('SIGN_IN_REQUIRED', 'Sign-in required: the host attached no signed-in user to this run. If the person is signed in, report this as a system fault; never ask a signed-in user to sign in again.'));
-    if (Array.isArray(op.access?.roles) && (!user || !op.access.roles.includes(user.role))) {
-      return toolError(callId, execError('PERMISSION_DENIED', 'This operation requires a permitted host role'));
+    if (Array.isArray(op.access?.levels) && (!user || !op.access.levels.includes(user.access))) {
+      return toolError(callId, execError('PERMISSION_DENIED', 'This operation needs a different access level'));
     }
     if (op.access?.company && !ctx.companyId) return toolError(callId, execError('PERMISSION_DENIED', 'A company context is required for this operation'));
     if (Array.isArray(op.access?.profileIds) && !op.access.profileIds.includes(ctx.profileId)) {
@@ -290,7 +290,7 @@ export function receiptsForOperation(op, result) {
   if (op.effect === 'read' || op.effect === 'control') return [];
   if (Array.isArray(result?.effects)) return result.effects;
   const receipts = [];
-  const reference = result?.person?.member_id || result?.person?.user_id
+  const reference = result?.user?.id || result?.category?.id
     || (result?.revision != null ? `company_profile:rev${result.revision}` : null);
   if (reference) {
     receipts.push({ id: newId(), operationId: op.id, kind: 'record', reference,

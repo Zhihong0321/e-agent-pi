@@ -165,11 +165,12 @@ export async function createSession(row = {}) {
   const session = result.rows[0];
   if (session?.userId) {
     try {
-      const userRow = (await getPool().query(`SELECT username, display_name, role FROM users WHERE id = $1`, [session.userId])).rows[0];
+      const userRow = (await getPool().query(`SELECT u.username, u.display_name, c.access, c.name AS category FROM users u JOIN user_category c ON c.id = u.category_id WHERE u.id = $1`, [session.userId])).rows[0];
       if (userRow) {
         session.userName = userRow.username;
         session.userDisplayName = userRow.display_name;
-        session.userRole = userRow.role;
+        session.userAccess = userRow.access;
+        session.userCategory = userRow.category;
       }
     } catch {
       // Ignore if users table not yet queried
@@ -189,10 +190,11 @@ export async function getSession(id, userId) {
             COALESCE(s.engine, 'pi') AS engine,
             s.agy_conversation_id AS "agyConversationId",
             s.user_id AS "userId", s.parent_session_id AS "parentSessionId",
-            u.username AS "userName", u.display_name AS "userDisplayName", u.role AS "userRole",
+            u.username AS "userName", u.display_name AS "userDisplayName", uc.access AS "userAccess", uc.name AS "userCategory",
             s.created_at AS "createdAt", s.updated_at AS "updatedAt"
      FROM sessions s
      LEFT JOIN users u ON u.id = s.user_id
+     LEFT JOIN user_category uc ON uc.id = u.category_id
      WHERE s.id = $1${userId === undefined ? "" : " AND s.user_id = $2"}`,
     userId === undefined ? [id] : [id, userId],
   );
@@ -221,7 +223,7 @@ export async function listSessions(agentId, userId) {
             COALESCE(s.engine, 'pi') AS engine,
             s.agy_conversation_id AS "agyConversationId",
             s.user_id AS "userId", s.parent_session_id AS "parentSessionId",
-            u.username AS "userName", u.display_name AS "userDisplayName", u.role AS "userRole",
+            u.username AS "userName", u.display_name AS "userDisplayName", uc.access AS "userAccess", uc.name AS "userCategory",
             s.created_at AS "createdAt",
             s.updated_at AS "updatedAt",
             (
@@ -234,6 +236,7 @@ export async function listSessions(agentId, userId) {
             ) AS "messageCount"
      FROM sessions s
      LEFT JOIN users u ON u.id = s.user_id
+     LEFT JOIN user_category uc ON uc.id = u.category_id
      ${where}
      ORDER BY s.updated_at DESC`,
     values,

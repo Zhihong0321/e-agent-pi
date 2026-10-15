@@ -1,6 +1,6 @@
 // Guarded live smoke for the native execution path. This is intentionally
 // separate from deterministic CI: it needs DATABASE_URL, a configured Pi model
-// and an isolated test session. It is read-only (count_user_accounts/list_people)
+// and an isolated test session. It is read-only (list_users)
 // and never sends real external messages.
 //
 // Run: EXECUTION_LIVE_SMOKE=1 node server/execution/manual-execution-eval.mjs
@@ -58,7 +58,7 @@ try {
   const profile = manifestForAgent(agent);
   const accepted = await acceptChatRun({
     session, profile, user: null,
-    prompt: 'Use count_user_accounts once, then reply with a read-only summary.',
+    prompt: 'Use list_users once, then reply with a read-only summary.',
     images: [], modelId, submissionKey: `live-smoke-${randomUUID()}`,
     manifest: profile, chatContext: { companyId: di.tenantId }, sessionFile: null,
   });

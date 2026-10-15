@@ -15,8 +15,8 @@ import { claimsToCsv } from "../core/expense-report.mjs";
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8ffff3f0005fe02fea7d6a4a30000000049454e44ae426082", "hex");
 const USERS = {
-  "tok-admin": { id: "u-admin", username: "admin", display_name: "Admin", role: "admin", email: null },
-  "tok-aisyah": { id: "u-aisyah", username: "aisyah", display_name: "Aisyah Rahman", role: "user", email: "aisyah@acme.test" },
+  "tok-admin": { id: "u-admin", username: "admin", display_name: "Admin", access: "superadmin", email: null },
+  "tok-aisyah": { id: "u-aisyah", username: "aisyah", display_name: "Aisyah Rahman", access: "user", email: "aisyah@acme.test" },
 };
 
 const rejects = async (promise, pattern) => {

@@ -34,11 +34,10 @@ const BASE_CONTROL_TOOLS = ['list_specialists', 'get_company_setup', 'task_statu
 /**
  * Resolve the manifest for a profile.
  * @param {{ id: string, slug?: string, toolProfile?: string, thinkingLevel?: string, mcp?: object[], skills?: object[] }} agent
- * @param {{ peopleTools?: boolean, controlTools?: boolean, extraToolIds?: string[], noExternal?: boolean }} opts
+ * @param {{ controlTools?: boolean, extraToolIds?: string[], noExternal?: boolean }} opts
  */
 export function resolveProfileManifest(agent, opts = {}) {
   const toolIds = [];
-  if (opts.peopleTools) toolIds.push('count_user_accounts', 'list_people', 'create_person', 'update_person');
   if (opts.controlTools) toolIds.push(...BASE_CONTROL_TOOLS);
   for (const id of opts.extraToolIds || []) toolIds.push(id);
 
@@ -84,14 +83,12 @@ export const SOP_TOOL_IDS = ['get_agent_sop', 'save_agent_sop'];
 /** The orchestrator routes and does no work: this is its whole tool list (AD-3). */
 export const ROUTER_TOOL_IDS = ['route_request'];
 
-/** People tools the host implements natively; their Document Intelligence twins only work on the retired MCP path. */
-export const HOST_PEOPLE_TOOL_IDS = new Set(['list_people', 'create_person', 'update_person']);
-/** Legacy login tools with no native implementation: never offered on the runner. */
-export const LEGACY_USER_TOOL_IDS = new Set(['list_users', 'create_user', 'update_user']);
+/** User tools the host implements natively; their Document Intelligence twins only work on the retired MCP path. */
+export const HOST_USER_TOOL_IDS = new Set(['list_users', 'create_user', 'update_user', 'list_user_categories', 'save_user_category', 'delete_user_category']);
 
 /**
  * Manifest rules per agent: the orchestrator gets only route_request; Document
- * Intelligence agents get their native DI tools (the people tools resolve to the
+ * Intelligence agents get their native DI tools (the user tools resolve to the
  * host's, the Forward Deploy Engineer also gets the SOP tools).
  */
 export function manifestForAgent(agent) {
@@ -101,7 +98,7 @@ export function manifestForAgent(agent) {
   if (isOrchestrator) return resolveProfileManifest(agent, { extraToolIds: ROUTER_TOOL_IDS, noExternal: true });
   const isDi = id.startsWith('di-');
   const isScheduler = id === 'scheduler' || slug === 'scheduler';
-  const extraToolIds = isDi ? [...diToolIdsFor(id).filter((tool) => !LEGACY_USER_TOOL_IDS.has(tool)), ...(id === 'di-fde' ? SOP_TOOL_IDS : [])]
+  const extraToolIds = isDi ? [...diToolIdsFor(id), ...(id === 'di-fde' ? SOP_TOOL_IDS : [])]
     : isScheduler ? SCHEDULER_TOOL_IDS : [];
   return resolveProfileManifest(agent, { extraToolIds });
 }

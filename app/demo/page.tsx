@@ -54,11 +54,25 @@ const logHeadings = {
 };
 type CalendarEvent = { id: string; kind: string; title: string; start: string; end: string; allDay: boolean; timezone: string; status: string; severity: string; source: { table: string; recordId: string; field: string }; detail: Record<string, unknown>; warnings: string[]; needsReview: boolean };
 type Profile = { name: string; legalName: string; registration: string; country: string; businessType: string; businessActivity: string; website: string; email: string; phone: string; headquarters: string; billingAddress: string; currency: string; taxStatus: string; tin: string; paymentTerms: string };
-type CompanyMember = { id: string; member_id?: string | null; user_id?: string | null; name: string; position: string; department: string; email: string; phone: string; location: string; username?: string | null; has_login?: boolean; login_active?: boolean; role?: string | null };
-type MemberDraft = Omit<CompanyMember, "id" | "user_id" | "has_login" | "login_active"> & { id?: string; user_id?: string | null; has_login?: boolean; login_enabled?: boolean; username?: string; new_password?: string; role?: "admin" | "department_head" | "user" };
+type CompanyUser = { id: string; name: string; position: string; department: string; email: string; phone: string; location: string; username: string | null; category_id: string; category: string; access: string; active: boolean; can_sign_in: boolean };
+type UserCategory = { id: string; name: string; access: string; access_label: string; limits: Record<string, string | number | boolean>; is_default: boolean; users: number };
+type UserDraft = { id?: string; name: string; position: string; department: string; email: string; phone: string; location: string; category_id: string; username: string; password: string; active: boolean };
+type CategoryDraft = { id?: string; name: string; access: string; limits: string; is_default: boolean };
 
 const initialProfile: Profile = { name: "", legalName: "", registration: "", country: "MY", businessType: "", businessActivity: "", website: "", email: "", phone: "", headquarters: "", billingAddress: "", currency: "MYR", taxStatus: "", tin: "", paymentTerms: "" };
-const emptyMember: MemberDraft = { name: "", position: "", department: "", email: "", phone: "", location: "", login_enabled: false, username: "", new_password: "", role: "user" };
+const emptyUser: UserDraft = { name: "", position: "", department: "", email: "", phone: "", location: "", category_id: "", username: "", password: "", active: true };
+const emptyCategory: CategoryDraft = { name: "", access: "user", limits: "", is_default: false };
+const limitsText = (limits: UserCategory["limits"]) => Object.entries(limits).map(([key, value]) => `${key}=${value}`).join(", ");
+/** "max_discount_pct=8, can_export=true" -> { max_discount_pct: 8, can_export: true }; an empty value removes the limit. */
+function parseLimits(text: string, old: UserCategory["limits"] = {}) {
+  const next: Record<string, string | number | boolean | null> = Object.fromEntries(Object.keys(old).map((key) => [key, null]));
+  for (const part of text.split(/[,\n]+/).map((p) => p.trim()).filter(Boolean)) {
+    const [key, ...rest] = part.split("=");
+    const value = rest.join("=").trim();
+    next[key.trim()] = value === "" ? null : value === "true" ? true : value === "false" ? false : Number.isFinite(Number(value)) ? Number(value) : value;
+  }
+  return next;
+}
 const profileSections: { title: string; description: string; fields: { key: keyof Profile; label: string; hint: string }[] }[] = [
   { title: "Business identity", description: "Who you are and what you do", fields: [
     { key: "name", label: "Company name", hint: "Trading name" }, { key: "legalName", label: "Legal name", hint: "Registered name, if different" },
@@ -227,45 +241,8 @@ function recordProfile(profile: Profile, input: string): { profile: Profile; rec
   return { profile: next, recorded: null };
 }
 
-function recordMember(current: MemberDraft, input: string) {
-  const next = { ...current };
-  let matched = false;
-  for (const piece of input.split(/[;\n]+/)) {
-    const field = piece.match(/^\s*(name|position|job title|department|email|phone|location)\s*:\s*(.+?)\s*$/i);
-    if (!field) continue;
-    const key = ({ "job title": "position" } as Record<string, "name" | "position" | "department" | "email" | "phone" | "location">)[field[1].toLowerCase()] || field[1].toLowerCase() as "name" | "position" | "department" | "email" | "phone" | "location";
-    next[key] = field[2].trim();
-    matched = true;
-  }
-  if (!matched) {
-    const email = input.match(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/)?.[0];
-    const phone = input.match(/(?:phone|mobile|tel)\s*(?:is|:)?\s*([+\d][\d\s()-]{5,})/i)?.[1] || input.match(/^\s*(\+?[\d\s()-]{7,})\s*$/)?.[1];
-    const labelled = input.match(/^(?:my |our )?(name|position|job title|department|location)\s*(?:is|:)?\s+(.+)$/i);
-    if (email) { next.email = email; matched = true; }
-    if (phone) { next.phone = phone.trim(); matched = true; }
-    if (labelled) {
-      const key = labelled[1].toLowerCase() === "job title" ? "position" : labelled[1].toLowerCase() as "name" | "position" | "department" | "location";
-      next[key] = labelled[2].trim();
-      matched = true;
-    }
-  }
-  if (!matched && input.trim() && !input.includes("?")) {
-    const key = (["name", "position", "department"] as const).find((field) => !next[field]);
-    if (key) next[key] = input.trim();
-  }
-  return next;
-}
-
-function hasMemberContact(member: Omit<CompanyMember, "id">) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(member.email.trim()) || member.phone.replace(/\D/g, "").length >= 7;
-}
-
-function nextMemberQuestion(member: Omit<CompanyMember, "id">) {
-  if (!member.name) return "What is their name?";
-  if (!member.position) return `What is ${member.name}'s position?`;
-  if (!member.department) return `Which department does ${member.name} work in?`;
-  if (!hasMemberContact(member)) return `What is ${member.name}'s work email or phone?`;
-  return null;
+function hasContact(person: { email: string; phone: string }) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(person.email.trim()) || person.phone.replace(/\D/g, "").length >= 7;
 }
 
 function OnboardingPanel({ profile, setProfile, doneCount, essentialCount, onSave, onNavigate }: {
@@ -296,16 +273,20 @@ function OnboardingPanel({ profile, setProfile, doneCount, essentialCount, onSav
   </aside>;
 }
 
-function PeoplePanel({ members, draft, setDraft, onSave, onNavigate, onNotice, isAdmin }: {
-  members: CompanyMember[];
-  draft: MemberDraft;
-  setDraft: React.Dispatch<React.SetStateAction<MemberDraft>>;
+function PeoplePanel({ users, categories, draft, setDraft, onSave, onSaveCategory, onDeleteCategory, onNavigate, onNotice, isSuperadmin }: {
+  users: CompanyUser[];
+  categories: UserCategory[];
+  draft: UserDraft;
+  setDraft: React.Dispatch<React.SetStateAction<UserDraft>>;
   onSave: (event: FormEvent) => void;
+  onSaveCategory: (draft: CategoryDraft) => Promise<void>;
+  onDeleteCategory: (id: string) => Promise<void>;
   onNavigate: () => void;
   onNotice: (message: string) => void;
-  isAdmin: boolean;
+  isSuperadmin: boolean;
 }) {
   const vcardInput = useRef<HTMLInputElement>(null);
+  const [categoryDraft, setCategoryDraft] = useState<CategoryDraft | null>(null);
   const importVcard = async (file?: File) => {
     if (!file) return;
     const content = await file.text();
@@ -316,32 +297,52 @@ function PeoplePanel({ members, draft, setDraft, onSave, onNavigate, onNotice, i
     onNotice("Contact card loaded. Review the details, then save.");
     if (vcardInput.current) vcardInput.current.value = "";
   };
+  const edit = (u: CompanyUser) => setDraft({ id: u.id, name: u.name, position: u.position, department: u.department, email: u.email, phone: u.phone, location: u.location, category_id: u.category_id, username: u.username || "", password: "", active: u.active });
+  const signIn = (u: CompanyUser) => !u.active ? "Disabled" : u.can_sign_in ? `Signs in as ${u.username}` : "On record · cannot sign in";
   return <aside className="demo-side">
     <div className="demo-panel people-panel">
       <div className="demo-panel-kicker"><Icon name="users" size={16}/> ONBOARDING · STEP 02</div>
-      <div className="demo-people-title"><div><h2>People & access</h2><p>Manage your internal team details in one place. CRM customer contacts stay separate.</p></div><span>{members.length} saved</span></div>
-      <div className="demo-person-list">{members.length ? members.map((member) => <div className="demo-person-card" key={member.id}><span className="demo-person-avatar">{member.name.split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase()}</span><div><strong>{member.name}</strong><span>{[member.position, member.department].filter(Boolean).join(" · ")}</span><small>{member.email || member.phone}{member.location ? ` · ${member.location}` : ""}</small><small className="demo-person-access">{member.has_login ? `Login: ${member.username}${member.login_active ? " · active" : " · disabled"}` : "Contact-only · no login"}</small></div><button type="button" className="demo-person-edit" disabled={!isAdmin && !member.member_id} onClick={() => setDraft({ id: member.member_id || undefined, user_id: member.user_id, name: member.name, position: member.position, department: member.department, email: member.email, phone: member.phone, location: member.location, login_enabled: Boolean(member.has_login && member.login_active), username: member.username || "", new_password: "", role: member.role === "admin" || member.role === "department_head" ? member.role : "user" })}>Edit</button></div>) : <div className="demo-person-empty"><Icon name="users" size={23}/><strong>No company people recorded yet</strong><span>Share a contact through chat, the form, or a vCard.</span></div>}</div>
-      <div className="demo-person-form-heading"><div><strong>Share a company contact</strong><span>Start with a key person. Add others any time.</span></div><input ref={vcardInput} type="file" accept=".vcf,text/vcard" hidden onChange={(event) => void importVcard(event.target.files?.[0])}/><button type="button" onClick={() => vcardInput.current?.click()}><Icon name="upload" size={14}/> Import .vcf</button></div>
-      <form className="demo-person-form" onSubmit={onSave}>
-        <label>Full name<input required value={draft.name} onChange={(event) => setDraft((old) => ({ ...old, name: event.target.value }))} placeholder="e.g. Maya Tan"/></label>
-        <label>Position<input required value={draft.position} onChange={(event) => setDraft((old) => ({ ...old, position: event.target.value }))} placeholder="e.g. Operations Manager"/></label>
-        <label>Department<input required value={draft.department} onChange={(event) => setDraft((old) => ({ ...old, department: event.target.value }))} placeholder="e.g. Operations"/></label>
-        <label>Location<input value={draft.location} onChange={(event) => setDraft((old) => ({ ...old, location: event.target.value }))} placeholder="HQ or branch (optional)"/></label>
-        <label>Work email<input type="email" value={draft.email} onChange={(event) => setDraft((old) => ({ ...old, email: event.target.value }))} placeholder="maya@company.com"/></label>
-        <label>Work phone<input value={draft.phone} onChange={(event) => setDraft((old) => ({ ...old, phone: event.target.value }))} placeholder="+60 ..."/></label>
-        <p>Provide at least one work email or phone.</p>
-        {isAdmin && <fieldset className="demo-person-access-form"><legend>Workspace login (optional)</legend><label><input type="checkbox" checked={Boolean(draft.login_enabled)} onChange={(event) => setDraft((old) => ({ ...old, login_enabled: event.target.checked }))}/> Enable login for this person</label>{draft.login_enabled && <><label>Username<input autoComplete="username" value={draft.username || ""} onChange={(event) => setDraft((old) => ({ ...old, username: event.target.value }))} placeholder="e.g. maya.tan"/></label><label>New password<input type="password" autoComplete="new-password" value={draft.new_password || ""} onChange={(event) => setDraft((old) => ({ ...old, new_password: event.target.value }))} placeholder={draft.id ? "Leave blank to keep current password" : "At least 4 characters"}/></label><label>Role<select value={draft.role || "user"} onChange={(event) => setDraft((old) => ({ ...old, role: event.target.value as "admin" | "department_head" | "user" }))}><option value="user">User</option><option value="department_head">Department head</option><option value="admin">Superadmin</option></select></label></>}</fieldset>}
-        <button className="demo-primary" type="submit"><Icon name="plus" size={16}/> {draft.id ? "Update person" : "Save person"}</button>
-      </form>
+      <div className="demo-people-title"><div><h2>Users</h2><p>Everyone in your company, one record each. Their category sets what they may do; CRM customer contacts stay separate.</p></div><span>{users.length} users</span></div>
+      <div className="demo-person-list">{users.length ? users.map((u) => <div className="demo-person-card" key={u.id}><span className="demo-person-avatar">{u.name.split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase()}</span><div><strong>{u.name}</strong><span>{[u.category, u.position, u.department].filter(Boolean).join(" · ")}</span><small>{u.email || u.phone}{u.location ? ` · ${u.location}` : ""}</small><small className="demo-person-access">{signIn(u)}</small></div>{isSuperadmin && <button type="button" className="demo-person-edit" onClick={() => edit(u)}>Edit</button>}</div>) : <div className="demo-person-empty"><Icon name="users" size={23}/><strong>No users recorded yet</strong><span>Share a contact through chat, the form, or a vCard.</span></div>}</div>
+      {isSuperadmin ? <>
+        <div className="demo-person-form-heading"><div><strong>{draft.id ? `Edit ${draft.name || "user"}` : "Add a user"}</strong><span>Start with a key person. Add others any time.</span></div><input ref={vcardInput} type="file" accept=".vcf,text/vcard" hidden onChange={(event) => void importVcard(event.target.files?.[0])}/><button type="button" onClick={() => vcardInput.current?.click()}><Icon name="upload" size={14}/> Import .vcf</button></div>
+        <form className="demo-person-form" onSubmit={onSave}>
+          <label>Full name<input required value={draft.name} onChange={(event) => setDraft((old) => ({ ...old, name: event.target.value }))} placeholder="e.g. Maya Tan"/></label>
+          <label>Category<select value={draft.category_id} onChange={(event) => setDraft((old) => ({ ...old, category_id: event.target.value }))}><option value="">Default ({categories.find((c) => c.is_default)?.name || "Staff"})</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.access_label}</option>)}</select></label>
+          <label>Position<input value={draft.position} onChange={(event) => setDraft((old) => ({ ...old, position: event.target.value }))} placeholder="e.g. Operations Manager"/></label>
+          <label>Department<input value={draft.department} onChange={(event) => setDraft((old) => ({ ...old, department: event.target.value }))} placeholder="e.g. Operations"/></label>
+          <label>Work email<input type="email" value={draft.email} onChange={(event) => setDraft((old) => ({ ...old, email: event.target.value }))} placeholder="maya@company.com"/></label>
+          <label>Work phone<input value={draft.phone} onChange={(event) => setDraft((old) => ({ ...old, phone: event.target.value }))} placeholder="+60 ..."/></label>
+          <label>Location<input value={draft.location} onChange={(event) => setDraft((old) => ({ ...old, location: event.target.value }))} placeholder="HQ or branch (optional)"/></label>
+          <p>Provide at least one work email or phone.</p>
+          <fieldset className="demo-person-access-form"><legend>Sign-in (optional)</legend>
+            <label>Username<input autoComplete="off" value={draft.username} onChange={(event) => setDraft((old) => ({ ...old, username: event.target.value }))} placeholder="e.g. maya.tan"/></label>
+            <label>{draft.id ? "New password" : "Password"}<input type="password" autoComplete="new-password" value={draft.password} onChange={(event) => setDraft((old) => ({ ...old, password: event.target.value }))} placeholder={draft.id ? "Leave blank to keep the current password" : "At least 4 characters"}/></label>
+            <label><input type="checkbox" checked={draft.active} onChange={(event) => setDraft((old) => ({ ...old, active: event.target.checked }))}/> Active (untick to disable this user)</label>
+          </fieldset>
+          {draft.id && <button type="button" className="demo-person-edit" onClick={() => setDraft(emptyUser)}>Cancel</button>}
+          <button className="demo-primary" type="submit"><Icon name="plus" size={16}/> {draft.id ? "Save user" : "Add user"}</button>
+        </form>
+        <div className="demo-person-form-heading"><div><strong>Categories</strong><span>A category is what its users may do: an access level and your limits, e.g. max_discount_pct=8.</span></div><button type="button" onClick={() => setCategoryDraft(emptyCategory)}><Icon name="plus" size={14}/> New category</button></div>
+        <div className="demo-person-list">{categories.map((c) => <div className="demo-person-card" key={c.id}><div><strong>{c.name}{c.is_default ? " · default" : ""}</strong><span>{c.access_label} · {c.users} user{c.users === 1 ? "" : "s"}</span><small>{limitsText(c.limits) || "No limits"}</small></div><button type="button" className="demo-person-edit" onClick={() => setCategoryDraft({ id: c.id, name: c.name, access: c.access, limits: limitsText(c.limits), is_default: c.is_default })}>Edit</button>{!c.is_default && c.users === 0 && <button type="button" className="demo-person-edit" onClick={() => void onDeleteCategory(c.id)}>Delete</button>}</div>)}</div>
+        {categoryDraft && <form className="demo-person-form" onSubmit={(event) => { event.preventDefault(); void onSaveCategory(categoryDraft).then(() => setCategoryDraft(null)).catch(() => {}); }}>
+          <label>Name<input required value={categoryDraft.name} onChange={(event) => setCategoryDraft({ ...categoryDraft, name: event.target.value })} placeholder="e.g. Sales"/></label>
+          <label>Access<select value={categoryDraft.access} onChange={(event) => setCategoryDraft({ ...categoryDraft, access: event.target.value })}><option value="user">User · acts for themselves</option><option value="department_head">Department head · their department</option><option value="superadmin">Superadmin · owns the company</option></select></label>
+          <label>Limits<input value={categoryDraft.limits} onChange={(event) => setCategoryDraft({ ...categoryDraft, limits: event.target.value })} placeholder="max_discount_pct=8"/></label>
+          <label><input type="checkbox" checked={categoryDraft.is_default} onChange={(event) => setCategoryDraft({ ...categoryDraft, is_default: event.target.checked })}/> New users get this category</label>
+          <button type="button" className="demo-person-edit" onClick={() => setCategoryDraft(null)}>Cancel</button>
+          <button className="demo-primary" type="submit">{categoryDraft.id ? "Save category" : "Add category"}</button>
+        </form>}
+      </> : <p className="demo-person-form-heading">Only a Superadmin can add or change users.</p>}
     </div>
-    <div className="demo-next-card"><span className="demo-next-icon"><Icon name="spark" size={20}/></span><div><strong>{members.length ? "Your team is on record" : "Add a key contact"}</strong><p>{members.length ? "Future tasks can refer to the right person and department." : "You can continue and add people later."}</p><button onClick={onNavigate}>Back to Home <Icon name="arrow" size={15}/></button></div></div>
+    <div className="demo-next-card"><span className="demo-next-icon"><Icon name="spark" size={20}/></span><div><strong>{users.length ? "Your team is on record" : "Add a key contact"}</strong><p>{users.length ? "Future tasks can refer to the right person and department." : "You can continue and add people later."}</p><button onClick={onNavigate}>Back to Home <Icon name="arrow" size={15}/></button></div></div>
   </aside>;
 }
 
 type DemoState = {
   profile: { company: Record<string, unknown>; readiness: { minimum_ready: boolean } };
-  members: Array<Record<string, unknown>>;
-  people?: Array<Record<string, unknown>>;
+  users: CompanyUser[];
+  categories: UserCategory[];
   customers: Array<Record<string, unknown>>;
   invoices: Array<Record<string, unknown>>;
 };
@@ -374,7 +375,7 @@ function profileFromDb(raw: Record<string, unknown>): Profile {
   };
 }
 
-type DemoUser = { id: string; username: string; display_name: string; role: string; tier: string };
+type DemoUser = { id: string; username: string; display_name: string; access: string; category: string; department?: string | null; limits?: Record<string, unknown> };
 
 export default function DemoPage({ initialArea = "home" }: { initialArea?: Area } = {}) {
   const requestedArea = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("area") as Area | null : null;
@@ -420,8 +421,9 @@ function DemoWorkspace({ user, initialArea = "home", onLogout }: { user: DemoUse
     });
   }, [area, lastUsedKey]);
   const [profile, setProfile] = useState<Profile>(initialProfile);
-  const [companyMembers, setCompanyMembers] = useState<CompanyMember[]>([]);
-  const [memberDraft, setMemberDraft] = useState<MemberDraft>(emptyMember);
+  const [companyUsers, setCompanyUsers] = useState<CompanyUser[]>([]);
+  const [categories, setCategories] = useState<UserCategory[]>([]);
+  const [userDraft, setUserDraft] = useState<UserDraft>(emptyUser);
   const [ready, setReady] = useState(false);
   const restoredSession = useRef(false);
   const profileRevision = useRef<number>(0);
@@ -452,11 +454,8 @@ function DemoWorkspace({ user, initialArea = "home", onLogout }: { user: DemoUse
     const data = await demoJson<DemoState>("/api/demo/state");
     profileRevision.current = Number(data.profile.company.revision || 0);
     setProfile(profileFromDb(data.profile.company));
-    const people = data.people || data.members;
-    setCompanyMembers(people.map((member) => ({ id: String(member.id || member.user_id), member_id: member.member_id ? String(member.member_id) : null, user_id: member.user_id ? String(member.user_id) : null, name: String(member.name || member.display_name || ""),
-      position: String(member.position || ""), department: String(member.department || ""), email: String(member.email || ""),
-      phone: String(member.phone || ""), location: String(member.location || ""), username: member.username ? String(member.username) : null,
-      has_login: Boolean(member.has_login), login_active: Boolean(member.login_active), role: member.role ? String(member.role) : null })));
+    setCompanyUsers(data.users);
+    setCategories(data.categories);
     setReady(true);
   };
 
@@ -518,18 +517,31 @@ function DemoWorkspace({ user, initialArea = "home", onLogout }: { user: DemoUse
     }
   };
 
-  const saveCompanyMember = async (event: FormEvent) => {
+  const isSuperadmin = user.access === "superadmin";
+  const saveUser = async (event: FormEvent) => {
     event.preventDefault();
-    const draft = Object.fromEntries(Object.entries(memberDraft).map(([key, value]) => [key, typeof value === "string" ? value.trim() : value])) as MemberDraft;
-    if (!hasMemberContact(draft)) { setNotice("Add a valid work email or phone for this person."); return; }
-    if (draft.login_enabled && !draft.id && !draft.new_password) { setNotice("Add a password when enabling a new login."); return; }
+    const draft = Object.fromEntries(Object.entries(userDraft).map(([key, value]) => [key, typeof value === "string" ? value.trim() : value])) as UserDraft;
+    if (!hasContact(draft)) { setNotice("Add a valid work email or phone for this person."); return; }
+    if (draft.password && !draft.username) { setNotice("A password needs a username."); return; }
     try {
-      const person = { id: draft.id, name: draft.name, position: draft.position, department: draft.department, email: draft.email, phone: draft.phone, location: draft.location,
-        ...(user.role === "admin" ? { username: draft.login_enabled ? draft.username : undefined, password: draft.new_password || undefined, login_enabled: draft.login_enabled, user_id: draft.user_id || undefined, role: draft.role } : {}) };
-      await demoJson("/api/demo/action", { action: "person", person, person_id: draft.id });
-      setMemberDraft(emptyMember); await loadState(); setNotice(`${draft.name} ${draft.id ? "updated" : "added"} to company people`);
-    } catch (error) { setNotice(error instanceof Error ? error.message : "Could not save company person"); }
+      const input = { id: draft.id, name: draft.name, position: draft.position, department: draft.department, email: draft.email, phone: draft.phone, location: draft.location,
+        active: draft.active, ...(draft.category_id ? { category: draft.category_id } : {}), ...(draft.username ? { username: draft.username } : {}), ...(draft.password ? { password: draft.password } : {}) };
+      await demoJson("/api/demo/action", { action: "user", user: input });
+      setUserDraft(emptyUser); await loadState(); setNotice(`${draft.name} ${draft.id ? "updated" : "added"}`);
+    } catch (error) { setNotice(error instanceof Error ? error.message : "Could not save user"); }
   };
+  const saveCategory = async (draft: CategoryDraft) => {
+    try {
+      const old = categories.find((c) => c.id === draft.id)?.limits;
+      await demoJson("/api/demo/action", { action: "category", category: { id: draft.id, name: draft.name.trim(), access: draft.access, limits: parseLimits(draft.limits, old), is_default: draft.is_default } });
+      await loadState(); setNotice(`Category ${draft.name.trim()} saved`);
+    } catch (error) { setNotice(error instanceof Error ? error.message : "Could not save category"); throw error; }
+  };
+  const deleteCategory = async (id: string) => {
+    try { await demoJson("/api/demo/action", { action: "delete_category", id }); await loadState(); setNotice("Category deleted"); }
+    catch (error) { setNotice(error instanceof Error ? error.message : "Could not delete category"); }
+  };
+
 
   const displayName = user.display_name || user.username;
   const recentChats = studio.sessions.filter(session => !chatSearch || (session.title || "Chat session").toLowerCase().includes(chatSearch.toLowerCase())).slice(0, 5);
@@ -572,14 +584,14 @@ function DemoWorkspace({ user, initialArea = "home", onLogout }: { user: DemoUse
         <nav aria-label="Workspace sections">{groups.filter(group => groupAreas(group).length || groupLinks(group).length).map(groupButton)}</nav>
       </div>
       <div className="demo-recent-chats"><div className="demo-rail-label">RECENT CHATS</div>{recentChats.map(session => <button key={session.id} className={studio.sessionId === session.id ? "active" : ""} disabled={studio.loading} onClick={() => { setArea("home"); studio.openSession(session.id); }}>{session.title || "Chat session"}</button>)}{!recentChats.length && <p>{chatSearch ? "No matching chats" : "Your conversations will appear here."}</p>}</div>
-      <div className="demo-rail-bottom"><span className="demo-profile-avatar">{displayName.slice(0, 1).toUpperCase()}</span><div title={`${displayName} · ${user.role}`}><strong>{displayName}</strong><small>{user.role} · Your workspace</small></div><button aria-label="Sign out" title="Sign out" disabled={loggingOut} onClick={() => void logout()}><Icon name="logout" size={15}/></button></div>
+      <div className="demo-rail-bottom"><span className="demo-profile-avatar">{displayName.slice(0, 1).toUpperCase()}</span><div title={`${displayName} · ${user.category}`}><strong>{displayName}</strong><small>{user.category} · Your workspace</small></div><button aria-label="Sign out" title="Sign out" disabled={loggingOut} onClick={() => void logout()}><Icon name="logout" size={15}/></button></div>
     </aside>
 
     <main className="demo-main">
       <header className="demo-topbar">{pageTabs.length > 1 ? <nav className="demo-group-tabs" aria-label={`${currentGroup.label} pages`}>{pageTabs.map(tab => <button key={tab.key} className={tab.active ? "active" : ""} aria-current={tab.active ? "page" : undefined} onClick={tab.open}>{tab.label}</button>)}</nav> : <div className="demo-breadcrumb">{area === "home" ? <span className="demo-assistant-pill"><Icon name="spark" size={18}/><strong>e Assistant</strong><span className={`demo-connection${studio.loading ? " working" : ""}`} role="status">{studio.loading ? "Working…" : ready && studio.agents.length ? "Connected" : "Connecting…"}</span></span> : <><span className="demo-workspace-name">Your workspace</span><span>/</span><strong>{sectionTitle}</strong></>}</div>}<div className="demo-top-actions"><button className="demo-new-chat" disabled={studio.loading || !studio.agents.length} onClick={() => void newChat()}><Icon name="plus" size={14}/> New chat</button><button className="demo-mobile-logout" aria-label="Sign out" disabled={loggingOut} onClick={() => void logout()}><Icon name="logout" size={16}/></button></div></header>
       <div className="demo-content">
         {area !== "home" && <div className="demo-heading"><div><div className="demo-eyebrow">{area === "schedules" ? "SCHEDULED WORK" : logArea ? "WORKSPACE INSIGHTS" : area === "onboarding" ? "STEP 01 · GETTING STARTED" : area === "people" ? "STEP 02 · KNOW YOUR TEAM" : area === "calendar" ? "LIVE COMPANY SIGNALS" : area === "expenses" ? "RECEIPTS TO REPORT" : area === "procurement" ? "BUY WITH CONFIDENCE" : area === "research" ? "COMPANY INTELLIGENCE" : "STEP 03 · EXPLORE CAPABILITIES"}</div><h1>{area === "schedules" ? "Scheduled work" : logArea ? logHeadings[logArea].title : area === "onboarding" ? "Set up your workspace" : area === "people" ? "Meet your company people" : area === "calendar" ? "One calendar for every date" : area === "expenses" ? "Claims, grouped by cut-off" : area === "procurement" ? "Quotes, orders, deliveries, bills" : area === "research" ? "Company research library" : "Make work happen"}</h1><p>{area === "schedules" ? "Manage AI jobs, reminders, and cron schedules. Check next runs and execution history." : logArea ? logHeadings[logArea].description : area === "onboarding" ? "Tell the assistant about your business and watch your profile take shape." : area === "people" ? "Share a key contact, their position and department, so future work reaches the right person." : area === "calendar" ? "The Calendar AI reads your company records and keeps the important dates together." : area === "expenses" ? "File a receipt, and the Expenses Clerk groups every claim into the month’s submission and prepares the report." : area === "procurement" ? "Record what suppliers send, draft purchase orders, log deliveries, and check every invoice against the order before paying." : area === "research" ? "Evidence-backed company dossiers, web verification, and published intelligence reports." : "Create records and see the invoice database update instantly."}</p></div></div>}
-        {logArea ? <ObservabilityPanel area={logArea} isAdmin={user.role === "admin"}/> : area === "schedules" ? <SchedulesPanel user={user}/> : area === "calendar" ? <CalendarPanel/> : area === "expenses" ? <ExpensesPanel user={user} onNotice={setNotice}/> : area === "procurement" ? <ProcurementPanel user={user} onNotice={setNotice}/> : area === "research" ? <ResearchPanel user={user} onNotice={setNotice}/> : <div className={`demo-layout${area === "home" ? " demo-home-layout" : ""}`}>
+        {logArea ? <ObservabilityPanel area={logArea} isAdmin={isSuperadmin}/> : area === "schedules" ? <SchedulesPanel user={user}/> : area === "calendar" ? <CalendarPanel/> : area === "expenses" ? <ExpensesPanel user={user} onNotice={setNotice}/> : area === "procurement" ? <ProcurementPanel user={user} onNotice={setNotice}/> : area === "research" ? <ResearchPanel user={user} onNotice={setNotice}/> : <div className={`demo-layout${area === "home" ? " demo-home-layout" : ""}`}>
           <section className={`demo-chat-card${studio.history.length === 0 ? " is-empty" : ""}`} aria-label={`${area} chat`}>
             <div className={`demo-card-head${studio.loading ? " is-working" : ""}`}>
               <div className="demo-agent-identity">
@@ -589,7 +601,7 @@ function DemoWorkspace({ user, initialArea = "home", onLogout }: { user: DemoUse
                   <span role="status" title={studio.loading ? studio.liveStatus : undefined}><i aria-hidden="true"/> {studio.loading ? "Working…" : ready && studio.agents.length ? "Connected" : "Connecting…"}</span>
                 </div>
               </div>
-              <div className="demo-session-user-tag" title={`Chat session marked for ${user.display_name || user.username} (${user.role})`}>
+              <div className="demo-session-user-tag" title={`Chat session marked for ${user.display_name || user.username} (${user.category})`}>
                 <Icon name="user" size={13}/>
                 <span>{user.display_name || user.username}</span>
               </div>
@@ -611,7 +623,7 @@ function DemoWorkspace({ user, initialArea = "home", onLogout }: { user: DemoUse
                   ))}
                 </select>
               )}
-              <button className="demo-more" aria-label="About this demo" title="Live Document Intelligence" onClick={() => setNotice(`Chat session for ${user.display_name || user.username} (${user.role}). Chat uses ${"e"} through the agent pipeline.`)}>···</button>
+              <button className="demo-more" aria-label="About this demo" title="Live Document Intelligence" onClick={() => setNotice(`Chat session for ${user.display_name || user.username} (${user.category}). Chat uses ${"e"} through the agent pipeline.`)}>···</button>
             </div>
             <div className="demo-chat-scroll">{studio.history.length === 0 ? <div className="demo-welcome"><div className="demo-welcome-orb" aria-hidden="true"/><h1>Hello, {displayName.split(" ")[0]}<br/>How can I <span>help you today?</span></h1>{area !== "home" && <p>Share a little about your business, or upload a document.</p>}</div> : <div className="demo-chat-date">TODAY</div>}{studio.history.map((message, index) => <div className={`demo-message ${message.role}`} key={message.id ?? index}><div className="demo-message-avatar">{message.role === "assistant" ? <img src="/branding/e-logo.png" alt=""/> : (user.display_name || user.username).slice(0, 1).toUpperCase()}</div><div className="demo-message-body"><div className="demo-message-name">{message.role === "assistant" ? "e" : (user.display_name || user.username)}</div><div className="demo-bubble"><ChatCopy text={message.content || (message.streaming ? studio.liveStatus || "Working…" : "")} agentId={studio.selected.id} streaming={message.streaming} onOpen={(src, alt) => studio.setMedia({ src, alt })}/>{message.role === "assistant" && message.blocks?.filter((block) => block.type === "tool" || block.type === "note").map((block, blockIndex) => <div className="demo-agent-activity" key={blockIndex}>{block.type === "tool" ? `${block.running ? "Running" : "Used"} ${block.name}` : block.text}{block.type === "tool" && block.shared_files?.map((file) => <a href={file.url} key={file.id} target="_blank" rel="noopener noreferrer">{file.name}</a>)}</div>)}</div></div></div>)}{studio.error && <div className="demo-chat-error" role="alert">{studio.error}</div>}<div ref={chatEnd}/></div>
             {area === "onboarding" ? <div className="demo-suggestions"><span>TRY SAYING</span><button onClick={() => sendMessage("My company is Acme Studio")}>My company is Acme Studio</button><button onClick={() => sendMessage("My email is hello@acme.example")}>Add business email</button></div> : area === "people" ? <div className="demo-suggestions"><span>TRY SAYING</span><button onClick={() => sendMessage("Name: Maya Tan; Position: Operations Manager; Department: Operations; Email: maya@acme.example")}>Share example contact</button><button onClick={() => sendMessage("Name: Daniel Lee")}>Start with a name</button></div> : null}
@@ -619,8 +631,8 @@ function DemoWorkspace({ user, initialArea = "home", onLogout }: { user: DemoUse
             {area === "home" && studio.history.length === 0 && <div className="demo-suggestions">{areaOffered("onboarding", studio.agents) && <button onClick={() => setArea("onboarding")}>Set up my company</button>}{areaOffered("research", studio.agents) && <button onClick={() => setArea("research")}>Explore research</button>}{areaOffered("expenses", studio.agents) && <button onClick={() => setArea("expenses")}>Organize expenses</button>}</div>}
           </section>
 
-          {area === "onboarding" ? <OnboardingPanel profile={profile} setProfile={setProfile} doneCount={doneCount} essentialCount={essentialCount} onSave={(key, value) => { void saveProfile(key, value); }} onNavigate={() => setArea("people")}/> : area === "people" ? <PeoplePanel members={companyMembers} draft={memberDraft} setDraft={setMemberDraft} onSave={saveCompanyMember} onNavigate={() => setArea("home")} onNotice={setNotice} isAdmin={user.role === "admin"}/> : null}
-          {area === "people" && user.role === "admin" && <AgentAccessPanel onNotice={setNotice}/>}
+          {area === "onboarding" ? <OnboardingPanel profile={profile} setProfile={setProfile} doneCount={doneCount} essentialCount={essentialCount} onSave={(key, value) => { void saveProfile(key, value); }} onNavigate={() => setArea("people")}/> : area === "people" ? <PeoplePanel users={companyUsers} categories={categories} draft={userDraft} setDraft={setUserDraft} onSave={saveUser} onSaveCategory={saveCategory} onDeleteCategory={deleteCategory} onNavigate={() => setArea("home")} onNotice={setNotice} isSuperadmin={isSuperadmin}/> : null}
+          {area === "people" && isSuperadmin && <AgentAccessPanel onNotice={setNotice}/>}
         </div>}
       </div>
     </main>

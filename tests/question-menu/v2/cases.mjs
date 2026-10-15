@@ -119,7 +119,7 @@ export const SCRIPTS = [
   // ---- Company setup
   { id: 'cmp-q', turns: [
     r('CMP-Q1', 'admin', 'Is our company profile complete?', { needs: [A.onb], allowControl: true, ops: /get_onboarding_status|get_company_profile|get_company_setup/ }),
-    r('CMP-Q2', 'admin', 'Who is in the company team?', { needs: [A.onb], ops: /list_people|count_user_accounts/ }),
+    r('CMP-Q2', 'admin', 'Who is in the company team?', { needs: [A.onb], ops: /list_users/ }),
     r('CMP-Q3', 'admin', 'What must an invoice have before it can be issued?', { needs: [A.db], ops: /describe_schema|get_company_profile|get_onboarding_status|list_tax_codes/ })] },
   { id: 'cmp-r', turns: [
     w('CMP-R1', 'admin', 'Change the company address to 12 Jalan Test, 47400 Petaling Jaya, Selangor.', { needs: [A.onb], db: [{ t: 'di.company_profile', like: ['12 Jalan Test'], min: 1 }] }),
@@ -174,7 +174,7 @@ export const SCRIPTS = [
 
   // ---- Company research (slow). Serial in its own group.
   { id: 'res', chain: true, group: 'research', turns: [
-    r('RES-Q1', 'admin', 'What do we know about Greenleaf Sdn Bhd?', { needs: [A.res], ops: /dossier|find_customers|get_customer|list_people|research/ }),
+    r('RES-Q1', 'admin', 'What do we know about Greenleaf Sdn Bhd?', { needs: [A.res], ops: /dossier|find_customers|get_customer|list_users|research/ }),
     w('RES-R1', 'admin', 'Research Greenleaf Sdn Bhd, greenleaf.my, Petaling Jaya.', { needs: [A.res], ops: /research_company/ }),
     r('RES-Q2', 'admin', 'Show the sources for that dossier.', { needs: [A.res], inherits: true, ops: /get_company_dossier|replay_company_dossier/ }),
     w('RES-R2', 'admin', 'Research the projects and people at Greenleaf.', { needs: [A.res], ops: /research_company/ })] },

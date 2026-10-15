@@ -4,6 +4,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ensureUserSchema } from "../../server/user-schema.mjs";
 
 const SQL_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "sql");
 
@@ -39,8 +40,12 @@ export function pgliteAdapter(pglite) {
   };
 }
 
-/** Applies sql/*.sql once each, in name order, under an advisory lock. */
+/**
+ * Applies sql/*.sql once each, in name order, under an advisory lock. The host's one user
+ * schema (server/user-schema.mjs) comes first: DI reads users, it never keeps its own people.
+ */
 export async function migrate(db) {
+  await ensureUserSchema(db);
   await db.exec(`CREATE SCHEMA IF NOT EXISTS di;
     CREATE TABLE IF NOT EXISTS di.schema_migrations (id text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now());`);
   const files = (await readdir(SQL_DIR)).filter((f) => f.endsWith(".sql")).sort();

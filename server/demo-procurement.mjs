@@ -26,7 +26,7 @@ async function panelState(opts, who) {
     call("list_supplier_documents", { doc_type: "invoice", limit: 50 }), call("list_supplier_documents", { doc_type: "quotation", limit: 50 }),
     call("find_suppliers", { limit: 50 }),
   ]);
-  return { me: { username: who.username, role: who.role }, overview, pos: pos.pos, invoices: invoices.documents, quotations: quotations.documents, suppliers: suppliers.suppliers };
+  return { me: { username: who.username, access: who.access, category: who.category }, overview, pos: pos.pos, invoices: invoices.documents, quotations: quotations.documents, suppliers: suppliers.suppliers };
 }
 
 async function act(opts, who, body) {

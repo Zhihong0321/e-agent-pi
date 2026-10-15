@@ -18,6 +18,7 @@ import { expenseEvidenceModel, prepareExpenseDelegation } from "./delegated-atta
 import { publishFile, readSharedFile, sharedFileLocation } from "./shared-files.mjs";
 import { migrate, pgliteAdapter } from "../document_inteligence/core/db.mjs";
 import { seedTenant } from "../document_inteligence/core/seed.mjs";
+import { createTestUser } from "../document_inteligence/test/company-fixture.mjs";
 import { runTool, describeError } from "../document_inteligence/core/actions.mjs";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -36,8 +37,7 @@ const db = pgliteAdapter(pg);
 await migrate(db);
 const companyId = (await db.query("INSERT INTO di.tenant(name) VALUES ('Synthetic handoff evaluation') RETURNING id")).rows[0].id;
 await seedTenant(db, companyId);
-const who = { id: "handoff-eval", username: "handoff-eval", display_name: "Pipeline Test", role: "admin" };
-await db.query("INSERT INTO di.company_member(tenant_id,name,user_id,department) VALUES ($1,'Pipeline Test','handoff-eval','Test')", [companyId]);
+const who = await createTestUser(db, companyId, { id: "handoff-eval", username: "handoff-eval", name: "Pipeline Test", access: "superadmin", department: "Test" });
 const evidence = Array.from({ length: 7 }, (_, i) => ({ page: i + 1, merchant: `SYNTHETIC TAXI ${i + 1}`, amount: (i + 1) * 10 + 0.25, date: "2026-10-01" }));
 const browser = await chromium.launch({ headless: true, executablePath: (await findChromiumExecutable()) || undefined, args: ["--no-sandbox"] });
 let pdf;

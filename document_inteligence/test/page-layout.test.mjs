@@ -10,8 +10,8 @@ import { PAGES, loadLayout, resetLayout, resolveLayout, saveLayout, validateOver
 import { seedTenant } from "../core/seed.mjs";
 import { AGENTS, toolsFor } from "../core/tools.mjs";
 
-const ADMIN = { id: "u-admin", username: "admin", role: "admin" };
-const USER = { id: "u-aisyah", username: "aisyah", role: "user" };
+const ADMIN = { id: "u-admin", username: "admin", access: "superadmin" };
+const USER = { id: "u-aisyah", username: "aisyah", access: "user" };
 
 const rejects = async (promise, pattern) => {
   try {

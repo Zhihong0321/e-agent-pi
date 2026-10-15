@@ -19,10 +19,10 @@ import { readSharedFile, sharedFileLocation } from "../../server/shared-files.mj
 const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8ffff3f0005fe02fea7d6a4a30000000049454e44ae426082", "hex");
 
 const USERS = {
-  "tok-admin": { id: "u-admin", username: "admin", display_name: "Admin", role: "admin", email: null },
-  "tok-aisyah": { id: "u-aisyah", username: "aisyah", display_name: "Aisyah Rahman", role: "user", email: "aisyah@acme.test" },
-  "tok-daniel": { id: "u-daniel", username: "daniel", display_name: "Daniel Lee", role: "user", email: "daniel@acme.test" },
-  "tok-hana": { id: "u-hana", username: "hana", display_name: "Hana Ops", role: "department_head", department: "Ops", email: "hana@acme.test" },
+  "tok-admin": { id: "u-admin", username: "admin", display_name: "Admin", access: "superadmin", email: null },
+  "tok-aisyah": { id: "u-aisyah", username: "aisyah", display_name: "Aisyah Rahman", access: "user", email: "aisyah@acme.test" },
+  "tok-daniel": { id: "u-daniel", username: "daniel", display_name: "Daniel Lee", access: "user", email: "daniel@acme.test" },
+  "tok-hana": { id: "u-hana", username: "hana", display_name: "Hana Ops", access: "department_head", department: "Ops", email: "hana@acme.test" },
 };
 
 const rejects = async (promise, pattern) => {
@@ -43,7 +43,8 @@ async function setup() {
   const tenantB = await mk("B");
   await seedTenant(db, tenantA);
   await seedTenant(db, tenantB);
-  await db.query("INSERT INTO di.company_member (tenant_id, name, email, user_id, department) VALUES ($1, 'Aisyah Rahman', 'aisyah@acme.test', 'u-aisyah', 'Sales'), ($1, 'Daniel Lee', 'daniel@acme.test', 'u-daniel', 'Ops'), ($1, 'Priya Nair', 'priya@acme.test', NULL, 'Ops')", [tenantA]);
+  await db.query("SELECT ensure_user_categories($1)", [tenantA]);
+  await db.query("INSERT INTO users (id, company_tenant_id, category_id, display_name, email, department) SELECT v.id, $1, c.id, v.name, v.email, v.department FROM (VALUES ('u-aisyah', 'Aisyah Rahman', 'aisyah@acme.test', 'Sales'), ('u-daniel', 'Daniel Lee', 'daniel@acme.test', 'Ops'), ('u-priya', 'Priya Nair', 'priya@acme.test', 'Ops')) AS v(id, name, email, department) JOIN user_category c ON c.company_tenant_id = $1 AND c.is_default", [tenantA]);
   const dir = await mkdtemp(path.join(os.tmpdir(), "di-exp-"));
   const clock = { now: new Date("2026-10-02T04:00:00Z") }; // 2 Oct 2026, noon in Malaysia
   const deps = (tenantId) => ({
@@ -82,7 +83,7 @@ test("the role prompt stays small (the shared cap test stops at the first oversi
   const text = await readFile(new URL("../../agent/roles/di-expenses.md", import.meta.url), "utf8");
   assert.ok(text.length <= 4000, `di-expenses.md is ${text.length} chars; cap is 4000`);
   for (const tool of toolsFor("di-expenses")) {
-    if (tool.name === "list_company_members") continue;
+    if (tool.name === "list_users") continue;
     assert.ok(text.includes(`\`${tool.name}\``), `the role prompt never mentions ${tool.name}`);
   }
 });
@@ -114,20 +115,20 @@ test("expense claims", async (t) => {
     await rejects(runTool(deps(tenantA), { agent: "di-expenses", tool: "list_claims", args: {} }), /Sign-in required/);
     await rejects(runTool(deps(tenantA), { agent: "di-expenses", tool: "list_claims", args: { identity: "made-up" } }), /Sign-in required/);
     for (const [name, spec] of Object.entries(TOOLS)) {
-      if (!spec.agents.includes("di-expenses") || name === "list_company_members") continue;
+      if (!spec.agents.includes("di-expenses") || name === "list_users") continue;
       assert.equal(spec.identity, true, `${name} must resolve the signed-in user`);
     }
   });
 
   await t.test("settings and the current submission", async () => {
     const out = await admin("get_expense_settings");
-    assert.equal(out.me.role, "admin");
+    assert.equal(out.me.access, "superadmin");
     assert.equal(out.settings.cutoff_day, 10);
     assert.equal(out.current_submission.period_key, "2026-10");
     assert.equal(out.current_submission.days_left, 8);
     assert.equal(out.categories.length, 11);
     const user = await aisyah("get_expense_settings");
-    assert.equal(user.me.company_person.name, "Aisyah Rahman", "a login is linked to its company person");
+    assert.equal(user.me.name, "Aisyah Rahman", "the signed-in user is the claimant");
   });
 
   await t.test("files a claim from a chat attachment and keeps a durable receipt", async () => {
@@ -213,7 +214,7 @@ test("expense claims", async (t) => {
     const out = await admin("file_claim", claim({ merchant: "Toll", category: "transport", amount: 12.4, receipts: [await inbox("toll.png")], claimant: "priya@acme.test" }));
     assert.equal(out.claim.claimant.name, "Priya Nair");
     assert.equal(out.filed_on_behalf_of, "Priya Nair");
-    await rejects(admin("file_claim", claim({ amount: 3, no_receipt_reason: "x", claimant: "Nobody Here" })), /No company person matches/);
+    await rejects(admin("file_claim", claim({ amount: 3, no_receipt_reason: "x", claimant: "Nobody Here" })), /No user matches/);
     const viaName = await admin("file_claim", claim({ merchant: "Parking", category: "transport", amount: 4, no_receipt_reason: "ticket lost", claimant: "Aisyah Rahman" }));
     assert.equal(viaName.claim.claimant.user_id, "u-aisyah");
     assert.ok((await aisyah("list_claims", { query: "parking" })).claims.length === 1);
@@ -346,17 +347,17 @@ test("expense claims", async (t) => {
     await rejects(runTool(deps(tenantA), { agent: "di-records", tool: "list_claims", args: {} }), /not allowed/);
     await rejects(runTool(deps(tenantA), { agent: "di-expenses", tool: "find_customers", args: {} }), /not allowed/);
     await rejects(runTool(deps(tenantA), { agent: "di-expenses", tool: "issue_document", args: {} }), /not allowed/);
-    assert.ok(allowed("di-expenses", "list_company_members"));
+    assert.ok(allowed("di-expenses", "list_users"));
     assert.equal(AGENTS["di-expenses"].name, "Expenses Clerk");
     const names = toolsFor("di-expenses").map((tool) => tool.name).sort();
-    assert.deepEqual(names, ["claim_report", "close_monthly_submission", "export_claims", "file_claim", "get_claim", "get_expense_settings", "list_claims", "list_company_members", "list_monthly_submissions", "review_claim", "run_report", "set_expense_settings", "update_claim", "withdraw_claim"]);
+    assert.deepEqual(names, ["claim_report", "close_monthly_submission", "export_claims", "file_claim", "get_claim", "get_expense_settings", "list_claims", "list_monthly_submissions", "list_users", "review_claim", "run_report", "set_expense_settings", "update_claim", "withdraw_claim"]);
   });
 });
 
 test("the report renderer is pure and escapes everything", () => {
   const claims = [
-    { id: "1", number: "EXP-2026-0001", status: "approved", claimant: { name: "A <b>", email: "a@x.test", user_id: "u1", member_id: null }, expense_date: "2026-10-01", merchant: "<script>alert(1)</script>", category: "meals", description: "d & e", currency: "MYR", amount: 10, tax_amount: null, payment_method: "cash", submitted_at: "2026-10-02T04:00:00.000Z", reviewed_by: null, review_note: null, no_receipt_reason: null, submission: { period_key: "2026-10" }, receipts: [{ id: "r1", name: "r.png", mime: "image/png", bytes: 1, path: "/files/x/y.png" }] },
-    { id: "2", number: "EXP-2026-0002", status: "withdrawn", claimant: { name: "A <b>", email: null, user_id: "u1", member_id: null }, expense_date: "2026-10-01", merchant: "Gone", category: "meals", currency: "MYR", amount: 99, submitted_at: "2026-10-02T04:00:00.000Z", receipts: [], submission: { period_key: "2026-10" } },
+    { id: "1", number: "EXP-2026-0001", status: "approved", claimant: { name: "A <b>", email: "a@x.test", user_id: "u1" }, expense_date: "2026-10-01", merchant: "<script>alert(1)</script>", category: "meals", description: "d & e", currency: "MYR", amount: 10, tax_amount: null, payment_method: "cash", submitted_at: "2026-10-02T04:00:00.000Z", reviewed_by: null, review_note: null, no_receipt_reason: null, submission: { period_key: "2026-10" }, receipts: [{ id: "r1", name: "r.png", mime: "image/png", bytes: 1, path: "/files/x/y.png" }] },
+    { id: "2", number: "EXP-2026-0002", status: "withdrawn", claimant: { name: "A <b>", email: null, user_id: "u1" }, expense_date: "2026-10-01", merchant: "Gone", category: "meals", currency: "MYR", amount: 99, submitted_at: "2026-10-02T04:00:00.000Z", receipts: [], submission: { period_key: "2026-10" } },
   ];
   const sum = summariseSubmission(claims);
   assert.equal(sum.totals.claimed, 10, "withdrawn claims never count");

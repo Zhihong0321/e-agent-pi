@@ -18,7 +18,7 @@ const store = await import('./store.mjs');
 const dispatch = await import('./dispatch.mjs');
 const { setDigestKey } = await import('./contracts.mjs');
 
-const admin = { id: 'u-admin', username: 'admin', display_name: 'Admin', role: 'admin', active: true };
+const admin = { id: 'u-admin', username: 'admin', display_name: 'Admin', access: 'superadmin', active: true };
 
 async function makeDb() {
   if (!holder.pglite) holder.pglite = new PGlite();

@@ -57,8 +57,7 @@ CREATE TABLE IF NOT EXISTS di.expense_claim (
   tenant_id     uuid NOT NULL DEFAULT di.current_tenant() REFERENCES di.tenant(id),
   number        text NOT NULL,                       -- EXP-2026-0001, assigned at filing
   batch_id      uuid REFERENCES di.expense_batch(id),
-  claimant_user_id   text,                           -- host users.id when the claimant has a login
-  claimant_member_id uuid REFERENCES di.company_member(id),
+  claimant_user_id   text,                           -- users.id of the claimant
   claimant_name  text NOT NULL,                      -- snapshot: stays right if the person is renamed
   claimant_email text,
   expense_date  date NOT NULL,

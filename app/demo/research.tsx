@@ -102,7 +102,7 @@ export function ResearchPanel({
   onNotice,
   onRequestNew,
 }: {
-  user?: { id: string; username: string; display_name?: string; role: string };
+  user?: { id: string; username: string; display_name?: string; access: string };
   onNotice: (message: string) => void;
   onRequestNew?: () => void;
 }) {

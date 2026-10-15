@@ -311,8 +311,8 @@ export async function describe(tx, { agent = "di-expenses" } = {}, { who, sop } 
   if (!TARGETS[agent]) throw new DiError(`agent must be one of: ${Object.keys(TARGETS).join(", ")}`);
   const state = await readState(tx, sop, agent);
   const items = state.registry.items;
-  const departments = (await tx.query("SELECT department, count(*)::int AS people FROM di.company_member WHERE deleted_at IS NULL GROUP BY department ORDER BY department")).rows;
-  const unlinked = (await tx.query("SELECT count(DISTINCT lower(claimant_name))::int AS n FROM di.expense_claim WHERE claimant_member_id IS NULL AND deleted_at IS NULL")).rows[0].n;
+  const departments = (await tx.query("SELECT department, count(*)::int AS people FROM users WHERE company_tenant_id = di.current_tenant()::text GROUP BY department ORDER BY department")).rows;
+  const unlinked = (await tx.query("SELECT count(DISTINCT lower(claimant_name))::int AS n FROM di.expense_claim WHERE claimant_user_id IS NULL AND deleted_at IS NULL")).rows[0].n;
   return {
     target_agent: agent,
     vocabulary: {
@@ -332,7 +332,7 @@ export async function describe(tx, { agent = "di-expenses" } = {}, { who, sop } 
         period: "where.period is current | previous | YYYY-MM | all. period_basis submission = the monthly claim cycle (default), expense_date = the calendar month of the expense. Ask which the company means.",
         audience: "admin = admins only (default); scoped = anyone, but each person sees only their own claims",
         include_members: "with group_by [employee] only: also lists people who have no claims",
-        departments: "where.department matches a company person's department exactly (see facts.departments)",
+        departments: "where.department matches a user's department exactly (see facts.departments)",
       },
       cannot_do: [
         "new tables or columns, roles, permissions or tools",
@@ -350,7 +350,7 @@ export async function describe(tx, { agent = "di-expenses" } = {}, { who, sop } 
       managed: items,
       history: state.registry.history.map((h) => ({ n: h.n, at: h.at, by: h.by, kind: h.kind, summary: h.summary, undone: Boolean(h.undone) })),
     },
-    facts: { departments, claimants_not_linked_to_a_company_person: unlinked },
+    facts: { departments, claimants_not_linked_to_a_user: unlinked },
   };
 }
 

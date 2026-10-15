@@ -6,6 +6,7 @@
 //   * the page looks only; rules (required fields, categories, limits) stay in the policy tables.
 // An override is data from a closed vocabulary (show/hide, order, rename). Nothing here runs tenant code.
 import { DiError } from "./common.mjs";
+import { isSuperadmin } from "../../server/roles.mjs";
 
 const ID = /^[a-z][a-z0-9_]{0,31}$/;
 const MAX_LABEL = 40;
@@ -99,7 +100,7 @@ function pageDef(page, pages = PAGES) {
 
 function requireAdmin(who) {
   if (!who?.id) throw new DiError("Sign-in required to customize a page.");
-  if (who.role !== "admin") throw new DiError("Only an admin can customize this page.");
+  if (!isSuperadmin(who)) throw new DiError("Only an admin can customize this page.");
   return who;
 }
 

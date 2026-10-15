@@ -5,7 +5,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 const root = path.resolve(process.argv[3] || "dist");
-const user = { id: "preview-user", username: "judha", display_name: "Judha Maygustya", role: "admin", tier: "pro" };
+const user = { id: "preview-user", username: "judha", display_name: "Judha Maygustya", access: "superadmin", category: "Superadmin" };
 const sessions = [{ id: "recent-1", title: "Getting to know my company", userId: user.id, agentId: "orchestrator", engine: "pi", updatedAt: Date.now() }];
 const transcripts = new Map([["recent-1", [{ id: "old-message", role: "assistant", content: "Welcome back. Let’s work on your company profile." }]]]);
 const mime = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".svg": "image/svg+xml", ".webmanifest": "application/manifest+json", ".woff2": "font/woff2" };

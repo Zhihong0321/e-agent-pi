@@ -1,22 +1,30 @@
 import { z } from 'zod';
 
-const authorization = { admin_capability: z.string().describe('Current host-provided admin authorization from this turn') };
-const profile = {
-  username: z.string().optional(), display_name: z.string().optional(), password: z.string().optional(), role: z.enum(['superadmin', 'department_head', 'user', 'admin']).optional().describe('superadmin, department_head (needs a department) or user'), tier: z.string().optional(),
-  name: z.string().optional(), position: z.string().optional(), department: z.string().optional(), email: z.string().optional(), phone: z.string().optional(), location: z.string().optional(), notes: z.string().optional(),
-  login_enabled: z.boolean().optional(), active: z.boolean().optional(), user: z.string().optional(), user_id: z.string().optional(), person_id: z.string().uuid().optional(), member_id: z.string().uuid().optional(), id: z.string().uuid().optional(),
+// User tools. Users live in the host's one user table (server/user-schema.mjs); the host runs these
+// tools itself (server/user-service.mjs) with the signed-in user as the actor, so these specs only
+// name the tools and their inputs. Writes are Superadmin-only.
+const fields = {
+  position: z.string().optional(), department: z.string().optional().describe('Where the user works; a department head heads this department'),
+  email: z.string().optional(), phone: z.string().optional(), location: z.string().optional(), notes: z.string().optional(),
+  category: z.string().optional().describe('Category name or id from list_user_categories; it sets what the user may do'),
+  username: z.string().optional().describe('Sign-in username; with a password the user can sign in'),
+  password: z.string().optional().describe('Never repeat it back'),
+  active: z.boolean().optional().describe('false disables the user'),
 };
-const spec = (input, description) => ({
-  agents: ['di-onboarding', 'di-db'],
-  description: description || 'Manage login accounts. Requires current admin login and host-provided admin_capability. Never expose passwords or authorization in replies. Tier is metadata for future access planning. Disable accounts using active=false.',
-  input,
-  run: () => { throw new Error('User administration must run through the authenticated host'); },
-});
-export const USER_TOOLS = {
-  list_users: spec(authorization),
-  create_user: spec({ ...authorization, ...profile, username: z.string(), password: z.string() }),
-  update_user: spec({ ...authorization, ...profile, user: z.string().describe('User id or current username'), active: z.boolean().optional() }),
-  list_people: spec({ ...authorization }, 'List internal company people, including profile/contact details and redacted login status. Customer contacts are separate. Requires current admin login.'),
-  create_person: spec({ ...authorization, ...profile, name: z.string().optional() }, 'Create one internal company person. Login access is optional; enabling it requires username and password. Never expose passwords or authorization.'),
-  update_person: spec({ ...authorization, ...profile, person_id: z.string().uuid().optional(), member_id: z.string().uuid().optional(), id: z.string().uuid().optional() }, 'Update one internal company person or their optional login. Never expose passwords or authorization.'),
-};
+const hostOnly = () => { throw new Error('User tools run in the host'); };
+const spec = (agents, description, input) => ({ agents, description, input, run: hostOnly });
+
+/** @param {{ readers: string[], writers: string[] }} agents */
+export function userTools({ readers, writers }) {
+  return {
+    list_users: spec(readers, "List the company's users (one record per person) with category, access level, department, contact details and whether they can sign in. These are the company's own people, not customer contacts.", {}),
+    create_user: spec(writers, 'Superadmin only: add a user. A name is required; username + password let them sign in. Never invent credentials.', { name: z.string(), ...fields }),
+    update_user: spec(writers, 'Superadmin only: change one user by id from list_users; only the given fields change.', { id: z.string(), name: z.string().optional(), ...fields }),
+    list_user_categories: spec(writers, "List the company's user categories: name, access level, limits (e.g. max_discount_pct) and how many users each holds.", {}),
+    save_user_category: spec(writers, 'Superadmin only: create a category, or change one by id (name, access, limits, is_default).', {
+      id: z.string().optional(), name: z.string().optional(), access: z.enum(['superadmin', 'department_head', 'user']).optional(),
+      limits: z.record(z.string(), z.union([z.number(), z.string(), z.boolean(), z.null()])).optional(), is_default: z.boolean().optional(),
+    }),
+    delete_user_category: spec(writers, 'Superadmin only: delete an empty, non-default category by id.', { id: z.string() }),
+  };
+}

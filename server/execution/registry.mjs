@@ -5,7 +5,7 @@
 // The same definitions generate the worker tool manifest (JSON schemas), so an
 // authenticated frontend route and an agent tool call share one handler path.
 import { z } from 'zod';
-import { managePeopleCore, listPeople, countUserAccounts } from '../people-service.mjs';
+import { deleteCategoryCore, listCategories, listUsers, manageUserCore, saveCategoryCore } from '../user-service.mjs';
 import { updateCompanyProfile } from '../../document_inteligence/core/company.mjs';
 import {
   previewSchedule,
@@ -21,7 +21,7 @@ import { schedulableAgents } from '../scheduler/actions.mjs';
 import { getAgent } from '../catalog.mjs';
 import { clearAgentSop, getAgentSop, saveAgentSop } from '../sops.mjs';
 import { tenantFromRun } from '../tenancy.mjs';
-import { isSuperadmin, normalizeRole } from '../roles.mjs';
+import { isSuperadmin } from '../roles.mjs';
 import { ToolManifestEntrySchema } from './contracts.mjs';
 import { loadIntentRegistry, routeInputSchema } from '../routing.mjs';
 
@@ -121,88 +121,104 @@ function requireAdmin(ctx) {
   if (!isSuperadmin(ctx.user)) throw Object.assign(new Error('This operation needs a Superadmin login'), { execCode: 'PERMISSION_DENIED' });
 }
 
-const roleInput = z.enum(['superadmin', 'department_head', 'user', 'admin']).optional()
-  .describe('Superadmin only: superadmin, department_head (needs a department) or user')
-  .transform((value) => (value === undefined ? undefined : normalizeRole(value)));
+// ---------------------------------------------------------------- users family
 
-// ---------------------------------------------------------------- people family
+const userFields = {
+  position: z.string().max(300).optional(),
+  department: z.string().max(300).optional().describe('Where the user works; a department head heads this department'),
+  email: z.string().max(300).optional().describe('Business email'),
+  phone: z.string().max(300).optional(),
+  location: z.string().max(300).optional(),
+  notes: z.string().max(2000).optional(),
+  category: z.string().max(100).optional().describe('Category name or id from list_user_categories; it sets what the user may do'),
+  username: z.string().max(64).optional().describe('Sign-in username; with a password the user can sign in'),
+  password: z.string().max(256).optional().describe('Initial or new password; never repeat it back'),
+  active: z.boolean().optional().describe('false disables the user'),
+};
 
 registerOperation({
-  id: 'count_user_accounts',
-  description: 'Count the company people and their workspace logins for this company: total people, how many have logins, contact-only people, active logins and admins. Use it for questions like "how many accounts do we have".',
+  id: 'list_users',
+  description: 'List the company users (one record per person) with category, access level, department, contact details and whether they can sign in, plus a summary count. Use it for "how many users/accounts do we have" too.',
+  effect: 'read',
+  timeoutMs: 15_000,
+  access: { user: true },
+  inputSchema: z.object({}).describe('No arguments'),
+  async execute(ctx) {
+    return listUsers(ctx.companyId);
+  },
+});
+
+registerOperation({
+  id: 'create_user',
+  description: 'Superadmin only: add a user. A name is required; username + password let them sign in. Without a category they get the company default. Never invent credentials; ask.',
+  effect: 'local_write',
+  sameTx: true,
+  timeoutMs: 15_000,
+  access: { user: true },
+  inputSchema: z.object({ name: z.string().max(100).describe('Full name'), ...userFields }),
+  async execute(ctx, args) {
+    requireUser(ctx);
+    return manageUserCore(ctx.tx, 'create_user', args, { tenantId: ctx.companyId, actorUser: ctx.user });
+  },
+});
+
+registerOperation({
+  id: 'update_user',
+  description: 'Superadmin only: change one user by id (from list_users). Only the fields you pass change. Move a user to another category to change what they may do.',
+  effect: 'local_write',
+  sameTx: true,
+  timeoutMs: 15_000,
+  access: { user: true },
+  inputSchema: z.object({ id: z.string().min(1).describe('User id from list_users'), name: z.string().max(100).optional(), ...userFields }),
+  async execute(ctx, args) {
+    requireUser(ctx);
+    return manageUserCore(ctx.tx, 'update_user', args, { tenantId: ctx.companyId, actorUser: ctx.user });
+  },
+});
+
+registerOperation({
+  id: 'list_user_categories',
+  description: 'List the company user categories: name, access level (superadmin, department_head, user), limits such as max_discount_pct, which one new users get, and how many users each holds.',
   effect: 'read',
   timeoutMs: 10_000,
   access: { user: true },
   inputSchema: z.object({}).describe('No arguments'),
   async execute(ctx) {
-    return countUserAccounts(ctx.companyId);
+    return listCategories(ctx.companyId);
   },
 });
 
 registerOperation({
-  id: 'list_people',
-  description: 'List this company\'s people: contact-only people and people with workspace logins, with name, position, department, email, phone, location and login status.',
-  effect: 'read',
-  timeoutMs: 15_000,
-  access: { user: true },
-  inputSchema: z.object({}).describe('No arguments'),
-  async execute(ctx) {
-    return listPeople(ctx.companyId);
-  },
-});
-
-const personFields = {
-  name: z.string().max(300).optional().describe('Full name (required for a new person)'),
-  position: z.string().max(300).optional(),
-  department: z.string().max(300).optional(),
-  email: z.string().max(300).optional().describe('Business email'),
-  phone: z.string().max(300).optional(),
-  location: z.string().max(300).optional(),
-  notes: z.string().max(2000).optional(),
-};
-
-registerOperation({
-  id: 'create_person',
-  description: 'Add a company person (contact-only by default). Login access can only be enabled by an admin login and needs username AND password. Never invent credentials; ask the user.',
+  id: 'save_user_category',
+  description: 'Superadmin only: create a user category, or change one by id. access is superadmin, department_head (scoped to their department) or user. limits holds the owner business limits, e.g. {"max_discount_pct": 8}; a null value removes that limit.',
   effect: 'local_write',
   sameTx: true,
   timeoutMs: 15_000,
   access: { user: true },
   inputSchema: z.object({
-    ...personFields,
-    name: z.string().max(300).describe('Full name'),
-    username: z.string().max(64).optional().describe('Admin only: login username'),
-    password: z.string().max(256).optional().describe('Admin only: initial password; never repeat it back'),
-    role: roleInput,
-    login_enabled: z.boolean().optional(),
+    id: z.string().optional().describe('Category id to change; omit to create'),
+    name: z.string().max(100).optional(),
+    access: z.enum(['superadmin', 'department_head', 'user']).optional(),
+    limits: z.record(z.string(), z.union([z.number(), z.string(), z.boolean(), z.null()])).optional(),
+    is_default: z.boolean().optional().describe('true: new users get this category'),
   }),
   async execute(ctx, args) {
     requireUser(ctx);
-    if (args.username !== undefined || args.password !== undefined) requireAdmin(ctx);
-    return managePeopleCore(ctx.tx, 'create_person', args, { tenantId: ctx.companyId, actorUser: ctx.user });
+    return saveCategoryCore(ctx.tx, args, { tenantId: ctx.companyId, actorUser: ctx.user });
   },
 });
 
 registerOperation({
-  id: 'update_person',
-  description: 'Update one company person by person_id (from list_people): contact fields, and admin-only login fields (username, password, role, active). Changing an email or phone to one that already exists is refused.',
+  id: 'delete_user_category',
+  description: 'Superadmin only: delete an empty, non-default user category by id. Move its users first.',
   effect: 'local_write',
   sameTx: true,
   timeoutMs: 15_000,
   access: { user: true },
-  inputSchema: z.object({
-    ...personFields,
-    person_id: z.string().min(1).describe('The person to update, from list_people'),
-    username: z.string().max(64).optional(),
-    password: z.string().max(256).optional().describe('Admin only; never repeat it back'),
-    role: roleInput,
-    active: z.boolean().optional().describe('Admin only: disable login with false'),
-    login_enabled: z.boolean().optional(),
-  }),
+  inputSchema: z.object({ id: z.string().min(1).describe('Category id from list_user_categories') }),
   async execute(ctx, args) {
     requireUser(ctx);
-    if (args.username !== undefined || args.password !== undefined || args.active !== undefined || args.role !== undefined) requireAdmin(ctx);
-    return managePeopleCore(ctx.tx, 'update_person', args, { tenantId: ctx.companyId, actorUser: ctx.user });
+    return deleteCategoryCore(ctx.tx, args, { tenantId: ctx.companyId, actorUser: ctx.user });
   },
 });
 

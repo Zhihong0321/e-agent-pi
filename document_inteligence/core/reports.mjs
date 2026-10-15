@@ -186,15 +186,15 @@ export async function executeReport(tx, spec, { month, who, now = new Date() }) 
   const conds = ["c.deleted_at IS NULL", "c.status <> 'withdrawn'"];
   if (spec.where.status) conds.push(`c.status = ANY(${arg(spec.where.status)}::text[])`);
   if (spec.where.category) conds.push(`c.category = ANY(${arg(spec.where.category)}::text[])`);
-  if (spec.where.department) conds.push(`lower(m.department) = ANY(${arg(spec.where.department.map((d) => d.toLowerCase()))}::text[])`);
+  if (spec.where.department) conds.push(`lower(u.department) = ANY(${arg(spec.where.department.map((d) => d.toLowerCase()))}::text[])`);
   if (period && spec.period_basis === "submission") conds.push(`b.period_key = ${arg(period)}`);
   if (period && spec.period_basis === "expense_date") conds.push(`c.expense_date >= ${arg(`${period}-01`)}::date AND c.expense_date < ${arg(`${addMonths(period, 1)}-01`)}::date`);
   const scope = scopeClause(who, null, values.length + 1);
   values.push(...scope.values);
   const loaded = (await tx.query(
-    `SELECT c.number, c.status, c.category, c.amount, c.tax_amount, c.expense_date, c.claimant_name, c.claimant_user_id, c.claimant_member_id, c.custom, b.period_key, m.department
+    `SELECT c.number, c.status, c.category, c.amount, c.tax_amount, c.expense_date, c.claimant_name, c.claimant_user_id, c.custom, b.period_key, u.department
        FROM di.expense_claim c JOIN di.expense_batch b ON b.id = c.batch_id
-       LEFT JOIN di.company_member m ON m.id = c.claimant_member_id AND m.deleted_at IS NULL
+       LEFT JOIN users u ON u.id = c.claimant_user_id AND u.company_tenant_id = di.current_tenant()::text
       WHERE ${conds.join(" AND ")}${scope.sql} ORDER BY c.expense_date, c.number LIMIT ${REPORT_LIMITS.rows + 1}`,
     values,
   )).rows;
@@ -202,14 +202,14 @@ export async function executeReport(tx, spec, { month, who, now = new Date() }) 
   const rows = loaded.slice(0, REPORT_LIMITS.rows).map((r) => ({
     number: r.number, status: r.status, category: r.category, amount: Number(r.amount), tax_amount: r.tax_amount == null ? null : Number(r.tax_amount),
     expense_date: r.expense_date instanceof Date ? r.expense_date.toISOString().slice(0, 10) : String(r.expense_date).slice(0, 10),
-    claimant_name: r.claimant_name, claimant_key: r.claimant_member_id || r.claimant_user_id || String(r.claimant_name).toLowerCase(),
+    claimant_name: r.claimant_name, claimant_key: r.claimant_user_id || String(r.claimant_name).toLowerCase(),
     department: r.department ?? null, custom: r.custom ?? {}, period_key: r.period_key,
   }));
 
   let members = [];
   if (spec.include_members && isAdmin(who)) {
     const dept = spec.where.department?.map((d) => d.toLowerCase());
-    members = (await tx.query("SELECT id, name, department FROM di.company_member WHERE deleted_at IS NULL ORDER BY name")).rows
+    members = (await tx.query("SELECT id, display_name AS name, department FROM users WHERE company_tenant_id = di.current_tenant()::text ORDER BY display_name")).rows
       .filter((p) => !dept || dept.includes(String(p.department ?? "").toLowerCase()))
       .map((p) => ({ key: p.id, name: p.name, department: p.department }));
   }

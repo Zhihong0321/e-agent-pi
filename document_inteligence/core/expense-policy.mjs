@@ -5,6 +5,7 @@
 // A claim also carries a free `custom` bag (field values) and each receipt a `kind` (receipt,
 // route_map, ...). The rules are the closed vocabulary in workflows.mjs; nothing here runs tenant code.
 import { DiError } from "./common.mjs";
+import { isSuperadmin } from "../../server/roles.mjs";
 import { evaluate, KIND_KEY } from "./workflows.mjs";
 
 export const POLICY_DOC_TYPE = "expense_claim";
@@ -47,7 +48,7 @@ export const reportsOf = (settings) => (Array.isArray(settings?.custom?.reports)
 /** What `who` may run: admins every report, everyone else only the ones scoped to their own claims. */
 export const availableReports = (settings, who) =>
   reportsOf(settings)
-    .filter((r) => who?.role === "admin" || r.audience === "scoped")
+    .filter((r) => isSuperadmin(who) || r.audience === "scoped")
     .map((r) => ({ slug: r.slug, title: r.title, audience: r.audience }));
 
 // ---------------------------------------------------------------- policy

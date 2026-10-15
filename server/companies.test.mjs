@@ -11,7 +11,7 @@ mock.module('./db.mjs', {
 });
 const { ensureUsers, loginUser } = await import('./users.mjs');
 const { createCompany, listCompanies, companiesWithoutSuperadmin } = await import('./companies.mjs');
-const { managePeopleCore } = await import('./people-service.mjs');
+const { manageUserCore } = await import('./user-service.mjs');
 
 async function makeDb() {
   const pglite = new PGlite();
@@ -46,7 +46,7 @@ async function inTx(pool, tenantId, action, input, context) {
   try {
     await client.query('BEGIN');
     await client.query("SELECT set_config('di.tenant_id',$1,true)", [tenantId]);
-    const result = await managePeopleCore(client, action, input, context);
+    const result = await manageUserCore(client, action, input, context);
     await client.query('COMMIT');
     return result;
   } catch (error) {
@@ -57,15 +57,17 @@ async function inTx(pool, tenantId, action, input, context) {
   }
 }
 
-const platformActor = { id: 'platform', role: 'admin', active: true, username: 'platform' };
+const platformActor = { id: 'platform', access: 'superadmin', active: true, username: 'platform' };
 
 test('a new company comes with its Superadmin and the company agents only', async () => {
   const pool = await makeDb();
   const made = await createCompany({ name: 'Alpha Sdn Bhd', username: 'Alpha-Admin', password: 'correct horse' }, pool);
   assert.match(made.tenantId, /^[0-9a-f-]{36}$/);
   assert.equal(made.username, 'alpha-admin');
-  const user = (await pool.query('SELECT role, active, company_tenant_id FROM users WHERE id=$1', [made.userId])).rows[0];
-  assert.deepEqual([user.role, user.active, user.company_tenant_id], ['admin', true, made.tenantId]);
+  const user = (await pool.query('SELECT c.name, c.access, u.active, u.company_tenant_id FROM users u JOIN user_category c ON c.id=u.category_id WHERE u.id=$1', [made.userId])).rows[0];
+  assert.deepEqual([user.name, user.access, user.active, user.company_tenant_id], ['Superadmin', 'superadmin', true, made.tenantId]);
+  const categories = (await pool.query('SELECT name FROM user_category WHERE company_tenant_id=$1 ORDER BY name', [made.tenantId])).rows.map((row) => row.name);
+  assert.deepEqual(categories, ['Department head', 'Staff', 'Superadmin'], 'a new company starts with its three categories');
   const agents = (await pool.query('SELECT agent_id FROM user_agents WHERE user_id=$1 ORDER BY agent_id', [made.userId])).rows.map((row) => row.agent_id);
   assert.deepEqual(agents, ['di-documents', 'di-expenses', 'orchestrator'], 'platform agents are not assigned');
   const seeded = (await pool.query('SELECT COUNT(*)::int AS n FROM di.tax_code WHERE tenant_id=$1', [made.tenantId])).rows[0].n;
@@ -99,11 +101,11 @@ test('two companies can both have the login admin / 1234, and each signs in to i
   await assert.rejects(() => loginUser(req, { company: 'nope', username: 'admin', password: '12345678' }), /Invalid company code/);
   await assert.rejects(() => loginUser(req, { company: a.code, username: 'admin', password: 'wrong password' }), /Invalid company code/);
   // Inside one company a username is still unique.
-  await assert.rejects(() => inTx(pool, a.tenantId, 'create_person', { name: 'Second', username: 'admin', password: '12345678' }, { tenantId: a.tenantId, actorUser: platformActor }), /23505|duplicate|unique/i);
+  await assert.rejects(() => inTx(pool, a.tenantId, 'create_user', { name: 'Second', username: 'admin', password: '12345678' }, { tenantId: a.tenantId, actorUser: platformActor }), /23505|duplicate|unique/i);
   // Another company's login is not reachable by username from this company.
-  const person = await inTx(pool, b.tenantId, 'create_person', { name: 'Bee', username: 'bee', password: '12345678' }, { tenantId: b.tenantId, actorUser: platformActor });
-  assert.equal((await inTx(pool, a.tenantId, 'create_person', { name: 'Bee A', username: 'bee', password: '12345678' }, { tenantId: a.tenantId, actorUser: platformActor })).person.username, 'bee');
-  assert.equal(person.person.username, 'bee');
+  const person = await inTx(pool, b.tenantId, 'create_user', { name: 'Bee', username: 'bee', password: '12345678' }, { tenantId: b.tenantId, actorUser: platformActor });
+  assert.equal((await inTx(pool, a.tenantId, 'create_user', { name: 'Bee A', username: 'bee', password: '12345678' }, { tenantId: a.tenantId, actorUser: platformActor })).user.username, 'bee');
+  assert.equal(person.user.username, 'bee');
 });
 
 test('existing companies get a unique code from their name when migrated', async () => {
@@ -125,11 +127,11 @@ test("each company keeps its own last Superadmin: another company's admin does n
   const a = await createCompany({ name: 'Alpha', username: 'alpha', password: 'correct horse' }, pool);
   const b = await createCompany({ name: 'Beta', username: 'beta', password: 'correct horse' }, pool);
   const ctx = (tenantId) => ({ tenantId, actorUser: platformActor });
-  await assert.rejects(() => inTx(pool, a.tenantId, 'update_person', { user_id: a.userId, role: 'user' }, ctx(a.tenantId)), /last active Superadmin/);
-  await assert.rejects(() => inTx(pool, b.tenantId, 'update_person', { user_id: b.userId, active: false }, ctx(b.tenantId)), /last active Superadmin/);
+  await assert.rejects(() => inTx(pool, a.tenantId, 'update_user', { id: a.userId, category: 'Staff' }, ctx(a.tenantId)), /last active Superadmin/);
+  await assert.rejects(() => inTx(pool, b.tenantId, 'update_user', { id: b.userId, active: false }, ctx(b.tenantId)), /last active Superadmin/);
   // With a second Superadmin the first may step down.
-  await pool.query("INSERT INTO users(id,username,display_name,password_hash,role,company_tenant_id) VALUES ('a2','alpha2','Alpha Two','x:y','admin',$1)", [a.tenantId]);
-  const stepped = await inTx(pool, a.tenantId, 'update_person', { user_id: a.userId, role: 'user' }, ctx(a.tenantId));
-  assert.equal(stepped.person.role, 'user');
-  assert.equal((await pool.query('SELECT role FROM users WHERE id=$1', [b.userId])).rows[0].role, 'admin');
+  await inTx(pool, a.tenantId, 'create_user', { name: 'Alpha Two', username: 'alpha2', password: '12345678', category: 'Superadmin' }, ctx(a.tenantId));
+  const stepped = await inTx(pool, a.tenantId, 'update_user', { id: a.userId, category: 'Staff' }, ctx(a.tenantId));
+  assert.equal(stepped.user.access, 'user');
+  assert.equal((await pool.query('SELECT c.access FROM users u JOIN user_category c ON c.id=u.category_id WHERE u.id=$1', [b.userId])).rows[0].access, 'superadmin');
 });

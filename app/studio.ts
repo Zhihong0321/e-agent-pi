@@ -92,7 +92,8 @@ export type ChatSession = {
     id: string;
     username: string;
     displayName?: string;
-    role?: string;
+    access?: string;
+    category?: string | null;
   } | null;
   preview?: string | null;
   messageCount?: number;

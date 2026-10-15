@@ -12,7 +12,7 @@ import { mkdtemp } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { pgliteAdapter } from '../document_inteligence/core/db.mjs';
-import { createTestCompany } from '../document_inteligence/test/company-fixture.mjs';
+import { createTestCompany, createTestUser } from '../document_inteligence/test/company-fixture.mjs';
 
 test('delegated expense tools inherit the authenticated owner and refuse impersonation', async t => {
   const postgres = new PGlite();
@@ -57,10 +57,10 @@ test('delegated expense tools inherit the authenticated owner and refuse imperso
       updateMcpServer: async () => {}, attachAgentResources: async () => {},
     } });
     const tenantId = await createTestCompany(pgliteAdapter(postgres), 'Expense identity test');
-    await pool.query(`INSERT INTO users(id,username,password_hash,display_name) VALUES
-      ('alice','alice',$1,'Alice'),('bob','bob',$1,'Bob')`, [users.hashPassword('fixture-password')]);
-    // Every login belongs to a company; the fixtures' users are this company's.
-    await pool.query('UPDATE users SET company_tenant_id=$1 WHERE company_tenant_id IS NULL', [tenantId]);
+    const fixtureHash = users.hashPassword('fixture-password');
+    await createTestUser(pool, tenantId, { id: 'admin', username: 'admin', name: 'Admin', access: 'superadmin', passwordHash: users.hashPassword('1234') });
+    await createTestUser(pool, tenantId, { id: 'alice', username: 'alice', name: 'Alice', passwordHash: fixtureHash, email: 'alice@example.test' });
+    await createTestUser(pool, tenantId, { id: 'bob', username: 'bob', name: 'Bob', passwordHash: fixtureHash, email: 'bob@example.test' });
     const company = (await pool.query('SELECT code FROM di.tenant WHERE id=$1', [tenantId])).rows[0].code;
     const request = { headers: {}, socket: { remoteAddress: 'test' } };
     const login = async username => {
@@ -80,8 +80,6 @@ test('delegated expense tools inherit the authenticated owner and refuse imperso
       ...di, companyOnboardingStatus: async () => setup,
     } });
     jobs = await import('./orchestrator.mjs');
-    await pool.query(`INSERT INTO di.company_member(tenant_id,name,user_id,email) VALUES
-      ($1,'Alice','alice','alice@example.test'),($1,'Bob','bob','bob@example.test')`, [tenantId]);
     for (const person of [alice, bob]) {
       await runTool(di.diRunDeps({ workspace: () => workspace, who: person.user, companyId: tenantId }), {
         agent: 'di-expenses', tool: 'file_claim', args: {

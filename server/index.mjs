@@ -1,4 +1,4 @@
-import { requestUser, loginUser, logoutUser, sessionCookie as userSessionCookie, userManagementPrompt, procurementIdentityPrompt, fdeIdentityPrompt } from './users.mjs';
+import { requestUser, loginUser, logoutUser, sessionCookie as userSessionCookie, procurementIdentityPrompt, fdeIdentityPrompt } from './users.mjs';
 import { authenticateExpenseSession, withExpenseSession } from './expense-session.mjs';
 import { createHash, randomBytes } from "node:crypto";
 import { createReadStream } from "node:fs";
@@ -198,7 +198,7 @@ import {
   registerControlHandlers,
   registerExternalMcpTools,
 } from "./execution/registry.mjs";
-import { manifestForAgent, setDiToolIdProvider, RETIRED_INTERNAL_MCP_SLUGS, HOST_PEOPLE_TOOL_IDS, LEGACY_USER_TOOL_IDS } from "./execution/profiles.mjs";
+import { manifestForAgent, setDiToolIdProvider, RETIRED_INTERNAL_MCP_SLUGS, HOST_USER_TOOL_IDS } from "./execution/profiles.mjs";
 import { loadIntentRegistry, routeRequest, finishRoutedTurn, setTurnAnswer, expectRoutedAnswer, releaseRoutedTurn } from "./routing.mjs";
 import {
   initExecution,
@@ -1293,12 +1293,14 @@ function publicSession(session, fallbackUser) {
   const uid = session.userId ?? null;
   const uname = session.userName || (fallbackUser?.id === uid ? fallbackUser.username : null);
   const dname = session.userDisplayName || (fallbackUser?.id === uid ? (fallbackUser.display_name || fallbackUser.username) : null);
-  const role = session.userRole || (fallbackUser?.id === uid ? fallbackUser.role : null);
+  const access = session.userAccess || (fallbackUser?.id === uid ? fallbackUser.access : null);
+  const category = session.userCategory || (fallbackUser?.id === uid ? fallbackUser.category : null);
   const sessionUser = uid ? {
     id: uid,
     username: uname || "user",
     displayName: dname || uname || "User",
-    role: role || "user",
+    access: access || "user",
+    category: category || null,
   } : null;
 
   return {
@@ -2121,8 +2123,8 @@ async function bootServices() {
       // handlers the /demo routes and public forms use).
       for (const [agentId] of Object.entries(DI_AGENTS)) {
         for (const tool of diToolsFor(agentId)) {
-          // People tools resolve to the host's native operations; the DI twins only work on the retired MCP path.
-          if (HOST_PEOPLE_TOOL_IDS.has(tool.name) || LEGACY_USER_TOOL_IDS.has(tool.name)) continue;
+          // User tools resolve to the host's native operations; the DI twins only work on the retired MCP path.
+          if (HOST_USER_TOOL_IDS.has(tool.name)) continue;
           const needsUser = Boolean(tool.identity);
           registerDiTool(tool.name, tool, agentId, needsUser);
         }
@@ -2154,7 +2156,7 @@ async function bootServices() {
         services: {
           logEvent,
           userLookup: async (userId) => {
-            const rows = await getPool().query('SELECT id, username, display_name, role, active, department, position, company_tenant_id FROM users WHERE id=$1', [userId]);
+            const rows = await getPool().query(`SELECT ${USER_SELECT} FROM ${USER_FROM} WHERE u.id=$1`, [userId]);
             return rows.rows[0] || null;
           },
           getAgent,
@@ -2235,7 +2237,7 @@ async function bootServices() {
       await ensureScheduler({ pool: getPool(), catalog: catalogApi, log: logEvent });
       schedulerWorker = createSchedulerWorker({ pool: getPool(), log: logEvent,
         runAgentJob: runScheduledAgent, getRun: recoverScheduledRun, sendEmail,
-        userLookup: async id => (await getPool().query('SELECT id,username,display_name,role,active,department,company_tenant_id FROM users WHERE id=$1',[id])).rows[0] || null,
+        userLookup: async id => (await getPool().query(`SELECT ${USER_SELECT} FROM ${USER_FROM} WHERE u.id=$1`, [id])).rows[0] || null,
       });
       logEvent("info", "scheduler host initialized and scheduler agent registered");
     }
@@ -2429,7 +2431,7 @@ const server = createServer(async (req, res) => {
   if (pathname === "/company-profile" || pathname.startsWith("/company-profile/")) {
     return handleCompanyProfile(req, res, url, async (request) => {
       const signedIn = dbReady() ? await requestUser(request) : null;
-      if (signedIn) return signedIn.role === "admin" ? { tenantId: tenantOf(signedIn), actor: signedIn.username } : null;
+      if (signedIn) return isSuperadmin(signedIn) ? { tenantId: tenantOf(signedIn), actor: signedIn.username } : null;
       return authorized(request) ? { tenantId: tenantForRequest(request, null), actor: "owner" } : null;
     });
   }
@@ -2485,9 +2487,9 @@ const server = createServer(async (req, res) => {
     if (accountRoute && !user) return json(res, 401, { error: "Please sign in" });
     if (pathname === '/api/demo/user-agents' && !user.company_tenant_id) return json(res, 400, { error: 'Company tenant is required' });
     if (pathname === '/api/demo/user-agents') {
-      if (user.role !== 'admin') return json(res, 403, { error: 'Admin access required' });
+      if (!isSuperadmin(user)) return json(res, 403, { error: 'Admin access required' });
       if (req.method === 'GET') {
-        const users = (await getPool().query('SELECT id, username, display_name FROM users WHERE company_tenant_id=$1 ORDER BY username', [user.company_tenant_id])).rows;
+        const users = (await getPool().query('SELECT id, username, display_name FROM users WHERE company_tenant_id=$1 AND username IS NOT NULL ORDER BY username', [user.company_tenant_id])).rows;
         const assignments = (await getPool().query('SELECT user_id, agent_id FROM user_agents WHERE user_id IN (SELECT id FROM users WHERE company_tenant_id=$1)', [user.company_tenant_id])).rows;
         return json(res, 200, { users, agents: (await listAgents()).filter(({ id }) => !isPlatformAgent(id)).map(({ id, name }) => ({ id, name })), assignments });
       }
@@ -2537,7 +2539,7 @@ const server = createServer(async (req, res) => {
       }
       const body = JSON.parse((await readBody(req)) || "{}");
       try {
-        json(res, 200, { result: await demoAction(body, user.id, user.company_tenant_id) });
+        json(res, 200, { result: await demoAction(body, user, user.company_tenant_id) });
       } catch (error) {
         json(res, error?.details?.code === "conflict" ? 409 : 400, { error: error instanceof Error ? error.message : String(error) });
       }
@@ -2875,7 +2877,7 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && pathname === "/api/usage") {
       try {
         const requestedUser = url.searchParams.get("userId") || undefined;
-        const userId = user?.role === "admin" ? requestedUser : (user?.id || undefined);
+        const userId = isSuperadmin(user) ? requestedUser : (user?.id || undefined);
         return json(res, 200, await usageReport({
           since: url.searchParams.get("since") || undefined,
           until: url.searchParams.get("until") || undefined,
@@ -2894,8 +2896,8 @@ const server = createServer(async (req, res) => {
         const data = await listActivity({
           limit: url.searchParams.get("limit"),
           before: url.searchParams.get("before"),
-          userId: user?.role === "admin" ? (url.searchParams.get("userId") || undefined) : (user?.id || undefined),
-          isAdmin: user?.role === "admin" || !user,
+          userId: isSuperadmin(user) ? (url.searchParams.get("userId") || undefined) : (user?.id || undefined),
+          isAdmin: isSuperadmin(user) || !user,
           agentId: url.searchParams.get("agentId"),
           eventType: url.searchParams.get("eventType"),
           toolName: url.searchParams.get("toolName"),
@@ -3642,7 +3644,6 @@ const server = createServer(async (req, res) => {
         ? `${packed.prompt}\n${trimmed || attachFallback(profile)}`
         : trimmed;
       const chatPrompt = await enrichRestartPrompt(prompt, profile)
-        + (user && !runsOnRunner ? userManagementPrompt(req, user) : "")
         + (user && !runsOnRunner && profile.id === "di-procurement" ? procurementIdentityPrompt(req, user) : "")
         + (user && !runsOnRunner && profile.id === "di-fde" ? fdeIdentityPrompt(req, user) : "");
       const storedUser =

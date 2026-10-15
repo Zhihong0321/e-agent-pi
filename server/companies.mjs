@@ -37,10 +37,13 @@ export async function createCompany(input, pool = getPool()) {
     const tenantId = created.id;
     await client.query("SELECT set_config('di.tenant_id',$1,true)", [tenantId]);
     await seedTenantTx(client, tenantId);
+    await client.query('SELECT ensure_user_categories($1)', [tenantId]);
     const userId = randomUUID();
     await client.query(
-      "INSERT INTO users(id,username,display_name,password_hash,role,company_tenant_id) VALUES($1,$2,$3,$4,'admin',$5)",
-      [userId, login, display, hashPassword(password), tenantId],
+      `INSERT INTO users(id, company_tenant_id, category_id, display_name, username, password_hash)
+        SELECT $1, $2, c.id, $3, $4, $5 FROM user_category c
+         WHERE c.company_tenant_id = $2 AND c.access = 'superadmin' ORDER BY c.created_at LIMIT 1`,
+      [userId, tenantId, display, login, hashPassword(password)],
     );
     // The Superadmin starts with every company agent; platform agents are never assignable.
     const agents = (await client.query('SELECT id FROM agents')).rows.map((row) => row.id).filter((id) => !isPlatformAgent(id));
@@ -65,8 +68,10 @@ export async function companyExists(id, pool = getPool()) {
 /** Every company with its count of active Superadmins; a company with 0 breaks the rule. */
 export async function listCompanies(pool = getPool()) {
   const { rows } = await pool.query(`SELECT t.id, t.name, t.code, t.created_at AS "createdAt",
-      (SELECT COUNT(*)::int FROM users u WHERE u.company_tenant_id = t.id::text AND u.role = 'admin' AND u.active) AS superadmins,
-      (SELECT COUNT(*)::int FROM users u WHERE u.company_tenant_id = t.id::text AND u.active) AS logins
+      (SELECT COUNT(*)::int FROM users u JOIN user_category c ON c.id = u.category_id
+        WHERE u.company_tenant_id = t.id::text AND c.access = 'superadmin' AND u.active) AS superadmins,
+      (SELECT COUNT(*)::int FROM users u WHERE u.company_tenant_id = t.id::text AND u.active
+        AND u.username IS NOT NULL AND u.password_hash IS NOT NULL) AS logins
     FROM di.tenant t WHERE t.deleted_at IS NULL ORDER BY t.created_at`);
   return rows;
 }

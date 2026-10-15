@@ -15,7 +15,7 @@
     "pi": "pi",
     "pi:version": "pi --version",
     "test": "npm run test:execution && npm run test:queue && npm run test:orchestration && npm run test:whatsapp",
-    "test:execution": "node --experimental-test-module-mocks --test --test-concurrency=1 server/execution/people-service.test.mjs && node --experimental-test-module-mocks --test --test-concurrency=1 server/execution/dispatch.test.mjs && node --experimental-test-module-mocks --test --test-concurrency=1 server/execution/runner.test.mjs && node --test --test-concurrency=1 server/execution/mcp-adapter.test.mjs",
+    "test:execution": "node --experimental-test-module-mocks --test --test-concurrency=1 server/execution/user-service.test.mjs && node --experimental-test-module-mocks --test --test-concurrency=1 server/execution/dispatch.test.mjs && node --experimental-test-module-mocks --test --test-concurrency=1 server/execution/runner.test.mjs && node --test --test-concurrency=1 server/execution/mcp-adapter.test.mjs",
     "test:queue": "node --test server/queue/*.test.mjs",
     "test:whatsapp": "node --test server/whatsapp.test.mjs",
     "test:orchestration":"node --test server/routing.test.mjs server/prompt-budget.test.mjs server/agent-prompts.test.mjs server/roles.test.mjs",

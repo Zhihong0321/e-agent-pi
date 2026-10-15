@@ -1,4 +1,4 @@
-import { USER_TOOLS } from './user-tools.mjs';
+import { userTools } from './user-tools.mjs';
 // The single registry of Document Intelligence tools: input shapes, which micro-agent
 // may call each one, and the domain function behind it. The MCP server reads it to
 // advertise tools; the host reads it to authorise and run them. One source of truth,
@@ -10,7 +10,6 @@ import * as catalog from "./catalog.mjs";
 import * as documents from "./documents.mjs";
 import * as admin from "./admin.mjs";
 import * as company from './company.mjs';
-import * as members from './members.mjs';
 import * as forms from "./forms.mjs";
 import { renderFormPage } from "./formpage.mjs";
 import { crmDashboard } from "./dashboard.mjs";
@@ -197,28 +196,10 @@ const customerFields = {
 
 /** @type {Record<string, { agents: string[], description: string, input: Record<string, z.ZodTypeAny>, run: Function, pdf?: Function, previewPdf?: boolean, saveFile?: Function, identity?: boolean, receipts?: string, report?: boolean, superadminOnly?: boolean }>} */
 export const TOOLS = {
-  ...USER_TOOLS,
+  ...userTools({ readers: [...ALL, EXPENSES], writers: [ONBOARD, DB] }),
   get_onboarding_status: {
     agents: ALL, description: "Live company profile, field definitions, missing minimum setup, invoice profile readiness and manual form link. Re-read after updates; never infer completion from chat history.",
     input: {}, run: company.getCompanyProfile,
-  },
-  list_company_members: {
-    agents: [...ALL, EXPENSES], description: "Read the company's own people, their positions, departments and contact details. These are internal company members, not customer contacts. Use before assigning work or adding a person.",
-    input: {}, run: members.listCompanyMembers,
-  },
-  save_company_member: {
-    agents: [ONBOARD, DB], description: "Compatibility alias for create_person/update_person. Record or update one internal company person; optionally provision a workspace login only through the unified person tools. Do not create a customer contact for company staff.",
-    input: {
-      id: z.string().uuid().optional(),
-      name: z.string().optional(),
-      position: z.string().optional(),
-      department: z.string().optional(),
-      email: z.string().optional(),
-      phone: z.string().optional(),
-      location: z.string().optional(),
-      notes: z.string().optional(),
-    },
-    run: members.saveCompanyMember,
   },
   update_onboarding_progress: {
     agents: [ONBOARD, DB, TPL], description: "Record a completed setup check after verifying it. Does not override computed profile readiness.",
@@ -910,7 +891,7 @@ export const TOOLS = {
       receipt_kinds: z.array(z.string()).max(5).optional().describe("Kind of each attachment, same order as receipts; default receipt. Company policy may ask for others (get_expense_settings.policy.attachment_kinds)"),
       custom: z.record(z.string(), z.any()).optional().describe("Extra values company policy asks for (get_expense_settings.policy.fields), e.g. {distance_km: 12.4}"),
       no_receipt_reason: z.string().optional().describe("Only when there is truly no receipt"),
-      claimant: z.string().optional().describe("Admin only: company person's name, email or id, to file for them"),
+      claimant: z.string().optional().describe("Superadmin only: the user's name, email or id (from list_users), to file for them"),
       allow_duplicate: z.boolean().optional(),
     },
     run: expenses.fileClaim,

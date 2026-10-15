@@ -55,6 +55,6 @@ test('the orchestrator only routes: one tool, and a role that plans nothing and 
   const role = await readFile(path.join(ROOT, 'agent', 'roles', 'orchestrator.md'), 'utf8');
   assert.match(role, /`route_request`/);
   // The planning and worker instructions that made routing random must not come back (AI-Orchestration-and-agent-design.md F-4, F-5).
-  assert.doesNotMatch(role, /submit_plan|list_specialists|save_agent_sop|ee-mail__send_email|create_person|checker|pipeline|Never refuse/i);
+  assert.doesNotMatch(role, /submit_plan|list_specialists|save_agent_sop|ee-mail__send_email|create_person|create_user|checker|pipeline|Never refuse/i);
   assert.deepEqual(manifestForAgent({ id: 'orchestrator', slug: 'orchestrator' }).manifest.toolIds, ['route_request']);
 });

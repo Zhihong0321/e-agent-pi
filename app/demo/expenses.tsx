@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, typ
 import { LayoutEditor, type BlockName, type Layout } from "./expenses-layout";
 import "./expenses.css";
 
-type ExUser = { id: string; username: string; display_name?: string; role: string };
+type ExUser = { id: string; username: string; display_name?: string; access: string };
 type Totals = { claims: number; pending_count: number; claimed: number; approved: number; pending: number; rejected: number };
 type Submission = { id: string; period_key: string; label: string; status: "open" | "closed"; period_start: string; cutoff_date: string; days_left: number | null; totals: Totals; report_path: string | null; closed_at: string | null };
 type ClaimRow = { id: string; number: string; status: ClaimStatus; claimant: string; expense_date: string; merchant: string; category: string; amount: number; currency: string; receipts: number; submission: string; submission_status: string };
@@ -11,7 +11,7 @@ type Receipt = { id: string; name: string; mime: string; bytes: number };
 type ClaimDetail = { id: string; number: string; status: ClaimStatus; claimant: { name: string; email: string | null }; expense_date: string; merchant: string; category: string; description: string | null; currency: string; amount: number; tax_amount: number | null; payment_method: string | null; no_receipt_reason: string | null; reviewed_by: string | null; review_note: string | null; submission: { label: string; status: string } | null; receipts: Receipt[] };
 type Category = { key: string; label: string };
 type Panel = {
-  me: { username: string; name: string; role: string };
+  me: { username: string; name: string; category: string; access: string };
   settings: { cutoff_day: number; currency: string };
   categories: Category[]; payment_methods: string[]; today: string;
   current_submission: { period_key: string; label: string; cutoff_date: string; days_left: number };
@@ -96,7 +96,7 @@ function Glyph({ name, size = 16 }: { name: "receipt" | "plus" | "upload" | "clo
 }
 
 export function ExpensesPanel({ user, onNotice }: { user: ExUser; onNotice: (message: string) => void }) {
-  const isAdmin = user.role === "admin";
+  const isAdmin = user.access === "superadmin";
   const [data, setData] = useState<Panel | null>(null);
   const [month, setMonth] = useState("");
   const [loading, setLoading] = useState(true);

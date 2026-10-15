@@ -1,38 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ensureUsers, hashPassword, verifyPassword, sessionCookie, manageUsers, userManagementPrompt, expenseIdentityPrompt, resolveIdentity } from './users.mjs';
+import { ensureUsers, hashPassword, verifyPassword, sessionCookie, expenseIdentityPrompt, resolveIdentity } from './users.mjs';
+import { USER_SCHEMA_SQL } from './user-schema.mjs';
 
-test('passwords use unique salts and reject incorrect or oversized input', () => {
+test('passwords use unique salts and reject incorrect, missing or oversized input', () => {
   const first = hashPassword('1234');
   assert.notEqual(first, hashPassword('1234'));
   assert.equal(verifyPassword('1234', first), true);
   assert.equal(verifyPassword('wrong', first), false);
   assert.equal(verifyPassword('a'.repeat(257), first), false);
+  assert.equal(verifyPassword('1234', null), false, 'a user without a password cannot sign in');
   assert.throws(() => hashPassword('123'));
 });
 
-test('bootstrap creates tables and seeds admin only when the user table is empty', async () => {
+test('boot builds the one user schema and never seeds an account', async () => {
   const calls = [];
-  let released = false;
-  const tx = { query: async (sql, params) => { calls.push({ sql, params }); }, release: () => { released = true; } };
-  await ensureUsers({ query: tx.query, connect: async () => tx });
-  assert.match(calls[0].sql, /CREATE TABLE IF NOT EXISTS users/);
-  assert.match(calls[0].sql, /REFERENCES users\(id\)/);
-  assert.match(calls[2].sql, /pg_advisory_xact_lock/);
-  const seed = calls.find(call => call.sql.includes('INSERT INTO users'));
-  assert.match(seed.sql, /WHERE NOT EXISTS\(SELECT 1 FROM users\)/);
-  assert.equal(verifyPassword('1234', seed.params[1]), true);
-  assert.equal(calls.at(-1).sql, 'COMMIT');
-  assert.equal(released, true);
-});
-
-test('bootstrap rolls back and releases on failure', async () => {
-  const calls = [];
-  let released = false;
-  const tx = { query: async sql => { calls.push(sql); if (sql.includes('INSERT INTO')) throw new Error('db failed'); }, release: () => { released = true; } };
-  await assert.rejects(ensureUsers({ query: async () => {}, connect: async () => tx }), /db failed/);
-  assert.equal(calls.at(-1), 'ROLLBACK');
-  assert.equal(released, true);
+  await ensureUsers({ query: async (sql, params) => { calls.push({ sql, params }); return { rows: [] }; } });
+  assert.equal(calls[0].sql, USER_SCHEMA_SQL);
+  assert.match(USER_SCHEMA_SQL, /CREATE TABLE IF NOT EXISTS user_category/);
+  assert.match(USER_SCHEMA_SQL, /category_id TEXT NOT NULL REFERENCES user_category\(id\)/);
+  const usersTable = USER_SCHEMA_SQL.slice(USER_SCHEMA_SQL.indexOf('CREATE TABLE IF NOT EXISTS users'), USER_SCHEMA_SQL.indexOf('-- Upgrade'));
+  assert.doesNotMatch(usersTable, /\b(tier|role)\b/, 'category replaces role and tier');
+  assert.match(calls[1].sql, /ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users\(id\)/);
+  assert.equal(calls.some((call) => /INSERT INTO users/.test(call.sql)), false, 'no default admin/1234 account');
 });
 
 test('cookies are HttpOnly, SameSite strict, and secure over HTTPS', () => {
@@ -41,31 +31,13 @@ test('cookies are HttpOnly, SameSite strict, and secure over HTTPS', () => {
   assert.match(sessionCookie({ headers: {}, socket: {} }, '', 0), /Max-Age=0/);
 });
 
-test('AI management refuses missing or fabricated admin authorization', async () => {
-  await assert.rejects(manageUsers('create_user', { username: 'new', password: '1234' }), /current admin login/);
-  await assert.rejects(manageUsers('list_users', { admin_capability: 'invented' }), /current admin login/);
-  assert.doesNotMatch(userManagementPrompt({}, { role: 'user' }), /admin_capability=/);
-  assert.match(userManagementPrompt({ headers: { cookie: 'demo_session=admin-token' } }, { role: 'admin', username: 'admin' }), /list_people/);
-});
-
-test('user bootstrap schema includes unified person profile fields without exposing password columns', async () => {
-  const calls = [];
-  const tx = { query: async (sql, params) => { calls.push({ sql, params }); }, release: () => {} };
-  await ensureUsers({ query: tx.query, connect: async () => tx });
-  const schema = calls[0].sql;
-  assert.match(schema, /email TEXT/);
-  assert.match(schema, /department TEXT/);
-  assert.match(schema, /company_tenant_id TEXT/);
-  assert.doesNotMatch(userManagementPrompt({ headers: { cookie: 'demo_session=admin-token' } }, { role: 'admin', username: 'admin' }), /password_hash/);
-});
-
 test('expense identity codes are random per turn, and only honoured while fresh', async () => {
   const req = { headers: { cookie: 'demo_session=tok123' } };
-  const mint = () => expenseIdentityPrompt(req, { username: 'sam', role: 'user' });
+  const mint = () => expenseIdentityPrompt(req, { username: 'sam', access: 'user', category: 'Staff' });
   const first = mint();
   const code = first.match(/identity="([a-f0-9]{32})"/)[1];
-  assert.match(first, /\[Expense identity: sam \(User\)/);
-  assert.match(expenseIdentityPrompt(req, { username: 'root', role: 'admin' }), /root \(Superadmin\)/);
+  assert.match(first, /\[Expense identity: sam \(Staff\)/);
+  assert.match(expenseIdentityPrompt(req, { username: 'root', access: 'superadmin' }), /root \(Superadmin\)/);
   assert.notEqual(code, mint().match(/identity="([a-f0-9]{32})"/)[1]);
   assert.equal(await resolveIdentity('invented'), null);
   assert.equal(await resolveIdentity(undefined), null);

@@ -86,39 +86,26 @@ export function requireWho(who) {
   return who;
 }
 
-async function memberFor(tx, who) {
-  const byUser = (await tx.query("SELECT id, name, email FROM di.company_member WHERE user_id = $1 AND deleted_at IS NULL LIMIT 1", [who.id])).rows[0];
-  if (byUser) return byUser;
-  if (who.email) {
-    return (await tx.query("SELECT id, name, email FROM di.company_member WHERE lower(email) = lower($1) AND deleted_at IS NULL LIMIT 1", [who.email])).rows[0] ?? null;
-  }
-  return null;
-}
+// Users of the signed-in company (public.users; agents read it through row-level security).
+const COMPANY_USERS = "SELECT id, display_name AS name, email FROM users WHERE company_tenant_id = di.current_tenant()::text";
 
 async function resolveClaimant(tx, who, claimant) {
-  if (!claimant) {
-    const member = await memberFor(tx, who);
-    return { user_id: who.id, member_id: member?.id ?? null, name: member?.name || who.display_name || who.username, email: member?.email || who.email || null };
-  }
+  if (!claimant) return { user_id: who.id, name: who.display_name || who.username, email: who.email || null };
   const q = String(claimant).trim();
   if (!isAdmin(who)) {
     const self = [who.username, who.display_name, who.email].filter(Boolean).map((v) => String(v).toLowerCase());
     if (self.includes(q.toLowerCase())) return resolveClaimant(tx, who, null);
     throw new DiError("Only a Superadmin can file a claim for someone else. Leave claimant empty to file your own.");
   }
-  let rows;
-  if (isUuid(q)) rows = (await tx.query("SELECT id, name, email, user_id FROM di.company_member WHERE id = $1 AND deleted_at IS NULL", [q])).rows;
-  else {
-    rows = (await tx.query("SELECT id, name, email, user_id FROM di.company_member WHERE deleted_at IS NULL AND (lower(email) = lower($1) OR lower(name) = lower($1))", [q])).rows;
-    if (!rows.length) {
-      const like = `%${q.toLowerCase().replace(/[\\%_]/g, "\\$&")}%`;
-      rows = (await tx.query("SELECT id, name, email, user_id FROM di.company_member WHERE deleted_at IS NULL AND lower(name) LIKE $1 ORDER BY name LIMIT 6", [like])).rows;
-    }
+  let rows = (await tx.query(`${COMPANY_USERS} AND (id = $1 OR lower(email) = lower($1) OR lower(display_name) = lower($1) OR username = lower($1))`, [q])).rows;
+  if (!rows.length) {
+    const like = `%${q.toLowerCase().replace(/[\\%_]/g, "\\$&")}%`;
+    rows = (await tx.query(`${COMPANY_USERS} AND lower(display_name) LIKE $1 ORDER BY display_name LIMIT 6`, [like])).rows;
   }
-  if (!rows.length) throw new DiError(`No company person matches "${q}". Check the name with list_company_members, or add the person first (Company Onboarding / DB Manager).`);
+  if (!rows.length) throw new DiError(`No user matches "${q}". Check the name with list_users, or add the user first (Company Onboarding / DB Manager).`);
   if (rows.length > 1) throw new DiError(`"${q}" matches ${rows.length} people (${rows.map((r) => `${r.name} <${r.email || "no email"}>`).join("; ")}). Use the exact name, email or id.`);
   const m = rows[0];
-  return { user_id: m.user_id ?? null, member_id: m.id, name: m.name, email: m.email };
+  return { user_id: m.id, name: m.name, email: m.email };
 }
 
 /**
@@ -140,14 +127,13 @@ export function scopeClause(who, claimant, startAt, { ownOnly = false } = {}) {
     const me = next(who.id);
     const dept = next(departmentKey(who.department));
     parts.push(`(c.claimant_user_id = ${me}
-      OR c.claimant_member_id IN (SELECT m.id FROM di.company_member m WHERE m.deleted_at IS NULL AND lower(btrim(m.department)) = ${dept})
-      OR c.claimant_user_id IN (SELECT m.user_id FROM di.company_member m WHERE m.deleted_at IS NULL AND m.user_id IS NOT NULL AND lower(btrim(m.department)) = ${dept}))`);
+      OR c.claimant_user_id IN (SELECT u.id FROM users u WHERE u.company_tenant_id = di.current_tenant()::text AND lower(btrim(u.department)) = ${dept}))`);
   }
   if (claimant) {
     const q = String(claimant).trim();
     if (isUuid(q)) {
       const p = next(q);
-      parts.push(`(c.claimant_member_id = ${p}::uuid OR c.claimant_user_id = ${p}::text)`);
+      parts.push(`c.claimant_user_id = ${p}::text`);
     } else {
       const p = next(`%${q.toLowerCase().replace(/[\\%_]/g, "\\$&")}%`);
       parts.push(`(lower(c.claimant_name) LIKE ${p} OR lower(coalesce(c.claimant_email, '')) LIKE ${p})`);
@@ -216,9 +202,8 @@ export async function getExpenseSettings(tx, _args, { who, now = new Date() } = 
   const today = todayMY(now);
   const cycle = cycleFor(today, settings.cutoff_day);
   const existing = (await tx.query("SELECT * FROM di.expense_batch WHERE period_key = $1 AND deleted_at IS NULL", [cycle.period_key])).rows[0];
-  const member = await memberFor(tx, who);
   return {
-    me: { username: who.username, name: member?.name || who.display_name || who.username, role: who.role, company_person: member ? { id: member.id, name: member.name } : null },
+    me: { username: who.username, name: who.display_name || who.username, category: who.category, access: who.access },
     settings: { cutoff_day: settings.cutoff_day, currency: settings.currency, receipt_required: settings.receipt_required, max_claim_age_days: settings.max_claim_age_days },
     categories: mergeCategories(EXPENSE_CATEGORIES, settings),
     policy: policySummary(await loadPolicy(tx)),
@@ -310,7 +295,7 @@ async function receiptsFor(tx, claimIds) {
 function shapeClaim(row, receipts = [], batch = null) {
   return {
     id: row.id, number: row.number, status: row.status,
-    claimant: { name: row.claimant_name, email: row.claimant_email ?? null, user_id: row.claimant_user_id ?? null, member_id: row.claimant_member_id ?? null },
+    claimant: { name: row.claimant_name, email: row.claimant_email ?? null, user_id: row.claimant_user_id ?? null },
     expense_date: isoDate(row.expense_date), merchant: row.merchant, category: row.category,
     description: row.description ?? null, currency: row.currency, amount: num(row.amount),
     tax_amount: row.tax_amount == null ? null : num(row.tax_amount), payment_method: row.payment_method ?? null,
@@ -472,10 +457,10 @@ export async function fileClaim(tx, input = {}, { who, receipts = [], now = new 
   const batch = await openBatchFor(tx, today, settings);
   const row = (await tx.query(
     `INSERT INTO di.expense_claim
-       (number, batch_id, claimant_user_id, claimant_member_id, claimant_name, claimant_email, expense_date, merchant, category,
+       (number, batch_id, claimant_user_id, claimant_name, claimant_email, expense_date, merchant, category,
         description, currency, amount, tax_amount, payment_method, no_receipt_reason, submitted_at, custom)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
-    [number, batch.id, claimant.user_id, claimant.member_id, claimant.name, claimant.email, fields.expense_date, fields.merchant, fields.category,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+    [number, batch.id, claimant.user_id, claimant.name, claimant.email, fields.expense_date, fields.merchant, fields.category,
       fields.description ?? null, settings.currency, fields.amount, fields.tax_amount ?? null, fields.payment_method ?? null,
       fields.no_receipt_reason ?? null, now.toISOString(), JSON.stringify(custom)],
   )).rows[0];
