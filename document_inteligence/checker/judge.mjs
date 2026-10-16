@@ -41,19 +41,19 @@ export function createJudge(config = judgeConfigFromEnv()) {
       // Same gate as every other call to this provider; the timeout starts when the request is sent, not while it waits in line.
       const url = `${config.baseUrl}/chat/completions`;
       const res = await gatedFetch(providerForUrl(url), url, {
-        method: "POST", headers, body: JSON.stringify(body), runTimeoutMs: config.timeoutMs, callerKey: "di-checker",
+        method: "POST", headers, body: JSON.stringify(body), runTimeoutMs: config.timeoutMs, callerKey: config.callerKey || "di-checker",
       });
       raw = await res.text();
       let payload = null;
       try { payload = JSON.parse(raw); } catch { /* handled by the provider error below */ }
       if (!res.ok) {
-        void recordApiUsage({ service: "llm", provider: "checker", operation: "judge", modelId: config.model, status: "error", durationMs: Date.now() - started, error: `HTTP ${res.status}`, metadata: { baseUrl: config.baseUrl } });
+        void recordApiUsage({ service: "llm", provider: "checker", operation: config.operation || "judge", modelId: config.model, status: "error", durationMs: Date.now() - started, error: `HTTP ${res.status}`, metadata: { baseUrl: config.baseUrl } });
         throw new Error(`judge HTTP ${res.status}: ${raw.slice(0, 300)}`);
       }
-      void recordApiUsage({ service: "llm", provider: "checker", operation: "judge", modelId: config.model, status: "ok", durationMs: Date.now() - started, usage: payload?.usage, metadata: { baseUrl: config.baseUrl } });
+      void recordApiUsage({ service: "llm", provider: "checker", operation: config.operation || "judge", modelId: config.model, status: "ok", durationMs: Date.now() - started, usage: payload?.usage, metadata: { baseUrl: config.baseUrl } });
       return parseJsonReply(payload?.choices?.[0]?.message?.content);
     } catch (error) {
-      if (!raw) void recordApiUsage({ service: "llm", provider: "checker", operation: "judge", modelId: config.model, status: "error", durationMs: Date.now() - started, error: error instanceof Error ? error.message : String(error), metadata: { baseUrl: config.baseUrl } });
+      if (!raw) void recordApiUsage({ service: "llm", provider: "checker", operation: config.operation || "judge", modelId: config.model, status: "error", durationMs: Date.now() - started, error: error instanceof Error ? error.message : String(error), metadata: { baseUrl: config.baseUrl } });
       throw error;
     }
   };

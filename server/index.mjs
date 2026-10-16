@@ -17,6 +17,7 @@ import { handleDiViewer } from "./di-viewer.mjs";
 import { demoAction, demoCalendar, demoState } from "./demo-api.mjs";
 import { handleDemoExpenses } from "./demo-expenses.mjs";
 import { handleDemoProcurement } from "./demo-procurement.mjs";
+import { ensureMemorySchema, handleMemory, startMemoryLane } from "./memory-lane.mjs";
 import path from "node:path";
 import { RpcClient } from "@earendil-works/pi-coding-agent";
 import { migrateMiniMaxPlan } from "./model-plan.mjs";
@@ -169,6 +170,7 @@ import { createSchedulerWorker } from './scheduler/worker.mjs';
 import { runScheduledAgent, recoverScheduledRun } from './scheduler/agent-jobs.mjs';
 import { sendEmail } from './ee-mail.mjs';
 let schedulerWorker = null;
+let memoryLane = null;
 import { ensureComposioMcp } from "./composio.mjs";
 import { ensureEeMailMcp } from "./ee-mail-mcp.mjs";
 import { handleEmailRequest } from "./ee-mail.mjs";
@@ -2246,6 +2248,17 @@ async function bootServices() {
     logEvent("error", `scheduler failed: ${sanitizeError(error)}`);
   }
 
+  // Memory lane: reads finished chats on its own timer and writes only its own tables.
+  boot.step = "memory-lane";
+  try {
+    if (dbReady()) {
+      await ensureMemorySchema(getPool());
+      memoryLane = startMemoryLane({ pool: getPool(), log: logEvent });
+    }
+  } catch (error) {
+    logEvent("error", `memory lane failed: ${sanitizeError(error)}`);
+  }
+
   boot.step = "ee-mail-mcp";
   try {
     if (dbReady()) {
@@ -2515,6 +2528,7 @@ const server = createServer(async (req, res) => {
     if (conversationRoute && !user && !authorized(req)) return json(res, 401, { error: "Please sign in" });
     if (await handleDemoExpenses(req, res, url, { user, readBody, json, workspace: agentWorkspace })) return;
     if (await handleDemoProcurement(req, res, url, { user, readBody, json, workspace: agentWorkspace })) return;
+    if (await handleMemory(req, res, url, { user, json, readBody, getPool, log: logEvent })) return;
     if (req.method === "GET" && pathname === "/api/demo/state") {
       json(res, 200, await demoState(user.company_tenant_id));
       return;
@@ -3960,6 +3974,7 @@ async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   schedulerWorker?.stop();
+  memoryLane?.stop();
   logEvent("info", turnsInFlight ? `shutdown during ${turnsInFlight} in-flight turn(s)` : "shutdown");
   // Execution coordinator first: admission drains, claims stop, the bridge and
   // database stay available while accepted runs finalize; at the deadline it

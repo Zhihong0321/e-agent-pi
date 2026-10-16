@@ -9,10 +9,11 @@ import { ResearchPanel } from "./research";
 import { ObservabilityPanel } from "./observability";
 import { SchedulesPanel } from './schedules';
 import { AgentAccessPanel } from "./agent-access";
+import { MemoryPanel } from "./memory";
 import "./theme.css";
 import { LoginChecking, LoginScreen, type Credentials } from "./login";
 
-type Area = "home" | "onboarding" | "people" | "calendar" | "schedules" | "expenses" | "procurement" | "research" | "logs" | "usage" | "activity";
+type Area = "home" | "onboarding" | "people" | "calendar" | "schedules" | "expenses" | "procurement" | "research" | "logs" | "usage" | "activity" | "memory";
 const navigation: { area: Area; label: string; icon: string }[] = [
   { area: "home", label: "Home", icon: "home" },
   { area: "onboarding", label: "Company profile", icon: "building" },
@@ -27,6 +28,7 @@ const insights: { area: Area; label: string; icon: string }[] = [
   { area: "logs", label: "Chat history", icon: "chat" },
   { area: "usage", label: "Usage", icon: "grid" },
   { area: "activity", label: "Activity", icon: "pulse" },
+  { area: "memory", label: "Memory", icon: "memory" },
 ];
 // The rail shows one button per group; a group's pages sit behind it as tabs in the top bar.
 type Group = "home" | "operations" | "research" | "company" | "insights";
@@ -35,7 +37,7 @@ const groups: { id: Group; label: string; icon: string; areas: Area[]; links?: {
   { id: "operations", label: "Operations", icon: "briefcase", areas: ["expenses", "procurement", "calendar", "schedules"] },
   { id: "research", label: "Research", icon: "book", areas: ["research"], links: [{ label: "Media Kit", href: "/media-kit", agent: "media-ai" }] },
   { id: "company", label: "Company", icon: "building", areas: ["onboarding", "people"] },
-  { id: "insights", label: "Insights", icon: "pulse", areas: ["logs", "usage", "activity"] },
+  { id: "insights", label: "Insights", icon: "pulse", areas: ["logs", "usage", "activity", "memory"] },
 ];
 const tabLabels: Partial<Record<Area, string>> = { onboarding: "Profile", people: "People", calendar: "Calendar", research: "Library" };
 const groupOf = (area: Area) => groups.find(group => group.areas.includes(area)) || groups[0];
@@ -46,6 +48,8 @@ const areaAgent: Partial<Record<Area, string>> = {
 };
 const hasAgent = (agents: { id: string; slug?: string }[], id: string) => agents.some(agent => agent.id === id || agent.slug === id);
 const areaOffered = (area: Area, agents: { id: string; slug?: string }[]) => !areaAgent[area] || hasAgent(agents, areaAgent[area]!);
+// Memory shapes how E reacts, and only the Superadmin may do that (server/memory-lane.mjs).
+const superadminAreas = new Set<Area>(["memory"]);
 const validAreas = new Set<Area>([...navigation, ...insights].map(item => item.area));
 const logHeadings = {
   logs: { title: "Chat logs", description: "Browse saved conversations and delegated agent transcripts." },
@@ -129,6 +133,7 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
     arrow: <path d="M4 12h16m-6-6 6 6-6 6"/>,
     search: <><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></>,
     close: <path d="M5 5 19 19M19 5 5 19"/>,
+    memory: <><path d="M9 3a4 4 0 0 0-4 4v1a3 3 0 0 0-1 5.6V15a4 4 0 0 0 7 2.6V3.5A4 4 0 0 0 9 3ZM15 3a4 4 0 0 1 4 4v1a3 3 0 0 1 1 5.6V15a4 4 0 0 1-7 2.6V3.5A4 4 0 0 1 15 3Z"/></>,
     database: <><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></>,
     calendar: <><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></>,
     download: <><path d="M12 3v13m0 0-5-5m5 5 5-5M4 18v3h16v-3"/></>,
@@ -559,7 +564,7 @@ function DemoWorkspace({ user, initialArea = "home", onLogout }: { user: DemoUse
     catch (error) { setNotice(error instanceof Error ? error.message : "Could not sign out"); setLoggingOut(false); }
   };
   const currentGroup = groupOf(area);
-  const groupAreas = (group: typeof groups[number]) => group.areas.filter(target => areaOffered(target, studio.agents));
+  const groupAreas = (group: typeof groups[number]) => group.areas.filter(target => areaOffered(target, studio.agents) && (isSuperadmin || !superadminAreas.has(target)));
   const groupLinks = (group: typeof groups[number]) => (group.links || []).filter(link => hasAgent(studio.agents, link.agent));
   const openGroup = (group: typeof groups[number]) => {
     const offered = groupAreas(group);
@@ -590,8 +595,8 @@ function DemoWorkspace({ user, initialArea = "home", onLogout }: { user: DemoUse
     <main className="demo-main">
       <header className="demo-topbar">{pageTabs.length > 1 ? <nav className="demo-group-tabs" aria-label={`${currentGroup.label} pages`}>{pageTabs.map(tab => <button key={tab.key} className={tab.active ? "active" : ""} aria-current={tab.active ? "page" : undefined} onClick={tab.open}>{tab.label}</button>)}</nav> : <div className="demo-breadcrumb">{area === "home" ? <span className="demo-assistant-pill"><Icon name="spark" size={18}/><strong>e Assistant</strong><span className={`demo-connection${studio.loading ? " working" : ""}`} role="status">{studio.loading ? "Working…" : ready && studio.agents.length ? "Connected" : "Connecting…"}</span></span> : <><span className="demo-workspace-name">Your workspace</span><span>/</span><strong>{sectionTitle}</strong></>}</div>}<div className="demo-top-actions"><button className="demo-new-chat" disabled={studio.loading || !studio.agents.length} onClick={() => void newChat()}><Icon name="plus" size={14}/> New chat</button><button className="demo-mobile-logout" aria-label="Sign out" disabled={loggingOut} onClick={() => void logout()}><Icon name="logout" size={16}/></button></div></header>
       <div className="demo-content">
-        {area !== "home" && <div className="demo-heading"><div><div className="demo-eyebrow">{area === "schedules" ? "SCHEDULED WORK" : logArea ? "WORKSPACE INSIGHTS" : area === "onboarding" ? "STEP 01 · GETTING STARTED" : area === "people" ? "STEP 02 · KNOW YOUR TEAM" : area === "calendar" ? "LIVE COMPANY SIGNALS" : area === "expenses" ? "RECEIPTS TO REPORT" : area === "procurement" ? "BUY WITH CONFIDENCE" : area === "research" ? "COMPANY INTELLIGENCE" : "STEP 03 · EXPLORE CAPABILITIES"}</div><h1>{area === "schedules" ? "Scheduled work" : logArea ? logHeadings[logArea].title : area === "onboarding" ? "Set up your workspace" : area === "people" ? "Meet your company people" : area === "calendar" ? "One calendar for every date" : area === "expenses" ? "Claims, grouped by cut-off" : area === "procurement" ? "Quotes, orders, deliveries, bills" : area === "research" ? "Company research library" : "Make work happen"}</h1><p>{area === "schedules" ? "Manage AI jobs, reminders, and cron schedules. Check next runs and execution history." : logArea ? logHeadings[logArea].description : area === "onboarding" ? "Tell the assistant about your business and watch your profile take shape." : area === "people" ? "Share a key contact, their position and department, so future work reaches the right person." : area === "calendar" ? "The Calendar AI reads your company records and keeps the important dates together." : area === "expenses" ? "File a receipt, and the Expenses Clerk groups every claim into the month’s submission and prepares the report." : area === "procurement" ? "Record what suppliers send, draft purchase orders, log deliveries, and check every invoice against the order before paying." : area === "research" ? "Evidence-backed company dossiers, web verification, and published intelligence reports." : "Create records and see the invoice database update instantly."}</p></div></div>}
-        {logArea ? <ObservabilityPanel area={logArea} isAdmin={isSuperadmin}/> : area === "schedules" ? <SchedulesPanel user={user}/> : area === "calendar" ? <CalendarPanel/> : area === "expenses" ? <ExpensesPanel user={user} onNotice={setNotice}/> : area === "procurement" ? <ProcurementPanel user={user} onNotice={setNotice}/> : area === "research" ? <ResearchPanel user={user} onNotice={setNotice}/> : <div className={`demo-layout${area === "home" ? " demo-home-layout" : ""}`}>
+        {area !== "home" && <div className="demo-heading"><div><div className="demo-eyebrow">{area === "memory" ? "SHAPE HOW E REACTS" : area === "schedules" ? "SCHEDULED WORK" : logArea ? "WORKSPACE INSIGHTS" : area === "onboarding" ? "STEP 01 · GETTING STARTED" : area === "people" ? "STEP 02 · KNOW YOUR TEAM" : area === "calendar" ? "LIVE COMPANY SIGNALS" : area === "expenses" ? "RECEIPTS TO REPORT" : area === "procurement" ? "BUY WITH CONFIDENCE" : area === "research" ? "COMPANY INTELLIGENCE" : "STEP 03 · EXPLORE CAPABILITIES"}</div><h1>{area === "memory" ? "What E is memorizing" : area === "schedules" ? "Scheduled work" : logArea ? logHeadings[logArea].title : area === "onboarding" ? "Set up your workspace" : area === "people" ? "Meet your company people" : area === "calendar" ? "One calendar for every date" : area === "expenses" ? "Claims, grouped by cut-off" : area === "procurement" ? "Quotes, orders, deliveries, bills" : area === "research" ? "Company research library" : "Make work happen"}</h1><p>{area === "memory" ? "Suggestions E picked up from team chats. Approve, edit or reject each one." : area === "schedules" ? "Manage AI jobs, reminders, and cron schedules. Check next runs and execution history." : logArea ? logHeadings[logArea].description : area === "onboarding" ? "Tell the assistant about your business and watch your profile take shape." : area === "people" ? "Share a key contact, their position and department, so future work reaches the right person." : area === "calendar" ? "The Calendar AI reads your company records and keeps the important dates together." : area === "expenses" ? "File a receipt, and the Expenses Clerk groups every claim into the month’s submission and prepares the report." : area === "procurement" ? "Record what suppliers send, draft purchase orders, log deliveries, and check every invoice against the order before paying." : area === "research" ? "Evidence-backed company dossiers, web verification, and published intelligence reports." : "Create records and see the invoice database update instantly."}</p></div></div>}
+        {logArea ? <ObservabilityPanel area={logArea} isAdmin={isSuperadmin}/> : area === "memory" ? (isSuperadmin ? <MemoryPanel/> : <div className="demo-empty">{"Only your company's Superadmin can see and shape E's memory."}</div>) : area === "schedules" ? <SchedulesPanel user={user}/> : area === "calendar" ? <CalendarPanel/> : area === "expenses" ? <ExpensesPanel user={user} onNotice={setNotice}/> : area === "procurement" ? <ProcurementPanel user={user} onNotice={setNotice}/> : area === "research" ? <ResearchPanel user={user} onNotice={setNotice}/> : <div className={`demo-layout${area === "home" ? " demo-home-layout" : ""}`}>
           <section className={`demo-chat-card${studio.history.length === 0 ? " is-empty" : ""}`} aria-label={`${area} chat`}>
             <div className={`demo-card-head${studio.loading ? " is-working" : ""}`}>
               <div className="demo-agent-identity">
