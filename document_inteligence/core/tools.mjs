@@ -1036,7 +1036,10 @@ export const TOOLS = {
         then: z.enum(["allow", "block"]),
         message: z.string().optional().describe("Required for block, max 200 characters"),
       })),
-      examples: z.array(z.object({ facts: z.record(z.string(), z.any()), expect: z.enum(["allow", "block"]) })),
+      examples: z.array(z.object({
+        facts: z.record(z.string(), z.any()).describe('Example data, e.g. {"document":{"total":45000,"doc_type":"invoice"},"requester":{"category":"Sales","access":"user"}}. Flat dotted facts such as {"document.total":45000} are also accepted and normalized. Conflicting values or unknown facts are refused; a mismatch is about the example, not a missing comparison operator.'),
+        expect: z.enum(["allow", "block"]),
+      })),
     },
     run: gates.setGates,
   },

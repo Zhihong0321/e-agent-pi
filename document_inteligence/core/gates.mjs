@@ -82,12 +82,42 @@ export function decide(rules, facts) {
   return { decision: "allow", rule: null };
 }
 
+/** Models may copy dotted names from the facts menu. Resolve them to the same shape as documentFacts. */
+function exampleFacts(facts) {
+  if (!facts || typeof facts !== "object" || Array.isArray(facts)) throw new DiError("facts must be an object");
+  const result = {};
+  const put = (path, value) => {
+    const [root, key] = path.split(".");
+    const group = !key && Object.keys(FACTS.document).some((p) => p.startsWith(`${root}.`));
+    if (!Object.hasOwn(FACTS.document, path) && !(group && value === null)) {
+      throw new DiError(`Unknown example fact "${path}". Use only: ${Object.keys(FACTS.document).join(", ")}`);
+    }
+    if (value !== null && typeof value === "object") throw new DiError(`Example fact "${path}" must be a scalar or null`);
+    if (key && Object.hasOwn(result, root) && (result[root] === null || typeof result[root] !== "object")) {
+      throw new DiError(`Conflicting example facts for "${root}" and "${path}"`);
+    }
+    const target = key ? (result[root] ??= {}) : result;
+    const name = key ?? root;
+    if (Object.hasOwn(target, name) && !Object.is(target[name], value)) throw new DiError(`Conflicting example facts for "${path}"`);
+    target[name] = value;
+  };
+  for (const [path, value] of Object.entries(facts)) {
+    if (!path.includes(".") && value !== null && typeof value === "object" && !Array.isArray(value)) {
+      if (!Object.keys(FACTS.document).some((p) => p.startsWith(`${path}.`))) throw new DiError(`Unknown example fact group "${path}"`);
+      for (const [key, item] of Object.entries(value)) put(`${path}.${key}`, item);
+    } else put(path, value);
+  }
+  return result;
+}
+
 /** Proves a rule list before it is saved: every example must decide as expected, and both outcomes appear. */
 export function checkExamples(rules, examples) {
   if (!rules.length) return;
   const list = examples ?? [];
   list.forEach((e, i) => {
-    const { decision, rule } = decide(rules, e.facts);
+    let facts;
+    try { facts = exampleFacts(e.facts); } catch (error) { throw new DiError(`Example ${i + 1}: ${error.message}`); }
+    const { decision, rule } = decide(rules, facts);
     if (decision !== e.expect) throw new DiError(`Example ${i + 1}: expected ${e.expect}, got ${decision} (rule ${rule?.id ?? "none"})`);
   });
   if (!list.some((e) => e.expect === "allow") || !list.some((e) => e.expect === "block")) {
