@@ -11,7 +11,7 @@ export const OPS = ["and", "or", "!", "==", "!=", "<", "<=", ">", ">=", "in", "v
 /** The facts a rule may read, per record type. A new fact is one line here and one value in documentFacts. */
 export const FACTS = {
   document: {
-    action: '"save" (a draft is created or edited, or an invoice is made from a quotation) or "issue"',
+    action: '"save" (a draft is created or edited, or an invoice is made from a quotation) or "issue". Use it ONLY when the owner names the action: "issue" for issuing, "save" for creating or editing; when they name none, leave it out',
     "document.doc_type": "quotation, invoice or credit_note",
     "document.status": "current status (a draft on save)",
     "document.currency": "e.g. MYR",
@@ -19,8 +19,8 @@ export const FACTS = {
     "document.list_total": "sum of quantity x catalogue price, before any discount",
     "document.subtotal": "after line discounts, before tax",
     "document.total": "including tax",
-    "document.discount_pct": "discount as a percent of list_total, from line discounts and lowered unit prices (0 when list_total is 0)",
-    "document.max_line_discount_pct": "the same percent, for the line with the largest discount",
+    "document.discount_pct": "the discount on the whole document as a percent of list_total, from line discounts and lowered unit prices (0 when list_total is 0). This is the one for \"at most X% discount\"",
+    "document.max_line_discount_pct": "the same percent for the single line with the largest discount; only when the owner limits the discount per line",
     "requester.username": "the signed-in user (requester is null when no user is attached)",
     "requester.access": "superadmin, department_head or user",
     "requester.category": "the user's category name, e.g. Sales",
