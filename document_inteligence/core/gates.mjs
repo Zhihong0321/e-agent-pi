@@ -3,6 +3,7 @@
 // enabled rule whose `when` is true decides (allow or block); no match = allow.
 import jsonLogic from "json-logic-js";
 import { DiError, round2 } from "./common.mjs";
+import { compileProgram, renderProgram } from "./gate-program.mjs";
 
 export const RECORD_TYPES = ["document"];
 export const OPS = ["and", "or", "!", "==", "!=", "<", "<=", ">", ">=", "in", "var"];
@@ -70,7 +71,7 @@ export function validateGates(recordType, rules) {
     if (message.length > 200) throw new DiError(`Rule "${r.id}": message is over 200 characters`);
     if (r.when === null || typeof r.when !== "object" || Array.isArray(r.when)) throw new DiError(`Rule "${r.id}": when must be a condition`);
     try { walk(r.when, FACTS[recordType]); } catch (e) { throw new DiError(`Rule "${r.id}": ${e.message}`); }
-    return { id: r.id, on: r.on !== false, when: r.when, then: r.then, message };
+    return { id: r.id, on: r.on !== false, when: r.when, then: r.then, message, ...(typeof r.src === "string" ? { src: r.src.slice(0, 300) } : {}) };
   });
 }
 
@@ -162,7 +163,8 @@ export async function enforceDocumentGates(tx, documentId, action) {
 }
 
 export async function getGates(tx, { record_type }) {
-  return { record_type, rules: await readRules(tx, record_type), facts: FACTS[record_type] };
+  const rules = await readRules(tx, record_type);
+  return { record_type, rules, program: renderProgram(rules), facts: FACTS[record_type] };
 }
 
 /** `when` may arrive as JSON text (what a model writes most reliably); it is stored as parsed JSON. */
@@ -174,13 +176,15 @@ function parseWhen(rule) {
 }
 
 /** Replaces the whole ordered list. Sorting a list means sending it again in the new order. */
-export async function setGates(tx, { record_type, rules, examples }) {
-  const clean = validateGates(record_type, (rules ?? []).map(parseWhen));
+export async function setGates(tx, { record_type, program, rules, examples }) {
+  if (program !== undefined && rules !== undefined) throw new DiError("Send program or rules, not both");
+  if (program === undefined && rules === undefined) throw new DiError("Send the whole gate list as program (an empty program clears all gates)");
+  const clean = validateGates(record_type, program !== undefined ? compileProgram(program) : rules.map(parseWhen));
   checkExamples(clean, examples);
   await tx.query(
     `INSERT INTO di.gate (record_type, rules) VALUES ($1, $2)
      ON CONFLICT (tenant_id, record_type) WHERE deleted_at IS NULL DO UPDATE SET rules = EXCLUDED.rules`,
     [record_type, JSON.stringify(clean)],
   );
-  return { record_type, rules: clean };
+  return { record_type, rules: clean, program: renderProgram(clean) };
 }

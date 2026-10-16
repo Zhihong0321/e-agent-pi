@@ -1019,27 +1019,22 @@ export const TOOLS = {
   get_gates: {
     agents: [FDE],
     description:
-      "Read first, before any set_gates. The company's gate list for a record type, in order (first matching enabled rule decides; no match allows), plus the facts menu: the only facts a rule may read, each with its meaning.",
+      "Read first, before any set_gates. The company's gates as `program` (the same text set_gates takes; null when there are none or they were not written as a program), plus the facts menu: the only facts a gate may read, each with its meaning.",
     input: { record_type: z.enum(["document"]) },
     run: gates.getGates,
   },
   set_gates: {
     agents: [FDE], superadminOnly: true,
     description:
-      "Set the company's logical gates: yes/no rules checked by code every time a quotation or invoice is saved or issued. Applies directly; the Superadmin's message is the approval and the examples are the check. Send the WHOLE list in its final order (first matching enabled rule decides; no match allows); to change, add, remove or sort a rule, read get_gates and send the list again; an empty list clears all gates. A rule is { id, when, then: allow|block, message }; when is JSONLogic using only and, or, !, ==, !=, <, <=, >, >=, in, var, and var may only name facts from get_gates. When the owner says a Superadmin has no limit, the allow for requester.access == \"superadmin\" is always the FIRST item of rules, before every block. Operators are the symbols themselves (>, >=, <, <=, ==, !=), never words; \"above X\" is > X, \"at least X\" is >= X. A bare < or > is often dropped on the way, so write every < and > inside the JSON text as \u003c and \u003e (e.g. {\"\u003e\":[{\"var\":\"document.total\"},50000]}); they are read back as the symbols. When the owner names an action, add it to the condition: for issuing, {\"==\":[{\"var\":\"action\"},\"issue\"]} inside the and-list (without it the rule also blocks saving drafts); when the owner names none, the rule covers both. Give at least one example that must be blocked and one that must be allowed, each { facts, expect }; a wrong example refuses the whole call. The message speaks to the person blocked and says what is needed, e.g. who can approve.",
+      "Set the company's gates: yes/no rules checked by code every time a quotation or invoice is saved or issued. Applies directly: the Superadmin's message is the approval and the examples are the check.\nWrite the WHOLE gate list as `program`, short Python-style text that is only read, never run. Allowed: if / elif / else, and, or, not, ==, !=, <, <=, >, >=, in, numbers, \"strings\", True, False, lists like [\"a\", \"b\"], and the facts from get_gates written exactly as listed (document.total, requester.category, action ...).\nEach branch sets proceed = True or proceed = False, and every False also sets reason = \"...\" (spoken to the person blocked, saying who can approve). The first branch whose condition is true decides, top to bottom; when none is true the save goes ahead. No nested if, no calculations, no functions. Example:\nif requester.access == \"superadmin\":\n    proceed = True\nelif requester.category == \"Sales\" and document.doc_type == \"invoice\" and document.total > 30000:\n    proceed = False\n    reason = \"Invoices above RM30,000 must be created by a manager.\"\nA Superadmin who has no limit is the first branch. To change or remove a gate, read get_gates, edit its program and send the whole program again; an empty program clears every gate.\nGive examples: at least one case that must be blocked and one that must be allowed, each {facts, expect}, with facts such as {\"document.total\": 45000, \"document.doc_type\": \"invoice\", \"requester.category\": \"Sales\", \"requester.access\": \"user\"}.",
     input: {
       record_type: z.enum(["document"]),
-      rules: z.array(z.object({
-        id: z.string().describe("lower-case letters, digits and dashes, e.g. sales-max-8"),
-        on: z.boolean().optional().describe("false = skipped; default true"),
-        when: z.union([z.string(), z.record(z.string(), z.any())]).describe("The condition as JSONLogic written as JSON text (a string), exactly as in this example: {\"and\":[{\"==\":[{\"var\":\"requester.category\"},\"Sales\"]},{\">\":[{\"var\":\"document.discount_pct\"},8]}]}. Do not add keys; every operator takes a list of arguments."),
-        then: z.enum(["allow", "block"]),
-        message: z.string().optional().describe("Required for block, max 200 characters"),
-      })),
+      program: z.string().optional().describe("The whole gate list as Python-style text (see the description)"),
+      rules: z.array(z.any()).optional().describe("Not for you. Leave it out and send program."),
       examples: z.array(z.object({
-        facts: z.record(z.string(), z.any()).describe('Example data, e.g. {"document":{"total":45000,"doc_type":"invoice"},"requester":{"category":"Sales","access":"user"}}. Flat dotted facts such as {"document.total":45000} are also accepted and normalized. Conflicting values or unknown facts are refused; a mismatch is about the example, not a missing comparison operator.'),
+        facts: z.record(z.string(), z.any()).describe('Example data with flat dotted names as in the facts menu, e.g. {"document.total": 45000, "requester.category": "Sales"}; nested objects work too. Unknown facts are refused.'),
         expect: z.enum(["allow", "block"]),
-      })),
+      })).optional(),
     },
     run: gates.setGates,
   },
