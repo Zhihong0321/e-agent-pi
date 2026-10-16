@@ -2,7 +2,7 @@
 // The manifest (and only the manifest) decides which tools exist; business
 // calls go to the host bridge with the attempt-scoped worker token, and the
 // host resolves identity, company and authorization — never this process.
-import * as Type from "../../node_modules/@earendil-works/pi-coding-agent/node_modules/typebox/build/typebox.mjs";
+import * as Type from "typebox";
 import { readFileSync } from "node:fs";
 
 type ManifestTool = {

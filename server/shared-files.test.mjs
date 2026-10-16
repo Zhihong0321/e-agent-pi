@@ -125,7 +125,7 @@ test("every Pi tool profile receives share_file and the shared-file rules", asyn
     const args = buildPiArgs({ agent: { name: "Test" }, runtimeDir: "/runtime", provider: "test", model: "test", toolProfile });
     assert.ok(args.some((arg) => arg.endsWith(path.join("extensions", "share-file.ts"))));
   }
-  const role = await buildRoleText({ id: "orchestrator", rolePrompt: "Test", skills: [] });
+  const role = await buildRoleText({ id: "website", rolePrompt: "Test", skills: [] });
   assert.match(role, /Old file:\/\//);
   assert.match(role, /call share_file/);
 });

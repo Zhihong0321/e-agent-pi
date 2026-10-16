@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { getCurrentSystemPrompt, getCurrentTools, normalizeContext } from '@earendil-works/pi-ai';
 import { readFile } from 'node:fs/promises';
 import { quotePresent, validSsm, phone, ageYears, lockIdentity, fact, validateFindings, reconcile, renderDossier, evidenceRecord, dateInQuote, sourceTier } from './core.mjs';
 import { publicIp, safeUrl, parseScrapling, scraplingHttpGet, ResearchBudget, createEvidenceTools } from './adapters.mjs';
@@ -206,12 +207,15 @@ test('provider failures keep their actual error and do not retry an unsuccessful
 test('final synthesis requires findings while preserving active tool isolation and payload hooks', async () => {
   const runner = new PiResearchRunner({ model: { api: 'openai-completions' }, sessionFactory: async opts => {
     const agent = { streamFunction: async (_model, context, options) => {
-      assert.deepEqual(context.tools.map(t => t.name), ['submit_findings']);
-      const payload = await options.onPayload({ tools: context.tools });
+      assert.deepEqual(getCurrentTools(context.messages).map(t => t.name), ['submit_findings']);
+      assert.equal(getCurrentSystemPrompt(context.messages), 'Preserve the research instructions.');
+      const payload = await options.onPayload({ tools: getCurrentTools(context.messages) });
       assert.equal(payload.tool_choice, 'required'); assert.equal(payload.priorHook, true);
     } };
     return { session: { agent, getActiveToolNames: () => RESEARCH_TOOLS, subscribe: () => () => {}, abort: async () => {}, dispose: () => {}, prompt: async () => {
-      await agent.streamFunction({}, { tools: opts.customTools }, { onPayload: async payload => ({ ...payload, priorHook: true }) });
+      const context = normalizeContext({ systemPrompt: 'Preserve the research instructions.', tools: opts.customTools, messages: [] });
+      await agent.streamFunction({}, context, { onPayload: async payload => ({ ...payload, priorHook: true }) });
+      assert.deepEqual(getCurrentTools(context.messages).map(t => t.name), RESEARCH_TOOLS, 'request filtering must not rewrite session history');
       await opts.customTools.find(t => t.name === 'submit_findings').execute('1', { facts: [claim] });
     } } };
   } });

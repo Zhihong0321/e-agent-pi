@@ -1,4 +1,4 @@
-import * as Type from "../../node_modules/@earendil-works/pi-coding-agent/node_modules/typebox/build/typebox.mjs";
+import * as Type from "typebox";
 import {
   createAgentSession,
   DefaultResourceLoader,

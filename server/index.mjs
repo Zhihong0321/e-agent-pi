@@ -1601,9 +1601,10 @@ async function chatPi(message, modelId, session, onEvent, images) {
       try {
         onEvent?.({ type: "status", text: "Working…" }, turn);
         promptedAt = Date.now();
-        await pi.prompt(message, images?.length ? images : undefined);
-        await settled;
-        const text = (await pi.getLastAssistantText())?.trim() || turn.text.trim();
+        const disposition = await pi.prompt(message, images?.length ? images : undefined);
+        if (disposition === "handled") settled.cancel();
+        else await settled;
+        const text = disposition === "handled" ? turn.text.trim() : (await pi.getLastAssistantText())?.trim() || turn.text.trim();
         if (text) {
           turn.text = text;
           if (!turn.blocks.some((block) => block.type === "text")) {
@@ -1616,7 +1617,7 @@ async function chatPi(message, modelId, session, onEvent, images) {
         }
         turn.timing = timing;
         if (!text && assistantError) throw new Error(assistantError);
-        if (!text && !turn.blocks.length) throw new Error("No response from agent.");
+        if (!text && !turn.blocks.length && disposition !== "handled") throw new Error("No response from agent.");
         return turn;
       } catch (error) {
         settled.cancel();

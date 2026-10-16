@@ -201,12 +201,17 @@ export async function materializeAgentRuntime(agent, mcpServers, modelsJson, { m
     mcp[server.slug] = mcpServerConfig(server);
   }
   await writeFile(path.join(dir, "mcp.json"), JSON.stringify({ mcpServers: mcp }, null, 2));
+  // The explicit adapter config keeps legacy RPC agents on their existing MCP
+  // path instead of merging project/global servers discovered by newer Pi.
+  await writeFile(path.join(dir, "mcp-adapter.json"), JSON.stringify({ mcpServers: mcp }, null, 2));
   await writeFile(
     path.join(dir, "settings.json"),
     JSON.stringify(
       {
         packages: [],
         enableSkillCommands: true,
+        // Preserve 0.84 behavior: no additional model requests to warm caches.
+        cacheWarming: "off",
         // Pi's HTTP client gives up on a call that is silent for 5 minutes. A call waiting in a provider's line
         // (see queue/llm-gate.mjs) is silent by design, so that limit is off; the host's silence watch still
         // catches a Pi that is really stuck, and it does not count time spent waiting.
@@ -275,7 +280,7 @@ export function buildPiArgs(opts) {
   for (const skill of skills) {
     if (skill.dirPath) args.push("--skill", skill.dirPath);
   }
-  if (opts.mcpCount) args.push("--extension", MCP_ADAPTER_EXTENSION);
+  if (opts.mcpCount) args.push("--extension", MCP_ADAPTER_EXTENSION, "--mcp-config", path.join(opts.runtimeDir, "mcp-adapter.json"));
   if (!restricted) args.push("--extension", path.join(ROOT, "agent", "extensions", "share-file.ts"));
   if (!restricted && agentHasSubagents(opts.skills)) args.push("--extension", SUBAGENTS_EXTENSION);
   if (opts.sessionFile) args.push("--session", opts.sessionFile);

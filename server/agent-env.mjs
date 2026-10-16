@@ -90,6 +90,8 @@ export function agentEnv(agent, extra = {}, from = process.env) {
   env.CLOUD_PI_TNB = TNB_CLI;
   env.CLOUD_PI_BLUEPRINT = BLUEPRINT_CLI;
   env.PI_PACKAGE_DIR = from.PI_PACKAGE_DIR || PI_PACKAGE_DIR;
+  // An agent may connect only the MCP servers materialized from its catalog.
+  env.PI_MCP_CONFIG_MODE = "exclusive";
   Object.assign(env, researchEnv(agent, from, extra.TENANT_ID));
   Object.assign(env, adsResearchEnv(agent, from, extra.TENANT_ID));
   Object.assign(env, mediaAiEnv(agent, from, extra.TENANT_ID));

@@ -1,8 +1,7 @@
-import { createRequire } from 'node:module';
-import { pathToFileURL } from 'node:url';
-import path from 'node:path';
+import { Type } from 'typebox';
+import { getCurrentTools, InMemoryCredentialStore, InMemoryModelsStore, normalizeContext } from '@earendil-works/pi-ai';
 import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from '@earendil-works/pi-coding-agent';
-import { PI_PACKAGE_DIR, ROOT } from '../paths.mjs';
+import { ROOT } from '../paths.mjs';
 import { Findings, validateFindings, checkedFindings } from './core.mjs';
 import { recordApiUsage } from '../usage.mjs';
 import { piGate } from '../queue/pi-gate.mjs';
@@ -12,8 +11,6 @@ import { isWaitingAtLlmGate } from '../queue/llm-gate.mjs';
 // The caller name this host puts on research calls at the LLM gate (see company-research/host.mjs).
 export const RESEARCH_CALLER = 'company-research';
 
-const piRequire = createRequire(path.join(PI_PACKAGE_DIR, 'package.json'));
-const { Type } = await import(pathToFileURL(piRequire.resolve('typebox')).href);
 const cited = { evidence_id: Type.String(), quote: Type.String({ minLength: 8, maxLength: 200 }) };
 const submissionsSchema = Type.Object({
   facts: Type.Optional(Type.Array(Type.Object({ field: Type.Union(Findings.shape.facts.unwrap().element.shape.field.options.map(field => Type.Literal(field))), value: Type.Union([Type.String(), Type.Number()]), ...cited }))),
@@ -24,9 +21,6 @@ const submissionsSchema = Type.Object({
   observations: Type.Optional(Type.Array(Type.Object({ category: Type.Union(['operating_scale', 'credentials', 'projects', 'locations', 'milestones'].map(value => Type.Literal(value))), value: Type.String({ minLength: 8, maxLength: 200 }), ...cited }))),
   wrong_entity_warnings: Type.Optional(Type.Array(Type.String())), unknowns: Type.Optional(Type.Array(Type.String())),
 });
-// Pi owns this dependency (its npm shrinkwrap installs a private copy). Resolve
-// the import entry from that copy instead of adding a mismatched second Pi SDK.
-const { InMemoryCredentialStore, InMemoryModelsStore } = await import(pathToFileURL(path.join(PI_PACKAGE_DIR, 'node_modules', '@earendil-works', 'pi-ai', 'dist', 'index.js')).href);
 export const RESEARCH_TOOLS = ['search', 'fetch_pages', 'submit_findings'];
 export const TASKS = {
   G1: 'Registry and identity: legal_name, ssm_no, incorporated_on, status (live/struck_off/winding_up/dormant), msic, paid_up_capital, registered_address; directors as people. Prefer registry/government and independent corroboration. For each registry value cite every independent source that supports it, using multiple fact entries with the same literal value. Prefer the 12-digit SSM identifier. Paywalls mean unknown.',
@@ -148,7 +142,7 @@ export class PiResearchRunner {
         return result;
       }),
     ];
-    const settings = SettingsManager.inMemory({ compaction: { enabled: false }, retry: { enabled: false }, httpIdleTimeoutMs: 0 });
+    const settings = SettingsManager.inMemory({ compaction: { enabled: false }, retry: { enabled: false }, cacheWarming: 'off', httpIdleTimeoutMs: 0 });
     const loader = new DefaultResourceLoader({ cwd: ROOT, agentDir: ROOT, settingsManager: settings, noExtensions: true, noSkills: true, noPromptTemplates: true, noThemes: true, noContextFiles: true, systemPromptOverride: () => `${PREAMBLE}\nPreserve useful company detail in observations:[{category,value,evidence_id,quote}]. Categories: operating_scale (capacity, managed sites, employee ranges, staff PLUS contractors), credentials (certifications and partnerships), projects (delivered project descriptions without inventing client names), locations (offices/warehouses, not assumed registered addresses), milestones (year/month-only events without inventing dates). Values must be literal excerpts from their quotes, 8–200 characters. These observations do not establish audited metrics or verified registry status. Prioritize these observations for your section. Use fetch_pages on cited original pages when excerpts omit important company information.` });
     await loader.reload();
     const created = await this.sessionFactory({ cwd: ROOT, agentDir: ROOT, modelRuntime: this.modelRuntime, model: this.model, thinkingLevel: 'off', tools: RESEARCH_TOOLS, customTools, resourceLoader: loader, settingsManager: settings, sessionManager: SessionManager.inMemory(ROOT) });
@@ -160,7 +154,12 @@ export class PiResearchRunner {
       const stream = session.agent.streamFunction;
       session.agent.streamFunction = (model, context, options) => {
         const finalize = !gaps.length || searches >= 1 || fetches >= 1 || tokens >= this.tokenBudget * 0.5;
-        const visible = finalize ? { ...context, tools: context.tools.filter(t => t.name === 'submit_findings') } : context;
+        // Pi 1.x carries tools in transcript system messages. Remove only the
+        // lookup tools for this request, preserving the prompt and raw history.
+        const visible = finalize ? normalizeContext({ messages: [...context.messages, {
+          role: 'system', content: '', timestamp: Date.now(),
+          toolsRemoved: getCurrentTools(context.messages).filter(t => t.name !== 'submit_findings').map(t => ({ name: t.name })),
+        }] }) : context;
         return stream(model, visible, { ...options, onPayload: async (payload, selected) => {
         const original = await options?.onPayload?.(payload, selected) || payload;
         if (finalize) return { ...original, tool_choice: 'required' };

@@ -7,11 +7,12 @@ import path from 'node:path';
 const root = await mkdtemp(path.join(tmpdir(), 'pi-adapter-test-'));
 let batches = [];
 let aborts = 0;
+let promptDisposition = 'started';
 let piSessionFile = path.join(root, 'new-session.jsonl');
 mock.module('@earendil-works/pi-coding-agent', { namedExports: { RpcClient: class {
   async start() {}
   onEvent(fn) { this.listener = fn; return () => { this.listener = null; }; }
-  async prompt() { for (const event of batches.shift()) this.listener(event); }
+  async prompt() { for (const event of batches.shift()) this.listener(event); return promptDisposition; }
   async getState() { return { sessionId: 'pi-session', sessionFile: piSessionFile }; }
   async abort() { aborts += 1; }
   async stop() {}
@@ -93,4 +94,18 @@ test('a saved conversation whose file is missing is reported, not replaced by a 
     sessionFile: path.join(root, 'gone.jsonl'),
   });
   await assert.rejects(worker.start(), error => error.execCode === 'SESSION_UNAVAILABLE' && /cannot be resumed/.test(error.message));
+});
+
+test('an extension-handled prompt finishes without agent_settled or replaying an earlier answer', { timeout: 5000 }, async () => {
+  promptDisposition = 'handled';
+  batches = [[]];
+  const worker = piWorkerFactory({ profile: { id: 'test' }, manifest: { manifest: {} }, attemptId: 'handled', runKind: 'chat' });
+  try {
+    await worker.start();
+    assert.deepEqual(await worker.prompt('/handled'), { text: '' });
+    assert.equal(worker.modelTurns(), 0);
+  } finally {
+    promptDisposition = 'started';
+    await worker.dispose();
+  }
 });

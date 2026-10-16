@@ -9,7 +9,7 @@ import { killTree, rpcClientPid } from '../proc.mjs';
 import { agentEnv } from '../agent-env.mjs';
 import { applyPiEvent } from '../pi-stream.mjs';
 import { findModel, resolveModelCredentials } from '../models.mjs';
-import { agentWorkspace, PI_CLI_PATH, PI_PACKAGE_DIR, ROOT, RUNTIME_DIR, STORAGE } from '../paths.mjs';
+import { agentWorkspace, PI_CLI_PATH, PI_PACKAGE_DIR, ROOT, RUNTIME_DIR } from '../paths.mjs';
 import { buildPiArgs, materializeAgentRuntime, resolveToolProfile } from '../runtime.mjs';
 import { manifestRevisionOf } from './contracts.mjs';
 import { isWaitingAtLlmGate } from '../queue/llm-gate.mjs';
@@ -147,8 +147,9 @@ export function piWorkerFactory(opts) {
     bump();
     try {
       void settled.catch(() => {});
-      if (opts.images?.length) await pi.prompt(message, opts.images);
-      else await pi.prompt(message);
+      const disposition = await pi.prompt(message, opts.images?.length ? opts.images : undefined);
+      // An input hook can handle a prompt without starting an agent run.
+      if (disposition === 'handled') settle.resolve();
       await settled;
       if (lastError) throw new Error(lastError);
       return { text: currentTurn.text };

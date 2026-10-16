@@ -22,6 +22,13 @@ test("buildPiArgs: coding profile keeps Pi's default prompt and built-in tools",
   assert.equal(args.includes("--no-builtin-tools"), false);
 });
 
+test("legacy MCP uses the agent's explicit adapter config and keeps native extensions disabled", () => {
+  const args = buildPiArgs({ ...baseOpts, mcpCount: 1 });
+  assert.ok(args.includes("--no-extensions"));
+  assert.equal(args[args.indexOf("--mcp-config") + 1], path.join(baseOpts.runtimeDir, "mcp-adapter.json"));
+  assert.equal(args.some(arg => arg.startsWith("builtin:")), false);
+});
+
 test("buildPiArgs: ops profile swaps the system prompt and limits tools to read+bash", () => {
   const args = buildPiArgs({ ...baseOpts, toolProfile: "ops" });
   const promptIdx = args.indexOf("--system-prompt");
