@@ -43,11 +43,6 @@ test("order matters: the same rules sorted differently decide differently", () =
   assert.equal(decide(validateGates("document", RULES), facts(ownerInSales, 15)).decision, "allow");
 });
 
-test("a rule switched off is skipped", () => {
-  const rules = validateGates("document", [{ ...RULES[1], on: false }]);
-  assert.equal(decide(rules, facts(sales, 50)).decision, "allow");
-});
-
 test("a missing fact is null, never an error (no signed-in user)", () => {
   const rules = validateGates("document", RULES);
   assert.equal(decide(rules, { action: "save", document: { discount_pct: 50 }, requester: null }).decision, "allow");

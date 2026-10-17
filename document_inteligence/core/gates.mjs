@@ -1,6 +1,7 @@
-// Logical gates: a company's yes/no rules about a record and who is asking, kept as an ordered list
-// of JSONLogic conditions in di.gate. Code checks them when a record is saved or issued. The first
-// enabled rule whose `when` is true decides (allow or block); no match = allow.
+// Gates: a company's yes/no rules about a record and who is asking, kept as an ordered list in di.gate. The FDE
+// writes them as a Python-style program (core/gate-program.mjs), which is compiled into the rules stored here. Code
+// checks them when a record is saved or issued: the first rule whose condition is true decides (allow or block);
+// no match = allow.
 import jsonLogic from "json-logic-js";
 import { DiError, round2 } from "./common.mjs";
 import { compileProgram, renderProgram } from "./gate-program.mjs";
@@ -32,15 +33,11 @@ const ID = /^[a-z][a-z0-9-]{0,47}$/;
 const MAX_RULES = 30;
 
 function walk(node, facts) {
-  if (Array.isArray(node)) return node.forEach((n) => walk(n, facts));
   if (node === null || typeof node !== "object") return;
   const keys = Object.keys(node);
   if (keys.length !== 1) throw new DiError(`A condition holds exactly one operator, got ${keys.length}: ${JSON.stringify(node)}`);
   const [op] = keys;
-  if (!OPS.includes(op)) {
-    const lost = op === "" ? ". A < or > was lost on the way: write them as \\u003c and \\u003e inside the JSON text" : "";
-    throw new DiError(`Operator "${op}" is not allowed. Use only: ${OPS.join(", ")}${lost}`);
-  }
+  if (!OPS.includes(op)) throw new DiError(`Operator "${op}" is not allowed. Use only: ${OPS.join(", ")}`);
   const arg = node[op];
   if (op !== "var") {
     // A list is only ever the values "in" looks through; anywhere else it would read as a condition that is always true.
@@ -71,14 +68,14 @@ export function validateGates(recordType, rules) {
     if (message.length > 200) throw new DiError(`Rule "${r.id}": message is over 200 characters`);
     if (r.when === null || typeof r.when !== "object" || Array.isArray(r.when)) throw new DiError(`Rule "${r.id}": when must be a condition`);
     try { walk(r.when, FACTS[recordType]); } catch (e) { throw new DiError(`Rule "${r.id}": ${e.message}`); }
-    return { id: r.id, on: r.on !== false, when: r.when, then: r.then, message, ...(typeof r.src === "string" ? { src: r.src.slice(0, 300) } : {}) };
+    return { id: r.id, when: r.when, then: r.then, message, ...(typeof r.src === "string" ? { src: r.src.slice(0, 300) } : {}) };
   });
 }
 
-/** The first enabled rule whose condition is true decides; a missing fact reads as null. */
+/** The first rule whose condition is true decides; a missing fact reads as null. */
 export function decide(rules, facts) {
   for (const rule of rules ?? []) {
-    if (rule.on !== false && jsonLogic.apply(rule.when, facts)) return { decision: rule.then, rule };
+    if (jsonLogic.apply(rule.when, facts)) return { decision: rule.then, rule };
   }
   return { decision: "allow", rule: null };
 }
@@ -167,19 +164,10 @@ export async function getGates(tx, { record_type }) {
   return { record_type, rules, program: renderProgram(rules), facts: FACTS[record_type] };
 }
 
-/** `when` may arrive as JSON text (what a model writes most reliably); it is stored as parsed JSON. */
-function parseWhen(rule) {
-  if (typeof rule?.when !== "string") return rule;
-  try { return { ...rule, when: JSON.parse(rule.when) }; } catch (e) {
-    throw new DiError(`Rule "${rule.id}": when is not valid JSON (${e.message})`);
-  }
-}
-
 /** Replaces the whole ordered list. Sorting a list means sending it again in the new order. */
-export async function setGates(tx, { record_type, program, rules, examples }) {
-  if (program !== undefined && rules !== undefined) throw new DiError("Send program or rules, not both");
-  if (program === undefined && rules === undefined) throw new DiError("Send the whole gate list as program (an empty program clears all gates)");
-  const clean = validateGates(record_type, program !== undefined ? compileProgram(program) : rules.map(parseWhen));
+export async function setGates(tx, { record_type, program, examples }) {
+  if (typeof program !== "string") throw new DiError("Send the whole gate list as program (an empty program clears all gates)");
+  const clean = validateGates(record_type, compileProgram(program));
   checkExamples(clean, examples);
   await tx.query(
     `INSERT INTO di.gate (record_type, rules) VALUES ($1, $2)

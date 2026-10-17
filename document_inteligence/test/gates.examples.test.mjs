@@ -27,6 +27,13 @@ const EXAMPLES = [
   { facts: flat(45000, "Sales", "user", "quotation"), expect: "allow" },
 ];
 const rules = validateGates("document", RULES);
+const PROGRAM = [
+  'if requester.access == "superadmin":',
+  "    proceed = True",
+  'elif document.doc_type == "invoice" and requester.category == "Sales" and document.total > 30000:',
+  "    proceed = False",
+  '    reason = "Ask a Manager to create invoices over RM30,000."',
+].join("\n");
 
 test("the recorded RM30,000 examples pass with flat dotted facts and retain strict boundaries", () => {
   const before = structuredClone(EXAMPLES);
@@ -60,7 +67,7 @@ test("ambiguous, misspelled and malformed example facts are rejected before writ
   ]) {
     let writes = 0;
     await assert.rejects(setGates({ query: async () => { writes++; } }, {
-      record_type: "document", rules: RULES, examples: [{ facts, expect: "block" }, EXAMPLES[1]],
+      record_type: "document", program: PROGRAM, examples: [{ facts, expect: "block" }, EXAMPLES[1]],
     }), /Example 1: (Conflicting|Unknown|Example fact|facts must)/);
     assert.equal(writes, 0);
   }
@@ -74,24 +81,22 @@ test("FDE saves flat examples through the real tool and the invoice cap is enfor
   try {
     await migrate(db);
     const c = await gateCompany(db, "FlatGateExamples");
-    for (const textWhen of [false, true]) {
-      const sent = RULES.map((r) => ({ ...r, when: textWhen ? JSON.stringify(r.when) : r.when }));
-      await c.byOwner("di-fde", "set_gates", { record_type: "document", rules: sent, examples: EXAMPLES });
-      const read = await c.byOwner("di-fde", "get_gates", { record_type: "document" });
-      assert.deepEqual(read.rules, rules);
-    }
+    await c.byOwner("di-fde", "set_gates", { record_type: "document", program: PROGRAM, examples: EXAMPLES });
+    const read = await c.byOwner("di-fde", "get_gates", { record_type: "document" });
+    assert.equal(read.program, PROGRAM);
+    assert.deepEqual(read.rules.map((r) => r.id), ["line-1", "line-3"]);
     const invoice = (amount) => ({ ...quote(0, { unit_price: amount }), doc_type: "invoice", due_date: "2099-12-31" });
     const before = (await liveDocuments(db, c.tenantId)).length;
-    await assert.rejects(c.bySales("di-documents", "create_draft", invoice(30000.01)), /Blocked by company rule "sales-invoice-cap-30000"/);
+    await assert.rejects(c.bySales("di-documents", "create_draft", invoice(30000.01)), /Blocked by company rule "line-3"/);
     assert.equal((await liveDocuments(db, c.tenantId)).length, before, "blocked invoice must roll back");
     await c.bySales("di-documents", "create_draft", invoice(30000));
     await c.byOwner("di-documents", "create_draft", invoice(45000));
     await c.bySales("di-documents", "create_draft", quote(0, { unit_price: 45000 }));
     await assert.rejects(c.byOwner("di-fde", "set_gates", {
-      record_type: "document", rules: RULES, examples: [
+      record_type: "document", program: PROGRAM, examples: [
         { facts: { ...flat(45000), document: { total: 100 } }, expect: "block" }, EXAMPLES[1],
       ],
     }), /Conflicting example facts/);
-    assert.deepEqual((await c.byOwner("di-fde", "get_gates", { record_type: "document" })).rules, rules);
+    assert.equal((await c.byOwner("di-fde", "get_gates", { record_type: "document" })).program, PROGRAM);
   } finally { await pglite.close(); }
 });
